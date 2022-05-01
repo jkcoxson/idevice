@@ -1,8 +1,8 @@
 // Manages the connection to the muxer
 
 use async_trait::async_trait;
-use plist::Value;
 use serde::{Deserialize, Serialize};
+use serde_bytes::ByteBuf;
 use std::{env, io::Cursor};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -26,8 +26,8 @@ pub trait MuxerConnection {
 #[async_trait]
 impl MuxerConnection for TcpStream {
     async fn read(&mut self) -> Result<Vec<u8>, std::io::Error> {
-        let mut buf = [0; 1024];
-        let size = AsyncReadExt::read(&mut self, &mut buf).await.unwrap();
+        let mut buf = [0; 4096];
+        let size = AsyncReadExt::read(&mut self, &mut buf).await?;
         Ok(buf[..size].to_vec())
     }
     async fn write(&mut self, buf: &[u8]) -> Result<(), std::io::Error> {
@@ -38,8 +38,8 @@ impl MuxerConnection for TcpStream {
 #[async_trait]
 impl MuxerConnection for UnixStream {
     async fn read(&mut self) -> Result<Vec<u8>, std::io::Error> {
-        let mut buf = [0; 1024];
-        let size = AsyncReadExt::read(&mut self, &mut buf).await.unwrap();
+        let mut buf = [0; 4096];
+        let size = AsyncReadExt::read(&mut self, &mut buf).await?;
         Ok(buf[..size].to_vec())
     }
     async fn write(&mut self, buf: &[u8]) -> Result<(), std::io::Error> {
@@ -61,11 +61,14 @@ pub struct PacketBase {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeviceProperties {
+    pub connection_speed: Option<u32>,
     pub connection_type: String,
+    #[serde(alias = "DeviceID")]
     pub device_id: u16,
-    pub escaped_full_service_name: String,
-    pub interface_index: u16,
-    pub network_address: String,
+    pub location_id: Option<u32>,
+    pub escaped_full_service_name: Option<String>,
+    pub interface_index: Option<u16>,
+    pub network_address: Option<ByteBuf>,
     pub serial_number: String,
 }
 
@@ -107,7 +110,15 @@ pub async fn get_devices(
 
     // Serialize the packet to a plist
     let mut to_send = Vec::new();
-    let _ = plist::to_writer_xml(&mut to_send, &packet).unwrap();
+    let _ = match plist::to_writer_xml(&mut to_send, &packet) {
+        Ok(_) => (),
+        Err(e) => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Unable to serialize packet: {}", e),
+            ));
+        }
+    };
 
     // Append the packet header to the beginning of the packet
     let version = (1 as u32).to_le_bytes();
@@ -136,8 +147,6 @@ pub async fn get_devices(
     #[derive(Deserialize)]
     #[serde(rename_all = "PascalCase")]
     struct ListEntry {
-        device_id: u16,
-        message_type: String,
         properties: DeviceProperties,
     }
 
@@ -148,7 +157,15 @@ pub async fn get_devices(
     }
 
     let mut cursor = Cursor::new(buf);
-    let response: Response = plist::from_reader(&mut cursor).unwrap();
+    let response: Response = match plist::from_reader(&mut cursor) {
+        Ok(device_list) => device_list,
+        _ => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Unable to deserialize packet",
+            ))
+        }
+    };
 
     Ok(response
         .device_list
