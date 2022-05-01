@@ -26,7 +26,11 @@ pub trait MuxerConnection {
 #[async_trait]
 impl MuxerConnection for TcpStream {
     async fn read(&mut self) -> Result<Vec<u8>, std::io::Error> {
-        let mut buf = [0; 4096];
+        let mut buf = [0; 4];
+        AsyncReadExt::read_exact(&mut self, &mut buf).await?;
+        let len = u32::from_le_bytes(buf);
+
+        let mut buf = vec![0; len as usize];
         let size = AsyncReadExt::read(&mut self, &mut buf).await?;
         Ok(buf[..size].to_vec())
     }
@@ -38,7 +42,11 @@ impl MuxerConnection for TcpStream {
 #[async_trait]
 impl MuxerConnection for UnixStream {
     async fn read(&mut self) -> Result<Vec<u8>, std::io::Error> {
-        let mut buf = [0; 4096];
+        let mut buf = [0; 4];
+        AsyncReadExt::read_exact(&mut self, &mut buf).await?;
+        let len = u32::from_le_bytes(buf);
+
+        let mut buf = vec![0; len as usize];
         let size = AsyncReadExt::read(&mut self, &mut buf).await?;
         Ok(buf[..size].to_vec())
     }
@@ -142,7 +150,7 @@ pub async fn get_devices(
 
     // Read the response from the muxer
     let buf = connection.read().await?;
-    let buf = buf[16..].to_vec();
+    let buf = buf[12..].to_vec();
 
     #[derive(Deserialize)]
     #[serde(rename_all = "PascalCase")]
