@@ -1,6 +1,6 @@
 // Manages the connection to the muxer
 
-use async_trait::async_trait;
+use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
 use std::{env, io::Cursor};
@@ -17,42 +17,58 @@ lazy_static::lazy_static! {
     static ref TAG: Mutex<u32> = Mutex::new(0);
 }
 
-#[async_trait]
-pub trait MuxerConnection {
-    async fn read(&mut self) -> Result<Vec<u8>, std::io::Error>;
-    async fn write(&mut self, buf: &[u8]) -> Result<(), std::io::Error>;
+pub struct MuxerConnection {
+    pub unix_stream: Option<UnixStream>,
+    pub tcp_stream: Option<TcpStream>,
 }
 
-#[async_trait]
-impl MuxerConnection for TcpStream {
-    async fn read(&mut self) -> Result<Vec<u8>, std::io::Error> {
-        let mut buf = [0; 4];
-        AsyncReadExt::read_exact(&mut self, &mut buf).await?;
-        let len = u32::from_le_bytes(buf);
+impl MuxerConnection {
+    pub async fn read(&mut self) -> Result<Vec<u8>, std::io::Error> {
+        match self.unix_stream {
+            Some(ref mut unix_stream) => {
+                let mut buf = [0; 4];
+                unix_stream.read_exact(&mut buf).await?;
+                let len = u32::from_le_bytes(buf);
 
-        let mut buf = vec![0; len as usize];
-        let size = AsyncReadExt::read(&mut self, &mut buf).await?;
-        Ok(buf[..size].to_vec())
-    }
-    async fn write(&mut self, buf: &[u8]) -> Result<(), std::io::Error> {
-        self.write_all(buf).await?;
-        Ok(())
-    }
-}
-#[async_trait]
-impl MuxerConnection for UnixStream {
-    async fn read(&mut self) -> Result<Vec<u8>, std::io::Error> {
-        let mut buf = [0; 4];
-        AsyncReadExt::read_exact(&mut self, &mut buf).await?;
-        let len = u32::from_le_bytes(buf);
+                let mut buf = vec![0; len as usize];
+                let size = unix_stream.read(&mut buf).await?;
+                return Ok(buf[..size].to_vec());
+            }
+            None => {
+                let mut buf = [0; 4];
+                self.tcp_stream
+                    .as_mut()
+                    .unwrap()
+                    .read_exact(&mut buf)
+                    .await?;
+                let len = u32::from_le_bytes(buf);
 
-        let mut buf = vec![0; len as usize];
-        let size = AsyncReadExt::read(&mut self, &mut buf).await?;
-        Ok(buf[..size].to_vec())
+                let mut buf = vec![0; len as usize];
+                let size = self.tcp_stream.as_mut().unwrap().read(&mut buf).await?;
+                return Ok(buf[..size].to_vec());
+            }
+        };
     }
-    async fn write(&mut self, buf: &[u8]) -> Result<(), std::io::Error> {
-        self.write_all(buf).await?;
-        Ok(())
+
+    pub async fn write(&mut self, data: &[u8]) -> Result<(), std::io::Error> {
+        match self.unix_stream {
+            Some(ref mut unix_stream) => {
+                let mut buf = Vec::new();
+                buf.extend_from_slice(&(data.len() as u32).to_le_bytes());
+                buf.extend_from_slice(data);
+                unix_stream.write_all(&buf).await?;
+                unix_stream.flush().await?;
+                return Ok(());
+            }
+            None => {
+                let mut buf = Vec::new();
+                buf.extend_from_slice(&(data.len() as u32).to_le_bytes());
+                buf.extend_from_slice(data);
+                self.tcp_stream.as_mut().unwrap().write_all(&buf).await?;
+                self.tcp_stream.as_mut().unwrap().flush().await?;
+                return Ok(());
+            }
+        };
     }
 }
 
@@ -66,7 +82,7 @@ pub struct PacketBase {
     k_lib_usbmux_version: u8,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct DeviceProperties {
     pub connection_speed: Option<u32>,
@@ -80,8 +96,39 @@ pub struct DeviceProperties {
     pub serial_number: String,
 }
 
+impl DeviceProperties {
+    pub fn get_ip(&self) -> Option<String> {
+        if self.connection_type != "Network" {
+            return None;
+        }
+
+        let data = self.network_address.clone().unwrap();
+        // Determine if the data is IPv4 or IPv6
+        match data[1] {
+            0x02 => {
+                // IPv4
+                let mut ip_addr = [0u8; 4];
+                ip_addr.copy_from_slice(&data[4..8]);
+                let ip_addr = std::net::Ipv4Addr::from(ip_addr);
+                Some(ip_addr.to_string())
+            }
+            0x1E => {
+                // IPv6
+                let mut ip_addr = [0u8; 16];
+                ip_addr.copy_from_slice(&data[8..24]);
+                let ip_addr = std::net::Ipv6Addr::from(ip_addr);
+                Some(ip_addr.to_string())
+            }
+            _ => {
+                warn!("Unknown IP address type");
+                None
+            }
+        }
+    }
+}
+
 /// Creates a connection to the system's muxer
-pub async fn connect() -> Result<Box<dyn MuxerConnection>, std::io::Error> {
+pub async fn connect() -> Result<MuxerConnection, std::io::Error> {
     // Get the USBMUXD_SOCKET_ADDRESS environment variable
     let address = match env::var("USBMUXD_SOCKET_ADDRESS") {
         Ok(address) => address,
@@ -100,9 +147,15 @@ pub async fn connect() -> Result<Box<dyn MuxerConnection>, std::io::Error> {
 
     // Determine if the address is a path or a socket
     if address.starts_with("/") {
-        return Ok(Box::new(UnixStream::connect(address).await?));
+        return Ok(MuxerConnection {
+            unix_stream: Some(UnixStream::connect(address).await?),
+            tcp_stream: None,
+        });
     }
-    return Ok(Box::new(TcpStream::connect(address).await?));
+    return Ok(MuxerConnection {
+        unix_stream: None,
+        tcp_stream: Some(TcpStream::connect(address).await?),
+    });
 }
 
 pub async fn get_devices(
