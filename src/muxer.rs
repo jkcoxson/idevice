@@ -56,6 +56,7 @@ impl MuxerConnection {
                 let mut buf = Vec::new();
                 buf.extend_from_slice(&(data.len() as u32).to_le_bytes());
                 buf.extend_from_slice(data);
+                println!("{:?}", buf);
                 unix_stream.write_all(&buf).await?;
                 unix_stream.flush().await?;
                 return Ok(());
@@ -189,10 +190,7 @@ pub async fn get_devices(
     *TAG.lock().await += 1;
     let tag = tag.to_le_bytes();
 
-    let size = (16 + to_send.len() as u32).to_le_bytes();
-
     let mut buf = Vec::new();
-    buf.extend_from_slice(&size);
     buf.extend_from_slice(&version);
     buf.extend_from_slice(&message);
     buf.extend_from_slice(&tag);
