@@ -3,3 +3,9 @@
 
 /// Manages the connection to the muxer
 pub mod muxer;
+
+/// Abstraction of iOS's lockdown daemon
+pub mod lockdown;
+
+/// Abstraction of a connection to an iOS device
+pub mod connection;

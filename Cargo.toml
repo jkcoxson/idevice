@@ -12,7 +12,16 @@ async-trait = { version = "0.1.53" }
 serde = { version = "1.0.89", features = [ "derive" ] }
 serde_bytes = { version = "0.11.6" }
 lazy_static = { version = "1.4.0" }
+log = { version = "0.4.16" }
 
 [[bin]]
 name = "idevice_id"
 path = "src/tools/idevice_id.rs"
+
+[[bin]]
+name = "fake_device"
+path = "src/tools/fake_device.rs"
+
+[[bin]]
+name = "test"
+path = "src/tools/test.rs"
