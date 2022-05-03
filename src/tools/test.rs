@@ -20,10 +20,6 @@ async fn main() {
 
     println!(
         "Product version: {}",
-        lockdown_client
-            .connection
-            .get_product_version()
-            .await
-            .unwrap()
+        lockdown_client.get_product_version().await.unwrap()
     );
 }

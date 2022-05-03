@@ -1,11 +1,18 @@
 // jkcoxson
 
+use log::info;
+use serde::{Deserialize, Serialize};
+
 use crate::{connection::Connection, muxer::DeviceProperties};
 
 const LOCKDOWND_PORT: u16 = 62078;
 
 pub struct LockdowndClient {
     pub connection: Connection,
+
+    // Private property caches
+    service_type: Option<String>,
+    product_version: Option<String>,
 }
 
 impl LockdowndClient {
@@ -13,10 +20,14 @@ impl LockdowndClient {
         properties: &DeviceProperties,
         label: impl Into<String>,
     ) -> Result<LockdowndClient, std::io::Error> {
-        let mut connection = Connection::new(properties, LOCKDOWND_PORT, label).await?;
+        let mut client = LockdowndClient {
+            connection: Connection::new(properties, LOCKDOWND_PORT, label).await?,
+            service_type: None,
+            product_version: None,
+        };
 
-        if connection.get_service_type().await? == "com.apple.mobile.lockdown" {
-            Ok(LockdowndClient { connection })
+        if client.get_service_type().await? == "com.apple.mobile.lockdown" {
+            Ok(client)
         } else {
             Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
@@ -24,4 +35,81 @@ impl LockdowndClient {
             ))
         }
     }
+
+    /// Gets the service type of the connection
+    /// This is cached after the first call
+    /// # Returns
+    /// The service type of the connection as a string
+    pub async fn get_service_type(&mut self) -> Result<String, std::io::Error> {
+        if self.service_type.is_some() {
+            info!("Returning cached service type");
+            return Ok(self.service_type.clone().unwrap());
+        }
+        // Query the device for the connection type
+        let query = Query {
+            label: self.connection.label.clone(),
+            request: "QueryType".to_string(),
+        };
+
+        self.connection.write_plist(&query).await?;
+
+        let res: QueryRes = self.connection.read_plist().await?;
+
+        self.service_type = Some(res.type_.clone());
+
+        Ok(res.type_)
+    }
+
+    /// Gets the iOS version of the device
+    pub async fn get_product_version(&mut self) -> Result<String, std::io::Error> {
+        if self.product_version.is_some() {
+            info!("Returning cached product version");
+            return Ok(self.product_version.clone().unwrap());
+        }
+        // Query the device for the connection type
+        let query = RequestKey {
+            label: self.connection.label.clone(),
+            request: "GetValue".to_string(),
+            key: "ProductVersion".to_string(),
+        };
+
+        self.connection.write_plist(&query).await?;
+
+        let res: RequestKeyRes = self.connection.read_plist().await?;
+
+        self.product_version = Some(res.value.clone());
+
+        Ok(res.value)
+    }
+}
+
+/// The initial packet sent to the device after connection
+#[derive(Serialize)]
+#[serde(rename_all = "PascalCase")]
+pub(crate) struct Query {
+    label: String,
+    request: String,
+}
+
+/// The response to the initial packet sent to the device after connection
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub(crate) struct QueryRes {
+    type_: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub(crate) struct RequestKey {
+    label: String,
+    key: String,
+    request: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub(crate) struct RequestKeyRes {
+    key: String,
+    request: String,
+    value: String,
 }

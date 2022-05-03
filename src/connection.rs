@@ -2,7 +2,7 @@
 
 use crate::muxer::DeviceProperties;
 use log::info;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::UnixStream,
@@ -16,10 +16,6 @@ pub struct Connection {
     // Public properties
     pub properties: DeviceProperties,
     pub label: String,
-
-    // Private property caches
-    service_type: Option<String>,
-    product_version: Option<String>,
 }
 
 impl Connection {
@@ -58,8 +54,6 @@ impl Connection {
                     unix_stream: None,
                     tcp_stream: Some(stream),
                     properties: properties.clone(),
-                    service_type: None,
-                    product_version: None,
                     label: label.into(),
                 });
             }
@@ -71,52 +65,6 @@ impl Connection {
                 "Unknown connection type",
             )),
         }
-    }
-
-    /// Gets the service type of the connection
-    /// This is cached after the first call
-    /// # Returns
-    /// The service type of the connection as a string
-    pub async fn get_service_type(&mut self) -> Result<String, std::io::Error> {
-        if self.service_type.is_some() {
-            info!("Returning cached service type");
-            return Ok(self.service_type.clone().unwrap());
-        }
-        // Query the device for the connection type
-        let query = Query {
-            label: self.label.clone(),
-            request: "QueryType".to_string(),
-        };
-
-        self.write_plist(&query).await?;
-
-        let res: QueryRes = self.read_plist().await?;
-
-        self.service_type = Some(res.type_.clone());
-
-        Ok(res.type_)
-    }
-
-    /// Gets the iOS version of the device
-    pub async fn get_product_version(&mut self) -> Result<String, std::io::Error> {
-        if self.product_version.is_some() {
-            info!("Returning cached product version");
-            return Ok(self.product_version.clone().unwrap());
-        }
-        // Query the device for the connection type
-        let query = RequestKey {
-            label: self.label.clone(),
-            request: "GetValue".to_string(),
-            key: "ProductVersion".to_string(),
-        };
-
-        self.write_plist(&query).await?;
-
-        let res: RequestKeyRes = self.read_plist().await?;
-
-        self.product_version = Some(res.value.clone());
-
-        Ok(res.value)
     }
 
     /// Reads a packet from the device
@@ -235,35 +183,4 @@ pub(crate) fn binary_to_plist<'a, T: DeserializeOwned>(data: &[u8]) -> Result<T,
     };
 
     Ok(response)
-}
-
-/// The initial packet sent to the device after connection
-#[derive(Serialize)]
-#[serde(rename_all = "PascalCase")]
-pub(crate) struct Query {
-    label: String,
-    request: String,
-}
-
-/// The response to the initial packet sent to the device after connection
-#[derive(Deserialize)]
-#[serde(rename_all = "PascalCase")]
-pub(crate) struct QueryRes {
-    type_: String,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-pub(crate) struct RequestKey {
-    label: String,
-    key: String,
-    request: String,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-pub(crate) struct RequestKeyRes {
-    key: String,
-    request: String,
-    value: String,
 }
