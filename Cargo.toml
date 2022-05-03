@@ -14,6 +14,7 @@ serde = { version = "1.0.89", features = [ "derive" ] }
 serde_bytes = { version = "0.11.6" }
 lazy_static = { version = "1.4.0" }
 log = { version = "0.4.16" }
+colored = { version = "1.9.0" }
 
 [[bin]]
 name = "idevice_id"
@@ -26,3 +27,7 @@ path = "src/tools/fake_device.rs"
 [[bin]]
 name = "test"
 path = "src/tools/test.rs"
+
+[[bin]]
+name = "passthrough"
+path = "src/tools/passthrough.rs"
