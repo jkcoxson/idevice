@@ -16,4 +16,5 @@ async fn main() {
     let lockdown_client = lockdown::LockdowndClient::new(&device_list[0], "asdf".to_string())
         .await
         .unwrap();
+    println!("Connected to lockdown");
 }

@@ -14,7 +14,7 @@ const CLIENT_VERSION: &str = "idevice-rs 0.1.0";
 const USBMUX_VERSION: u8 = 3;
 
 lazy_static::lazy_static! {
-    static ref TAG: Mutex<u32> = Mutex::new(0);
+    static ref TAG: Mutex<u32> = Mutex::new(1);
 }
 
 pub struct MuxerConnection {
@@ -54,16 +54,14 @@ impl MuxerConnection {
         match self.unix_stream {
             Some(ref mut unix_stream) => {
                 let mut buf = Vec::new();
-                buf.extend_from_slice(&(data.len() as u32).to_le_bytes());
+                buf.extend_from_slice(&((data.len() + 4) as u32).to_le_bytes());
                 buf.extend_from_slice(data);
-                println!("{:?}", buf);
                 unix_stream.write_all(&buf).await?;
-                unix_stream.flush().await?;
                 return Ok(());
             }
             None => {
                 let mut buf = Vec::new();
-                buf.extend_from_slice(&(data.len() as u32).to_le_bytes());
+                buf.extend_from_slice(&((data.len() + 4) as u32).to_le_bytes());
                 buf.extend_from_slice(data);
                 self.tcp_stream.as_mut().unwrap().write_all(&buf).await?;
                 self.tcp_stream.as_mut().unwrap().flush().await?;
