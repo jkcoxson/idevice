@@ -13,8 +13,17 @@ async fn main() {
     };
 
     println!("Devices found: {}", device_list.len());
-    let lockdown_client = lockdown::LockdowndClient::new(&device_list[0], "asdf".to_string())
+    let mut lockdown_client = lockdown::LockdowndClient::new(&device_list[0], "asdf".to_string())
         .await
         .unwrap();
     println!("Connected to lockdown");
+
+    println!(
+        "Product version: {}",
+        lockdown_client
+            .connection
+            .get_product_version()
+            .await
+            .unwrap()
+    );
 }
