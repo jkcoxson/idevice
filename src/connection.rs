@@ -97,6 +97,28 @@ impl Connection {
         Ok(res.type_)
     }
 
+    /// Gets the iOS version of the device
+    pub async fn get_product_version(&mut self) -> Result<String, std::io::Error> {
+        if self.product_version.is_some() {
+            info!("Returning cached product version");
+            return Ok(self.product_version.clone().unwrap());
+        }
+        // Query the device for the connection type
+        let query = RequestKey {
+            label: self.label.clone(),
+            request: "GetValue".to_string(),
+            key: "ProductVersion".to_string(),
+        };
+
+        self.write_plist(&query).await?;
+
+        let res: RequestKeyRes = self.read_plist().await?;
+
+        self.product_version = Some(res.value.clone());
+
+        Ok(res.value)
+    }
+
     /// Reads a packet from the device
     /// # Returns
     /// A vector of bytes representing the packet
@@ -236,4 +258,12 @@ pub(crate) struct RequestKey {
     label: String,
     key: String,
     request: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub(crate) struct RequestKeyRes {
+    key: String,
+    request: String,
+    value: String,
 }

@@ -5,7 +5,7 @@ use crate::{connection::Connection, muxer::DeviceProperties};
 const LOCKDOWND_PORT: u16 = 62078;
 
 pub struct LockdowndClient {
-    connection: Connection,
+    pub connection: Connection,
 }
 
 impl LockdowndClient {
