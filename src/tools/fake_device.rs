@@ -14,7 +14,7 @@ async fn main() {
         tokio::spawn(async move {
             let mut buf = [0; 4096];
             let size = socket.read(&mut buf).await.unwrap();
-            println!("{:?}", buf[..4].to_vec());
+            println!("{:?}", buf[..].to_vec());
             println!("{}", String::from_utf8_lossy(&buf[..size]));
         });
     }
