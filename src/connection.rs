@@ -1,6 +1,7 @@
 // jkcoxson
 
 use crate::muxer::DeviceProperties;
+use log::info;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -22,6 +23,13 @@ pub struct Connection {
 }
 
 impl Connection {
+    /// Creates a new connection to the device
+    /// # Arguments
+    /// * `properties` - The properties of the device
+    /// * `label` - The label to give the connection internally
+    /// * `port` - The port to connect to
+    /// # Returns
+    /// A new connection to the device
     pub async fn new(
         properties: &DeviceProperties,
         port: u16,
@@ -40,6 +48,8 @@ impl Connection {
                         addr.into()
                     }
                 };
+
+                info!("Connecting to {}", socket_addr);
 
                 // Create a new TcpStream to the device
                 let stream = tokio::net::TcpStream::connect(socket_addr).await?;
@@ -63,8 +73,13 @@ impl Connection {
         }
     }
 
+    /// Gets the service type of the connection
+    /// This is cached after the first call
+    /// # Returns
+    /// The service type of the connection as a string
     pub async fn get_service_type(&mut self) -> Result<String, std::io::Error> {
         if self.service_type.is_some() {
+            info!("Returning cached service type");
             return Ok(self.service_type.clone().unwrap());
         }
         // Query the device for the connection type
@@ -82,6 +97,9 @@ impl Connection {
         Ok(res.type_)
     }
 
+    /// Reads a packet from the device
+    /// # Returns
+    /// A vector of bytes representing the packet
     pub(crate) async fn read(&mut self) -> Result<Vec<u8>, std::io::Error> {
         match self.unix_stream {
             Some(ref mut unix_stream) => {
@@ -109,21 +127,9 @@ impl Connection {
         };
     }
 
-    pub(crate) async fn write_plist(
-        &mut self,
-        plist: &impl Serialize,
-    ) -> Result<(), std::io::Error> {
-        let to_send = plist_to_binary(plist)?;
-        self.write(&to_send).await?;
-        Ok(())
-    }
-
-    pub(crate) async fn read_plist<T: DeserializeOwned>(&mut self) -> Result<T, std::io::Error> {
-        let bytes = self.read().await?;
-        let plist: T = binary_to_plist(&bytes)?;
-        return Ok(plist);
-    }
-
+    /// Writes a packet to the connection
+    /// # Arguments
+    /// * `packet` - The packet to write in bytes
     pub(crate) async fn write(&mut self, data: &[u8]) -> Result<(), std::io::Error> {
         match self.unix_stream {
             Some(ref mut unix_stream) => {
@@ -142,8 +148,30 @@ impl Connection {
             }
         };
     }
+
+    /// Writes a plist to the connection
+    /// # Arguments
+    /// * `plist` - The plist to write. Must have the `Serialize` trait
+    pub(crate) async fn write_plist(
+        &mut self,
+        plist: &impl Serialize,
+    ) -> Result<(), std::io::Error> {
+        let to_send = plist_to_binary(plist)?;
+        self.write(&to_send).await?;
+        Ok(())
+    }
+
+    /// Reads a plist from the connection
+    /// # Returns
+    /// The plist read from the connection
+    pub(crate) async fn read_plist<T: DeserializeOwned>(&mut self) -> Result<T, std::io::Error> {
+        let bytes = self.read().await?;
+        let plist: T = binary_to_plist(&bytes)?;
+        return Ok(plist);
+    }
 }
 
+/// Converts a plist to binary form in XML
 pub(crate) fn plist_to_binary(plist: impl Serialize) -> Result<Vec<u8>, std::io::Error> {
     let mut buf = Vec::new();
     let _ = match plist::to_writer_xml(&mut buf, &plist) {
@@ -158,6 +186,21 @@ pub(crate) fn plist_to_binary(plist: impl Serialize) -> Result<Vec<u8>, std::io:
     Ok(buf)
 }
 
+/// Converts a binary plist in XML to a plist
+/// # Arguments
+/// * `bytes` - The bytes to convert
+/// # Returns
+/// The plist read from the bytes
+///
+/// # Example
+/// ```
+/// #[derive(Deserialize)]
+/// #[serde(rename_all = "PascalCase")]
+/// struct Packet {
+///     foo: String,
+/// }
+/// let packet: Packet = binary_to_plist(&bytes).unwrap();
+/// ```
 pub(crate) fn binary_to_plist<'a, T: DeserializeOwned>(data: &[u8]) -> Result<T, std::io::Error> {
     let response: T = match plist::from_bytes(data) {
         Ok(v) => v,
