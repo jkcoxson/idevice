@@ -13,9 +13,9 @@ impl LockdowndClient {
         properties: &DeviceProperties,
         label: impl Into<String>,
     ) -> Result<LockdowndClient, std::io::Error> {
-        let connection = Connection::new(properties, LOCKDOWND_PORT, label).await?;
+        let mut connection = Connection::new(properties, LOCKDOWND_PORT, label).await?;
 
-        if connection.service_type == "com.apple.mobile.lockdown" {
+        if connection.get_service_type().await? == "com.apple.mobile.lockdown" {
             Ok(LockdowndClient { connection })
         } else {
             Err(std::io::Error::new(
