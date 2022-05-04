@@ -1,6 +1,6 @@
 // jkcoxson
 
-use idevice::{lockdown, muxer};
+use idevice::{lockdown, muxer, pairing_file};
 
 #[tokio::main]
 async fn main() {
@@ -22,4 +22,8 @@ async fn main() {
         "Product version: {}",
         lockdown_client.get_product_version().await.unwrap()
     );
+
+    pairing_file::fetch("asdf", lockdown_client.connection.properties.serial_number)
+        .await
+        .unwrap();
 }
