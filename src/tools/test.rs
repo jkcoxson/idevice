@@ -23,7 +23,12 @@ async fn main() {
         lockdown_client.get_product_version().await.unwrap()
     );
 
-    pairing_file::PairingFile::fetch("asdf", lockdown_client.connection.properties.serial_number)
-        .await
-        .unwrap();
+    let pairing_file = pairing_file::PairingFile::fetch(
+        "asdf",
+        lockdown_client.connection.properties.serial_number,
+    )
+    .await
+    .unwrap();
+
+    println!("Pairing file: {:?}", pairing_file);
 }
