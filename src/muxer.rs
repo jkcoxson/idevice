@@ -11,10 +11,10 @@ use tokio::{
 };
 
 const CLIENT_VERSION: &str = "idevice-rs 0.1.0";
-const USBMUX_VERSION: u8 = 3;
+pub const USBMUX_VERSION: u8 = 3;
 
 lazy_static::lazy_static! {
-    static ref TAG: Mutex<u32> = Mutex::new(1);
+    pub static ref TAG: Mutex<u32> = Mutex::new(1);
 }
 
 pub struct MuxerConnection {
@@ -74,11 +74,11 @@ impl MuxerConnection {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct PacketBase {
-    client_version_string: String,
-    message_type: String,
-    prog_name: String,
+    pub client_version_string: String,
+    pub message_type: String,
+    pub prog_name: String,
     #[serde(rename = "kLibUSBMuxVersion")]
-    k_lib_usbmux_version: u8,
+    pub k_lib_usbmux_version: u8,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

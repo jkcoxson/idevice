@@ -9,3 +9,5 @@ pub mod lockdown;
 
 /// Abstraction of a connection to an iOS device
 pub mod connection;
+
+pub mod pairing_file;
