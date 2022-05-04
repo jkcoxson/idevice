@@ -3,7 +3,7 @@
 use log::info;
 use serde::{Deserialize, Serialize};
 
-use crate::{connection::Connection, muxer::DeviceProperties};
+use crate::{connection::Connection, muxer::DeviceProperties, pairing_file::PairingFile};
 
 const LOCKDOWND_PORT: u16 = 62078;
 
@@ -81,6 +81,29 @@ impl LockdowndClient {
 
         Ok(res.value)
     }
+
+    pub async fn start_session(
+        &mut self,
+        pairing_file: PairingFile,
+        buid: String,
+    ) -> Result<(), std::io::Error> {
+        let start = StartSession {
+            label: self.connection.label.clone(),
+            request: "StartSession".to_string(),
+            host_id: pairing_file.host_id.clone(),
+            system_buid: buid,
+        };
+
+        self.connection.write_plist(&start).await?;
+
+        let res: StartSessionRes = self.connection.read_plist().await?;
+
+        if res.enable_session_ssl {
+            self.connection.pairing_file = Some(pairing_file);
+        }
+
+        Ok(())
+    }
 }
 
 /// The initial packet sent to the device after connection
@@ -112,4 +135,25 @@ pub(crate) struct RequestKeyRes {
     key: String,
     request: String,
     value: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub(crate) struct StartSession {
+    label: String,
+    request: String,
+    #[serde(rename = "HostID")]
+    host_id: String,
+    #[serde(rename = "SystemBUID")]
+    system_buid: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "PascalCase")]
+pub(crate) struct StartSessionRes {
+    #[serde(rename = "EnableSessionSSL")]
+    enable_session_ssl: bool,
+    request: String,
+    #[serde(rename = "SessionID")]
+    session_id: String,
 }

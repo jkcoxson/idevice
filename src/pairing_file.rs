@@ -9,16 +9,16 @@ use crate::muxer::{PacketBase, TAG};
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct PairingFile {
-    device_certificate: ByteBuf,
-    host_private_key: ByteBuf,
-    host_certificate: ByteBuf,
-    root_private_key: ByteBuf,
-    root_certificate: ByteBuf,
+    pub device_certificate: ByteBuf,
+    pub host_private_key: ByteBuf,
+    pub host_certificate: ByteBuf,
+    pub root_private_key: ByteBuf,
+    pub root_certificate: ByteBuf,
     #[serde(alias = "HostID")]
-    host_id: String,
-    escrow_bag: ByteBuf,
+    pub host_id: String,
+    pub escrow_bag: ByteBuf,
     #[serde(rename = "WiFiMACAddress")]
-    wifi_mac_address: String,
+    pub wifi_mac_address: String,
 }
 
 impl PairingFile {

@@ -25,10 +25,17 @@ async fn main() {
 
     let pairing_file = pairing_file::PairingFile::fetch(
         "asdf",
-        lockdown_client.connection.properties.serial_number,
+        lockdown_client.connection.properties.serial_number.clone(),
     )
     .await
     .unwrap();
 
     println!("Pairing file: {:?}", pairing_file);
+
+    let buid = pairing_file::fetch_buid("asdf").await.unwrap();
+
+    lockdown_client
+        .start_session(pairing_file, buid)
+        .await
+        .unwrap();
 }

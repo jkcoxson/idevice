@@ -1,6 +1,6 @@
 // jkcoxson
 
-use crate::muxer::DeviceProperties;
+use crate::{muxer::DeviceProperties, pairing_file::PairingFile};
 use log::info;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::{
@@ -16,6 +16,7 @@ pub struct Connection {
     // Public properties
     pub properties: DeviceProperties,
     pub label: String,
+    pub pairing_file: Option<PairingFile>,
 }
 
 impl Connection {
@@ -55,6 +56,7 @@ impl Connection {
                     tcp_stream: Some(stream),
                     properties: properties.clone(),
                     label: label.into(),
+                    pairing_file: None,
                 });
             }
             "USB" => {
