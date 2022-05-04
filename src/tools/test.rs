@@ -23,7 +23,7 @@ async fn main() {
         lockdown_client.get_product_version().await.unwrap()
     );
 
-    pairing_file::fetch("asdf", lockdown_client.connection.properties.serial_number)
+    pairing_file::PairingFile::fetch("asdf", lockdown_client.connection.properties.serial_number)
         .await
         .unwrap();
 }
