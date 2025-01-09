@@ -2,14 +2,14 @@
 
 pub mod heartbeat;
 pub mod lockdownd;
-mod pairing_file;
+pub mod pairing_file;
 
 use log::{debug, error};
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use std::io::{self, BufWriter, Read, Write};
 use thiserror::Error;
 
-trait ReadWrite: Read + Write + std::fmt::Debug {}
+pub trait ReadWrite: Read + Write + std::fmt::Debug {}
 impl<T: Read + Write + std::fmt::Debug> ReadWrite for T {}
 
 pub struct Idevice {
@@ -18,6 +18,12 @@ pub struct Idevice {
 }
 
 impl Idevice {
+    pub fn new(socket: Box<dyn ReadWrite>, label: impl Into<String>) -> Self {
+        Self {
+            socket: Some(socket),
+            label: label.into(),
+        }
+    }
     pub fn get_type(&mut self) -> Result<String, IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("Label".into(), self.label.clone().into());
