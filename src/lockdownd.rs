@@ -115,7 +115,6 @@ impl LockdowndClient {
         req.insert("Service".into(), identifier.into());
         self.idevice.send_plist(plist::Value::Dictionary(req))?;
         let response = self.idevice.read_plist()?;
-        println!("{response:?}");
         match response.get("EnableServiceSSL") {
             Some(plist::Value::Boolean(ssl)) => match response.get("Port") {
                 Some(plist::Value::Integer(port)) => {
