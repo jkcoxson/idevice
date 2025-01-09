@@ -1,72 +1,31 @@
 // Jackson Coxson
 
-const LOCKDOWND_PORT: u16 = 62078;
-
+pub mod heartbeat;
+pub mod lockdownd;
 mod pairing_file;
 
 use log::{debug, error};
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
-use serde::{Deserialize, Serialize};
 use std::io::{self, BufWriter, Read, Write};
 use thiserror::Error;
 
 trait ReadWrite: Read + Write + std::fmt::Debug {}
 impl<T: Read + Write + std::fmt::Debug> ReadWrite for T {}
 
-pub struct LockdowndClient {
+pub struct Idevice {
     socket: Option<Box<dyn ReadWrite>>, // in a box for now to use the ReadWrite trait for further uses
     label: String,
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-struct LockdowndRequest {
-    label: String,
-    key: Option<String>,
-    request: String,
-}
-
-impl LockdowndClient {
+impl Idevice {
     pub fn get_type(&mut self) -> Result<String, IdeviceError> {
-        let req = LockdowndRequest {
-            label: self.label.clone(),
-            key: None,
-            request: "QueryType".to_string(),
-        };
+        let mut req = plist::Dictionary::new();
+        req.insert("Label".into(), self.label.clone().into());
+        req.insert("Request".into(), "QueryType".into());
         let message = plist::to_value(&req)?;
         self.send_plist(message)?;
         let message: plist::Dictionary = self.read_plist()?;
         match message.get("Type") {
-            Some(m) => Ok(plist::from_value(m)?),
-            None => Err(IdeviceError::UnexpectedResponse),
-        }
-    }
-
-    pub fn get_value(&mut self, value: impl Into<String>) -> Result<String, IdeviceError> {
-        let req = LockdowndRequest {
-            label: self.label.clone(),
-            key: Some(value.into()),
-            request: "GetValue".to_string(),
-        };
-        let message = plist::to_value(&req)?;
-        self.send_plist(message)?;
-        let message: plist::Dictionary = self.read_plist()?;
-        match message.get("Value") {
-            Some(m) => Ok(plist::from_value(m)?),
-            None => Err(IdeviceError::UnexpectedResponse),
-        }
-    }
-
-    pub fn get_all_values(&mut self) -> Result<plist::Dictionary, IdeviceError> {
-        let req = LockdowndRequest {
-            label: self.label.clone(),
-            key: None,
-            request: "GetValue".to_string(),
-        };
-        let message = plist::to_value(&req)?;
-        self.send_plist(message)?;
-        let message: plist::Dictionary = self.read_plist()?;
-        match message.get("Value") {
             Some(m) => Ok(plist::from_value(m)?),
             None => Err(IdeviceError::UnexpectedResponse),
         }
@@ -115,48 +74,11 @@ impl LockdowndClient {
         }
     }
 
-    /// Starts a TLS session with the client
+    /// Wraps current connection in TLS
     pub fn start_session(
         &mut self,
         pairing_file: pairing_file::PairingFile,
     ) -> Result<(), IdeviceError> {
-        if self.socket.is_none() {
-            return Err(IdeviceError::NoEstablishedConnection);
-        }
-
-        let mut request = plist::Dictionary::new();
-        request.insert(
-            "Label".to_string(),
-            plist::Value::String(self.label.clone()),
-        );
-
-        request.insert(
-            "Request".to_string(),
-            plist::Value::String("StartSession".to_string()),
-        );
-        request.insert(
-            "HostID".to_string(),
-            plist::Value::String(pairing_file.host_id.clone()),
-        );
-        request.insert(
-            "SystemBUID".to_string(),
-            plist::Value::String(pairing_file.system_buid.clone()),
-        );
-
-        self.send_plist(plist::Value::Dictionary(request))?;
-
-        let response = self.read_plist()?;
-        match response.get("EnableSessionSSL") {
-            Some(plist::Value::Boolean(enable)) => {
-                if !enable {
-                    return Err(IdeviceError::UnexpectedResponse);
-                }
-            }
-            _ => {
-                return Err(IdeviceError::UnexpectedResponse);
-            }
-        }
-
         let mut connector = SslConnector::builder(SslMethod::tls()).unwrap();
         connector
             .set_certificate(&pairing_file.host_certificate)
@@ -172,44 +94,6 @@ impl LockdowndClient {
         self.socket = Some(Box::new(ssl_stream));
 
         Ok(())
-    }
-
-    /// Asks lockdownd to pretty please start a service for us
-    /// # Arguments
-    /// `identifier` - The identifier for the service you want to start
-    /// # Returns
-    /// The port number and whether to enable SSL on success, `IdeviceError` on failure
-    pub fn start_service(
-        &mut self,
-        identifier: impl Into<String>,
-    ) -> Result<(u16, bool), IdeviceError> {
-        let identifier = identifier.into();
-        let mut req = plist::Dictionary::new();
-        req.insert("Request".into(), "StartService".into());
-        req.insert("Service".into(), identifier.into());
-        self.send_plist(plist::Value::Dictionary(req))?;
-        let response = self.read_plist()?;
-        println!("{response:?}");
-        match response.get("EnableServiceSSL") {
-            Some(plist::Value::Boolean(ssl)) => match response.get("Port") {
-                Some(plist::Value::Integer(port)) => {
-                    if let Some(port) = port.as_unsigned() {
-                        Ok((port as u16, *ssl))
-                    } else {
-                        error!("Port isn't an unsiged integer!");
-                        Err(IdeviceError::UnexpectedResponse)
-                    }
-                }
-                _ => {
-                    error!("Response didn't contain an integer port");
-                    Err(IdeviceError::UnexpectedResponse)
-                }
-            },
-            _ => {
-                error!("Response didn't contain EnableServiceSSL bool!");
-                Err(IdeviceError::UnexpectedResponse)
-            }
-        }
     }
 }
 
@@ -227,6 +111,8 @@ pub enum IdeviceError {
     GetProhibited,
     #[error("no established connection")]
     NoEstablishedConnection,
+    #[error("device went to sleep")]
+    HeartbeatSleepyTime,
     #[error("unknown error `{0}` returned from device")]
     UnknownErrorType(String),
 }
