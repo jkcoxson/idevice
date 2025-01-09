@@ -3,6 +3,14 @@ name = "idevice"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "ideviceinfo"
+path = "src/tools/ideviceinfo.rs"
+
+[[bin]]
+name = "heartbeat_client"
+path = "src/tools/heartbeat_client.rs"
+
 [dependencies]
 plist = { version = "1.7" }
 serde = { version = "1", features = ["derive"] }
