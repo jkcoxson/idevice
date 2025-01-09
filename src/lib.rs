@@ -4,7 +4,7 @@ const LOCKDOWND_PORT: u16 = 62078;
 
 mod pairing_file;
 
-use log::debug;
+use log::{debug, error};
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufWriter, Read, Write};
@@ -172,6 +172,44 @@ impl LockdowndClient {
         self.socket = Some(Box::new(ssl_stream));
 
         Ok(())
+    }
+
+    /// Asks lockdownd to pretty please start a service for us
+    /// # Arguments
+    /// `identifier` - The identifier for the service you want to start
+    /// # Returns
+    /// The port number and whether to enable SSL on success, `IdeviceError` on failure
+    pub fn start_service(
+        &mut self,
+        identifier: impl Into<String>,
+    ) -> Result<(u16, bool), IdeviceError> {
+        let identifier = identifier.into();
+        let mut req = plist::Dictionary::new();
+        req.insert("Request".into(), "StartService".into());
+        req.insert("Service".into(), identifier.into());
+        self.send_plist(plist::Value::Dictionary(req))?;
+        let response = self.read_plist()?;
+        println!("{response:?}");
+        match response.get("EnableServiceSSL") {
+            Some(plist::Value::Boolean(ssl)) => match response.get("Port") {
+                Some(plist::Value::Integer(port)) => {
+                    if let Some(port) = port.as_unsigned() {
+                        Ok((port as u16, *ssl))
+                    } else {
+                        error!("Port isn't an unsiged integer!");
+                        Err(IdeviceError::UnexpectedResponse)
+                    }
+                }
+                _ => {
+                    error!("Response didn't contain an integer port");
+                    Err(IdeviceError::UnexpectedResponse)
+                }
+            },
+            _ => {
+                error!("Response didn't contain EnableServiceSSL bool!");
+                Err(IdeviceError::UnexpectedResponse)
+            }
+        }
     }
 }
 
