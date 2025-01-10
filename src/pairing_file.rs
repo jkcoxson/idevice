@@ -44,14 +44,19 @@ struct RawPairingFile {
 
 impl PairingFile {
     pub fn read_from_file(path: impl AsRef<Path>) -> Result<Self, crate::IdeviceError> {
-        let f = std::fs::read_to_string(path)?;
-        let r = match plist::from_bytes::<RawPairingFile>(f.as_bytes()) {
+        let f = std::fs::read(path)?;
+        Self::from_bytes(&f)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, crate::IdeviceError> {
+        let r = match ::plist::from_bytes::<RawPairingFile>(bytes) {
             Ok(r) => r,
             Err(e) => {
-                warn!("Unable to read raw pairing file to memory: {e:?}");
+                warn!("Unable to convert bytes to raw pairing file: {e:?}");
                 return Err(crate::IdeviceError::UnexpectedResponse);
             }
         };
+
         match r.try_into() {
             Ok(r) => Ok(r),
             Err(e) => {
@@ -82,22 +87,5 @@ impl TryFrom<RawPairingFile> for PairingFile {
             wifi_mac_address: value.wifi_mac_address,
             udid: value.udid,
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn f1() {
-        let f = std::fs::read_to_string(
-            "/Users/jacksoncoxson/Documents/00008140-0016243626F3001C.mobiledevicepairing",
-        )
-        .unwrap();
-        let p: plist::Dictionary = plist::from_bytes(f.as_bytes()).unwrap();
-        println!("{p:#?}");
-        let p: RawPairingFile = plist::from_bytes(f.as_bytes()).unwrap();
-        println!("{p:#?}");
     }
 }
