@@ -10,8 +10,8 @@ use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use std::io::{self, BufWriter, Read, Write};
 use thiserror::Error;
 
-pub trait ReadWrite: Read + Write + std::fmt::Debug {}
-impl<T: Read + Write + std::fmt::Debug> ReadWrite for T {}
+pub trait ReadWrite: Read + Write + Send + Sync + std::fmt::Debug {}
+impl<T: Read + Write + Send + Sync + std::fmt::Debug> ReadWrite for T {}
 
 pub struct Idevice {
     socket: Option<Box<dyn ReadWrite>>, // in a box for now to use the ReadWrite trait for further uses
