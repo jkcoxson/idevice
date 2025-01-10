@@ -1,6 +1,7 @@
 // Jackson Coxson
 
 pub mod heartbeat;
+pub mod installation_proxy;
 pub mod lockdownd;
 pub mod pairing_file;
 

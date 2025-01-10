@@ -11,6 +11,10 @@ path = "src/tools/ideviceinfo.rs"
 name = "heartbeat_client"
 path = "src/tools/heartbeat_client.rs"
 
+[[bin]]
+name = "instproxy"
+path = "src/tools/instproxy.rs"
+
 [dependencies]
 plist = { version = "1.7" }
 serde = { version = "1", features = ["derive"] }
