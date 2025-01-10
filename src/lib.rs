@@ -26,6 +26,20 @@ impl Idevice {
             label: label.into(),
         }
     }
+
+    #[cfg(feature = "std-tcp")]
+    pub fn connect_tcp(
+        addr: std::net::SocketAddr,
+        label: impl Into<String>,
+    ) -> Result<Self, std::io::Error> {
+        let socket = std::net::TcpStream::connect(addr)?;
+        let label = label.into();
+        Ok(Self {
+            socket: Some(Box::new(socket)),
+            label,
+        })
+    }
+
     pub fn get_type(&mut self) -> Result<String, IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("Label".into(), self.label.clone().into());
