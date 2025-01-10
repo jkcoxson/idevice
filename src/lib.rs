@@ -84,7 +84,7 @@ impl Idevice {
     /// Wraps current connection in TLS
     pub fn start_session(
         &mut self,
-        pairing_file: pairing_file::PairingFile,
+        pairing_file: &pairing_file::PairingFile,
     ) -> Result<(), IdeviceError> {
         let mut connector = SslConnector::builder(SslMethod::tls()).unwrap();
         connector

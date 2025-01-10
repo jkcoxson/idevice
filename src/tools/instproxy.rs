@@ -69,7 +69,7 @@ fn main() {
     let p = PairingFile::read_from_file(pairing_file.as_ref().unwrap()).unwrap();
 
     let mut lockdown_client = LockdowndClient { idevice };
-    lockdown_client.start_session(p).unwrap();
+    lockdown_client.start_session(&p).unwrap();
 
     let (port, _) = lockdown_client
         .start_service("com.apple.mobile.installation_proxy")
@@ -82,7 +82,7 @@ fn main() {
 
     let p = PairingFile::read_from_file(pairing_file.unwrap()).unwrap();
 
-    idevice.start_session(p).unwrap();
+    idevice.start_session(&p).unwrap();
 
     let mut instproxy_client = InstallationProxyClient::new(idevice);
     let apps = instproxy_client.get_apps(None, None).unwrap();

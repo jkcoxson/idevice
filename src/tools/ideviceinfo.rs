@@ -69,7 +69,7 @@ fn main() {
     println!("{:?}", lockdown_client.get_value("ProductVersion"));
 
     let p = PairingFile::read_from_file(pairing_file.unwrap()).unwrap();
-    println!("{:?}", lockdown_client.start_session(p));
+    println!("{:?}", lockdown_client.start_session(&p));
     println!("{:?}", lockdown_client.idevice.get_type().unwrap());
     println!("{:#?}", lockdown_client.get_all_values());
 }

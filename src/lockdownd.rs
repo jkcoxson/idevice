@@ -57,7 +57,7 @@ impl LockdowndClient {
     /// Starts a TLS session with the client
     pub fn start_session(
         &mut self,
-        pairing_file: pairing_file::PairingFile,
+        pairing_file: &pairing_file::PairingFile,
     ) -> Result<(), IdeviceError> {
         if self.idevice.socket.is_none() {
             return Err(IdeviceError::NoEstablishedConnection);

@@ -10,6 +10,7 @@ use openssl::{
 use plist::Data;
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Debug)]
 pub struct PairingFile {
     pub device_certificate: X509,
     pub host_private_key: PKey<Private>,
