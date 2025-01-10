@@ -3,6 +3,7 @@
 pub mod heartbeat;
 pub mod installation_proxy;
 pub mod lockdownd;
+pub mod mounter;
 pub mod pairing_file;
 
 use log::{debug, error};
@@ -50,6 +51,15 @@ impl Idevice {
             socket.write_all(&len.to_be_bytes())?;
             socket.write_all(message.as_bytes())?;
             Ok(())
+        } else {
+            Err(IdeviceError::NoEstablishedConnection)
+        }
+    }
+
+    /// Sends raw bytes to the socket
+    fn send_raw(&mut self, message: &[u8]) -> Result<(), IdeviceError> {
+        if let Some(socket) = &mut self.socket {
+            Ok(socket.write_all(message)?)
         } else {
             Err(IdeviceError::NoEstablishedConnection)
         }
@@ -120,6 +130,8 @@ pub enum IdeviceError {
     NoEstablishedConnection,
     #[error("device went to sleep")]
     HeartbeatSleepyTime,
+    #[error("not found")]
+    NotFound,
     #[error("unknown error `{0}` returned from device")]
     UnknownErrorType(String),
 }

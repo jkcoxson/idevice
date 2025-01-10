@@ -21,6 +21,11 @@ path = "src/tools/heartbeat_client.rs"
 name = "instproxy"
 path = "src/tools/instproxy.rs"
 
+[[bin]]
+name = "mounter"
+path = "src/tools/mounter.rs"
+required-features = ["sha2", "ureq"]
+
 [dependencies]
 plist = { version = "1.7" }
 serde = { version = "1", features = ["derive"] }
@@ -28,3 +33,7 @@ thiserror = { version = "2" }
 log = { version = "0.4" }
 env_logger = { version = "0.11" }
 openssl = { version = "0.10" }
+
+# Binary dependencies
+sha2 = { version = "0.10", optional = true }
+ureq = { version = "2.12", optional = true }

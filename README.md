@@ -43,6 +43,12 @@ is no ETA for any of these. Feel free to contribute or donate!
 As Apple prohibits downgrading to older versions, this library will
 not keep compatibility for older versions than the current stable release.
 
+## Developer Disk Images
+
+doronz88 is kind enough to maintain a [repo](https://github.com/doronz88/DeveloperDiskImage)
+for disk images and personalized images.
+On MacOS, you can find them at ``~/Library/Developer/DeveloperDiskImages`` on a Mac.
+
 ## License
 
 MIT
