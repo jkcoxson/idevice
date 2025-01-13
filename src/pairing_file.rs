@@ -21,7 +21,7 @@ pub struct PairingFile {
     pub host_id: String,
     pub escrow_bag: Vec<u8>,
     pub wifi_mac_address: String,
-    pub udid: String,
+    pub udid: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -40,7 +40,7 @@ struct RawPairingFile {
     #[serde(rename = "WiFiMACAddress")]
     wifi_mac_address: String,
     #[serde(rename = "UDID")]
-    udid: String,
+    udid: Option<String>,
 }
 
 impl PairingFile {
