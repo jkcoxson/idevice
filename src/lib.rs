@@ -8,11 +8,12 @@ pub mod pairing_file;
 
 use log::{debug, error};
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
-use std::io::{self, BufWriter, Read, Write};
+use std::io::{self, BufWriter};
 use thiserror::Error;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-pub trait ReadWrite: Read + Write + Send + Sync + std::fmt::Debug {}
-impl<T: Read + Write + Send + Sync + std::fmt::Debug> ReadWrite for T {}
+pub trait ReadWrite: AsyncRead + AsyncWrite + Unpin + Send + Sync + std::fmt::Debug {}
+impl<T: AsyncRead + AsyncWrite + Unpin + Send + Sync + std::fmt::Debug> ReadWrite for T {}
 
 pub struct Idevice {
     socket: Option<Box<dyn ReadWrite>>, // in a box for now to use the ReadWrite trait for further uses
@@ -27,26 +28,13 @@ impl Idevice {
         }
     }
 
-    #[cfg(feature = "std-tcp")]
-    pub fn connect_tcp(
-        addr: std::net::SocketAddr,
-        label: impl Into<String>,
-    ) -> Result<Self, std::io::Error> {
-        let socket = std::net::TcpStream::connect(addr)?;
-        let label = label.into();
-        Ok(Self {
-            socket: Some(Box::new(socket)),
-            label,
-        })
-    }
-
-    pub fn get_type(&mut self) -> Result<String, IdeviceError> {
+    pub async fn get_type(&mut self) -> Result<String, IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("Label".into(), self.label.clone().into());
         req.insert("Request".into(), "QueryType".into());
         let message = plist::to_value(&req)?;
-        self.send_plist(message)?;
-        let message: plist::Dictionary = self.read_plist()?;
+        self.send_plist(message).await?;
+        let message: plist::Dictionary = self.read_plist().await?;
         match message.get("Type") {
             Some(m) => Ok(plist::from_value(m)?),
             None => Err(IdeviceError::UnexpectedResponse),
@@ -54,7 +42,7 @@ impl Idevice {
     }
 
     /// Sends a plist to the socket
-    fn send_plist(&mut self, message: plist::Value) -> Result<(), IdeviceError> {
+    async fn send_plist(&mut self, message: plist::Value) -> Result<(), IdeviceError> {
         if let Some(socket) = &mut self.socket {
             let buf = Vec::new();
             let mut writer = BufWriter::new(buf);
@@ -62,8 +50,8 @@ impl Idevice {
             let message = writer.into_inner().unwrap();
             let message = String::from_utf8(message)?;
             let len = message.len() as u32;
-            socket.write_all(&len.to_be_bytes())?;
-            socket.write_all(message.as_bytes())?;
+            socket.write_all(&len.to_be_bytes()).await?;
+            socket.write_all(message.as_bytes()).await?;
             Ok(())
         } else {
             Err(IdeviceError::NoEstablishedConnection)
@@ -71,23 +59,23 @@ impl Idevice {
     }
 
     /// Sends raw bytes to the socket
-    fn send_raw(&mut self, message: &[u8]) -> Result<(), IdeviceError> {
+    async fn send_raw(&mut self, message: &[u8]) -> Result<(), IdeviceError> {
         if let Some(socket) = &mut self.socket {
-            Ok(socket.write_all(message)?)
+            Ok(socket.write_all(message).await?)
         } else {
             Err(IdeviceError::NoEstablishedConnection)
         }
     }
 
     /// Read a plist from the socket
-    fn read_plist(&mut self) -> Result<plist::Dictionary, IdeviceError> {
+    async fn read_plist(&mut self) -> Result<plist::Dictionary, IdeviceError> {
         if let Some(socket) = &mut self.socket {
             debug!("Reading response size");
             let mut buf = [0u8; 4];
-            socket.read_exact(&mut buf)?;
+            socket.read_exact(&mut buf).await?;
             let len = u32::from_be_bytes(buf);
             let mut buf = vec![0; len as usize];
-            socket.read_exact(&mut buf)?;
+            socket.read_exact(&mut buf).await?;
             let res: plist::Dictionary = plist::from_bytes(&buf)?;
             debug!("Received plist: {res:#?}");
 
@@ -106,11 +94,19 @@ impl Idevice {
     }
 
     /// Wraps current connection in TLS
-    pub fn start_session(
+    pub async fn start_session(
         &mut self,
         pairing_file: &pairing_file::PairingFile,
     ) -> Result<(), IdeviceError> {
-        let mut connector = SslConnector::builder(SslMethod::tls()).unwrap();
+        let connector = SslConnector::builder(SslMethod::tls()).unwrap();
+
+        let mut connector = connector
+            .build()
+            .configure()
+            .unwrap()
+            .into_ssl("ur mom")
+            .unwrap();
+
         connector
             .set_certificate(&pairing_file.host_certificate)
             .unwrap();
@@ -119,9 +115,10 @@ impl Idevice {
             .unwrap();
         connector.set_verify(SslVerifyMode::empty());
 
-        let connector = connector.build();
         let socket = self.socket.take().unwrap();
-        let ssl_stream = connector.connect("ur mom", socket).unwrap();
+
+        let mut ssl_stream = tokio_openssl::SslStream::new(connector, socket).unwrap();
+        std::pin::Pin::new(&mut ssl_stream).connect().await.unwrap();
         self.socket = Some(Box::new(ssl_stream));
 
         Ok(())

@@ -11,11 +11,13 @@ impl ImageMounter {
         Self { idevice }
     }
 
-    pub fn copy_devices(&mut self) -> Result<Vec<plist::Value>, IdeviceError> {
+    pub async fn copy_devices(&mut self) -> Result<Vec<plist::Value>, IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("Command".into(), "CopyDevices".into());
-        self.idevice.send_plist(plist::Value::Dictionary(req))?;
-        let mut res = self.idevice.read_plist()?;
+        self.idevice
+            .send_plist(plist::Value::Dictionary(req))
+            .await?;
+        let mut res = self.idevice.read_plist().await?;
 
         match res.remove("EntryList") {
             Some(plist::Value::Array(i)) => Ok(i),
@@ -23,7 +25,7 @@ impl ImageMounter {
         }
     }
 
-    pub fn upload_image(
+    pub async fn upload_image(
         &mut self,
         image_type: impl Into<String>,
         image: &[u8],
@@ -36,9 +38,11 @@ impl ImageMounter {
         req.insert("ImageType".into(), image_type.into());
         req.insert("ImageSize".into(), (image.len() as u64).into());
         req.insert("ImageSignature".into(), plist::Value::Data(signature));
-        self.idevice.send_plist(plist::Value::Dictionary(req))?;
+        self.idevice
+            .send_plist(plist::Value::Dictionary(req))
+            .await?;
 
-        let res = self.idevice.read_plist()?;
+        let res = self.idevice.read_plist().await?;
         match res.get("Status") {
             Some(plist::Value::String(s)) => {
                 if s.as_str() != "ReceiveBytesAck" {
@@ -49,9 +53,9 @@ impl ImageMounter {
             _ => return Err(IdeviceError::UnexpectedResponse),
         }
 
-        self.idevice.send_raw(image)?;
+        self.idevice.send_raw(image).await?;
 
-        let res = self.idevice.read_plist()?;
+        let res = self.idevice.read_plist().await?;
         match res.get("Status") {
             Some(plist::Value::String(s)) => {
                 if s.as_str() != "Success" {
@@ -65,7 +69,7 @@ impl ImageMounter {
         Ok(())
     }
 
-    pub fn mount_image(
+    pub async fn mount_image(
         &mut self,
         image_type: impl Into<String>,
         signature: Vec<u8>,
@@ -80,9 +84,11 @@ impl ImageMounter {
         req.insert("ImageSignature".into(), plist::Value::Data(signature));
         req.insert("ImageTrustCache".into(), plist::Value::Data(trust_cache));
         req.insert("ImageInfoPlist".into(), info_plist);
-        self.idevice.send_plist(plist::Value::Dictionary(req))?;
+        self.idevice
+            .send_plist(plist::Value::Dictionary(req))
+            .await?;
 
-        let res = self.idevice.read_plist()?;
+        let res = self.idevice.read_plist().await?;
 
         match res.get("Status") {
             Some(plist::Value::String(s)) => {
@@ -99,7 +105,7 @@ impl ImageMounter {
 
     /// Queries the personalization manifest from the device.
     /// On failure, the socket must be closed and reestablished.
-    pub fn query_personalization_manifest(
+    pub async fn query_personalization_manifest(
         &mut self,
         image_type: impl Into<String>,
         signature: Vec<u8>,
@@ -111,9 +117,11 @@ impl ImageMounter {
         req.insert("PersonalizedImageType".into(), image_type.clone().into());
         req.insert("ImageType".into(), image_type.into());
         req.insert("ImageSignature".into(), plist::Value::Data(signature));
-        self.idevice.send_plist(plist::Value::Dictionary(req))?;
+        self.idevice
+            .send_plist(plist::Value::Dictionary(req))
+            .await?;
 
-        let mut res = self.idevice.read_plist()?;
+        let mut res = self.idevice.read_plist().await?;
         match res.remove("ImageSignature") {
             Some(plist::Value::Data(i)) => Ok(i),
             _ => Err(IdeviceError::NotFound),

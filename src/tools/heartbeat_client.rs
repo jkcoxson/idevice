@@ -13,7 +13,8 @@ use std::{
     str::FromStr,
 };
 
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::init();
     let mut host = None;
     let mut pairing_file = None;
@@ -62,32 +63,33 @@ fn main() {
     let ip = Ipv4Addr::from_str(host.unwrap().as_str()).unwrap();
     let socket = SocketAddrV4::new(ip, lockdownd::LOCKDOWND_PORT);
 
-    let socket = std::net::TcpStream::connect(socket).unwrap();
+    let socket = tokio::net::TcpStream::connect(socket).await.unwrap();
     let socket = Box::new(socket);
     let idevice = Idevice::new(socket, "heartbeat_client");
 
     let p = PairingFile::read_from_file(pairing_file.as_ref().unwrap()).unwrap();
 
     let mut lockdown_client = LockdowndClient { idevice };
-    lockdown_client.start_session(&p).unwrap();
+    lockdown_client.start_session(&p).await.unwrap();
 
     let (port, _) = lockdown_client
         .start_service("com.apple.mobile.heartbeat")
+        .await
         .unwrap();
 
     let socket = SocketAddrV4::new(ip, port);
-    let socket = std::net::TcpStream::connect(socket).unwrap();
+    let socket = tokio::net::TcpStream::connect(socket).await.unwrap();
     let socket = Box::new(socket);
     let mut idevice = Idevice::new(socket, "heartbeat_client");
 
     let p = PairingFile::read_from_file(pairing_file.unwrap()).unwrap();
 
-    idevice.start_session(&p).unwrap();
+    idevice.start_session(&p).await.unwrap();
 
     let mut heartbeat_client = HeartbeatClient { idevice };
 
     loop {
-        heartbeat_client.get_marco().unwrap();
-        heartbeat_client.send_polo().unwrap();
+        heartbeat_client.get_marco().await.unwrap();
+        heartbeat_client.send_polo().await.unwrap();
     }
 }

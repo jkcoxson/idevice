@@ -18,7 +18,7 @@ impl InstallationProxyClient {
     /// # Arguments
     /// `application_type` - The application type to filter by
     /// `bundle_identifiers` - The identifiers to filter by
-    pub fn get_apps(
+    pub async fn get_apps(
         &mut self,
         application_type: Option<String>,
         bundle_identifiers: Option<Vec<String>>,
@@ -37,9 +37,11 @@ impl InstallationProxyClient {
         let mut req = plist::Dictionary::new();
         req.insert("Command".into(), "Lookup".into());
         // req.insert("ClientOptions".into(), plist::Value::Dictionary(options));
-        self.idevice.send_plist(plist::Value::Dictionary(req))?;
+        self.idevice
+            .send_plist(plist::Value::Dictionary(req))
+            .await?;
 
-        let mut res = self.idevice.read_plist()?;
+        let mut res = self.idevice.read_plist().await?;
         match res.remove("LookupResult") {
             Some(plist::Value::Dictionary(res)) => {
                 Ok(res.into_iter().collect::<HashMap<String, plist::Value>>())

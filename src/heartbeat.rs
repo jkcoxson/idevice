@@ -12,8 +12,8 @@ impl HeartbeatClient {
         Self { idevice }
     }
 
-    pub fn get_marco(&mut self) -> Result<u64, IdeviceError> {
-        let rec = self.idevice.read_plist()?;
+    pub async fn get_marco(&mut self) -> Result<u64, IdeviceError> {
+        let rec = self.idevice.read_plist().await?;
         match rec.get("Interval") {
             Some(plist::Value::Integer(interval)) => {
                 if let Some(interval) = interval.as_unsigned() {
@@ -35,12 +35,12 @@ impl HeartbeatClient {
         }
     }
 
-    pub fn send_polo(&mut self) -> Result<(), IdeviceError> {
+    pub async fn send_polo(&mut self) -> Result<(), IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("Command".into(), "Polo".into());
         self.idevice
             .send_plist(plist::Value::Dictionary(req.clone()))
-            .unwrap();
+            .await?;
         Ok(())
     }
 }

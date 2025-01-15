@@ -8,6 +8,10 @@ on an iOS device that a Mac normally would.
 
 ## State
 
+**IMPORTANT**: Breaking changes will happen at each point release until 0.2.0.
+The library is still in the development and brainstorming stage.
+Pin your `Cargo.toml` to a specific version to avoid breakage.
+
 This library is in development and research stage.
 Releases are being published to crates.io for use in other projects,
 but the API and feature-set are far from final or even planned.

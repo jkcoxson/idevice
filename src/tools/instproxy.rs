@@ -13,7 +13,8 @@ use std::{
     str::FromStr,
 };
 
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::init();
     let mut host = None;
     let mut pairing_file = None;
@@ -62,30 +63,31 @@ fn main() {
     let ip = Ipv4Addr::from_str(host.unwrap().as_str()).unwrap();
     let socket = SocketAddrV4::new(ip, lockdownd::LOCKDOWND_PORT);
 
-    let socket = std::net::TcpStream::connect(socket).unwrap();
+    let socket = tokio::net::TcpStream::connect(socket).await.unwrap();
     let socket = Box::new(socket);
     let idevice = Idevice::new(socket, "heartbeat_client");
 
     let p = PairingFile::read_from_file(pairing_file.as_ref().unwrap()).unwrap();
 
     let mut lockdown_client = LockdowndClient { idevice };
-    lockdown_client.start_session(&p).unwrap();
+    lockdown_client.start_session(&p).await.unwrap();
 
     let (port, _) = lockdown_client
         .start_service("com.apple.mobile.installation_proxy")
+        .await
         .unwrap();
 
     let socket = SocketAddrV4::new(ip, port);
-    let socket = std::net::TcpStream::connect(socket).unwrap();
+    let socket = tokio::net::TcpStream::connect(socket).await.unwrap();
     let socket = Box::new(socket);
     let mut idevice = Idevice::new(socket, "instproxy-client");
 
     let p = PairingFile::read_from_file(pairing_file.unwrap()).unwrap();
 
-    idevice.start_session(&p).unwrap();
+    idevice.start_session(&p).await.unwrap();
 
     let mut instproxy_client = InstallationProxyClient::new(idevice);
-    let apps = instproxy_client.get_apps(None, None).unwrap();
+    let apps = instproxy_client.get_apps(None, None).await.unwrap();
     for app in apps.keys() {
         println!("{app}");
     }

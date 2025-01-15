@@ -24,30 +24,30 @@ impl LockdowndClient {
     pub fn new(idevice: Idevice) -> Self {
         Self { idevice }
     }
-    pub fn get_value(&mut self, value: impl Into<String>) -> Result<String, IdeviceError> {
+    pub async fn get_value(&mut self, value: impl Into<String>) -> Result<String, IdeviceError> {
         let req = LockdowndRequest {
             label: self.idevice.label.clone(),
             key: Some(value.into()),
             request: "GetValue".to_string(),
         };
         let message = plist::to_value(&req)?;
-        self.idevice.send_plist(message)?;
-        let message: plist::Dictionary = self.idevice.read_plist()?;
+        self.idevice.send_plist(message).await?;
+        let message: plist::Dictionary = self.idevice.read_plist().await?;
         match message.get("Value") {
             Some(m) => Ok(plist::from_value(m)?),
             None => Err(IdeviceError::UnexpectedResponse),
         }
     }
 
-    pub fn get_all_values(&mut self) -> Result<plist::Dictionary, IdeviceError> {
+    pub async fn get_all_values(&mut self) -> Result<plist::Dictionary, IdeviceError> {
         let req = LockdowndRequest {
             label: self.idevice.label.clone(),
             key: None,
             request: "GetValue".to_string(),
         };
         let message = plist::to_value(&req)?;
-        self.idevice.send_plist(message)?;
-        let message: plist::Dictionary = self.idevice.read_plist()?;
+        self.idevice.send_plist(message).await?;
+        let message: plist::Dictionary = self.idevice.read_plist().await?;
         match message.get("Value") {
             Some(m) => Ok(plist::from_value(m)?),
             None => Err(IdeviceError::UnexpectedResponse),
@@ -55,7 +55,7 @@ impl LockdowndClient {
     }
 
     /// Starts a TLS session with the client
-    pub fn start_session(
+    pub async fn start_session(
         &mut self,
         pairing_file: &pairing_file::PairingFile,
     ) -> Result<(), IdeviceError> {
@@ -82,9 +82,11 @@ impl LockdowndClient {
             plist::Value::String(pairing_file.system_buid.clone()),
         );
 
-        self.idevice.send_plist(plist::Value::Dictionary(request))?;
+        self.idevice
+            .send_plist(plist::Value::Dictionary(request))
+            .await?;
 
-        let response = self.idevice.read_plist()?;
+        let response = self.idevice.read_plist().await?;
         match response.get("EnableSessionSSL") {
             Some(plist::Value::Boolean(enable)) => {
                 if !enable {
@@ -96,7 +98,7 @@ impl LockdowndClient {
             }
         }
 
-        self.idevice.start_session(pairing_file)?;
+        self.idevice.start_session(pairing_file).await?;
         Ok(())
     }
 
@@ -105,7 +107,7 @@ impl LockdowndClient {
     /// `identifier` - The identifier for the service you want to start
     /// # Returns
     /// The port number and whether to enable SSL on success, `IdeviceError` on failure
-    pub fn start_service(
+    pub async fn start_service(
         &mut self,
         identifier: impl Into<String>,
     ) -> Result<(u16, bool), IdeviceError> {
@@ -113,8 +115,10 @@ impl LockdowndClient {
         let mut req = plist::Dictionary::new();
         req.insert("Request".into(), "StartService".into());
         req.insert("Service".into(), identifier.into());
-        self.idevice.send_plist(plist::Value::Dictionary(req))?;
-        let response = self.idevice.read_plist()?;
+        self.idevice
+            .send_plist(plist::Value::Dictionary(req))
+            .await?;
+        let response = self.idevice.read_plist().await?;
         match response.get("EnableServiceSSL") {
             Some(plist::Value::Boolean(ssl)) => match response.get("Port") {
                 Some(plist::Value::Integer(port)) => {

@@ -12,7 +12,8 @@ use idevice::{
     Idevice,
 };
 
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::init();
     let mut host = None;
     let mut pairing_file = None;
@@ -61,15 +62,15 @@ fn main() {
     let ip = Ipv4Addr::from_str(host.unwrap().as_str()).unwrap();
     let socket = SocketAddrV4::new(ip, lockdownd::LOCKDOWND_PORT);
 
-    let socket = std::net::TcpStream::connect(socket).unwrap();
+    let socket = tokio::net::TcpStream::connect(socket).await.unwrap();
     let socket = Box::new(socket);
     let idevice = Idevice::new(socket, "ideviceinfo-jkcoxson");
 
     let mut lockdown_client = LockdowndClient::new(idevice);
-    println!("{:?}", lockdown_client.get_value("ProductVersion"));
+    println!("{:?}", lockdown_client.get_value("ProductVersion").await);
 
     let p = PairingFile::read_from_file(pairing_file.unwrap()).unwrap();
-    println!("{:?}", lockdown_client.start_session(&p));
-    println!("{:?}", lockdown_client.idevice.get_type().unwrap());
-    println!("{:#?}", lockdown_client.get_all_values());
+    println!("{:?}", lockdown_client.start_session(&p).await);
+    println!("{:?}", lockdown_client.idevice.get_type().await.unwrap());
+    println!("{:#?}", lockdown_client.get_all_values().await);
 }
