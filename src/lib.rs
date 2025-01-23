@@ -141,6 +141,8 @@ pub enum IdeviceError {
     NoEstablishedConnection,
     #[error("device went to sleep")]
     HeartbeatSleepyTime,
+    #[error("heartbeat timeout")]
+    HeartbeatTimeout,
     #[error("not found")]
     NotFound,
     #[error("unknown error `{0}` returned from device")]

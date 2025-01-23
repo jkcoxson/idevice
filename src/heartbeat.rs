@@ -12,8 +12,14 @@ impl HeartbeatClient {
         Self { idevice }
     }
 
-    pub async fn get_marco(&mut self) -> Result<u64, IdeviceError> {
-        let rec = self.idevice.read_plist().await?;
+    pub async fn get_marco(&mut self, interval: u64) -> Result<u64, IdeviceError> {
+        // Get a plist or wait for the interval
+        let rec = tokio::select! {
+            rec = self.idevice.read_plist() => rec?,
+            _ = tokio::time::sleep(tokio::time::Duration::from_secs(interval)) => {
+                return Err(IdeviceError::HeartbeatTimeout)
+            }
+        };
         match rec.get("Interval") {
             Some(plist::Value::Integer(interval)) => {
                 if let Some(interval) = interval.as_unsigned() {
