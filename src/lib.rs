@@ -1,10 +1,12 @@
 // Jackson Coxson
 
 pub mod heartbeat;
+pub mod http2;
 pub mod installation_proxy;
 pub mod lockdownd;
 pub mod mounter;
 pub mod pairing_file;
+pub mod xpc;
 
 use log::{debug, error};
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
@@ -14,6 +16,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub trait ReadWrite: AsyncRead + AsyncWrite + Unpin + Send + Sync + std::fmt::Debug {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send + Sync + std::fmt::Debug> ReadWrite for T {}
+
+pub type IdeviceSocket = Box<dyn ReadWrite>;
 
 pub struct Idevice {
     socket: Option<Box<dyn ReadWrite>>, // in a box for now to use the ReadWrite trait for further uses
