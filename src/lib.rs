@@ -72,6 +72,28 @@ impl Idevice {
         }
     }
 
+    /// Reads raw bytes from the socket
+    async fn read_raw(&mut self, len: usize) -> Result<Vec<u8>, IdeviceError> {
+        if let Some(socket) = &mut self.socket {
+            let mut buf = vec![0; len];
+            socket.read_exact(&mut buf).await?;
+            Ok(buf)
+        } else {
+            Err(IdeviceError::NoEstablishedConnection)
+        }
+    }
+
+    /// Reads bytes from the socket until it doesn't
+    async fn read_any(&mut self, max_size: u32) -> Result<Vec<u8>, IdeviceError> {
+        if let Some(socket) = &mut self.socket {
+            let mut buf = vec![0; max_size as usize];
+            let len = socket.read(&mut buf).await?;
+            Ok(buf[..len].to_vec())
+        } else {
+            Err(IdeviceError::NoEstablishedConnection)
+        }
+    }
+
     /// Read a plist from the socket
     async fn read_plist(&mut self) -> Result<plist::Dictionary, IdeviceError> {
         if let Some(socket) = &mut self.socket {
@@ -152,6 +174,14 @@ pub enum IdeviceError {
     HeartbeatTimeout,
     #[error("not found")]
     NotFound,
+    #[error("CDTunnel packet too short")]
+    CdtunnelPacketTooShort,
+    #[error("CDTunnel packet invalid magic")]
+    CdtunnelPacketInvalidMagic,
+    #[error("Proclaimed packet size does not match actual size")]
+    PacketSizeMismatch,
+    #[error("JSON serialization failed")]
+    Json(#[from] serde_json::Error),
     #[error("unknown error `{0}` returned from device")]
     UnknownErrorType(String),
 }
