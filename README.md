@@ -39,6 +39,17 @@ but the API and feature-set are far from final or even planned.
 - [ ] usbmuxd connection
 - [ ] Documentation
 
+## Features
+
+To keep dependency bloat and compile time down, everything is contained in features.
+
+- core_device_proxy
+- heartbeat
+- installation_proxy
+- mounter
+- xpc
+- full
+
 As this project is done in my free time within my busy schedule, there
 is no ETA for any of these. Feel free to contribute or donate!
 

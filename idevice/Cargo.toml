@@ -1,0 +1,53 @@
+[package]
+name = "idevice"
+description = "A Rust library to interact with services on iOS devices."
+authors = ["Jackson Coxson"]
+version = "0.1.10"
+edition = "2021"
+license = "MIT"
+documentation = "https://docs.rs/idevice"
+repository = "https://github.com/jkcoxson/idevice"
+keywords = ["lockdownd", "ios"]
+
+
+[dependencies]
+tokio = { version = "1.43", features = ["io-util", "macros", "time"] }
+tokio-openssl = { version = "0.6" }
+openssl = { version = "0.10" }
+
+plist = { version = "1.7" }
+serde = { version = "1", features = ["derive"] }
+
+thiserror = { version = "2" }
+log = { version = "0.4" }
+env_logger = { version = "0.11" }
+
+indexmap = { version = "2.7", features = ["serde"], optional = true }
+uuid = { version = "1.12", features = ["serde"], optional = true }
+async-recursion = { version = "1.1", optional = true }
+base64 = { version = "0.22", optional = true }
+
+serde_json = { version = "1", optional = true }
+json = { version = "0.12", optional = true }
+byteorder = { version = "1.5", optional = true }
+
+
+[features]
+core_device_proxy = ["dep:serde_json", "dep:json", "dep:byteorder"]
+heartbeat = []
+installation_proxy = []
+mounter = []
+xpc = [
+  "tokio/full",
+  "dep:indexmap",
+  "dep:uuid",
+  "dep:async-recursion",
+  "dep:base64",
+]
+full = [
+  "core_device_proxy",
+  "heartbeat",
+  "installation_proxy",
+  "mounter",
+  "xpc",
+]

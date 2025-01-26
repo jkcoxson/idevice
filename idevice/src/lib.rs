@@ -1,12 +1,18 @@
 // Jackson Coxson
 
+#[cfg(feature = "core_device_proxy")]
 pub mod core_device_proxy;
+#[cfg(feature = "heartbeat")]
 pub mod heartbeat;
+#[cfg(feature = "xpc")]
 pub mod http2;
+#[cfg(feature = "installation_proxy")]
 pub mod installation_proxy;
 pub mod lockdownd;
+#[cfg(feature = "mounter")]
 pub mod mounter;
 pub mod pairing_file;
+#[cfg(feature = "xpc")]
 pub mod xpc;
 
 use log::{debug, error};

@@ -1,0 +1,40 @@
+[package]
+name = "idevice-tools"
+description = "Rust binary tools to interact with services on iOS devices."
+authors = ["Jackson Coxson"]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+documentation = "https://docs.rs/idevice"
+repository = "https://github.com/jkcoxson/idevice"
+keywords = ["lockdownd", "ios"]
+
+[[bin]]
+name = "ideviceinfo"
+path = "src/ideviceinfo.rs"
+
+[[bin]]
+name = "heartbeat_client"
+path = "src/heartbeat_client.rs"
+
+[[bin]]
+name = "instproxy"
+path = "src/instproxy.rs"
+
+[[bin]]
+name = "mounter"
+path = "src/mounter.rs"
+
+[[bin]]
+name = "core_device_proxy_tun"
+path = "src/core_device_proxy_tun.rs"
+
+
+[dependencies]
+idevice = { path = "../idevice", features = ["full"] }
+tokio = { version = "1.43", features = ["io-util", "macros", "time", "full"] }
+log = { version = "0.4" }
+env_logger = { version = "0.11" }
+tun-rs = { version = "1.5", features = ["async"] }
+sha2 = { version = "0.10" }
+ureq = { version = "3" }
