@@ -111,18 +111,14 @@ impl Idevice {
             .into_ssl("ur mom")
             .unwrap();
 
-        connector
-            .set_certificate(&pairing_file.host_certificate)
-            .unwrap();
-        connector
-            .set_private_key(&pairing_file.host_private_key)
-            .unwrap();
+        connector.set_certificate(&pairing_file.host_certificate)?;
+        connector.set_private_key(&pairing_file.host_private_key)?;
         connector.set_verify(SslVerifyMode::empty());
 
         let socket = self.socket.take().unwrap();
 
-        let mut ssl_stream = tokio_openssl::SslStream::new(connector, socket).unwrap();
-        std::pin::Pin::new(&mut ssl_stream).connect().await.unwrap();
+        let mut ssl_stream = tokio_openssl::SslStream::new(connector, socket)?;
+        std::pin::Pin::new(&mut ssl_stream).connect().await?;
         self.socket = Some(Box::new(ssl_stream));
 
         Ok(())
@@ -133,6 +129,10 @@ impl Idevice {
 pub enum IdeviceError {
     #[error("device socket io failed")]
     Socket(#[from] io::Error),
+    #[error("ssl io failed")]
+    Ssl(#[from] openssl::ssl::Error),
+    #[error("ssl failed to setup")]
+    SslSetup(#[from] openssl::error::ErrorStack),
     #[error("io on plist")]
     Plist(#[from] plist::Error),
     #[error("can't convert bytes to utf8")]
@@ -141,6 +141,8 @@ pub enum IdeviceError {
     UnexpectedResponse,
     #[error("this request was prohibited")]
     GetProhibited,
+    #[error("device does not have pairing file")]
+    InvalidHostID,
     #[error("no established connection")]
     NoEstablishedConnection,
     #[error("device went to sleep")]
@@ -157,6 +159,7 @@ impl IdeviceError {
     fn from_device_error_type(e: &str) -> Option<Self> {
         match e {
             "GetProhibited" => Some(Self::GetProhibited),
+            "InvalidHostID" => Some(Self::InvalidHostID),
             _ => None,
         }
     }
