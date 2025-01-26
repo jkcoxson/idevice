@@ -28,7 +28,7 @@ path = "src/tools/mounter.rs"
 required-features = ["sha2", "ureq"]
 
 [dependencies]
-tokio = { version = "1.43", features = ["io-util", "macros", "time"] }
+tokio = { version = "1.43", features = ["io-util", "macros", "time", "full"] }
 tokio-openssl = { version = "0.6" }
 plist = { version = "1.7" }
 serde = { version = "1", features = ["derive"] }

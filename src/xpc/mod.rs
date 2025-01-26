@@ -147,4 +147,20 @@ mod tests {
             .unwrap();
         println!("ayo: {:?}", data);
     }
+
+    #[tokio::test]
+    async fn huh() {
+        let mut client = XPCConnection::new(Box::new(
+            TcpStream::connect(("10.7.0.2", 58783)).await.unwrap(),
+        ))
+        .await
+        .unwrap();
+
+        let data = client
+            .read_message(http2::Connection::ROOT_CHANNEL)
+            .await
+            .unwrap();
+
+        println!("{data:?}");
+    }
 }
