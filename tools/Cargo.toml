@@ -29,6 +29,10 @@ path = "src/mounter.rs"
 name = "core_device_proxy_tun"
 path = "src/core_device_proxy_tun.rs"
 
+[[bin]]
+name = "idevice_id"
+path = "src/idevice_id.rs"
+
 
 [dependencies]
 idevice = { path = "../idevice", features = ["full"] }

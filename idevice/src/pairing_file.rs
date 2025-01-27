@@ -66,6 +66,12 @@ impl PairingFile {
             }
         }
     }
+
+    pub fn from_value(v: &plist::Value) -> Result<Self, crate::IdeviceError> {
+        let raw: RawPairingFile = plist::from_value(v)?;
+        let p = raw.try_into()?;
+        Ok(p)
+    }
 }
 
 impl TryFrom<RawPairingFile> for PairingFile {

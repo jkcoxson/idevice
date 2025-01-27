@@ -37,6 +37,7 @@ core_device_proxy = ["dep:serde_json", "dep:json", "dep:byteorder"]
 heartbeat = []
 installation_proxy = []
 mounter = []
+usbmuxd = []
 xpc = [
   "tokio/full",
   "dep:indexmap",
@@ -49,5 +50,6 @@ full = [
   "heartbeat",
   "installation_proxy",
   "mounter",
+  "usbmuxd",
   "xpc",
 ]
