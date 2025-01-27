@@ -188,8 +188,11 @@ pub enum IdeviceError {
     CdtunnelPacketInvalidMagic,
     #[error("Proclaimed packet size does not match actual size")]
     PacketSizeMismatch,
+
+    #[cfg(feature = "core_device_proxy")]
     #[error("JSON serialization failed")]
     Json(#[from] serde_json::Error),
+
     #[error("unknown error `{0}` returned from device")]
     UnknownErrorType(String),
 }
