@@ -119,14 +119,14 @@ impl UsbmuxdConnection {
                                 }
 
                                 IpAddr::V6(Ipv6Addr::new(
-                                    u16::from_le_bytes([addr[8], addr[9]]),
-                                    u16::from_le_bytes([addr[10], addr[11]]),
-                                    u16::from_le_bytes([addr[12], addr[13]]),
-                                    u16::from_le_bytes([addr[14], addr[15]]),
-                                    u16::from_le_bytes([addr[16], addr[17]]),
-                                    u16::from_le_bytes([addr[18], addr[19]]),
-                                    u16::from_le_bytes([addr[20], addr[21]]),
-                                    u16::from_le_bytes([addr[22], addr[23]]),
+                                    u16::from_be_bytes([addr[8], addr[9]]),
+                                    u16::from_be_bytes([addr[10], addr[11]]),
+                                    u16::from_be_bytes([addr[12], addr[13]]),
+                                    u16::from_be_bytes([addr[14], addr[15]]),
+                                    u16::from_be_bytes([addr[16], addr[17]]),
+                                    u16::from_be_bytes([addr[18], addr[19]]),
+                                    u16::from_be_bytes([addr[20], addr[21]]),
+                                    u16::from_be_bytes([addr[22], addr[23]]),
                                 ))
                             }
                             _ => {
