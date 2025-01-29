@@ -13,7 +13,6 @@ keywords = ["lockdownd", "ios"]
 [dependencies]
 tokio = { version = "1.43", features = ["io-util", "macros", "time"] }
 tokio-openssl = { version = "0.6" }
-openssl = { version = "0.10" }
 
 plist = { version = "1.7" }
 serde = { version = "1", features = ["derive"] }
@@ -54,5 +53,9 @@ full = [
   "xpc",
 ]
 
-[target.'cfg(target_os = "windows")'.features]
-default = ["openssl/vendored"]
+# Why: https://github.com/rust-lang/cargo/issues/1197
+[target.'cfg(windows)'.dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
+
+[target.'cfg(not(windows))'.dependencies]
+openssl = { version = "0.10" }
