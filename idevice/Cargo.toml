@@ -14,7 +14,6 @@ keywords = ["lockdownd", "ios"]
 tokio = { version = "1.43", features = ["io-util", "macros", "time"] }
 tokio-openssl = { version = "0.6" }
 openssl = { version = "0.10" }
-openssl-sys = { version = "0.9", optional = true }
 
 plist = { version = "1.7" }
 serde = { version = "1", features = ["derive"] }
@@ -56,4 +55,4 @@ full = [
 ]
 
 [target.'cfg(target_os = "windows")'.features]
-default = ["dep:openssl-sys", "openssl-sys/vendored"]
+default = ["openssl/vendored"]
