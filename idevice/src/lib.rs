@@ -12,6 +12,7 @@ pub mod lockdownd;
 #[cfg(feature = "mounter")]
 pub mod mounter;
 pub mod pairing_file;
+pub mod provider;
 #[cfg(feature = "usbmuxd")]
 pub mod usbmuxd;
 #[cfg(feature = "xpc")]
