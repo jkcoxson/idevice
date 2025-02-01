@@ -26,7 +26,7 @@ pub async fn get_provider(
                 return Err(format!("Device not found: {e:?}"));
             }
         };
-        Box::new(dev.to_provider(UsbmuxdAddr::default(), 0, label))
+        Box::new(dev.to_provider(UsbmuxdAddr::default(), 1, label))
     } else if host.is_some() && pairing_file.is_some() {
         let host = match IpAddr::from_str(host.unwrap()) {
             Ok(h) => h,

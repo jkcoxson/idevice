@@ -38,13 +38,6 @@ async fn main() {
                 .help("Show about information")
                 .action(clap::ArgAction::SetTrue),
         )
-        .arg(
-            Arg::new("help")
-                .short('h')
-                .long("help")
-                .help("Show this help message")
-                .action(clap::ArgAction::SetTrue),
-        )
         .get_matches();
 
     if matches.get_flag("about") {
