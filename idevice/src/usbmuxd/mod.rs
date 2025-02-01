@@ -5,7 +5,9 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use log::debug;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::{pairing_file::PairingFile, Idevice, IdeviceError, ReadWrite};
+use crate::{
+    pairing_file::PairingFile, provider::UsbmuxdProvider, Idevice, IdeviceError, ReadWrite,
+};
 
 mod des;
 mod raw_packet;
@@ -29,7 +31,7 @@ pub struct UsbmuxdConnection {
     tag: u32,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum UsbmuxdAddr {
     UnixSocket(String),
     TcpSocket(SocketAddr),
@@ -151,6 +153,14 @@ impl UsbmuxdConnection {
         Ok(devs)
     }
 
+    pub async fn get_device(&mut self, udid: &str) -> Result<UsbmuxdDevice, IdeviceError> {
+        let devices = self.get_devices().await?;
+        match devices.into_iter().find(|x| x.udid == udid) {
+            Some(d) => Ok(d),
+            None => Err(IdeviceError::DeviceNotFound),
+        }
+    }
+
     pub async fn get_pair_record(&mut self, udid: &str) -> Result<PairingFile, IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("MessageType".into(), "ReadPairRecord".into());
@@ -224,5 +234,24 @@ impl UsbmuxdConnection {
         let res = plist::from_bytes(&body_buffer)?;
 
         Ok(res)
+    }
+}
+
+impl UsbmuxdDevice {
+    pub fn to_provider(
+        &self,
+        addr: UsbmuxdAddr,
+        tag: u32,
+        label: impl Into<String>,
+    ) -> UsbmuxdProvider {
+        let label = label.into();
+
+        UsbmuxdProvider {
+            addr,
+            tag,
+            udid: self.udid.clone(),
+            device_id: self.device_id,
+            label,
+        }
     }
 }
