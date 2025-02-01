@@ -1,16 +1,13 @@
 // Jackson Coxson
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-
-#[cfg(target_os = "windows")]
-use std::net::SocketAddrV4;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 
 use log::debug;
-use serde::Deserialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::{pairing_file::PairingFile, IdeviceError, ReadWrite};
+use crate::{pairing_file::PairingFile, Idevice, IdeviceError, ReadWrite};
 
+mod des;
 mod raw_packet;
 
 #[derive(Debug, Clone)]
@@ -32,34 +29,45 @@ pub struct UsbmuxdConnection {
     tag: u32,
 }
 
-#[derive(Deserialize)]
-struct ListDevicesResponse {
-    #[serde(rename = "DeviceList")]
-    device_list: Vec<DeviceListResponse>,
+#[derive()]
+pub enum UsbmuxdAddr {
+    UnixSocket(String),
+    TcpSocket(SocketAddr),
 }
 
-#[derive(Deserialize)]
-struct DeviceListResponse {
-    #[serde(rename = "DeviceID")]
-    device_id: u32,
-    #[serde(rename = "Properties")]
-    properties: DevicePropertiesResponse,
+impl UsbmuxdAddr {
+    pub const DEFAULT_PORT: u16 = 27015;
+    pub const SOCKET_FILE: &'static str = "/var/run/usbmuxd";
+
+    pub async fn to_socket(&self) -> Result<Box<dyn ReadWrite>, IdeviceError> {
+        Ok(match self {
+            Self::UnixSocket(addr) => Box::new(tokio::net::UnixStream::connect(addr).await?),
+            Self::TcpSocket(addr) => Box::new(tokio::net::TcpStream::connect(addr).await?),
+        })
+    }
+
+    pub async fn connect(&self, tag: u32) -> Result<UsbmuxdConnection, IdeviceError> {
+        let socket = self.to_socket().await?;
+        Ok(UsbmuxdConnection::new(socket, tag))
+    }
 }
 
-#[derive(Deserialize)]
-struct DevicePropertiesResponse {
-    #[serde(rename = "ConnectionType")]
-    connection_type: String,
-    #[serde(rename = "NetworkAddress")]
-    network_address: Option<plist::Data>,
-    #[serde(rename = "SerialNumber")]
-    serial_number: String,
+impl Default for UsbmuxdAddr {
+    fn default() -> Self {
+        if cfg!(target_os = "windows") {
+            Self::TcpSocket(SocketAddr::V4(SocketAddrV4::new(
+                Ipv4Addr::new(127, 0, 0, 1),
+                Self::DEFAULT_PORT,
+            )))
+        } else if cfg!(target_os = "macos") || cfg!(target_os = "linux") {
+            Self::UnixSocket(Self::SOCKET_FILE.to_string())
+        } else {
+            panic!("Undefined OS for default UsbmuxdAddr")
+        }
+    }
 }
 
 impl UsbmuxdConnection {
-    pub const DEFAULT_PORT: u16 = 27015;
-    pub const SOCKET_FILE: &str = "/var/run/usbmuxd";
-
     pub const BINARY_PLIST_VERSION: u32 = 0;
     pub const XML_PLIST_VERSION: u32 = 1;
 
@@ -67,15 +75,7 @@ impl UsbmuxdConnection {
     pub const PLIST_MESSAGE_TYPE: u32 = 8;
 
     pub async fn default() -> Result<Self, IdeviceError> {
-        #[cfg(target_os = "windows")]
-        let socket = tokio::net::TcpStream::connect(SocketAddrV4::new(
-            Ipv4Addr::new(127, 0, 0, 1),
-            Self::DEFAULT_PORT,
-        ))
-        .await?;
-
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
-        let socket = tokio::net::UnixStream::connect(Self::SOCKET_FILE).await?;
+        let socket = UsbmuxdAddr::default().to_socket().await?;
 
         Ok(Self {
             socket: Box::new(socket),
@@ -83,7 +83,7 @@ impl UsbmuxdConnection {
         })
     }
 
-    pub async fn new(socket: Box<dyn ReadWrite>, tag: u32) -> Self {
+    pub fn new(socket: Box<dyn ReadWrite>, tag: u32) -> Self {
         Self { socket, tag }
     }
 
@@ -95,7 +95,7 @@ impl UsbmuxdConnection {
         self.write_plist(req).await?;
         let res = self.read_plist().await?;
         let res = plist::to_value(&res)?;
-        let res = plist::from_value::<ListDevicesResponse>(&res)?;
+        let res = plist::from_value::<des::ListDevicesResponse>(&res)?;
 
         let mut devs = Vec::new();
         for dev in res.device_list {
@@ -180,7 +180,8 @@ impl UsbmuxdConnection {
         mut self,
         device_id: u32,
         port: u16,
-    ) -> Result<Box<dyn ReadWrite>, IdeviceError> {
+        label: impl Into<String>,
+    ) -> Result<Idevice, IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("MessageType".into(), "Connect".into());
         req.insert("DeviceID".into(), device_id.into());
@@ -188,7 +189,7 @@ impl UsbmuxdConnection {
         self.write_plist(req).await?;
         match self.read_plist().await?.get("Number") {
             Some(plist::Value::Integer(i)) => match i.as_unsigned() {
-                Some(0) => Ok(self.socket),
+                Some(0) => Ok(Idevice::new(self.socket, label)),
                 _ => Err(IdeviceError::UnexpectedResponse),
             },
             _ => Err(IdeviceError::UnexpectedResponse),
