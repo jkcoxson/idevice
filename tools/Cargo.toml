@@ -42,3 +42,4 @@ env_logger = { version = "0.11" }
 tun-rs = { version = "1.5", features = ["async"] }
 sha2 = { version = "0.10" }
 ureq = { version = "3" }
+clap = { version = "4.5" }

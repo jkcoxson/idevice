@@ -1,92 +1,70 @@
 // Jackson Coxson
 // Heartbeat client
 
-use idevice::{
-    heartbeat::HeartbeatClient,
-    lockdownd::{self, LockdowndClient},
-    pairing_file::PairingFile,
-    Idevice,
-};
+use clap::{Arg, Command};
+use idevice::{heartbeat::HeartbeatClient, IdeviceService};
 
-use std::{
-    net::{Ipv4Addr, SocketAddrV4},
-    str::FromStr,
-};
+mod common;
 
 #[tokio::main]
 async fn main() {
     env_logger::init();
-    let mut host = None;
-    let mut pairing_file = None;
+    let matches = Command::new("core_device_proxy_tun")
+        .about("Start a tunnel")
+        .arg(
+            Arg::new("host")
+                .long("host")
+                .value_name("HOST")
+                .help("IP address of the device"),
+        )
+        .arg(
+            Arg::new("pairing_file")
+                .long("pairing-file")
+                .value_name("PATH")
+                .help("Path to the pairing file"),
+        )
+        .arg(
+            Arg::new("udid")
+                .value_name("UDID")
+                .help("UDID of the device (overrides host/pairing file)")
+                .index(1),
+        )
+        .arg(
+            Arg::new("about")
+                .long("about")
+                .help("Show about information")
+                .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("help")
+                .short('h')
+                .long("help")
+                .help("Show this help message")
+                .action(clap::ArgAction::SetTrue),
+        )
+        .get_matches();
 
-    // Loop through args
-    let mut i = 0;
-    while i < std::env::args().len() {
-        match std::env::args().nth(i).unwrap().as_str() {
-            "--host" => {
-                host = Some(std::env::args().nth(i + 1).unwrap().to_string());
-                i += 2;
-            }
-            "--pairing-file" => {
-                pairing_file = Some(std::env::args().nth(i + 1).unwrap().to_string());
-                i += 2;
-            }
-            "-h" | "--help" => {
-                println!("ideviceinfo - get information from the idevice");
-                println!("Usage:");
-                println!("  ideviceinfo [options]");
-                println!("Options:");
-                println!("  --host <host>");
-                println!("  --pairing_file <path>");
-                println!("  -h, --help");
-                println!("  --about");
-                println!("\n\nSet RUST_LOG to info, debug, warn, error, or trace to see more logs. Default is error.");
-                std::process::exit(0);
-            }
-            "--about" => {
-                println!("ideviceinfo - get information from the idevice. Reimplementation of libimobiledevice's binary.");
-                println!("Copyright (c) 2025 Jackson Coxson");
-            }
-            _ => {
-                i += 1;
-            }
-        }
-    }
-    if host.is_none() {
-        println!("Invalid arguments! Pass the IP of the device with --host");
+    if matches.get_flag("about") {
+        println!("heartbeat_client - heartbeat a device");
+        println!("Copyright (c) 2025 Jackson Coxson");
         return;
     }
-    if pairing_file.is_none() {
-        println!("Invalid arguments! Pass the path the the pairing file with --pairing-file");
-        return;
-    }
-    let ip = Ipv4Addr::from_str(host.unwrap().as_str()).unwrap();
-    let socket = SocketAddrV4::new(ip, lockdownd::LOCKDOWND_PORT);
 
-    let socket = tokio::net::TcpStream::connect(socket).await.unwrap();
-    let socket = Box::new(socket);
-    let idevice = Idevice::new(socket, "heartbeat_client");
+    let udid = matches.get_one::<String>("udid");
+    let host = matches.get_one::<String>("host");
+    let pairing_file = matches.get_one::<String>("pairing_file");
 
-    let p = PairingFile::read_from_file(pairing_file.as_ref().unwrap()).unwrap();
-
-    let mut lockdown_client = LockdowndClient { idevice };
-    lockdown_client.start_session(&p).await.unwrap();
-
-    let (port, _) = lockdown_client
-        .start_service("com.apple.mobile.heartbeat")
+    let provider =
+        match common::get_provider(udid, host, pairing_file, "heartbeat_client-jkcoxson").await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("{e}");
+                return;
+            }
+        };
+    let mut heartbeat_client = HeartbeatClient::connect(&*provider)
         .await
-        .unwrap();
-
-    let socket = SocketAddrV4::new(ip, port);
-    let socket = tokio::net::TcpStream::connect(socket).await.unwrap();
-    let socket = Box::new(socket);
-    let mut idevice = Idevice::new(socket, "heartbeat_client");
-
-    let p = PairingFile::read_from_file(pairing_file.unwrap()).unwrap();
-
-    idevice.start_session(&p).await.unwrap();
-
-    let mut heartbeat_client = HeartbeatClient { idevice };
+        .expect("Unable to connect to heartbeat");
 
     let mut interval = 15;
     loop {
