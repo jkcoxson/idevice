@@ -1,9 +1,31 @@
 // Jackson Coxson
 
-use crate::{Idevice, IdeviceError};
+use crate::{lockdownd::LockdowndClient, Idevice, IdeviceError, IdeviceService};
 
 pub struct ImageMounter {
     idevice: Idevice,
+}
+
+impl IdeviceService for ImageMounter {
+    fn service_name() -> &'static str {
+        "com.apple.mobile.mobile_image_mounter"
+    }
+
+    async fn connect(
+        provider: &impl crate::provider::IdeviceProvider,
+    ) -> Result<Self, IdeviceError> {
+        let mut lockdown = LockdowndClient::connect(provider).await?;
+        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
+
+        let mut idevice = provider.connect(port).await?;
+        if ssl {
+            idevice
+                .start_session(&provider.get_pairing_file().await?)
+                .await?;
+        }
+
+        Ok(Self { idevice })
+    }
 }
 
 impl ImageMounter {

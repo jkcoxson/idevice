@@ -1,10 +1,32 @@
 // Jackson Coxson
 // Abstractions for the heartbeat service on iOS
 
-use crate::{Idevice, IdeviceError};
+use crate::{lockdownd::LockdowndClient, Idevice, IdeviceError, IdeviceService};
 
 pub struct HeartbeatClient {
     pub idevice: Idevice,
+}
+
+impl IdeviceService for HeartbeatClient {
+    fn service_name() -> &'static str {
+        "com.apple.mobile.heartbeat"
+    }
+
+    async fn connect(
+        provider: &impl crate::provider::IdeviceProvider,
+    ) -> Result<Self, IdeviceError> {
+        let mut lockdown = LockdowndClient::connect(provider).await?;
+        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
+
+        let mut idevice = provider.connect(port).await?;
+        if ssl {
+            idevice
+                .start_session(&provider.get_pairing_file().await?)
+                .await?;
+        }
+
+        Ok(Self { idevice })
+    }
 }
 
 impl HeartbeatClient {

@@ -1,15 +1,26 @@
 // Jackson Coxson
 // Abstractions for lockdownd
 
-pub const LOCKDOWND_PORT: u16 = 62078;
-
 use log::error;
 use serde::{Deserialize, Serialize};
 
-use crate::{pairing_file, Idevice, IdeviceError};
+use crate::{pairing_file, Idevice, IdeviceError, IdeviceService};
 
 pub struct LockdowndClient {
     pub idevice: crate::Idevice,
+}
+
+impl IdeviceService for LockdowndClient {
+    fn service_name() -> &'static str {
+        "com.apple.mobile.lockdown"
+    }
+
+    async fn connect(
+        provider: &impl crate::provider::IdeviceProvider,
+    ) -> Result<Self, IdeviceError> {
+        let idevice = provider.connect(Self::LOCKDOWND_PORT).await?;
+        Ok(Self { idevice })
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -21,6 +32,8 @@ struct LockdowndRequest {
 }
 
 impl LockdowndClient {
+    pub const LOCKDOWND_PORT: u16 = 62078;
+
     pub fn new(idevice: Idevice) -> Self {
         Self { idevice }
     }

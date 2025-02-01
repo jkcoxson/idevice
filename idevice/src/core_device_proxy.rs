@@ -1,13 +1,10 @@
 // Jackson Coxson
 
-use crate::{Idevice, IdeviceError};
+use crate::{lockdownd::LockdowndClient, Idevice, IdeviceError, IdeviceService};
 
 use byteorder::{BigEndian, WriteBytesExt};
 use serde::{Deserialize, Serialize};
 use std::io::{self, Write};
-
-pub const SERVCE_NAME: &str = "com.apple.internal.devicecompute.CoreDeviceProxy";
-const DEFAULT_MTU: u32 = 16000;
 
 #[derive(Debug, PartialEq)]
 pub struct CDTunnelPacket {
@@ -67,6 +64,28 @@ pub struct CoreDeviceProxy {
     pub mtu: u32,
 }
 
+impl IdeviceService for CoreDeviceProxy {
+    fn service_name() -> &'static str {
+        "com.apple.internal.devicecompute.CoreDeviceProxy"
+    }
+
+    async fn connect(
+        provider: &impl crate::provider::IdeviceProvider,
+    ) -> Result<Self, IdeviceError> {
+        let mut lockdown = LockdowndClient::connect(provider).await?;
+        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
+
+        let mut idevice = provider.connect(port).await?;
+        if ssl {
+            idevice
+                .start_session(&provider.get_pairing_file().await?)
+                .await?;
+        }
+
+        Ok(Self::new(idevice))
+    }
+}
+
 #[derive(Serialize)]
 struct HandshakeRequest {
     #[serde(rename = "type")]
@@ -94,17 +113,19 @@ pub struct HandshakeResponse {
 }
 
 impl CoreDeviceProxy {
+    const DEFAULT_MTU: u32 = 16000;
+
     pub fn new(idevice: Idevice) -> Self {
         Self {
             idevice,
-            mtu: DEFAULT_MTU,
+            mtu: Self::DEFAULT_MTU,
         }
     }
 
     pub async fn establish_tunnel(&mut self) -> Result<HandshakeResponse, IdeviceError> {
         let req = HandshakeRequest {
             packet_type: "clientHandshakeRequest".to_string(),
-            mtu: DEFAULT_MTU,
+            mtu: Self::DEFAULT_MTU,
         };
 
         let req = CDTunnelPacket::serialize(&CDTunnelPacket {

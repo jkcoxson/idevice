@@ -29,7 +29,7 @@ pub struct UsbmuxdConnection {
     tag: u32,
 }
 
-#[derive()]
+#[derive(Debug)]
 pub enum UsbmuxdAddr {
     UnixSocket(String),
     TcpSocket(SocketAddr),

@@ -20,12 +20,20 @@ pub mod xpc;
 
 use log::{debug, error};
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
+use provider::IdeviceProvider;
 use std::io::{self, BufWriter};
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub trait ReadWrite: AsyncRead + AsyncWrite + Unpin + Send + Sync + std::fmt::Debug {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send + Sync + std::fmt::Debug> ReadWrite for T {}
+
+pub trait IdeviceService: Sized {
+    fn service_name() -> &'static str;
+    fn connect(
+        provider: &impl IdeviceProvider,
+    ) -> impl std::future::Future<Output = Result<Self, IdeviceError>> + Send;
+}
 
 pub type IdeviceSocket = Box<dyn ReadWrite>;
 

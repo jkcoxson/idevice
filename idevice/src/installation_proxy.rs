@@ -3,10 +3,32 @@
 
 use std::collections::HashMap;
 
-use crate::{Idevice, IdeviceError};
+use crate::{lockdownd::LockdowndClient, Idevice, IdeviceError, IdeviceService};
 
 pub struct InstallationProxyClient {
     pub idevice: Idevice,
+}
+
+impl IdeviceService for InstallationProxyClient {
+    fn service_name() -> &'static str {
+        "com.apple.mobile.installation_proxy"
+    }
+
+    async fn connect(
+        provider: &impl crate::provider::IdeviceProvider,
+    ) -> Result<Self, IdeviceError> {
+        let mut lockdown = LockdowndClient::connect(provider).await?;
+        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
+
+        let mut idevice = provider.connect(port).await?;
+        if ssl {
+            idevice
+                .start_session(&provider.get_pairing_file().await?)
+                .await?;
+        }
+
+        Ok(Self::new(idevice))
+    }
 }
 
 impl InstallationProxyClient {
