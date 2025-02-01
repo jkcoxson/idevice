@@ -162,6 +162,7 @@ impl UsbmuxdConnection {
     }
 
     pub async fn get_pair_record(&mut self, udid: &str) -> Result<PairingFile, IdeviceError> {
+        debug!("Getting pair record for {udid}");
         let mut req = plist::Dictionary::new();
         req.insert("MessageType".into(), "ReadPairRecord".into());
         req.insert("PairRecordID".into(), udid.into());
@@ -192,6 +193,8 @@ impl UsbmuxdConnection {
         port: u16,
         label: impl Into<String>,
     ) -> Result<Idevice, IdeviceError> {
+        debug!("Connecting to device {device_id} on port {port}");
+
         let mut req = plist::Dictionary::new();
         req.insert("MessageType".into(), "Connect".into());
         req.insert("DeviceID".into(), device_id.into());
@@ -200,6 +203,10 @@ impl UsbmuxdConnection {
         match self.read_plist().await?.get("Number") {
             Some(plist::Value::Integer(i)) => match i.as_unsigned() {
                 Some(0) => Ok(Idevice::new(self.socket, label)),
+                Some(1) => Err(IdeviceError::UsbBadCommand),
+                Some(2) => Err(IdeviceError::UsbBadDevice),
+                Some(3) => Err(IdeviceError::UsbConnectionRefused),
+                Some(6) => Err(IdeviceError::UsbBadVersion),
                 _ => Err(IdeviceError::UnexpectedResponse),
             },
             _ => Err(IdeviceError::UnexpectedResponse),
@@ -232,6 +239,7 @@ impl UsbmuxdConnection {
         self.socket.read_exact(&mut body_buffer).await?;
 
         let res = plist::from_bytes(&body_buffer)?;
+        debug!("Read from muxer: {res:#?}");
 
         Ok(res)
     }

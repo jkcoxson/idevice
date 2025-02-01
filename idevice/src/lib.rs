@@ -205,6 +205,15 @@ pub enum IdeviceError {
     #[error("device not found")]
     DeviceNotFound,
 
+    #[error("device refused connection")]
+    UsbConnectionRefused,
+    #[error("bad command")]
+    UsbBadCommand,
+    #[error("bad device")]
+    UsbBadDevice,
+    #[error("usb bad version")]
+    UsbBadVersion,
+
     #[error("unknown error `{0}` returned from device")]
     UnknownErrorType(String),
 }
