@@ -31,7 +31,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin + Send + Sync + std::fmt::Debug> ReadWrit
 pub trait IdeviceService: Sized {
     fn service_name() -> &'static str;
     fn connect(
-        provider: &impl IdeviceProvider,
+        provider: &dyn IdeviceProvider,
     ) -> impl std::future::Future<Output = Result<Self, IdeviceError>> + Send;
 }
 
@@ -201,6 +201,9 @@ pub enum IdeviceError {
     #[cfg(feature = "core_device_proxy")]
     #[error("JSON serialization failed")]
     Json(#[from] serde_json::Error),
+
+    #[error("device not found")]
+    DeviceNotFound,
 
     #[error("unknown error `{0}` returned from device")]
     UnknownErrorType(String),

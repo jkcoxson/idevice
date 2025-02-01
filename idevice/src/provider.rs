@@ -1,70 +1,107 @@
 // Jackson Coxson
 
-use std::net::{IpAddr, SocketAddr};
+use std::{
+    future::Future,
+    net::{IpAddr, SocketAddr},
+    pin::Pin,
+};
 
 use tokio::net::TcpStream;
 
-use crate::{pairing_file::PairingFile, usbmuxd::UsbmuxdAddr, Idevice, IdeviceError};
+use crate::{pairing_file::PairingFile, Idevice, IdeviceError};
 
+#[cfg(feature = "usbmuxd")]
+use crate::usbmuxd::UsbmuxdAddr;
+
+/// A provider for connecting to the iOS device
+/// This is an ugly trait until async traits are stabilized
 pub trait IdeviceProvider: Unpin + Send + Sync + std::fmt::Debug {
-    // https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits.html#is-it-okay-to-use-async-fn-in-traits-what-are-the-limitations
     fn connect(
         &self,
         port: u16,
-    ) -> impl std::future::Future<Output = Result<Idevice, IdeviceError>> + Send;
+    ) -> Pin<Box<dyn Future<Output = Result<Idevice, IdeviceError>> + Send>>;
+
     fn label(&self) -> &str;
+
     fn get_pairing_file(
         &self,
-    ) -> impl std::future::Future<Output = Result<PairingFile, IdeviceError>> + Send;
+    ) -> Pin<Box<dyn Future<Output = Result<PairingFile, IdeviceError>> + Send>>;
 }
 
 #[derive(Debug)]
 pub struct TcpProvider {
-    addr: IpAddr,
-    pairing_file: PairingFile,
-    label: String,
+    pub addr: IpAddr,
+    pub pairing_file: PairingFile,
+    pub label: String,
 }
 
 impl IdeviceProvider for TcpProvider {
-    async fn connect(&self, port: u16) -> Result<Idevice, IdeviceError> {
-        let socket_addr = SocketAddr::new(self.addr, port);
-        let stream = TcpStream::connect(socket_addr).await?;
-        Ok(Idevice::new(Box::new(stream), self.label.to_owned()))
-    }
-    fn label(&self) -> &str {
-        self.label.as_str()
+    fn connect(
+        &self,
+        port: u16,
+    ) -> Pin<Box<dyn Future<Output = Result<Idevice, IdeviceError>> + Send>> {
+        let addr = self.addr;
+        let label = self.label.clone();
+        Box::pin(async move {
+            let socket_addr = SocketAddr::new(addr, port);
+            let stream = TcpStream::connect(socket_addr).await?;
+            Ok(Idevice::new(Box::new(stream), label))
+        })
     }
 
-    async fn get_pairing_file(&self) -> Result<PairingFile, IdeviceError> {
-        Ok(self.pairing_file.clone())
+    fn label(&self) -> &str {
+        &self.label
+    }
+
+    fn get_pairing_file(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<PairingFile, IdeviceError>> + Send>> {
+        let pairing_file = self.pairing_file.clone();
+        Box::pin(async move { Ok(pairing_file) })
     }
 }
 
 #[cfg(feature = "usbmuxd")]
 #[derive(Debug)]
 pub struct UsbmuxdProvider {
-    addr: UsbmuxdAddr,
-    tag: u32,
-    udid: String,
-    device_id: u32,
-    label: String,
+    pub addr: UsbmuxdAddr,
+    pub tag: u32,
+    pub udid: String,
+    pub device_id: u32,
+    pub label: String,
 }
 
 #[cfg(feature = "usbmuxd")]
 impl IdeviceProvider for UsbmuxdProvider {
-    async fn connect(&self, port: u16) -> Result<Idevice, IdeviceError> {
-        let usbmuxd = self.addr.connect(self.tag).await?;
-        usbmuxd
-            .connect_to_device(self.device_id, port, &self.label)
-            .await
+    fn connect(
+        &self,
+        port: u16,
+    ) -> Pin<Box<dyn Future<Output = Result<Idevice, IdeviceError>> + Send>> {
+        let addr = self.addr.clone();
+        let tag = self.tag;
+        let device_id = self.device_id;
+        let label = self.label.clone();
+
+        Box::pin(async move {
+            let usbmuxd = addr.connect(tag).await?;
+            usbmuxd.connect_to_device(device_id, port, &label).await
+        })
     }
 
     fn label(&self) -> &str {
-        self.label.as_str()
+        &self.label
     }
 
-    async fn get_pairing_file(&self) -> Result<PairingFile, IdeviceError> {
-        let mut usbmuxd = self.addr.connect(self.tag).await?;
-        usbmuxd.get_pair_record(&self.udid).await
+    fn get_pairing_file(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<PairingFile, IdeviceError>> + Send>> {
+        let addr = self.addr.clone();
+        let tag = self.tag;
+        let udid = self.udid.clone();
+
+        Box::pin(async move {
+            let mut usbmuxd = addr.connect(tag).await?;
+            usbmuxd.get_pair_record(&udid).await
+        })
     }
 }

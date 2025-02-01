@@ -16,10 +16,10 @@ impl IdeviceService for LockdowndClient {
     }
 
     async fn connect(
-        provider: &impl crate::provider::IdeviceProvider,
+        provider: &dyn crate::provider::IdeviceProvider,
     ) -> Result<Self, IdeviceError> {
         let idevice = provider.connect(Self::LOCKDOWND_PORT).await?;
-        Ok(Self { idevice })
+        Ok(Self::new(idevice))
     }
 }
 

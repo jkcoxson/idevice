@@ -70,7 +70,7 @@ impl IdeviceService for CoreDeviceProxy {
     }
 
     async fn connect(
-        provider: &impl crate::provider::IdeviceProvider,
+        provider: &dyn crate::provider::IdeviceProvider,
     ) -> Result<Self, IdeviceError> {
         let mut lockdown = LockdowndClient::connect(provider).await?;
         let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
