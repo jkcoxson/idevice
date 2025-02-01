@@ -6,6 +6,7 @@ use std::{
     pin::Pin,
 };
 
+#[cfg(feature = "tcp")]
 use tokio::net::TcpStream;
 
 use crate::{pairing_file::PairingFile, Idevice, IdeviceError};
@@ -28,6 +29,7 @@ pub trait IdeviceProvider: Unpin + Send + Sync + std::fmt::Debug {
     ) -> Pin<Box<dyn Future<Output = Result<PairingFile, IdeviceError>> + Send>>;
 }
 
+#[cfg(feature = "tcp")]
 #[derive(Debug)]
 pub struct TcpProvider {
     pub addr: IpAddr,
@@ -35,6 +37,7 @@ pub struct TcpProvider {
     pub label: String,
 }
 
+#[cfg(feature = "tcp")]
 impl IdeviceProvider for TcpProvider {
     fn connect(
         &self,

@@ -37,6 +37,7 @@ heartbeat = []
 installation_proxy = []
 mounter = []
 usbmuxd = []
+tcp = ["tokio/net"]
 xpc = [
   "tokio/full",
   "dep:indexmap",
@@ -51,6 +52,7 @@ full = [
   "mounter",
   "usbmuxd",
   "xpc",
+  "tcp",
 ]
 
 # Why: https://github.com/rust-lang/cargo/issues/1197
