@@ -194,6 +194,7 @@ impl UsbmuxdConnection {
         label: impl Into<String>,
     ) -> Result<Idevice, IdeviceError> {
         debug!("Connecting to device {device_id} on port {port}");
+        let port = port.to_be();
 
         let mut req = plist::Dictionary::new();
         req.insert("MessageType".into(), "Connect".into());
