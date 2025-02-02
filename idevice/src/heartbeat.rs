@@ -16,6 +16,10 @@ impl IdeviceService for HeartbeatClient {
         provider: &dyn crate::provider::IdeviceProvider,
     ) -> Result<Self, IdeviceError> {
         let mut lockdown = LockdowndClient::connect(provider).await?;
+        lockdown
+            .start_session(&provider.get_pairing_file().await?)
+            .await?;
+
         let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
 
         let mut idevice = provider.connect(port).await?;
