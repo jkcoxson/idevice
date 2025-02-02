@@ -132,23 +132,23 @@ impl LockdowndClient {
             .send_plist(plist::Value::Dictionary(req))
             .await?;
         let response = self.idevice.read_plist().await?;
-        match response.get("EnableServiceSSL") {
-            Some(plist::Value::Boolean(ssl)) => match response.get("Port") {
-                Some(plist::Value::Integer(port)) => {
-                    if let Some(port) = port.as_unsigned() {
-                        Ok((port as u16, *ssl))
-                    } else {
-                        error!("Port isn't an unsiged integer!");
-                        Err(IdeviceError::UnexpectedResponse)
-                    }
-                }
-                _ => {
-                    error!("Response didn't contain an integer port");
+
+        let ssl = match response.get("EnableServiceSSL") {
+            Some(plist::Value::Boolean(ssl)) => ssl.to_owned(),
+            _ => false, // over USB, this option won't exist
+        };
+
+        match response.get("Port") {
+            Some(plist::Value::Integer(port)) => {
+                if let Some(port) = port.as_unsigned() {
+                    Ok((port as u16, ssl))
+                } else {
+                    error!("Port isn't an unsiged integer!");
                     Err(IdeviceError::UnexpectedResponse)
                 }
-            },
+            }
             _ => {
-                error!("Response didn't contain EnableServiceSSL bool!");
+                error!("Response didn't contain an integer port");
                 Err(IdeviceError::UnexpectedResponse)
             }
         }
