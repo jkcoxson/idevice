@@ -181,6 +181,8 @@ pub enum IdeviceError {
     UnexpectedResponse,
     #[error("this request was prohibited")]
     GetProhibited,
+    #[error("no SSL session is active")]
+    SessionInactive,
     #[error("device does not have pairing file")]
     InvalidHostID,
     #[error("no established connection")]
@@ -223,6 +225,7 @@ impl IdeviceError {
         match e {
             "GetProhibited" => Some(Self::GetProhibited),
             "InvalidHostID" => Some(Self::InvalidHostID),
+            "SessionInactive" => Some(Self::SessionInactive),
             _ => None,
         }
     }
