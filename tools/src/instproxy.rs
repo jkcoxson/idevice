@@ -60,7 +60,10 @@ async fn main() {
     let mut instproxy_client = InstallationProxyClient::connect(&*provider)
         .await
         .expect("Unable to connect to instproxy");
-    let apps = instproxy_client.get_apps(None, None).await.unwrap();
+    let apps = instproxy_client
+        .get_apps(Some("User".to_string()), None)
+        .await
+        .unwrap();
     for app in apps.keys() {
         println!("{app}");
     }
