@@ -61,7 +61,7 @@ impl InstallationProxyClient {
 
         let mut req = plist::Dictionary::new();
         req.insert("Command".into(), "Lookup".into());
-        // req.insert("ClientOptions".into(), plist::Value::Dictionary(options));
+        req.insert("ClientOptions".into(), plist::Value::Dictionary(options));
         self.idevice
             .send_plist(plist::Value::Dictionary(req))
             .await?;
