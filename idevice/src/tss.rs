@@ -22,9 +22,7 @@ impl TSSRequest {
             "@UUID".into(),
             uuid::Uuid::new_v4().to_string().to_uppercase().into(),
         );
-        Self {
-            inner: Default::default(),
-        }
+        Self { inner }
     }
 
     pub fn insert(&mut self, key: impl Into<String>, val: impl Into<Value>) {
