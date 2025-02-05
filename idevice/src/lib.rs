@@ -86,7 +86,24 @@ impl Idevice {
     /// Sends raw bytes to the socket
     async fn send_raw(&mut self, message: &[u8]) -> Result<(), IdeviceError> {
         if let Some(socket) = &mut self.socket {
-            Ok(socket.write_all(message).await?)
+            let mut trash = [0; 2048];
+            let _ = socket.read(&mut trash).await.ok();
+
+            let message_parts = message.chunks(2048);
+            let part_len = message_parts.len();
+
+            let mut err = 5;
+            for (i, part) in message_parts.enumerate() {
+                debug!("Writing {i}/{part_len}");
+                while let Err(e) = socket.write_all(part).await {
+                    err -= 1;
+                    if err == 0 {
+                        return Err(e.into());
+                    }
+                }
+                err = 5;
+            }
+            Ok(())
         } else {
             Err(IdeviceError::NoEstablishedConnection)
         }
@@ -210,6 +227,9 @@ pub enum IdeviceError {
     #[error("device not found")]
     DeviceNotFound,
 
+    #[error("device lockded")]
+    DeviceLocked,
+
     #[error("device refused connection")]
     UsbConnectionRefused,
     #[error("bad command")]
@@ -236,6 +256,7 @@ impl IdeviceError {
             "GetProhibited" => Some(Self::GetProhibited),
             "InvalidHostID" => Some(Self::InvalidHostID),
             "SessionInactive" => Some(Self::SessionInactive),
+            "DeviceLocked" => Some(Self::DeviceLocked),
             _ => None,
         }
     }

@@ -1,9 +1,9 @@
 // Jackson Coxson
 
-use crate::{
-    lockdownd::LockdowndClient, tss::TSSRequest, util::hashmap_to_dictionary, Idevice,
-    IdeviceError, IdeviceService,
-};
+use log::debug;
+use openssl::sha::Sha384;
+
+use crate::{lockdownd::LockdowndClient, tss::TSSRequest, Idevice, IdeviceError, IdeviceService};
 
 pub struct ImageMounter {
     idevice: Idevice,
@@ -81,11 +81,18 @@ impl ImageMounter {
         signature: Vec<u8>,
     ) -> Result<(), IdeviceError> {
         let image_type = image_type.into();
+        let image_size = match u64::try_from(image.len()) {
+            Ok(i) => i,
+            Err(e) => {
+                log::error!("Could not parse image size as u64: {e:?}");
+                return Err(IdeviceError::UnexpectedResponse);
+            }
+        };
 
         let mut req = plist::Dictionary::new();
         req.insert("Command".into(), "ReceiveBytes".into());
         req.insert("ImageType".into(), image_type.into());
-        req.insert("ImageSize".into(), (image.len() as u64).into());
+        req.insert("ImageSize".into(), image_size.into());
         req.insert("ImageSignature".into(), plist::Value::Data(signature));
         self.idevice
             .send_plist(plist::Value::Dictionary(req))
@@ -102,7 +109,9 @@ impl ImageMounter {
             _ => return Err(IdeviceError::UnexpectedResponse),
         }
 
+        debug!("Sending image bytes");
         self.idevice.send_raw(image).await?;
+        debug!("Image bytes written");
 
         let res = self.idevice.read_plist().await?;
         match res.get("Status") {
@@ -278,7 +287,7 @@ impl ImageMounter {
         image: &[u8],
         signature: Vec<u8>,
     ) -> Result<(), IdeviceError> {
-        self.upload_image("Developer", &image, signature.clone())
+        self.upload_image("Developer", image, signature.clone())
             .await?;
         self.mount_image(
             "Developer",
@@ -291,8 +300,11 @@ impl ImageMounter {
         Ok(())
     }
 
+    /// Calling this has the potential of closing the socket,
+    /// so a provider is required for this abstraction.
     pub async fn mount_personalized(
         &mut self,
+        provider: &dyn crate::provider::IdeviceProvider,
         image: Vec<u8>,
         trust_cache: Vec<u8>,
         build_manifest: &[u8],
@@ -300,20 +312,28 @@ impl ImageMounter {
         unique_chip_id: u64,
     ) -> Result<(), IdeviceError> {
         // Try to fetch personalization manifest
+        let mut hasher = Sha384::new();
+        hasher.update(&image);
+        let image_hash = hasher.finish();
         let manifest = match self
-            .query_personalization_manifest("DeveloperDiskImage", image.clone()) // TODO:
+            .query_personalization_manifest("DeveloperDiskImage", image_hash.to_vec())
             .await
         {
             Ok(manifest) => manifest,
-            Err(IdeviceError::NotFound) => {
+            Err(e) => {
+                debug!("Device didn't contain a manifest: {e:?}, fetching from TSS");
+
+                // On failure, the socket closes. Open a new one.
+                self.idevice = Self::connect(provider).await?.idevice;
+
                 // Get manifest from TSS
                 let manifest_dict: plist::Dictionary = plist::from_bytes(build_manifest)?;
                 self.get_manifest_from_tss(&manifest_dict, unique_chip_id)
                     .await?
             }
-            Err(e) => return Err(e),
         };
 
+        debug!("Uploading imaage");
         self.upload_image("Personalized", &image, manifest.clone())
             .await?;
 
@@ -326,6 +346,7 @@ impl ImageMounter {
             plist::Value::Data(trust_cache.clone()),
         );
 
+        debug!("Mounting image");
         self.mount_image(
             "Personalized",
             manifest,

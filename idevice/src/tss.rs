@@ -49,12 +49,15 @@ impl TSSRequest {
             .await?;
 
         debug!("Apple responeded with {res}");
+        let res = res.trim_start_matches("STATUS=0&");
         let res = res.trim_start_matches("MESSAGE=");
         if !res.starts_with("SUCCESS") {
+            warn!("TSS responded with non-success value");
             return Err(IdeviceError::UnexpectedResponse);
         }
         let res = res.split("REQUEST_STRING=").collect::<Vec<&str>>();
         if res.len() < 2 {
+            warn!("Response didn't contain a request string");
             return Err(IdeviceError::UnexpectedResponse);
         }
         Ok(plist::from_bytes(res[1].as_bytes())?)

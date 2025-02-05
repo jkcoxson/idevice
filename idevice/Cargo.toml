@@ -32,12 +32,14 @@ byteorder = { version = "1.5", optional = true }
 
 reqwest = { version = "0.12", features = ["json"], optional = true }
 
+sha2 = { version = "0.10", optional = true }
+
 
 [features]
 core_device_proxy = ["dep:serde_json", "dep:json", "dep:byteorder"]
 heartbeat = []
 installation_proxy = []
-mounter = []
+mounter = ["dep:sha2"]
 usbmuxd = []
 tcp = ["tokio/net"]
 tss = ["dep:uuid", "dep:reqwest"]
