@@ -2,6 +2,7 @@
 // Abstractions for lockdownd
 
 use log::error;
+use plist::Value;
 use serde::{Deserialize, Serialize};
 
 use crate::{pairing_file, Idevice, IdeviceError, IdeviceService};
@@ -37,7 +38,7 @@ impl LockdowndClient {
     pub fn new(idevice: Idevice) -> Self {
         Self { idevice }
     }
-    pub async fn get_value(&mut self, value: impl Into<String>) -> Result<String, IdeviceError> {
+    pub async fn get_value(&mut self, value: impl Into<String>) -> Result<Value, IdeviceError> {
         let req = LockdowndRequest {
             label: self.idevice.label.clone(),
             key: Some(value.into()),
@@ -47,7 +48,7 @@ impl LockdowndClient {
         self.idevice.send_plist(message).await?;
         let message: plist::Dictionary = self.idevice.read_plist().await?;
         match message.get("Value") {
-            Some(m) => Ok(plist::from_value(m)?),
+            Some(m) => Ok(m.to_owned()),
             None => Err(IdeviceError::UnexpectedResponse),
         }
     }

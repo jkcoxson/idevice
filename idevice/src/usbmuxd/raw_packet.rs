@@ -1,5 +1,6 @@
 // Jackson Coxson
 
+use crate::util::plist_to_bytes;
 use log::warn;
 
 #[derive(Debug)]
@@ -9,14 +10,6 @@ pub struct RawPacket {
     pub message: u32,
     pub tag: u32,
     pub plist: plist::Dictionary,
-}
-
-fn plist_to_bytes(p: &plist::Dictionary) -> Vec<u8> {
-    let buf = Vec::new();
-    let mut writer = std::io::BufWriter::new(buf);
-    plist::to_writer_xml(&mut writer, &p).unwrap();
-
-    writer.into_inner().unwrap()
 }
 
 impl RawPacket {

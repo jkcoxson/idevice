@@ -13,8 +13,11 @@ pub mod lockdownd;
 pub mod mounter;
 pub mod pairing_file;
 pub mod provider;
+#[cfg(feature = "tss")]
+pub mod tss;
 #[cfg(feature = "usbmuxd")]
 pub mod usbmuxd;
+mod util;
 #[cfg(feature = "xpc")]
 pub mod xpc;
 
@@ -215,6 +218,13 @@ pub enum IdeviceError {
     UsbBadDevice,
     #[error("usb bad version")]
     UsbBadVersion,
+
+    #[error("bad build manifest")]
+    BadBuildManifest,
+
+    #[cfg(feature = "tss")]
+    #[error("http reqwest error")]
+    Reqwest(#[from] reqwest::Error),
 
     #[error("unknown error `{0}` returned from device")]
     UnknownErrorType(String),

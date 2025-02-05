@@ -22,13 +22,15 @@ log = { version = "0.4" }
 env_logger = { version = "0.11" }
 
 indexmap = { version = "2.7", features = ["serde"], optional = true }
-uuid = { version = "1.12", features = ["serde"], optional = true }
+uuid = { version = "1.12", features = ["serde", "v4"], optional = true }
 async-recursion = { version = "1.1", optional = true }
 base64 = { version = "0.22", optional = true }
 
 serde_json = { version = "1", optional = true }
 json = { version = "0.12", optional = true }
 byteorder = { version = "1.5", optional = true }
+
+reqwest = { version = "0.12", features = ["json"], optional = true }
 
 
 [features]
@@ -38,6 +40,7 @@ installation_proxy = []
 mounter = []
 usbmuxd = []
 tcp = ["tokio/net"]
+tss = ["dep:uuid", "dep:reqwest"]
 xpc = [
   "tokio/full",
   "dep:indexmap",
@@ -53,6 +56,7 @@ full = [
   "usbmuxd",
   "xpc",
   "tcp",
+  "tss",
 ]
 
 # Why: https://github.com/rust-lang/cargo/issues/1197
