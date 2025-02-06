@@ -44,7 +44,7 @@ usbmuxd = []
 tcp = ["tokio/net"]
 tss = ["dep:uuid", "dep:reqwest"]
 xpc = [
-  "tokio/full",
+  "tokio/sync",
   "dep:indexmap",
   "dep:uuid",
   "dep:async-recursion",

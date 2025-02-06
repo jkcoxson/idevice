@@ -80,6 +80,20 @@ impl ImageMounter {
         image: &[u8],
         signature: Vec<u8>,
     ) -> Result<(), IdeviceError> {
+        self.upload_image_with_progress(image_type, image, signature, |_| async {})
+            .await
+    }
+
+    pub async fn upload_image_with_progress<Fut>(
+        &mut self,
+        image_type: impl Into<String>,
+        image: &[u8],
+        signature: Vec<u8>,
+        callback: impl Fn((usize, usize)) -> Fut,
+    ) -> Result<(), IdeviceError>
+    where
+        Fut: std::future::Future<Output = ()>,
+    {
         let image_type = image_type.into();
         let image_size = match u64::try_from(image.len()) {
             Ok(i) => i,
@@ -110,8 +124,7 @@ impl ImageMounter {
         }
 
         debug!("Sending image bytes");
-        self.idevice.send_raw(image).await?;
-        debug!("Image bytes written");
+        self.idevice.send_raw_with_progress(image, callback).await?;
 
         let res = self.idevice.read_plist().await?;
         match res.get("Status") {

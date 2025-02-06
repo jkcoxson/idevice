@@ -89,20 +89,25 @@ impl Idevice {
 
     /// Sends raw bytes to the socket
     async fn send_raw(&mut self, message: &[u8]) -> Result<(), IdeviceError> {
+        self.send_raw_with_progress(message, |_| async {}).await
+    }
+
+    async fn send_raw_with_progress<Fut>(
+        &mut self,
+        message: &[u8],
+        callback: impl Fn((usize, usize)) -> Fut,
+    ) -> Result<(), IdeviceError>
+    where
+        Fut: std::future::Future<Output = ()>,
+    {
         if let Some(socket) = &mut self.socket {
             let message_parts = message.chunks(1024 * 64);
             let part_len = message_parts.len();
 
-            let mut err = 5;
             for (i, part) in message_parts.enumerate() {
                 debug!("Writing {i}/{part_len}");
-                while let Err(e) = socket.write_all(part).await {
-                    err -= 1;
-                    if err == 0 {
-                        return Err(e.into());
-                    }
-                }
-                err = 5;
+                socket.write_all(part).await?;
+                callback((i, part_len)).await;
             }
             Ok(())
         } else {
