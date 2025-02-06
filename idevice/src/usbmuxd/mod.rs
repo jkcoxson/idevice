@@ -1,6 +1,9 @@
 // Jackson Coxson
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
+use std::{
+    net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
+    str::FromStr,
+};
 
 use log::debug;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -51,6 +54,19 @@ impl UsbmuxdAddr {
     pub async fn connect(&self, tag: u32) -> Result<UsbmuxdConnection, IdeviceError> {
         let socket = self.to_socket().await?;
         Ok(UsbmuxdConnection::new(socket, tag))
+    }
+
+    pub fn from_env_var() -> Result<Self, AddrParseError> {
+        Ok(match std::env::var("USBMUXD_SOCKET_ADDRESS") {
+            Ok(var) => {
+                if var.contains(':') {
+                    Self::TcpSocket(SocketAddr::from_str(&var)?)
+                } else {
+                    Self::UnixSocket(var)
+                }
+            }
+            Err(_) => Self::default(),
+        })
     }
 }
 
