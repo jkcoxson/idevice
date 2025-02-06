@@ -9,6 +9,7 @@ use crate::{util::plist_to_bytes, IdeviceError};
 const TSS_CLIENT_VERSION_STRING: &str = "libauthinstall-1033.0.2";
 const TSS_CONTROLLER_ACTION_URL: &str = "http://gs.apple.com/TSS/controller?action=2";
 
+#[derive(Debug)]
 pub struct TSSRequest {
     inner: plist::Dictionary,
 }
@@ -32,6 +33,7 @@ impl TSSRequest {
     }
 
     pub async fn send(&self) -> Result<plist::Value, IdeviceError> {
+        debug!("Sending TSS request: {:#?}", self.inner);
         let client = reqwest::Client::new();
 
         let res = client
@@ -75,15 +77,15 @@ pub fn apply_restore_request_rules(
 ) {
     for rule in rules {
         if let plist::Value::Dictionary(rule) = rule {
-            let mut conditions_fulfulled = true;
             let conditions = match rule.get("Conditions") {
                 Some(plist::Value::Dictionary(c)) => c,
                 _ => {
-                    warn!("Conditions doesn't exist or wasn't a dictionary!!");
+                    warn!("Conditions doesn't exist or wasn't a dictionary!");
                     continue;
                 }
             };
 
+            let mut conditions_fulfilled = true;
             for (key, value) in conditions {
                 let value2 = match key.as_str() {
                     "ApRawProductionMode" => parameters.get("ApProductionMode"),
@@ -98,24 +100,20 @@ pub fn apply_restore_request_rules(
                     }
                 };
 
-                conditions_fulfulled = match value2 {
-                    Some(value2) => value == value2,
-                    None => false,
-                };
-
-                if !conditions_fulfulled {
-                    break;
+                if value2.is_none() || value2 != Some(value) {
+                    conditions_fulfilled = false;
+                    break; // Stop checking other conditions immediately
                 }
             }
 
-            if !conditions_fulfulled {
+            if !conditions_fulfilled {
                 continue;
             }
 
             let actions = match rule.get("Actions") {
                 Some(plist::Value::Dictionary(a)) => a,
                 _ => {
-                    warn!("Actions doesn't exist or wasn't a dictionary!!");
+                    warn!("Actions doesn't exist or wasn't a dictionary!");
                     continue;
                 }
             };
@@ -132,6 +130,7 @@ pub fn apply_restore_request_rules(
                     }
                 }
 
+                input.remove(key); // Explicitly remove before inserting, like Python
                 input.insert(key.to_owned(), value.to_owned());
             }
         } else {

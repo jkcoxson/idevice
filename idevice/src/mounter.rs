@@ -116,7 +116,7 @@ impl ImageMounter {
         let res = self.idevice.read_plist().await?;
         match res.get("Status") {
             Some(plist::Value::String(s)) => {
-                if s.as_str() != "Success" {
+                if s.as_str() != "Complete" {
                     log::error!("Image send failure: {s:?}");
                     return Err(IdeviceError::UnexpectedResponse);
                 }
@@ -131,8 +131,8 @@ impl ImageMounter {
         &mut self,
         image_type: impl Into<String>,
         signature: Vec<u8>,
-        trust_cache: Vec<u8>,
-        info_plist: plist::Value,
+        trust_cache: Option<Vec<u8>>,
+        info_plist: Option<plist::Value>,
     ) -> Result<(), IdeviceError> {
         let image_type = image_type.into();
 
@@ -140,8 +140,12 @@ impl ImageMounter {
         req.insert("Command".into(), "MountImage".into());
         req.insert("ImageType".into(), image_type.into());
         req.insert("ImageSignature".into(), plist::Value::Data(signature));
-        req.insert("ImageTrustCache".into(), plist::Value::Data(trust_cache));
-        req.insert("ImageInfoPlist".into(), info_plist);
+        if let Some(trust_cache) = trust_cache {
+            req.insert("ImageTrustCache".into(), plist::Value::Data(trust_cache));
+        }
+        if let Some(info_plist) = info_plist {
+            req.insert("ImageInfoPlist".into(), info_plist);
+        }
         self.idevice
             .send_plist(plist::Value::Dictionary(req))
             .await?;
@@ -150,7 +154,7 @@ impl ImageMounter {
 
         match res.get("Status") {
             Some(plist::Value::String(s)) => {
-                if s.as_str() != "Success" {
+                if s.as_str() != "Complete" {
                     log::error!("Image send failure: {s:?}");
                     return Err(IdeviceError::UnexpectedResponse);
                 }
@@ -289,13 +293,7 @@ impl ImageMounter {
     ) -> Result<(), IdeviceError> {
         self.upload_image("Developer", image, signature.clone())
             .await?;
-        self.mount_image(
-            "Developer",
-            signature,
-            Vec::new(),
-            plist::Value::Dictionary(plist::Dictionary::new()),
-        )
-        .await?;
+        self.mount_image("Developer", signature, None, None).await?;
 
         Ok(())
     }
@@ -337,23 +335,9 @@ impl ImageMounter {
         self.upload_image("Personalized", &image, manifest.clone())
             .await?;
 
-        let mut extras = plist::Dictionary::new();
-        if let Some(info) = info_plist {
-            extras.insert("ImageInfoPlist".into(), info);
-        }
-        extras.insert(
-            "ImageTrustCache".into(),
-            plist::Value::Data(trust_cache.clone()),
-        );
-
         debug!("Mounting image");
-        self.mount_image(
-            "Personalized",
-            manifest,
-            trust_cache,
-            plist::Value::Dictionary(extras),
-        )
-        .await?;
+        self.mount_image("Personalized", manifest, Some(trust_cache), info_plist)
+            .await?;
 
         Ok(())
     }
@@ -487,6 +471,7 @@ impl ImageMounter {
         parameters.insert("ApSupportsImg4".into(), true.into());
 
         for (key, manifest_item) in manifest {
+            println!("{key}, {manifest_item:?}");
             let manifest_item = match manifest_item {
                 plist::Value::Dictionary(m) => m,
                 _ => {
@@ -494,15 +479,12 @@ impl ImageMounter {
                     continue;
                 }
             };
-            let info = match manifest_item.get("Info") {
-                Some(plist::Value::Dictionary(i)) => i,
-                _ => {
-                    debug!("Manifest item didn't contain info");
-                    continue;
-                }
-            };
+            if manifest_item.get("Info").is_none() {
+                debug!("Manifest item didn't contain info");
+                continue;
+            }
 
-            match info.get("Trusted") {
+            match manifest_item.get("Trusted") {
                 Some(plist::Value::Boolean(t)) => {
                     if !t {
                         debug!("Info item isn't trusted");
@@ -518,11 +500,14 @@ impl ImageMounter {
             let mut tss_entry = manifest_item.clone();
             tss_entry.remove("Info");
 
-            if let Some(plist::Value::Dictionary(l)) = manifest.get("LoadableTrustCache") {
-                if let Some(plist::Value::Dictionary(i)) = l.get("Info") {
-                    if let Some(plist::Value::Array(rules)) = i.get("RestoreRequestRules") {
-                        crate::tss::apply_restore_request_rules(&mut tss_entry, &parameters, rules);
-                    }
+            if let Some(info) = manifest
+                .get("LoadableTrustCache")
+                .and_then(|l| l.as_dictionary())
+                .and_then(|l| l.get("Info"))
+                .and_then(|i| i.as_dictionary())
+            {
+                if let Some(plist::Value::Array(rules)) = info.get("RestoreRequestRules") {
+                    crate::tss::apply_restore_request_rules(&mut tss_entry, &parameters, rules);
                 }
             }
 
