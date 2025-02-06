@@ -28,6 +28,8 @@ use std::io::{self, BufWriter};
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
+pub use util::{pretty_print_dictionary, pretty_print_plist};
+
 pub trait ReadWrite: AsyncRead + AsyncWrite + Unpin + Send + Sync + std::fmt::Debug {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send + Sync + std::fmt::Debug> ReadWrite for T {}
 
@@ -69,7 +71,7 @@ impl Idevice {
     /// Sends a plist to the socket
     async fn send_plist(&mut self, message: plist::Value) -> Result<(), IdeviceError> {
         if let Some(socket) = &mut self.socket {
-            debug!("Sending plist: {message:?}");
+            debug!("Sending plist: {}", pretty_print_plist(&message));
 
             let buf = Vec::new();
             let mut writer = BufWriter::new(buf);
@@ -88,7 +90,7 @@ impl Idevice {
     /// Sends raw bytes to the socket
     async fn send_raw(&mut self, message: &[u8]) -> Result<(), IdeviceError> {
         if let Some(socket) = &mut self.socket {
-            let message_parts = message.chunks(2048);
+            let message_parts = message.chunks(1024 * 64);
             let part_len = message_parts.len();
 
             let mut err = 5;
@@ -140,11 +142,11 @@ impl Idevice {
             let mut buf = vec![0; len as usize];
             socket.read_exact(&mut buf).await?;
             let res: plist::Dictionary = plist::from_bytes(&buf)?;
-            debug!("Received plist: {res:#?}");
+            debug!("Received plist: {}", pretty_print_dictionary(&res));
 
             if let Some(e) = res.get("Error") {
                 let e: String = plist::from_value(e)?;
-                if let Some(e) = IdeviceError::from_device_error_type(e.as_str()) {
+                if let Some(e) = IdeviceError::from_device_error_type(e.as_str(), &res) {
                     return Err(e);
                 } else {
                     return Err(IdeviceError::UnknownErrorType(e));
@@ -240,22 +242,40 @@ pub enum IdeviceError {
 
     #[error("bad build manifest")]
     BadBuildManifest,
+    #[error("image not mounted")]
+    ImageNotMounted,
 
     #[cfg(feature = "tss")]
     #[error("http reqwest error")]
     Reqwest(#[from] reqwest::Error),
+
+    #[error("internal error")]
+    InternalError(String),
 
     #[error("unknown error `{0}` returned from device")]
     UnknownErrorType(String),
 }
 
 impl IdeviceError {
-    fn from_device_error_type(e: &str) -> Option<Self> {
+    fn from_device_error_type(e: &str, context: &plist::Dictionary) -> Option<Self> {
         match e {
             "GetProhibited" => Some(Self::GetProhibited),
             "InvalidHostID" => Some(Self::InvalidHostID),
             "SessionInactive" => Some(Self::SessionInactive),
             "DeviceLocked" => Some(Self::DeviceLocked),
+            "InternalError" => {
+                let detailed_error = context
+                    .get("DetailedError")
+                    .and_then(|d| d.as_string())
+                    .unwrap_or("No context")
+                    .to_string();
+
+                if detailed_error.contains("There is no matching entry in the device map for") {
+                    Some(Self::ImageNotMounted)
+                } else {
+                    Some(Self::InternalError(detailed_error))
+                }
+            }
             _ => None,
         }
     }

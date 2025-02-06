@@ -33,7 +33,10 @@ impl TSSRequest {
     }
 
     pub async fn send(&self) -> Result<plist::Value, IdeviceError> {
-        debug!("Sending TSS request: {:#?}", self.inner);
+        debug!(
+            "Sending TSS request: {}",
+            crate::pretty_print_dictionary(&self.inner)
+        );
         let client = reqwest::Client::new();
 
         let res = client

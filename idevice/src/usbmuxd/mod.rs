@@ -256,7 +256,7 @@ impl UsbmuxdConnection {
         self.socket.read_exact(&mut body_buffer).await?;
 
         let res = plist::from_bytes(&body_buffer)?;
-        debug!("Read from muxer: {res:#?}");
+        debug!("Read from muxer: {}", crate::pretty_print_dictionary(&res));
 
         Ok(res)
     }
