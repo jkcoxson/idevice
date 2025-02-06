@@ -311,8 +311,6 @@ impl ImageMounter {
         Ok(())
     }
 
-    /// Calling this has the potential of closing the socket,
-    /// so a provider is required for this abstraction.
     pub async fn mount_personalized(
         &mut self,
         provider: &dyn crate::provider::IdeviceProvider,
@@ -322,6 +320,34 @@ impl ImageMounter {
         info_plist: Option<plist::Value>,
         unique_chip_id: u64,
     ) -> Result<(), IdeviceError> {
+        self.mount_personalized_with_callback(
+            provider,
+            image,
+            trust_cache,
+            build_manifest,
+            info_plist,
+            unique_chip_id,
+            |_| async {},
+        )
+        .await
+    }
+
+    /// Calling this has the potential of closing the socket,
+    /// so a provider is required for this abstraction.
+    #[allow(clippy::too_many_arguments)] // literally nobody asked
+    pub async fn mount_personalized_with_callback<Fut>(
+        &mut self,
+        provider: &dyn crate::provider::IdeviceProvider,
+        image: Vec<u8>,
+        trust_cache: Vec<u8>,
+        build_manifest: &[u8],
+        info_plist: Option<plist::Value>,
+        unique_chip_id: u64,
+        callback: impl Fn((usize, usize)) -> Fut,
+    ) -> Result<(), IdeviceError>
+    where
+        Fut: std::future::Future<Output = ()>,
+    {
         // Try to fetch personalization manifest
         let mut hasher = Sha384::new();
         hasher.update(&image);
@@ -345,7 +371,7 @@ impl ImageMounter {
         };
 
         debug!("Uploading imaage");
-        self.upload_image("Personalized", &image, manifest.clone())
+        self.upload_image_with_progress("Personalized", &image, manifest.clone(), callback)
             .await?;
 
         debug!("Mounting image");
