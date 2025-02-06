@@ -69,6 +69,8 @@ impl Idevice {
     /// Sends a plist to the socket
     async fn send_plist(&mut self, message: plist::Value) -> Result<(), IdeviceError> {
         if let Some(socket) = &mut self.socket {
+            debug!("Sending plist: {message:?}");
+
             let buf = Vec::new();
             let mut writer = BufWriter::new(buf);
             message.to_writer_xml(&mut writer)?;
