@@ -86,9 +86,6 @@ impl Idevice {
     /// Sends raw bytes to the socket
     async fn send_raw(&mut self, message: &[u8]) -> Result<(), IdeviceError> {
         if let Some(socket) = &mut self.socket {
-            let mut trash = [0; 2048];
-            let _ = socket.read(&mut trash).await.ok();
-
             let message_parts = message.chunks(2048);
             let part_len = message_parts.len();
 
