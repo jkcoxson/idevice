@@ -1,10 +1,12 @@
 // Jackson Coxson
 // Just lists apps for now
 
-use clap::{Arg, Command};
-use idevice::{mounter::ImageMounter, IdeviceService};
+use std::path::PathBuf;
 
-use sha2::{Digest, Sha384};
+use clap::{arg, value_parser, Arg, Command};
+use idevice::{
+    lockdownd::LockdowndClient, mounter::ImageMounter, pretty_print_plist, IdeviceService,
+};
 
 mod common;
 
@@ -38,6 +40,29 @@ async fn main() {
                 .help("Show about information")
                 .action(clap::ArgAction::SetTrue),
         )
+        .subcommand(Command::new("list").about("Lists the images mounted on the device"))
+        .subcommand(Command::new("unmount").about("Unmounts the developer disk image"))
+        .subcommand(
+            Command::new("mount")
+                .about("Mounts the developer disk image")
+                .arg(
+                    arg!(-i --image <FILE> "the developer disk image to mount")
+                        .value_parser(value_parser!(PathBuf))
+                        .required(true),
+                )
+                .arg(
+                    arg!(-b --manifest <FILE> "the build manifest (iOS 17+)")
+                        .value_parser(value_parser!(PathBuf)),
+                )
+                .arg(
+                    arg!(-t --trustcache <FILE> "the trust cache (iOS 17+)")
+                        .value_parser(value_parser!(PathBuf)),
+                )
+                .arg(
+                    arg!(-s --signature <FILE> "the image signature (iOS < 17.0")
+                        .value_parser(value_parser!(PathBuf)),
+                ),
+        )
         .get_matches();
 
     if matches.get_flag("about") {
@@ -59,21 +84,121 @@ async fn main() {
             }
         };
 
+    let mut lockdown_client = LockdowndClient::connect(&*provider)
+        .await
+        .expect("Unable to connect to lockdown");
+
+    let product_version = match lockdown_client.get_value("ProductVersion").await {
+        Ok(p) => p,
+        Err(_) => {
+            lockdown_client
+                .start_session(&provider.get_pairing_file().await.unwrap())
+                .await
+                .unwrap();
+            lockdown_client.get_value("ProductVersion").await.unwrap()
+        }
+    };
+    let product_version = product_version
+        .as_string()
+        .unwrap()
+        .split('.')
+        .collect::<Vec<&str>>()[0]
+        .parse::<u8>()
+        .unwrap();
+
     let mut mounter_client = ImageMounter::connect(&*provider)
         .await
         .expect("Unable to connect to image mounter");
 
-    let images = mounter_client.copy_devices().await.unwrap();
-    println!("Images: {images:#?}");
+    if matches.subcommand_matches("list").is_some() {
+        let images = mounter_client
+            .copy_devices()
+            .await
+            .expect("Unable to get images");
+        for i in images {
+            println!("{}", pretty_print_plist(&i));
+        }
+    } else if matches.subcommand_matches("unmount").is_some() {
+        if product_version < 17 {
+            mounter_client
+                .unmount_image("/Developer")
+                .await
+                .expect("Failed to unmount");
+        } else {
+            mounter_client
+                .unmount_image("/System/Developer")
+                .await
+                .expect("Failed to unmount");
+        }
+    } else if let Some(matches) = matches.subcommand_matches("mount") {
+        let image: &PathBuf = match matches.get_one("image") {
+            Some(i) => i,
+            None => {
+                eprintln!("No image was passed! Pass -h for help");
+                return;
+            }
+        };
+        let image = tokio::fs::read(image).await.expect("Unable to read image");
+        if product_version < 17 {
+            let signature: &PathBuf = match matches.get_one("signature") {
+                Some(s) => s,
+                None => {
+                    eprintln!("No signature was passed! Pass -h for help");
+                    return;
+                }
+            };
+            let signature = tokio::fs::read(signature)
+                .await
+                .expect("Unable to read signature");
 
-    let image = std::fs::read("Image.dmg").unwrap();
-    let mut hasher = Sha384::new();
-    hasher.update(image);
-    let hash = hasher.finalize();
+            mounter_client
+                .mount_developer(&image, signature)
+                .await
+                .expect("Unable to mount");
+        } else {
+            let manifest: &PathBuf = match matches.get_one("manifest") {
+                Some(s) => s,
+                None => {
+                    eprintln!("No build manifest was passed! Pass -h for help");
+                    return;
+                }
+            };
+            let build_manifest = &tokio::fs::read(manifest)
+                .await
+                .expect("Unable to read signature");
 
-    let manifest = mounter_client
-        .query_personalization_manifest("DeveloperDiskImage", hash.to_vec())
-        .await
-        .unwrap();
-    println!("len: {}", manifest.len());
+            let trust_cache: &PathBuf = match matches.get_one("trustcache") {
+                Some(s) => s,
+                None => {
+                    eprintln!("No trust cache was passed! Pass -h for help");
+                    return;
+                }
+            };
+            let trust_cache = tokio::fs::read(trust_cache)
+                .await
+                .expect("Unable to read signature");
+
+            let unique_chip_id = lockdown_client
+                .get_value("UniqueChipID")
+                .await
+                .expect("Failed to get UniqueChipID")
+                .as_unsigned_integer()
+                .expect("Unexpected value for chip IP");
+
+            mounter_client
+                .mount_personalized(
+                    &*provider,
+                    image,
+                    trust_cache,
+                    build_manifest,
+                    None,
+                    unique_chip_id,
+                )
+                .await
+                .expect("Unable to mount");
+        }
+    } else {
+        eprintln!("Invalid usage, pass -h for help");
+    }
+    return;
 }
