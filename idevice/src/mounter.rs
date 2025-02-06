@@ -80,19 +80,21 @@ impl ImageMounter {
         image: &[u8],
         signature: Vec<u8>,
     ) -> Result<(), IdeviceError> {
-        self.upload_image_with_progress(image_type, image, signature, |_| async {})
+        self.upload_image_with_progress(image_type, image, signature, |_| async {}, ())
             .await
     }
 
-    pub async fn upload_image_with_progress<Fut>(
+    pub async fn upload_image_with_progress<Fut, S>(
         &mut self,
         image_type: impl Into<String>,
         image: &[u8],
         signature: Vec<u8>,
-        callback: impl Fn((usize, usize)) -> Fut,
+        callback: impl Fn(((usize, usize), S)) -> Fut,
+        state: S,
     ) -> Result<(), IdeviceError>
     where
         Fut: std::future::Future<Output = ()>,
+        S: Clone,
     {
         let image_type = image_type.into();
         let image_size = match u64::try_from(image.len()) {
@@ -124,7 +126,9 @@ impl ImageMounter {
         }
 
         debug!("Sending image bytes");
-        self.idevice.send_raw_with_progress(image, callback).await?;
+        self.idevice
+            .send_raw_with_progress(image, callback, state)
+            .await?;
 
         let res = self.idevice.read_plist().await?;
         match res.get("Status") {
@@ -328,6 +332,7 @@ impl ImageMounter {
             info_plist,
             unique_chip_id,
             |_| async {},
+            (),
         )
         .await
     }
@@ -335,7 +340,7 @@ impl ImageMounter {
     /// Calling this has the potential of closing the socket,
     /// so a provider is required for this abstraction.
     #[allow(clippy::too_many_arguments)] // literally nobody asked
-    pub async fn mount_personalized_with_callback<Fut>(
+    pub async fn mount_personalized_with_callback<Fut, S>(
         &mut self,
         provider: &dyn crate::provider::IdeviceProvider,
         image: Vec<u8>,
@@ -343,10 +348,12 @@ impl ImageMounter {
         build_manifest: &[u8],
         info_plist: Option<plist::Value>,
         unique_chip_id: u64,
-        callback: impl Fn((usize, usize)) -> Fut,
+        callback: impl Fn(((usize, usize), S)) -> Fut,
+        state: S,
     ) -> Result<(), IdeviceError>
     where
         Fut: std::future::Future<Output = ()>,
+        S: Clone,
     {
         // Try to fetch personalization manifest
         let mut hasher = Sha384::new();
@@ -371,7 +378,7 @@ impl ImageMounter {
         };
 
         debug!("Uploading imaage");
-        self.upload_image_with_progress("Personalized", &image, manifest.clone(), callback)
+        self.upload_image_with_progress("Personalized", &image, manifest.clone(), callback, state)
             .await?;
 
         debug!("Mounting image");
