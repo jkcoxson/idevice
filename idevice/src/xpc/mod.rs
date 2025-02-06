@@ -15,6 +15,8 @@ pub mod format;
 
 pub struct XPCConnection {
     inner: http2::Connection,
+    root_message_id: u64,
+    reply_message_id: u64,
 }
 
 impl XPCConnection {
@@ -42,7 +44,11 @@ impl XPCConnection {
         client
             .send_frame(WindowUpdateFrame::new(Self::INIT_STREAM, 983041))
             .await?;
-        let mut xpc_client = Self { inner: client };
+        let mut xpc_client = Self {
+            inner: client,
+            root_message_id: 1,
+            reply_message_id: 1,
+        };
         xpc_client
             .send_recv_message(
                 Self::ROOT_CHANNEL,
@@ -91,9 +97,9 @@ impl XPCConnection {
         message: XPCMessage,
     ) -> Result<(), XPCError> {
         self.inner
-            .write_streamid(stream_id, message.encode(0)?)
-            .await
-            .map_err(|err| err.into())
+            .write_streamid(stream_id, message.encode(self.root_message_id)?)
+            .await?;
+        Ok(())
     }
 
     pub async fn read_message(&mut self, stream_id: u32) -> Result<XPCMessage, XPCError> {
@@ -102,6 +108,11 @@ impl XPCConnection {
             match XPCMessage::decode(&buf) {
                 Ok(decoded) => {
                     debug!("Decoded message: {:?}", decoded);
+                    match stream_id {
+                        1 => self.root_message_id += 1,
+                        3 => self.reply_message_id += 1,
+                        _ => {}
+                    }
                     return Ok(decoded);
                 }
                 Err(err) => {
@@ -119,22 +130,8 @@ mod tests {
 
     #[tokio::test]
     async fn it_works() {
-        // assert_eq!(
-        //     XPCFlag::InitHandshake | XPCFlag::AlwaysSet,
-        //     XPCFlag::Custom(0x00400000 | 0x00000001)
-        // );
-
-        // let mut buf = Vec::new();
-        // let plst = XPCMessage::decode(&buf)
-        //     .unwrap()
-        //     .message
-        //     .unwrap()
-        //     .to_plist();
-
-        // plst.to_file_xml("rayan.bin").unwrap();
-        // return;
         let mut client = XPCConnection::new(Box::new(
-            TcpStream::connect(("fd35:d15d:9272::1", 64634))
+            TcpStream::connect(("fdca:2653:ece9::1", 64497))
                 .await
                 .unwrap(),
         ))
@@ -145,22 +142,6 @@ mod tests {
             .read_message(http2::Connection::ROOT_CHANNEL)
             .await
             .unwrap();
-        println!("ayo: {:?}", data);
-    }
-
-    #[tokio::test]
-    async fn huh() {
-        let mut client = XPCConnection::new(Box::new(
-            TcpStream::connect(("10.7.0.2", 58783)).await.unwrap(),
-        ))
-        .await
-        .unwrap();
-
-        let data = client
-            .read_message(http2::Connection::ROOT_CHANNEL)
-            .await
-            .unwrap();
-
-        println!("{data:?}");
+        println!("{:#?}", data);
     }
 }
