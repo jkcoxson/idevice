@@ -1,9 +1,12 @@
 // Jackson Coxson
 
 use std::{
-    net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
+    net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     str::FromStr,
 };
+
+#[cfg(not(unix))]
+use std::net::SocketAddrV4;
 
 use log::debug;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -36,6 +39,7 @@ pub struct UsbmuxdConnection {
 
 #[derive(Clone, Debug)]
 pub enum UsbmuxdAddr {
+    #[cfg(unix)]
     UnixSocket(String),
     TcpSocket(SocketAddr),
 }
@@ -46,6 +50,7 @@ impl UsbmuxdAddr {
 
     pub async fn to_socket(&self) -> Result<Box<dyn ReadWrite>, IdeviceError> {
         Ok(match self {
+            #[cfg(unix)]
             Self::UnixSocket(addr) => Box::new(tokio::net::UnixStream::connect(addr).await?),
             Self::TcpSocket(addr) => Box::new(tokio::net::TcpStream::connect(addr).await?),
         })
@@ -59,11 +64,14 @@ impl UsbmuxdAddr {
     pub fn from_env_var() -> Result<Self, AddrParseError> {
         Ok(match std::env::var("USBMUXD_SOCKET_ADDRESS") {
             Ok(var) => {
+                #[cfg(unix)]
                 if var.contains(':') {
                     Self::TcpSocket(SocketAddr::from_str(&var)?)
                 } else {
                     Self::UnixSocket(var)
                 }
+                #[cfg(not(unix))]
+                Self::TcpSocket(SocketAddr::from_str(&var)?)
             }
             Err(_) => Self::default(),
         })
@@ -72,16 +80,15 @@ impl UsbmuxdAddr {
 
 impl Default for UsbmuxdAddr {
     fn default() -> Self {
-        if cfg!(target_os = "windows") {
+        #[cfg(not(unix))]
+        {
             Self::TcpSocket(SocketAddr::V4(SocketAddrV4::new(
                 Ipv4Addr::new(127, 0, 0, 1),
                 Self::DEFAULT_PORT,
             )))
-        } else if cfg!(target_os = "macos") || cfg!(target_os = "linux") {
-            Self::UnixSocket(Self::SOCKET_FILE.to_string())
-        } else {
-            panic!("Undefined OS for default UsbmuxdAddr")
         }
+        #[cfg(unix)]
+        Self::UnixSocket(Self::SOCKET_FILE.to_string())
     }
 }
 
