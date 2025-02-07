@@ -104,7 +104,7 @@ impl Idevice {
     {
         if let Some(socket) = &mut self.socket {
             let message_parts = message.chunks(1024 * 64);
-            let part_len = message_parts.len();
+            let part_len = message_parts.len() - 1;
 
             for (i, part) in message_parts.enumerate() {
                 debug!("Writing {i}/{part_len}");
