@@ -72,6 +72,14 @@ impl PairingFile {
         let p = raw.try_into()?;
         Ok(p)
     }
+
+    pub fn serialize(self) -> Result<Vec<u8>, crate::IdeviceError> {
+        let raw = RawPairingFile::try_from(self)?;
+
+        let mut buf = Vec::new();
+        plist::to_writer_xml(&mut buf, &raw)?;
+        Ok(buf)
+    }
 }
 
 impl TryFrom<RawPairingFile> for PairingFile {
@@ -95,4 +103,36 @@ impl TryFrom<RawPairingFile> for PairingFile {
             udid: value.udid,
         })
     }
+}
+
+impl TryFrom<PairingFile> for RawPairingFile {
+    type Error = openssl::error::ErrorStack;
+
+    fn try_from(value: PairingFile) -> Result<Self, Self::Error> {
+        Ok(Self {
+            device_certificate: Data::new(value.device_certificate.to_pem()?),
+            host_private_key: Data::new(value.host_private_key.private_key_to_pem_pkcs8()?),
+            host_certificate: Data::new(value.host_certificate.to_pem()?),
+            root_private_key: Data::new(value.root_private_key.private_key_to_pem_pkcs8()?),
+            root_certificate: Data::new(value.root_certificate.to_pem()?),
+            system_buid: value.system_buid,
+            host_id: value.host_id.clone(),
+            escrow_bag: Data::new(value.escrow_bag),
+            wifi_mac_address: value.wifi_mac_address,
+            udid: value.udid,
+        })
+    }
+}
+
+#[test]
+fn f1() {
+    let f = std::fs::read("/var/lib/lockdown/test.plist").unwrap();
+
+    println!("{}", String::from_utf8_lossy(&f));
+
+    let input = PairingFile::from_bytes(&f).unwrap();
+    let output = input.serialize().unwrap();
+    println!("{}", String::from_utf8_lossy(&output));
+
+    assert_eq!(f[..output.len()], output);
 }
