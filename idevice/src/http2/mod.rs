@@ -11,7 +11,6 @@ use tokio::{
 
 pub mod error;
 pub mod h2;
-pub mod padded;
 
 use h2::{
     DataFrame, Framable, Frame, FrameType, HeadersFrame, SettingsFrame, WindowUpdateFrame,
