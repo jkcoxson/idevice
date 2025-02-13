@@ -178,12 +178,21 @@ async fn main() {
                 .await
                 .expect("Unable to read signature");
 
-            let unique_chip_id = lockdown_client
-                .get_value("UniqueChipID")
-                .await
-                .expect("Failed to get UniqueChipID")
-                .as_unsigned_integer()
-                .expect("Unexpected value for chip IP");
+            let unique_chip_id = match lockdown_client.get_value("UniqueChipID").await {
+                Ok(u) => u,
+                Err(_) => {
+                    lockdown_client
+                        .start_session(&provider.get_pairing_file().await.unwrap())
+                        .await
+                        .expect("Unable to start session");
+                    lockdown_client
+                        .get_value("UniqueChipID")
+                        .await
+                        .expect("Unable to get UniqueChipID")
+                }
+            }
+            .as_unsigned_integer()
+            .expect("Unexpected value for chip IP");
 
             mounter_client
                 .mount_personalized(
