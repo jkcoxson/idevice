@@ -5,6 +5,9 @@ use openssl::sha::Sha384;
 
 use crate::{lockdownd::LockdowndClient, tss::TSSRequest, Idevice, IdeviceError, IdeviceService};
 
+/// Manages mounted images on the idevice.
+/// NOTE: A lockdown client must be established and queried after establishing a mounter client, or
+/// the device will stop responding to requests.
 pub struct ImageMounter {
     idevice: Idevice,
 }
