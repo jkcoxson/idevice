@@ -43,6 +43,7 @@ mounter = ["dep:sha2"]
 usbmuxd = []
 tcp = ["tokio/net"]
 tss = ["dep:uuid", "dep:reqwest"]
+tunneld = ["dep:serde_json", "dep:json", "dep:reqwest"]
 xpc = [
   "tokio/sync",
   "dep:indexmap",
@@ -59,6 +60,7 @@ full = [
   "xpc",
   "tcp",
   "tss",
+  "tunneld",
 ]
 
 # Why: https://github.com/rust-lang/cargo/issues/1197

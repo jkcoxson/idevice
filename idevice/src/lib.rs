@@ -15,6 +15,8 @@ pub mod pairing_file;
 pub mod provider;
 #[cfg(feature = "tss")]
 pub mod tss;
+#[cfg(feature = "tunneld")]
+pub mod tunneld;
 #[cfg(feature = "usbmuxd")]
 pub mod usbmuxd;
 mod util;
@@ -66,6 +68,35 @@ impl Idevice {
             Some(m) => Ok(plist::from_value(m)?),
             None => Err(IdeviceError::UnexpectedResponse),
         }
+    }
+
+    pub async fn rsd_checkin(&mut self) -> Result<(), IdeviceError> {
+        let mut req = plist::Dictionary::new();
+        req.insert("Label".into(), self.label.clone().into());
+        req.insert("ProtocolVersion".into(), "2".into());
+        req.insert("Request".into(), "RSDCheckin".into());
+        self.send_plist(plist::to_value(&req).unwrap()).await?;
+        let res = self.read_plist().await?;
+        match res.get("Request").and_then(|x| x.as_string()) {
+            Some(r) => {
+                if r != "RSDCheckin" {
+                    return Err(IdeviceError::UnexpectedResponse);
+                }
+            }
+            None => return Err(IdeviceError::UnexpectedResponse),
+        }
+
+        let res = self.read_plist().await?;
+        match res.get("Request").and_then(|x| x.as_string()) {
+            Some(r) => {
+                if r != "StartService" {
+                    return Err(IdeviceError::UnexpectedResponse);
+                }
+            }
+            None => return Err(IdeviceError::UnexpectedResponse),
+        }
+
+        Ok(())
     }
 
     /// Sends a plist to the socket
@@ -258,6 +289,10 @@ pub enum IdeviceError {
 
     #[error("internal error")]
     InternalError(String),
+
+    #[cfg(feature = "xpc")]
+    #[error("xpc message failed")]
+    Xpc(#[from] xpc::error::XPCError),
 
     #[error("unknown error `{0}` returned from device")]
     UnknownErrorType(String),

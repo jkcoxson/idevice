@@ -33,6 +33,10 @@ path = "src/core_device_proxy_tun.rs"
 name = "idevice_id"
 path = "src/idevice_id.rs"
 
+[[bin]]
+name = "remotexpc"
+path = "src/remotexpc.rs"
+
 
 [dependencies]
 idevice = { path = "../idevice", features = ["full"] }

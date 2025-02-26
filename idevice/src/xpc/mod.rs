@@ -1,17 +1,36 @@
 // Thanks DebianArch
 
-use crate::http2::{
-    self,
-    h2::{SettingsFrame, WindowUpdateFrame},
+use std::collections::HashMap;
+
+use crate::{
+    http2::{
+        self,
+        h2::{SettingsFrame, WindowUpdateFrame},
+    },
+    IdeviceError,
 };
 use error::XPCError;
 use format::{XPCFlag, XPCMessage, XPCObject};
-use log::debug;
-use tokio::net::{TcpStream, ToSocketAddrs};
+use log::{debug, warn};
+use serde::Deserialize;
 
 pub mod cdtunnel;
 pub mod error;
 pub mod format;
+
+pub struct XPCDevice {
+    pub connection: XPCConnection,
+    pub services: HashMap<String, XPCService>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct XPCService {
+    pub entitlement: String,
+    pub port: u16,
+    pub uses_remote_xpc: bool,
+    pub features: Option<Vec<String>>,
+    pub service_version: Option<i64>,
+}
 
 pub struct XPCConnection {
     inner: http2::Connection,
@@ -19,14 +38,106 @@ pub struct XPCConnection {
     reply_message_id: u64,
 }
 
+impl XPCDevice {
+    pub async fn new(stream: crate::IdeviceSocket) -> Result<Self, IdeviceError> {
+        let mut connection = XPCConnection::new(stream).await?;
+
+        let data = connection
+            .read_message(http2::Connection::ROOT_CHANNEL)
+            .await?;
+
+        let data = match data.message {
+            Some(d) => match d
+                .as_dictionary()
+                .and_then(|x| x.get("Services"))
+                .and_then(|x| x.as_dictionary())
+            {
+                Some(d) => d.to_owned(),
+                None => return Err(IdeviceError::UnexpectedResponse),
+            },
+            None => return Err(IdeviceError::UnexpectedResponse),
+        };
+
+        let mut services = HashMap::new();
+        for (name, service) in data.into_iter() {
+            match service.as_dictionary() {
+                Some(service) => {
+                    let entitlement = match service.get("Entitlement").and_then(|x| x.as_string()) {
+                        Some(e) => e.to_string(),
+                        None => {
+                            warn!("Service did not contain entitlement string");
+                            continue;
+                        }
+                    };
+                    let port = match service
+                        .get("Port")
+                        .and_then(|x| x.as_string())
+                        .and_then(|x| x.parse::<u16>().ok())
+                    {
+                        Some(e) => e,
+                        None => {
+                            warn!("Service did not contain port string");
+                            continue;
+                        }
+                    };
+                    let uses_remote_xpc = match service
+                        .get("Properties")
+                        .and_then(|x| x.as_dictionary())
+                        .and_then(|x| x.get("UsesRemoteXPC"))
+                        .and_then(|x| x.as_bool())
+                    {
+                        Some(e) => e.to_owned(),
+                        None => false, // default is false
+                    };
+
+                    let features = service
+                        .get("Properties")
+                        .and_then(|x| x.as_dictionary())
+                        .and_then(|x| x.get("Features"))
+                        .and_then(|x| x.as_array())
+                        .map(|f| {
+                            f.iter()
+                                .filter_map(|x| x.as_string())
+                                .map(|x| x.to_string())
+                                .collect::<Vec<String>>()
+                        });
+
+                    let service_version = service
+                        .get("Properties")
+                        .and_then(|x| x.as_dictionary())
+                        .and_then(|x| x.get("ServiceVersion"))
+                        .and_then(|x| x.as_signed_integer())
+                        .map(|e| e.to_owned());
+
+                    services.insert(
+                        name,
+                        XPCService {
+                            entitlement,
+                            port,
+                            uses_remote_xpc,
+                            features,
+                            service_version,
+                        },
+                    );
+                }
+                None => {
+                    warn!("Service is not a dictionary!");
+                    continue;
+                }
+            }
+        }
+
+        Ok(Self {
+            connection,
+            services,
+        })
+    }
+}
+
 impl XPCConnection {
     pub const ROOT_CHANNEL: u32 = http2::Connection::ROOT_CHANNEL;
     pub const REPLY_CHANNEL: u32 = http2::Connection::REPLY_CHANNEL;
     const INIT_STREAM: u32 = http2::Connection::INIT_STREAM;
-
-    pub async fn connect<A: ToSocketAddrs>(addr: A) -> Result<Self, XPCError> {
-        Self::new(Box::new(TcpStream::connect(addr).await?)).await
-    }
 
     pub async fn new(stream: crate::IdeviceSocket) -> Result<Self, XPCError> {
         let mut client = http2::Connection::new(stream).await?;
@@ -121,27 +232,5 @@ impl XPCConnection {
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn it_works() {
-        let mut client = XPCConnection::new(Box::new(
-            TcpStream::connect(("fdca:2653:ece9::1", 64497))
-                .await
-                .unwrap(),
-        ))
-        .await
-        .unwrap();
-
-        let data = client
-            .read_message(http2::Connection::ROOT_CHANNEL)
-            .await
-            .unwrap();
-        println!("{:#?}", data);
     }
 }

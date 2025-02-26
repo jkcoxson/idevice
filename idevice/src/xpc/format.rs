@@ -326,6 +326,13 @@ impl XPCObject {
         }
     }
 
+    pub fn as_array(&self) -> Option<&Vec<Self>> {
+        match self {
+            XPCObject::Array(array) => Some(array),
+            _ => None,
+        }
+    }
+
     pub fn as_string(&self) -> Option<&str> {
         match self {
             XPCObject::String(s) => Some(s),
