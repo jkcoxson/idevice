@@ -3,7 +3,10 @@
 use log::debug;
 use openssl::sha::Sha384;
 
-use crate::{lockdownd::LockdowndClient, tss::TSSRequest, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdownd::LockdowndClient, Idevice, IdeviceError, IdeviceService};
+
+#[cfg(feature = "tss")]
+use crate::tss::TSSRequest;
 
 /// Manages mounted images on the idevice.
 /// NOTE: A lockdown client must be established and queried after establishing a mounter client, or
@@ -318,6 +321,7 @@ impl ImageMounter {
         Ok(())
     }
 
+    #[cfg(feature = "tss")]
     pub async fn mount_personalized(
         &mut self,
         provider: &dyn crate::provider::IdeviceProvider,
@@ -340,6 +344,7 @@ impl ImageMounter {
         .await
     }
 
+    #[cfg(feature = "tss")]
     /// Calling this has the potential of closing the socket,
     /// so a provider is required for this abstraction.
     #[allow(clippy::too_many_arguments)] // literally nobody asked

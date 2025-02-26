@@ -40,7 +40,7 @@ core_device_proxy = ["dep:serde_json", "dep:json", "dep:byteorder"]
 heartbeat = []
 installation_proxy = []
 mounter = ["dep:sha2"]
-usbmuxd = []
+usbmuxd = ["tokio/net"]
 tcp = ["tokio/net"]
 tss = ["dep:uuid", "dep:reqwest"]
 tunneld = ["dep:serde_json", "dep:json", "dep:reqwest"]
@@ -50,6 +50,7 @@ xpc = [
   "dep:uuid",
   "dep:async-recursion",
   "dep:base64",
+  "dep:json",
 ]
 full = [
   "core_device_proxy",

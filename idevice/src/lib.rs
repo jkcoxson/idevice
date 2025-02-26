@@ -283,7 +283,7 @@ pub enum IdeviceError {
     #[error("image not mounted")]
     ImageNotMounted,
 
-    #[cfg(feature = "tss")]
+    #[cfg(any(feature = "tss", feature = "tunneld"))]
     #[error("http reqwest error")]
     Reqwest(#[from] reqwest::Error),
 
