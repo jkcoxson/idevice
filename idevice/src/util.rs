@@ -28,7 +28,13 @@ fn print_plist(p: &Value, indentation: usize) -> String {
         Value::Array(vec) => {
             let items: Vec<String> = vec
                 .iter()
-                .map(|v| print_plist(v, indentation + 2))
+                .map(|v| {
+                    format!(
+                        "{}{}",
+                        " ".repeat(indentation + 2),
+                        print_plist(v, indentation + 2)
+                    )
+                })
                 .collect();
             format!("[\n{}\n{}]", items.join(",\n"), indent)
         }
@@ -44,7 +50,7 @@ fn print_plist(p: &Value, indentation: usize) -> String {
                     )
                 })
                 .collect();
-            format!("{}{{\n{}\n{}}}", indent, items.join(",\n"), indent)
+            format!("{{\n{}\n{}}}", items.join(",\n"), indent)
         }
         Value::Boolean(b) => format!("{}", b),
         Value::Data(vec) => {
@@ -55,7 +61,11 @@ fn print_plist(p: &Value, indentation: usize) -> String {
                 .map(|b| format!("{:02X}", b))
                 .collect::<Vec<String>>()
                 .join(" ");
-            format!("Data({}... Len: {})", preview, len)
+            if len > 20 {
+                format!("Data({}... Len: {})", preview, len)
+            } else {
+                format!("Data({} Len: {})", preview, len)
+            }
         }
         Value::Date(date) => format!("Date({})", date.to_xml_format()),
         Value::Real(f) => format!("{}", f),
