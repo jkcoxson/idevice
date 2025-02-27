@@ -227,7 +227,7 @@ impl XPCConnection {
                     return Ok(decoded);
                 }
                 Err(err) => {
-                    log::error!("Error decoding message: {:?}", err);
+                    log::warn!("Error decoding message: {:?}", err);
                     buf.extend_from_slice(&self.inner.read_streamid(stream_id).await?);
                 }
             }

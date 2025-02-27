@@ -37,6 +37,7 @@ sha2 = { version = "0.10", optional = true }
 
 [features]
 core_device_proxy = ["dep:serde_json", "dep:json", "dep:byteorder"]
+debug_proxy = []
 heartbeat = []
 installation_proxy = []
 mounter = ["dep:sha2"]
@@ -54,6 +55,7 @@ xpc = [
 ]
 full = [
   "core_device_proxy",
+  "debug_proxy",
   "heartbeat",
   "installation_proxy",
   "mounter",

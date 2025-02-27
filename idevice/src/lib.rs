@@ -2,6 +2,8 @@
 
 #[cfg(feature = "core_device_proxy")]
 pub mod core_device_proxy;
+#[cfg(feature = "debug_proxy")]
+pub mod debug_proxy;
 #[cfg(feature = "heartbeat")]
 pub mod heartbeat;
 #[cfg(feature = "xpc")]
@@ -293,6 +295,10 @@ pub enum IdeviceError {
     #[cfg(feature = "xpc")]
     #[error("xpc message failed")]
     Xpc(#[from] xpc::error::XPCError),
+
+    #[cfg(feature = "debug_proxy")]
+    #[error("invalid argument passed")]
+    InvalidArgument,
 
     #[error("unknown error `{0}` returned from device")]
     UnknownErrorType(String),

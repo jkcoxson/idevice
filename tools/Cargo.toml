@@ -37,6 +37,9 @@ path = "src/idevice_id.rs"
 name = "remotexpc"
 path = "src/remotexpc.rs"
 
+[[bin]]
+name = "debug_proxy"
+path = "src/debug_proxy.rs"
 
 [dependencies]
 idevice = { path = "../idevice", features = ["full"] }
