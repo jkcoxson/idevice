@@ -41,6 +41,10 @@ path = "src/remotexpc.rs"
 name = "debug_proxy"
 path = "src/debug_proxy.rs"
 
+[[bin]]
+name = "misagent"
+path = "src/misagent.rs"
+
 [dependencies]
 idevice = { path = "../idevice", features = ["full"] }
 tokio = { version = "1.43", features = ["io-util", "macros", "time", "full"] }
