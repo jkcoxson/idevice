@@ -4,6 +4,8 @@
 pub mod core_device_proxy;
 #[cfg(feature = "debug_proxy")]
 pub mod debug_proxy;
+#[cfg(feature = "dvt")]
+pub mod dvt;
 #[cfg(feature = "heartbeat")]
 pub mod heartbeat;
 #[cfg(feature = "xpc")]
