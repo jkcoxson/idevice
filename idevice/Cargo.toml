@@ -40,6 +40,7 @@ core_device_proxy = ["dep:serde_json", "dep:json", "dep:byteorder"]
 debug_proxy = []
 heartbeat = []
 installation_proxy = []
+misagent = []
 mounter = ["dep:sha2"]
 usbmuxd = ["tokio/net"]
 tcp = ["tokio/net"]
@@ -58,6 +59,7 @@ full = [
   "debug_proxy",
   "heartbeat",
   "installation_proxy",
+  "misagent",
   "mounter",
   "usbmuxd",
   "xpc",

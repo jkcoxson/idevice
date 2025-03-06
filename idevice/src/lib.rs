@@ -11,6 +11,8 @@ pub mod http2;
 #[cfg(feature = "installation_proxy")]
 pub mod installation_proxy;
 pub mod lockdownd;
+#[cfg(feature = "misagent")]
+pub mod misagent;
 #[cfg(feature = "mounter")]
 pub mod mounter;
 pub mod pairing_file;
