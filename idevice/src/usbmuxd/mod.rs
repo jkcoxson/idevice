@@ -8,7 +8,7 @@ use std::{
 #[cfg(not(unix))]
 use std::net::SocketAddrV4;
 
-use log::debug;
+use log::{debug, warn};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{
@@ -129,21 +129,25 @@ impl UsbmuxdConnection {
                     if let Some(addr) = dev.properties.network_address {
                         let addr = &Into::<Vec<u8>>::into(addr);
                         if addr.len() < 8 {
+                            warn!("Device address bytes len < 8");
                             return Err(IdeviceError::UnexpectedResponse);
                         }
 
-                        let addr = match addr[0] {
+                        match addr[0] {
                             0x02 => {
                                 // ipv4
-                                IpAddr::V4(Ipv4Addr::new(addr[4], addr[5], addr[6], addr[7]))
+                                Connection::Network(IpAddr::V4(Ipv4Addr::new(
+                                    addr[4], addr[5], addr[6], addr[7],
+                                )))
                             }
                             0x1E => {
                                 // ipv6
                                 if addr.len() < 24 {
+                                    warn!("IPv6 address is less than 24 bytes");
                                     return Err(IdeviceError::UnexpectedResponse);
                                 }
 
-                                IpAddr::V6(Ipv6Addr::new(
+                                Connection::Network(IpAddr::V6(Ipv6Addr::new(
                                     u16::from_be_bytes([addr[8], addr[9]]),
                                     u16::from_be_bytes([addr[10], addr[11]]),
                                     u16::from_be_bytes([addr[12], addr[13]]),
@@ -152,20 +156,22 @@ impl UsbmuxdConnection {
                                     u16::from_be_bytes([addr[18], addr[19]]),
                                     u16::from_be_bytes([addr[20], addr[21]]),
                                     u16::from_be_bytes([addr[22], addr[23]]),
-                                ))
+                                )))
                             }
                             _ => {
-                                return Err(IdeviceError::UnexpectedResponse);
+                                warn!("Unknown IP address protocol: {:02X}", addr[0]);
+                                Connection::Unknown(format!("Network {:02X}", addr[0]))
                             }
-                        };
-                        Connection::Network(addr)
+                        }
                     } else {
+                        warn!("Device is network attached, but has no network info");
                         return Err(IdeviceError::UnexpectedResponse);
                     }
                 }
                 "USB" => Connection::Usb,
                 _ => Connection::Unknown(dev.properties.connection_type),
             };
+            debug!("Connection type: {connection_type:?}");
             devs.push(UsbmuxdDevice {
                 connection_type,
                 udid: dev.properties.serial_number,
