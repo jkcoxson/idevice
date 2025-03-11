@@ -2,10 +2,27 @@
 
 use plist::Value;
 
-pub fn plist_to_bytes(p: &plist::Dictionary) -> Vec<u8> {
+pub fn plist_to_xml_bytes(p: &plist::Dictionary) -> Vec<u8> {
     let buf = Vec::new();
     let mut writer = std::io::BufWriter::new(buf);
     plist::to_writer_xml(&mut writer, &p).unwrap();
+
+    writer.into_inner().unwrap()
+}
+
+pub fn plist_to_archived_bytes(p: plist::Value) -> Vec<u8> {
+    let mut root = plist::Dictionary::new();
+    root.insert("$version".into(), 100_000.into());
+    root.insert(
+        "$objects".into(),
+        plist::Value::Array(vec!["$null".into(), p]),
+    );
+    root.insert("$archiver".into(), "NSKeyedArchiver".into());
+    root.insert("$top".into(), plist::Dictionary::new().into());
+
+    let buf = Vec::new();
+    let mut writer = std::io::BufWriter::new(buf);
+    plist::to_writer_binary(&mut writer, &root).unwrap();
 
     writer.into_inner().unwrap()
 }

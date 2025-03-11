@@ -1,6 +1,6 @@
 // Jackson Coxson
 
-use crate::util::plist_to_bytes;
+use crate::util::plist_to_xml_bytes;
 use log::warn;
 
 #[derive(Debug)]
@@ -14,7 +14,7 @@ pub struct RawPacket {
 
 impl RawPacket {
     pub fn new(plist: plist::Dictionary, version: u32, message: u32, tag: u32) -> RawPacket {
-        let plist_bytes = plist_to_bytes(&plist);
+        let plist_bytes = plist_to_xml_bytes(&plist);
         let size = plist_bytes.len() as u32 + 16;
         RawPacket {
             size,
@@ -33,7 +33,7 @@ impl From<RawPacket> for Vec<u8> {
         packet.extend_from_slice(&raw_packet.version.to_le_bytes());
         packet.extend_from_slice(&raw_packet.message.to_le_bytes());
         packet.extend_from_slice(&raw_packet.tag.to_le_bytes());
-        packet.extend_from_slice(&plist_to_bytes(&raw_packet.plist));
+        packet.extend_from_slice(&plist_to_xml_bytes(&raw_packet.plist));
         packet
     }
 }

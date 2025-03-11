@@ -4,7 +4,7 @@
 use log::{debug, warn};
 use plist::Value;
 
-use crate::{util::plist_to_bytes, IdeviceError};
+use crate::{util::plist_to_xml_bytes, IdeviceError};
 
 const TSS_CLIENT_VERSION_STRING: &str = "libauthinstall-1033.0.2";
 const TSS_CONTROLLER_ACTION_URL: &str = "http://gs.apple.com/TSS/controller?action=2";
@@ -45,7 +45,7 @@ impl TSSRequest {
             .header("Content-type", "text/xml; charset=\"utf-8\"")
             .header("User-Agent", "InetURL/1.0")
             .header("Expect", "")
-            .body(plist_to_bytes(&self.inner))
+            .body(plist_to_xml_bytes(&self.inner))
             .send()
             .await?
             .text()

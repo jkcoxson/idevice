@@ -300,6 +300,20 @@ pub enum IdeviceError {
     #[error("xpc message failed")]
     Xpc(#[from] xpc::error::XPCError),
 
+    #[cfg(feature = "dvt")]
+    #[error("NSKeyedArchive error")]
+    NsKeyedArchiveError(#[from] ns_keyed_archive::ConverterError),
+
+    #[cfg(feature = "dvt")]
+    #[error("Unknown aux value type")]
+    UnknownAuxValueType(u32),
+
+    #[error("not enough bytes, expected {1}, got {0}")]
+    NotEnoughBytes(usize, usize),
+
+    #[error("failed to parse bytes as valid utf8")]
+    Utf8Error,
+
     #[cfg(feature = "debug_proxy")]
     #[error("invalid argument passed")]
     InvalidArgument,

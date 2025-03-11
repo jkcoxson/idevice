@@ -34,6 +34,10 @@ name = "idevice_id"
 path = "src/idevice_id.rs"
 
 [[bin]]
+name = "process_control"
+path = "src/process_control.rs"
+
+[[bin]]
 name = "remotexpc"
 path = "src/remotexpc.rs"
 
