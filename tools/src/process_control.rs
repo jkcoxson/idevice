@@ -1,13 +1,12 @@
 // Jackson Coxson
 
 use std::{
-    io::Write,
     net::{IpAddr, SocketAddr},
     str::FromStr,
 };
 
 use clap::{Arg, Command};
-use idevice::{debug_proxy::DebugProxyClient, tunneld::get_tunneld_devices, xpc::XPCDevice};
+use idevice::{tunneld::get_tunneld_devices, xpc::XPCDevice};
 use tokio::net::TcpStream;
 
 mod common;
@@ -78,5 +77,10 @@ async fn main() {
     .await
     .expect("Failed to connect");
 
-    let rs_client = idevice::dvt::remote_server::RemoteServerClient::new(Box::new(stream));
+    let mut rs_client =
+        idevice::dvt::remote_server::RemoteServerClient::new(Box::new(stream)).unwrap();
+    rs_client.read_message(0).await.expect("no read??");
+    let pc_client = idevice::dvt::process_control::ProcessControlClient::new(&mut rs_client)
+        .await
+        .unwrap();
 }

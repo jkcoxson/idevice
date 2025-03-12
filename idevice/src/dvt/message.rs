@@ -21,7 +21,7 @@ pub struct MessageHeader {
     length: u32, // Length of of the payload
     identifier: u32,
     conversation_index: u32,
-    channel: u32,
+    pub channel: u32,
     expects_reply: bool,
 }
 
@@ -194,7 +194,7 @@ impl MessageHeader {
         expects_reply: bool,
     ) -> Self {
         Self {
-            magic: 0x795b3d1f,
+            magic: 0x1F3D5B79,
             header_len: 32,
             fragment_id,
             fragment_count,
@@ -236,8 +236,7 @@ impl PayloadHeader {
         res
     }
 
-    // from pymobiledevice3
-    pub fn instruments_message_type() -> Self {
+    pub fn method_invocation() -> Self {
         Self {
             flags: 2,
             ..Default::default()
@@ -369,7 +368,7 @@ mod tests {
 
     #[tokio::test]
     async fn t1() {
-        let test = "/Users/jacksoncoxson/Desktop/try1";
+        let test = "/Users/jacksoncoxson/Desktop/try2";
         let mut bytes = tokio::fs::File::open(test).await.unwrap();
 
         let message = Message::from_reader(&mut bytes).await.unwrap();

@@ -308,6 +308,10 @@ pub enum IdeviceError {
     #[error("Unknown aux value type")]
     UnknownAuxValueType(u32),
 
+    #[cfg(feature = "dvt")]
+    #[error("unknown channel")]
+    UnknownChannel(u32),
+
     #[error("not enough bytes, expected {1}, got {0}")]
     NotEnoughBytes(usize, usize),
 
