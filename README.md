@@ -28,13 +28,13 @@ but the API and feature-set are far from final or even planned.
 - [ ] file relay
 - [ ] house arrest
 - [ ] misagent (certificates)
-- [ ] RemoteXPC
-  - Debug server
-  - Image mounting
+- [x] RemoteXPC
 - [ ] mobile backup
 - [ ] notification proxy
+- [x] DVT protocol
 - [ ] screenshot
 - [ ] simulate location
+- [x] process control
 - [ ] web inspector
 - [ ] usbmuxd connection
 - [ ] Documentation
