@@ -42,8 +42,8 @@ pub struct AuxHeader {
 
 #[derive(Debug, PartialEq)]
 pub struct Aux {
-    header: AuxHeader,
-    values: Vec<AuxValue>,
+    pub header: AuxHeader,
+    pub values: Vec<AuxValue>,
 }
 
 #[derive(PartialEq)]
@@ -166,11 +166,7 @@ impl Aux {
         }
 
         let mut res = Vec::new();
-        let buffer_size = if values_payload.len() > 496 {
-            8688_u32
-        } else {
-            496
-        };
+        let buffer_size = 496_u32;
         res.extend_from_slice(&buffer_size.to_le_bytes()); // TODO: find what
                                                            // this means and how to actually serialize it
                                                            // go-ios just uses 496
@@ -180,6 +176,13 @@ impl Aux {
         res.extend_from_slice(&0_u32.to_le_bytes());
         res.extend_from_slice(&values_payload);
         res
+    }
+}
+
+impl AuxValue {
+    // Returns an array AuxType
+    pub fn archived_value(v: impl Into<plist::Value>) -> Self {
+        Self::Array(ns_keyed_archive::encode::encode_to_bytes(v.into()).expect("Failed to encode"))
     }
 }
 
@@ -359,29 +362,5 @@ impl std::fmt::Debug for AuxValue {
             AuxValue::U32(n) => write!(f, "U32({})", n),
             AuxValue::I64(n) => write!(f, "I64({})", n),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn t1() {
-        let test = "/Users/jacksoncoxson/Desktop/try2";
-        let mut bytes = tokio::fs::File::open(test).await.unwrap();
-
-        let message = Message::from_reader(&mut bytes).await.unwrap();
-        let bytes = message.serialize();
-        let mut cursor = std::io::Cursor::new(bytes);
-        let message2 = Message::from_reader(&mut cursor).await.unwrap();
-
-        println!("{message:#?}");
-        println!("{message2:#?}");
-        assert_eq!(message, message2);
-
-        let og_bytes = tokio::fs::read(test).await.unwrap();
-        let new_bytes = message.serialize();
-        assert_eq!(og_bytes, new_bytes);
     }
 }

@@ -38,6 +38,10 @@ name = "process_control"
 path = "src/process_control.rs"
 
 [[bin]]
+name = "dvt_packet_parser"
+path = "src/dvt_packet_parser.rs"
+
+[[bin]]
 name = "remotexpc"
 path = "src/remotexpc.rs"
 
@@ -59,3 +63,4 @@ sha2 = { version = "0.10" }
 ureq = { version = "3" }
 clap = { version = "4.5" }
 plist = { version = "1.7" }
+ns-keyed-archive = "0.1.2"

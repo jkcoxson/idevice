@@ -28,12 +28,21 @@ pub struct Channel<'a> {
 
 impl RemoteServerClient {
     pub fn new(idevice: Box<dyn ReadWrite>) -> Result<Self, IdeviceError> {
+        let mut channels = HashMap::new();
+        channels.insert(0, VecDeque::new());
         Ok(Self {
             idevice,
             current_message: 0,
             new_channel: 1,
-            channels: HashMap::new(),
+            channels,
         })
+    }
+
+    pub fn root_channel(&mut self) -> Channel {
+        Channel {
+            client: self,
+            channel: 0,
+        }
     }
 
     pub async fn make_channel(
@@ -50,18 +59,21 @@ impl RemoteServerClient {
                     .expect("Failed to encode"),
             ),
         ];
-        self.send_message(
-            0,
+
+        let mut root = self.root_channel();
+        root.call_method(
             Some("_requestChannelWithCode:identifier:"),
             Some(args),
             true,
         )
         .await?;
 
-        let res = self.read_message(0).await?;
+        let res = root.read_message().await?;
         if res.data.is_some() {
             return Err(IdeviceError::UnexpectedResponse);
         }
+
+        self.channels.insert(code, VecDeque::new());
 
         self.build_channel(code)
     }
@@ -73,7 +85,7 @@ impl RemoteServerClient {
         })
     }
 
-    pub async fn send_message(
+    pub async fn call_method(
         &mut self,
         channel: u32,
         data: Option<impl Into<plist::Value>>,
@@ -89,11 +101,6 @@ impl RemoteServerClient {
 
         let message = Message::new(mheader, pheader, aux, data);
         debug!("Sending message: {message:#?}");
-        let bytes = message.serialize();
-        debug!(
-            "Re serde: {:#?}",
-            Message::from_reader(&mut std::io::Cursor::new(bytes)).await
-        );
         self.idevice.write_all(&message.serialize()).await?;
 
         Ok(())
@@ -133,14 +140,14 @@ impl Channel<'_> {
         self.client.read_message(self.channel).await
     }
 
-    pub async fn send_message(
+    pub async fn call_method(
         &mut self,
-        data: Option<impl Into<plist::Value>>,
+        method: Option<impl Into<plist::Value>>,
         args: Option<Vec<AuxValue>>,
         expect_reply: bool,
     ) -> Result<(), IdeviceError> {
         self.client
-            .send_message(self.channel, data, args, expect_reply)
+            .call_method(self.channel, method, args, expect_reply)
             .await
     }
 }

@@ -923,6 +923,7 @@ dependencies = [
  "env_logger",
  "idevice",
  "log",
+ "ns-keyed-archive",
  "plist",
  "sha2",
  "tokio",

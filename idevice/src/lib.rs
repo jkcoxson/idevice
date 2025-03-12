@@ -312,6 +312,10 @@ pub enum IdeviceError {
     #[error("unknown channel")]
     UnknownChannel(u32),
 
+    #[cfg(feature = "dvt")]
+    #[error("disable memory limit failed")]
+    DisableMemoryLimitFailed,
+
     #[error("not enough bytes, expected {1}, got {0}")]
     NotEnoughBytes(usize, usize),
 

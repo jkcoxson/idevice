@@ -21,7 +21,7 @@ async fn main() {
             Arg::new("udid")
                 .value_name("UDID")
                 .help("UDID of the device (overrides host/pairing file)")
-                .index(1),
+                .index(2),
         )
         .arg(
             Arg::new("about")
@@ -29,15 +29,24 @@ async fn main() {
                 .help("Show about information")
                 .action(clap::ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("bundle_id")
+                .value_name("Bundle ID")
+                .help("Bundle ID of the app to launch")
+                .index(1),
+        )
         .get_matches();
 
     if matches.get_flag("about") {
-        println!("debug_proxy - connect to the debug proxy and run commands");
+        println!("process_control - launch and manage processes on the device");
         println!("Copyright (c) 2025 Jackson Coxson");
         return;
     }
 
     let udid = matches.get_one::<String>("udid");
+    let bundle_id = matches
+        .get_one::<String>("bundle_id")
+        .expect("No bundle ID specified");
 
     let socket = SocketAddr::new(
         IpAddr::from_str("127.0.0.1").unwrap(),
@@ -80,7 +89,17 @@ async fn main() {
     let mut rs_client =
         idevice::dvt::remote_server::RemoteServerClient::new(Box::new(stream)).unwrap();
     rs_client.read_message(0).await.expect("no read??");
-    let pc_client = idevice::dvt::process_control::ProcessControlClient::new(&mut rs_client)
+    let mut pc_client = idevice::dvt::process_control::ProcessControlClient::new(&mut rs_client)
         .await
         .unwrap();
+
+    let pid = pc_client
+        .launch_app(bundle_id, None, None, true, false)
+        .await
+        .expect("no launch??");
+    pc_client
+        .disable_memory_limit(pid)
+        .await
+        .expect("no disable??");
+    println!("PID: {pid}");
 }
