@@ -32,12 +32,13 @@ json = { version = "0.12", optional = true }
 byteorder = { version = "1.5", optional = true }
 
 reqwest = { version = "0.12", features = ["json"], optional = true }
+smoltcp = { version = "0.12", optional = true }
+pcap-file = { version = "2.0", optional = true }
 
 sha2 = { version = "0.10", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.43", features = ["fs"] }
-
 
 [features]
 core_device_proxy = ["dep:serde_json", "dep:json", "dep:byteorder"]
@@ -47,10 +48,11 @@ heartbeat = []
 installation_proxy = []
 misagent = []
 mounter = ["dep:sha2"]
-usbmuxd = ["tokio/net"]
 tcp = ["tokio/net"]
+tunnel_tcp_stack = ["dep:smoltcp", "tokio/sync", "dep:pcap-file"]
 tss = ["dep:uuid", "dep:reqwest"]
 tunneld = ["dep:serde_json", "dep:json", "dep:reqwest"]
+usbmuxd = ["tokio/net"]
 xpc = [
   "tokio/sync",
   "dep:indexmap",
@@ -70,6 +72,7 @@ full = [
   "usbmuxd",
   "xpc",
   "tcp",
+  "tunnel_tcp_stack",
   "tss",
   "tunneld",
 ]

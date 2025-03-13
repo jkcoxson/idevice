@@ -3,6 +3,7 @@
 use clap::{Arg, Command};
 use idevice::{
     core_device_proxy::{self},
+    xpc::XPCDevice,
     IdeviceService,
 };
 use tun_rs::AbstractDevice;
@@ -62,38 +63,57 @@ async fn main() {
     let mut tun_proxy = core_device_proxy::CoreDeviceProxy::connect(&*provider)
         .await
         .expect("Unable to connect");
-    let response = tun_proxy.establish_tunnel().await.unwrap();
+    let rsd_port = tun_proxy.handshake.server_rsd_port;
 
-    let dev = tun_rs::create(&tun_rs::Configuration::default()).unwrap();
-    dev.add_address_v6(response.client_parameters.address.parse().unwrap(), 32)
-        .unwrap();
-    dev.set_mtu(response.client_parameters.mtu).unwrap();
-    dev.set_network_address(
-        response.client_parameters.address,
-        response.client_parameters.netmask.parse().unwrap(),
-        Some(response.server_address.parse().unwrap()),
-    )
-    .unwrap();
+    let mut tunnel = tun_proxy.create_software_tunnel().unwrap();
+    let channel = tunnel.connect_tcp(rsd_port).unwrap();
+    let client = XPCDevice::new(Box::new(channel)).await.expect("no xpc??");
+    todo!();
 
-    let async_dev = tun_rs::AsyncDevice::new(dev).unwrap();
-    async_dev.enabled(true).unwrap();
-    println!("-----------------------------");
-    println!("tun device created: {:?}", async_dev.name());
-    println!("server address: {}", response.server_address);
-    println!("rsd port: {}", response.server_rsd_port);
-    println!("-----------------------------");
-
-    let mut buf = vec![0; 1500];
-    loop {
-        tokio::select! {
-            Ok(len) = async_dev.recv(&mut buf) => {
-                println!("tun pkt: {:?}", &buf[..len]);
-                tun_proxy.send(&buf[..len]).await.unwrap();
-            }
-            Ok(res) = tun_proxy.recv() => {
-                println!("dev pkt: {:?}", &res);
-                async_dev.send(&res).await.unwrap();
-            }
-        }
-    }
+    // let dev = tun_rs::create(&tun_rs::Configuration::default()).unwrap();
+    // dev.add_address_v6(
+    //     tun_proxy
+    //         .handshake
+    //         .client_parameters
+    //         .address
+    //         .parse()
+    //         .unwrap(),
+    //     32,
+    // )
+    // .unwrap();
+    // dev.set_mtu(tun_proxy.handshake.client_parameters.mtu)
+    //     .unwrap();
+    // dev.set_network_address(
+    //     tun_proxy.handshake.client_parameters.address.clone(),
+    //     tun_proxy
+    //         .handshake
+    //         .client_parameters
+    //         .netmask
+    //         .parse()
+    //         .unwrap(),
+    //     Some(tun_proxy.handshake.server_address.parse().unwrap()),
+    // )
+    // .unwrap();
+    //
+    // let async_dev = tun_rs::AsyncDevice::new(dev).unwrap();
+    // async_dev.enabled(true).unwrap();
+    // println!("-----------------------------");
+    // println!("tun device created: {:?}", async_dev.name());
+    // println!("server address: {}", tun_proxy.handshake.server_address);
+    // println!("rsd port: {}", tun_proxy.handshake.server_rsd_port);
+    // println!("-----------------------------");
+    //
+    // let mut buf = vec![0; 1500];
+    // loop {
+    //     tokio::select! {
+    //         Ok(len) = async_dev.recv(&mut buf) => {
+    //             println!("tun pkt: {:?}", &buf[..len]);
+    //             tun_proxy.send(&buf[..len]).await.unwrap();
+    //         }
+    //         Ok(res) = tun_proxy.recv() => {
+    //             println!("dev pkt: {:?}", &res);
+    //             async_dev.send(&res).await.unwrap();
+    //         }
+    //     }
+    // }
 }

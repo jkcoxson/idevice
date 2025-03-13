@@ -29,7 +29,7 @@ mod util;
 #[cfg(feature = "xpc")]
 pub mod xpc;
 
-use log::{debug, error};
+use log::{debug, error, trace};
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use provider::IdeviceProvider;
 use std::io::{self, BufWriter};
@@ -144,7 +144,7 @@ impl Idevice {
             let part_len = message_parts.len() - 1;
 
             for (i, part) in message_parts.enumerate() {
-                debug!("Writing {i}/{part_len}");
+                trace!("Writing {i}/{part_len}");
                 socket.write_all(part).await?;
                 callback(((i, part_len), state.clone())).await;
             }
@@ -231,6 +231,7 @@ impl Idevice {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum IdeviceError {
     #[error("device socket io failed")]
     Socket(#[from] io::Error),
@@ -315,6 +316,18 @@ pub enum IdeviceError {
     #[cfg(feature = "dvt")]
     #[error("disable memory limit failed")]
     DisableMemoryLimitFailed,
+
+    #[cfg(feature = "tunnel_tcp_stack")]
+    #[error("failed to connect to TCP socket")]
+    ConnectionError(#[from] smoltcp::socket::tcp::ConnectError),
+
+    #[cfg(feature = "tunnel_tcp_stack")]
+    #[error("tunnel thread is closed")]
+    TunnelThreadClosed,
+
+    #[cfg(feature = "tunnel_tcp_stack")]
+    #[error("channel is closed")]
+    ChannelClosed,
 
     #[error("not enough bytes, expected {1}, got {0}")]
     NotEnoughBytes(usize, usize),

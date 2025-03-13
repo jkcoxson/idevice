@@ -1,5 +1,10 @@
 // Jackson Coxson
 
+#[cfg(feature = "tunnel_tcp_stack")]
+mod device;
+#[cfg(feature = "tunnel_tcp_stack")]
+mod interface;
+
 use crate::{lockdownd::LockdowndClient, Idevice, IdeviceError, IdeviceService};
 
 use byteorder::{BigEndian, WriteBytesExt};
@@ -61,6 +66,7 @@ impl CDTunnelPacket {
 
 pub struct CoreDeviceProxy {
     pub idevice: Idevice,
+    pub handshake: HandshakeResponse,
     pub mtu: u32,
 }
 
@@ -86,7 +92,7 @@ impl IdeviceService for CoreDeviceProxy {
                 .await?;
         }
 
-        Ok(Self::new(idevice))
+        Self::new(idevice).await
     }
 }
 
@@ -119,14 +125,7 @@ pub struct HandshakeResponse {
 impl CoreDeviceProxy {
     const DEFAULT_MTU: u32 = 16000;
 
-    pub fn new(idevice: Idevice) -> Self {
-        Self {
-            idevice,
-            mtu: Self::DEFAULT_MTU,
-        }
-    }
-
-    pub async fn establish_tunnel(&mut self) -> Result<HandshakeResponse, IdeviceError> {
+    pub async fn new(mut idevice: Idevice) -> Result<Self, IdeviceError> {
         let req = HandshakeRequest {
             packet_type: "clientHandshakeRequest".to_string(),
             mtu: Self::DEFAULT_MTU,
@@ -136,11 +135,8 @@ impl CoreDeviceProxy {
             body: serde_json::to_vec(&req)?,
         })?;
 
-        self.idevice.send_raw(&req).await?;
-        let recv = self
-            .idevice
-            .read_raw(CDTunnelPacket::MAGIC.len() + 2)
-            .await?;
+        idevice.send_raw(&req).await?;
+        let recv = idevice.read_raw(CDTunnelPacket::MAGIC.len() + 2).await?;
 
         if recv.len() < CDTunnelPacket::MAGIC.len() + 2 {
             return Err(IdeviceError::CdtunnelPacketTooShort);
@@ -151,10 +147,14 @@ impl CoreDeviceProxy {
             recv[CDTunnelPacket::MAGIC.len() + 1],
         ]) as usize;
 
-        let recv = self.idevice.read_raw(len).await?;
+        let recv = idevice.read_raw(len).await?;
         let res = serde_json::from_slice::<HandshakeResponse>(&recv)?;
 
-        Ok(res)
+        Ok(Self {
+            idevice,
+            handshake: res,
+            mtu: Self::DEFAULT_MTU,
+        })
     }
 
     pub async fn send(&mut self, data: &[u8]) -> Result<(), IdeviceError> {
@@ -164,5 +164,10 @@ impl CoreDeviceProxy {
 
     pub async fn recv(&mut self) -> Result<Vec<u8>, IdeviceError> {
         self.idevice.read_any(self.mtu).await
+    }
+
+    #[cfg(feature = "tunnel_tcp_stack")]
+    pub fn create_software_tunnel(self) -> Result<interface::TunnelInterface, IdeviceError> {
+        interface::TunnelInterface::new(self)
     }
 }
