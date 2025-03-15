@@ -970,7 +970,7 @@ dependencies = [
 
 [[package]]
 name = "idevice"
-version = "0.1.22"
+version = "0.1.24"
 dependencies = [
  "async-recursion",
  "base64",
