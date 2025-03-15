@@ -2,7 +2,7 @@
 name = "idevice"
 description = "A Rust library to interact with services on iOS devices."
 authors = ["Jackson Coxson"]
-version = "0.1.22"
+version = "0.1.23"
 edition = "2021"
 license = "MIT"
 documentation = "https://docs.rs/idevice"
@@ -16,7 +16,7 @@ tokio-openssl = { version = "0.6" }
 
 plist = { version = "1.7" }
 serde = { version = "1", features = ["derive"] }
-ns-keyed-archive = { version = "0.1.2", optional = true }
+ns-keyed-archive = { version = "0.1.3", optional = true }
 
 thiserror = { version = "2" }
 log = { version = "0.4" }

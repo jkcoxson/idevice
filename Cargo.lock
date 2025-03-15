@@ -1227,9 +1227,9 @@ dependencies = [
 
 [[package]]
 name = "ns-keyed-archive"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82124a464c3fe86dea8ac04edef9438615f680cccfbd7bf08e0a3fd1565b03cc"
+checksum = "3bdf3b814bc8e07ff58c78487d00f693e655c7238d2bff0df2d6d8957f877af7"
 dependencies = [
  "nskeyedarchiver_converter",
  "plist",
