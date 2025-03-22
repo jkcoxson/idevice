@@ -38,6 +38,10 @@ impl<R: ReadWrite> RemoteServerClient<R> {
         })
     }
 
+    pub fn into_inner(self) -> R {
+        self.idevice
+    }
+
     pub fn root_channel(&mut self) -> Channel<R> {
         Channel {
             client: self,

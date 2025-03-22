@@ -33,14 +33,8 @@ impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
                 .into(),
         );
         let mut options = Dictionary::new();
-        options.insert(
-            "StartSuspendedKey".into(),
-            if start_suspended { 0_u64 } else { 1 }.into(),
-        );
-        options.insert(
-            "KillExisting".into(),
-            if kill_existing { 0_u64 } else { 1 }.into(),
-        );
+        options.insert("StartSuspendedKey".into(), start_suspended.into());
+        options.insert("KillExisting".into(), kill_existing.into());
 
         let env_vars = match env_vars {
             Some(e) => e,
