@@ -63,6 +63,7 @@ impl Adapter {
 
     pub async fn connect(&mut self, port: u16) -> Result<(), std::io::Error> {
         self.read_buffer = Vec::new();
+        self.write_buffer = Vec::new();
 
         // Randomize seq
         self.seq = rand::random();
@@ -94,7 +95,7 @@ impl Adapter {
         // Wait for the syn ack
         let res = self.read_tcp_packet().await?;
         if !(res.flags.syn && res.flags.ack) {
-            log::error!("Didn't get syn ack");
+            log::error!("Didn't get syn ack: {res:#?}, {self:#?}");
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "No syn ack",
@@ -143,6 +144,7 @@ impl Adapter {
             self.ack,
             TcpFlags {
                 fin: true,
+                ack: true,
                 ..Default::default()
             },
             u16::MAX - 1,
@@ -151,6 +153,18 @@ impl Adapter {
         let ip_packet = self.ip_wrap(&tcp_packet);
         self.peer.write_all(&ip_packet).await?;
         self.log_packet(&ip_packet).await?;
+
+        loop {
+            let res = self.read_tcp_packet().await?;
+            if res.flags.psh || !res.payload.is_empty() {
+                self.ack().await?;
+                continue;
+            }
+
+            if res.flags.ack || res.flags.fin || res.flags.rst {
+                break;
+            }
+        }
         self.state = AdapterState::None;
         Ok(())
     }
@@ -219,6 +233,9 @@ impl Adapter {
     pub async fn recv(&mut self) -> Result<Vec<u8>, std::io::Error> {
         loop {
             let res = self.read_tcp_packet().await?;
+            if res.destination_port != self.host_port || res.source_port != self.peer_port {
+                continue;
+            }
             if res.flags.psh || !res.payload.is_empty() {
                 self.ack().await?;
                 break Ok(res.payload);
@@ -265,16 +282,23 @@ impl Adapter {
     }
 
     async fn read_tcp_packet(&mut self) -> Result<TcpPacket, std::io::Error> {
-        let ip_packet = self.read_ip_packet().await?;
-        let tcp_packet = TcpPacket::parse(&ip_packet)?;
-        trace!("TCP packet: {tcp_packet:#?}");
-        self.ack = tcp_packet.sequence_number
-            + if tcp_packet.payload.is_empty() {
-                1
-            } else {
-                tcp_packet.payload.len() as u32
-            };
-        Ok(tcp_packet)
+        loop {
+            let ip_packet = self.read_ip_packet().await?;
+            let tcp_packet = TcpPacket::parse(&ip_packet)?;
+            if tcp_packet.destination_port != self.host_port
+                || tcp_packet.source_port != self.peer_port
+            {
+                continue;
+            }
+            trace!("TCP packet: {tcp_packet:#?}");
+            self.ack = tcp_packet.sequence_number
+                + if tcp_packet.payload.is_empty() {
+                    1
+                } else {
+                    tcp_packet.payload.len() as u32
+                };
+            break Ok(tcp_packet);
+        }
     }
 
     fn ip_wrap(&self, packet: &[u8]) -> Vec<u8> {
