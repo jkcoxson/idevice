@@ -1,10 +1,5 @@
 // Jackson Coxson
 
-#[cfg(feature = "tunnel_tcp_stack")]
-mod device;
-#[cfg(feature = "tunnel_tcp_stack")]
-mod interface;
-
 use crate::{lockdownd::LockdowndClient, Idevice, IdeviceError, IdeviceService};
 
 use byteorder::{BigEndian, WriteBytesExt};
@@ -167,7 +162,17 @@ impl CoreDeviceProxy {
     }
 
     #[cfg(feature = "tunnel_tcp_stack")]
-    pub fn create_software_tunnel(self) -> Result<interface::TunnelInterface, IdeviceError> {
-        interface::TunnelInterface::new(self)
+    pub fn create_software_tunnel(self) -> Result<crate::tcp::adapter::Adapter, IdeviceError> {
+        let our_ip = self
+            .handshake
+            .client_parameters
+            .address
+            .parse::<std::net::IpAddr>()?;
+        let their_ip = self.handshake.server_address.parse::<std::net::IpAddr>()?;
+        Ok(crate::tcp::adapter::Adapter::new(
+            Box::new(self.idevice.socket.unwrap()),
+            our_ip,
+            their_ip,
+        ))
     }
 }

@@ -1,14 +1,8 @@
 // Jackson Coxson
 // Print out all the RemoteXPC services
 
-use std::{
-    net::{IpAddr, SocketAddr},
-    str::FromStr,
-};
-
 use clap::{Arg, Command};
-use idevice::{tunneld::get_tunneld_devices, xpc::XPCDevice};
-use tokio::net::TcpStream;
+use idevice::{core_device_proxy::CoreDeviceProxy, xpc::XPCDevice, IdeviceService};
 
 mod common;
 
@@ -18,6 +12,18 @@ async fn main() {
 
     let matches = Command::new("remotexpc")
         .about("Get services from RemoteXPC")
+        .arg(
+            Arg::new("host")
+                .long("host")
+                .value_name("HOST")
+                .help("IP address of the device"),
+        )
+        .arg(
+            Arg::new("pairing_file")
+                .long("pairing-file")
+                .value_name("PATH")
+                .help("Path to the pairing file"),
+        )
         .arg(
             Arg::new("udid")
                 .value_name("UDID")
@@ -39,31 +45,28 @@ async fn main() {
     }
 
     let udid = matches.get_one::<String>("udid");
+    let pairing_file = matches.get_one::<String>("pairing_file");
+    let host = matches.get_one::<String>("host");
 
-    let socket = SocketAddr::new(
-        IpAddr::from_str("127.0.0.1").unwrap(),
-        idevice::tunneld::DEFAULT_PORT,
-    );
-    let mut devices = get_tunneld_devices(socket)
-        .await
-        .expect("Failed to get tunneld devices");
-
-    let (_udid, device) = match udid {
-        Some(u) => (
-            u.to_owned(),
-            devices.remove(u).expect("Device not in tunneld"),
-        ),
-        None => devices.into_iter().next().expect("No devices"),
+    let provider = match common::get_provider(udid, host, pairing_file, "remotexpc-jkcoxson").await
+    {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("{e}");
+            return;
+        }
     };
 
+    let proxy = CoreDeviceProxy::connect(&*provider)
+        .await
+        .expect("no core proxy");
+    let rsd_port = proxy.handshake.server_rsd_port;
+
+    let mut adapter = proxy.create_software_tunnel().expect("no software tunnel");
+    adapter.connect(rsd_port).await.expect("no RSD connect");
+
     // Make the connection to RemoteXPC
-    let client = XPCDevice::new(Box::new(
-        TcpStream::connect((device.tunnel_address.as_str(), device.tunnel_port))
-            .await
-            .unwrap(),
-    ))
-    .await
-    .unwrap();
+    let client = XPCDevice::new(Box::new(adapter)).await.unwrap();
 
     println!("{:#?}", client.services);
 }

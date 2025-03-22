@@ -7,7 +7,7 @@ use crate::{
         self,
         h2::{SettingsFrame, WindowUpdateFrame},
     },
-    IdeviceError,
+    IdeviceError, ReadWrite,
 };
 use error::XPCError;
 use format::{XPCFlag, XPCMessage, XPCObject};
@@ -18,8 +18,8 @@ pub mod cdtunnel;
 pub mod error;
 pub mod format;
 
-pub struct XPCDevice {
-    pub connection: XPCConnection,
+pub struct XPCDevice<R: ReadWrite> {
+    pub connection: XPCConnection<R>,
     pub services: HashMap<String, XPCService>,
 }
 
@@ -32,19 +32,17 @@ pub struct XPCService {
     pub service_version: Option<i64>,
 }
 
-pub struct XPCConnection {
-    inner: http2::Connection,
+pub struct XPCConnection<R: ReadWrite> {
+    pub(crate) inner: http2::Connection<R>,
     root_message_id: u64,
     reply_message_id: u64,
 }
 
-impl XPCDevice {
-    pub async fn new(stream: crate::IdeviceSocket) -> Result<Self, IdeviceError> {
+impl<R: ReadWrite> XPCDevice<R> {
+    pub async fn new(stream: R) -> Result<Self, IdeviceError> {
         let mut connection = XPCConnection::new(stream).await?;
 
-        let data = connection
-            .read_message(http2::Connection::ROOT_CHANNEL)
-            .await?;
+        let data = connection.read_message(http2::ROOT_CHANNEL).await?;
 
         let data = match data.message {
             Some(d) => match d
@@ -132,14 +130,18 @@ impl XPCDevice {
             services,
         })
     }
+
+    pub fn into_inner(self) -> R {
+        self.connection.inner.stream
+    }
 }
 
-impl XPCConnection {
-    pub const ROOT_CHANNEL: u32 = http2::Connection::ROOT_CHANNEL;
-    pub const REPLY_CHANNEL: u32 = http2::Connection::REPLY_CHANNEL;
-    const INIT_STREAM: u32 = http2::Connection::INIT_STREAM;
+impl<R: ReadWrite> XPCConnection<R> {
+    pub const ROOT_CHANNEL: u32 = http2::ROOT_CHANNEL;
+    pub const REPLY_CHANNEL: u32 = http2::REPLY_CHANNEL;
+    const INIT_STREAM: u32 = http2::INIT_STREAM;
 
-    pub async fn new(stream: crate::IdeviceSocket) -> Result<Self, XPCError> {
+    pub async fn new(stream: R) -> Result<Self, XPCError> {
         let mut client = http2::Connection::new(stream).await?;
         client
             .send_frame(SettingsFrame::new(

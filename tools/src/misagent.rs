@@ -1,12 +1,7 @@
 // Jackson Coxson
 
-use std::path::PathBuf;
-
-use clap::{arg, value_parser, Arg, Command};
-use idevice::{
-    lockdownd::LockdowndClient, misagent::MisagentClient, mounter::ImageMounter,
-    pretty_print_plist, IdeviceService,
-};
+use clap::{Arg, Command};
+use idevice::{misagent::MisagentClient, pretty_print_plist, IdeviceService};
 
 mod common;
 

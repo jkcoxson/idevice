@@ -3,4 +3,5 @@ BuildManifest.plist
 Image.dmg
 Image.dmg.trustcache
 .DS_Store
+*.pcap
 

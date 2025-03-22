@@ -19,6 +19,8 @@ pub mod misagent;
 pub mod mounter;
 pub mod pairing_file;
 pub mod provider;
+#[cfg(feature = "tunnel_tcp_stack")]
+pub mod tcp;
 #[cfg(feature = "tss")]
 pub mod tss;
 #[cfg(feature = "tunneld")]
@@ -313,21 +315,12 @@ pub enum IdeviceError {
     #[error("unknown channel")]
     UnknownChannel(u32),
 
+    #[error("cannot parse string as IpAddr")]
+    AddrParseError(#[from] std::net::AddrParseError),
+
     #[cfg(feature = "dvt")]
     #[error("disable memory limit failed")]
     DisableMemoryLimitFailed,
-
-    #[cfg(feature = "tunnel_tcp_stack")]
-    #[error("failed to connect to TCP socket")]
-    ConnectionError(#[from] smoltcp::socket::tcp::ConnectError),
-
-    #[cfg(feature = "tunnel_tcp_stack")]
-    #[error("tunnel thread is closed")]
-    TunnelThreadClosed,
-
-    #[cfg(feature = "tunnel_tcp_stack")]
-    #[error("channel is closed")]
-    ChannelClosed,
 
     #[error("not enough bytes, expected {1}, got {0}")]
     NotEnoughBytes(usize, usize),

@@ -9,8 +9,8 @@ use crate::{IdeviceError, ReadWrite};
 
 pub const SERVICE_NAME: &str = "com.apple.internal.dt.remote.debugproxy";
 
-pub struct DebugProxyClient {
-    pub socket: Box<dyn ReadWrite>,
+pub struct DebugProxyClient<R: ReadWrite> {
+    pub socket: R,
     pub noack_mode: bool,
 }
 
@@ -25,12 +25,16 @@ impl DebugserverCommand {
     }
 }
 
-impl DebugProxyClient {
-    pub fn new(socket: Box<dyn ReadWrite>) -> Self {
+impl<R: ReadWrite> DebugProxyClient<R> {
+    pub fn new(socket: R) -> Self {
         Self {
             socket,
             noack_mode: false,
         }
+    }
+
+    pub fn into_inner(self) -> R {
+        self.socket
     }
 
     pub async fn send_command(

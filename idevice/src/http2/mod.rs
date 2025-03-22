@@ -17,20 +17,22 @@ use h2::{
     HTTP2_MAGIC,
 };
 
+use crate::ReadWrite;
+
 pub type Channels = HashMap<u32, (Sender<Vec<u8>>, Receiver<Vec<u8>>)>;
 
-pub struct Connection {
-    stream: crate::IdeviceSocket,
+pub const INIT_STREAM: u32 = 0;
+pub const ROOT_CHANNEL: u32 = 1;
+pub const REPLY_CHANNEL: u32 = 3;
+
+pub struct Connection<R: ReadWrite> {
+    pub stream: R,
     channels: Channels,
     window_size: u32,
 }
 
-impl Connection {
-    pub const INIT_STREAM: u32 = 0;
-    pub const ROOT_CHANNEL: u32 = 1;
-    pub const REPLY_CHANNEL: u32 = 3;
-
-    pub async fn new(mut stream: crate::IdeviceSocket) -> Result<Self, Http2Error> {
+impl<R: ReadWrite> Connection<R> {
+    pub async fn new(mut stream: R) -> Result<Self, Http2Error> {
         stream.write_all(HTTP2_MAGIC).await?;
         Ok(Self {
             stream,
@@ -181,12 +183,12 @@ mod tests {
         // apart of spec we are allowed to send frames before reading any from the server.
         // 'INIT_STREAM'/0 applies to all stream_ids.
         client
-            .send_frame(WindowUpdateFrame::new(Connection::INIT_STREAM, 983041))
+            .send_frame(WindowUpdateFrame::new(INIT_STREAM, 983041))
             .await
             .unwrap();
 
         // We create stream_id '1' by sending Header frame.
-        let mut frame = Frame::new(Connection::ROOT_CHANNEL, 5, FrameType::Headers);
+        let mut frame = Frame::new(ROOT_CHANNEL, 5, FrameType::Headers);
         frame.set_body(
             [
                 0x41, 0x89, 0x2, 0xe0, 0x5c, 0xb, 0x82, 0xe0, 0x40, 0x10, 0x7f, 0x82, 0x84, 0x86,
@@ -199,12 +201,12 @@ mod tests {
         // when server sends 'Settings' on a streamId that the client hasn't sent one on.
         // then we must send them back one.
         client
-            .send_frame(Frame::new(Connection::ROOT_CHANNEL, 1, FrameType::Settings))
+            .send_frame(Frame::new(ROOT_CHANNEL, 1, FrameType::Settings))
             .await
             .unwrap();
 
         client
-            .write_streamid(Connection::ROOT_CHANNEL, b"nibba\x00".to_vec())
+            .write_streamid(ROOT_CHANNEL, b"nibba\x00".to_vec())
             .await
             .unwrap();
         // 'END_HEADERS' is sent before data.

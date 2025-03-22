@@ -1,13 +1,7 @@
 // Jackson Coxson
 
-use std::{
-    net::{IpAddr, SocketAddr},
-    str::FromStr,
-};
-
 use clap::{Arg, Command};
-use idevice::{tunneld::get_tunneld_devices, xpc::XPCDevice};
-use tokio::net::TcpStream;
+use idevice::{core_device_proxy::CoreDeviceProxy, xpc::XPCDevice, IdeviceService};
 
 mod common;
 
@@ -17,6 +11,18 @@ async fn main() {
 
     let matches = Command::new("process_control")
         .about("Query process control")
+        .arg(
+            Arg::new("host")
+                .long("host")
+                .value_name("HOST")
+                .help("IP address of the device"),
+        )
+        .arg(
+            Arg::new("pairing_file")
+                .long("pairing-file")
+                .value_name("PATH")
+                .help("Path to the pairing file"),
+        )
         .arg(
             Arg::new("udid")
                 .value_name("UDID")
@@ -44,50 +50,44 @@ async fn main() {
     }
 
     let udid = matches.get_one::<String>("udid");
+    let pairing_file = matches.get_one::<String>("pairing_file");
+    let host = matches.get_one::<String>("host");
+
+    let provider =
+        match common::get_provider(udid, host, pairing_file, "heartbeat_client-jkcoxson").await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("{e}");
+                return;
+            }
+        };
     let bundle_id = matches
         .get_one::<String>("bundle_id")
         .expect("No bundle ID specified");
 
-    let socket = SocketAddr::new(
-        IpAddr::from_str("127.0.0.1").unwrap(),
-        idevice::tunneld::DEFAULT_PORT,
-    );
-    let mut devices = get_tunneld_devices(socket)
+    let proxy = CoreDeviceProxy::connect(&*provider)
         .await
-        .expect("Failed to get tunneld devices");
+        .expect("no core proxy");
+    let rsd_port = proxy.handshake.server_rsd_port;
 
-    let (_udid, device) = match udid {
-        Some(u) => (
-            u.to_owned(),
-            devices.remove(u).expect("Device not in tunneld"),
-        ),
-        None => devices.into_iter().next().expect("No devices"),
-    };
+    let mut adapter = proxy.create_software_tunnel().expect("no software tunnel");
+    adapter.connect(rsd_port).await.expect("no RSD connect");
 
     // Make the connection to RemoteXPC
-    let client = XPCDevice::new(Box::new(
-        TcpStream::connect((device.tunnel_address.as_str(), device.tunnel_port))
-            .await
-            .unwrap(),
-    ))
-    .await
-    .unwrap();
+    let client = XPCDevice::new(Box::new(adapter)).await.unwrap();
 
     // Get the debug proxy
     let service = client
         .services
         .get(idevice::dvt::SERVICE_NAME)
-        .expect("Client did not contain DVT service");
+        .expect("Client did not contain DVT service")
+        .to_owned();
 
-    let stream = TcpStream::connect(SocketAddr::new(
-        IpAddr::from_str(&device.tunnel_address).unwrap(),
-        service.port,
-    ))
-    .await
-    .expect("Failed to connect");
+    let mut adapter = client.into_inner();
+    adapter.connect(service.port).await.unwrap();
 
     let mut rs_client =
-        idevice::dvt::remote_server::RemoteServerClient::new(Box::new(stream)).unwrap();
+        idevice::dvt::remote_server::RemoteServerClient::new(Box::new(adapter)).unwrap();
     rs_client.read_message(0).await.expect("no read??");
     let mut pc_client = idevice::dvt::process_control::ProcessControlClient::new(&mut rs_client)
         .await

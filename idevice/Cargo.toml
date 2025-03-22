@@ -2,7 +2,7 @@
 name = "idevice"
 description = "A Rust library to interact with services on iOS devices."
 authors = ["Jackson Coxson"]
-version = "0.1.23"
+version = "0.1.24"
 edition = "2021"
 license = "MIT"
 documentation = "https://docs.rs/idevice"
@@ -32,13 +32,15 @@ json = { version = "0.12", optional = true }
 byteorder = { version = "1.5", optional = true }
 
 reqwest = { version = "0.12", features = ["json"], optional = true }
-smoltcp = { version = "0.12", optional = true }
-pcap-file = { version = "2.0", optional = true }
+rand = { version = "0.9", optional = true }
+futures = { version = "0.3", optional = true }
 
 sha2 = { version = "0.10", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.43", features = ["fs"] }
+tun-rs = { version = "2.0.8", features = ["async_tokio"] }
+bytes = "1.10.1"
 
 [features]
 core_device_proxy = ["dep:serde_json", "dep:json", "dep:byteorder"]
@@ -49,7 +51,7 @@ installation_proxy = []
 misagent = []
 mounter = ["dep:sha2"]
 tcp = ["tokio/net"]
-tunnel_tcp_stack = ["dep:smoltcp", "tokio/sync", "dep:pcap-file"]
+tunnel_tcp_stack = ["dep:rand", "dep:futures"]
 tss = ["dep:uuid", "dep:reqwest"]
 tunneld = ["dep:serde_json", "dep:json", "dep:reqwest"]
 usbmuxd = ["tokio/net"]

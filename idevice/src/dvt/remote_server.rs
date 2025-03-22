@@ -14,20 +14,20 @@ use super::message::AuxValue;
 
 pub const INSTRUMENTS_MESSAGE_TYPE: u32 = 2;
 
-pub struct RemoteServerClient {
-    idevice: Box<dyn ReadWrite>,
+pub struct RemoteServerClient<R: ReadWrite> {
+    idevice: R,
     current_message: u32,
     new_channel: u32,
     channels: HashMap<u32, VecDeque<Message>>,
 }
 
-pub struct Channel<'a> {
-    client: &'a mut RemoteServerClient,
+pub struct Channel<'a, R: ReadWrite> {
+    client: &'a mut RemoteServerClient<R>,
     channel: u32,
 }
 
-impl RemoteServerClient {
-    pub fn new(idevice: Box<dyn ReadWrite>) -> Result<Self, IdeviceError> {
+impl<R: ReadWrite> RemoteServerClient<R> {
+    pub fn new(idevice: R) -> Result<Self, IdeviceError> {
         let mut channels = HashMap::new();
         channels.insert(0, VecDeque::new());
         Ok(Self {
@@ -38,7 +38,7 @@ impl RemoteServerClient {
         })
     }
 
-    pub fn root_channel(&mut self) -> Channel {
+    pub fn root_channel(&mut self) -> Channel<R> {
         Channel {
             client: self,
             channel: 0,
@@ -48,7 +48,7 @@ impl RemoteServerClient {
     pub async fn make_channel(
         &mut self,
         identifier: impl Into<String>,
-    ) -> Result<Channel, IdeviceError> {
+    ) -> Result<Channel<R>, IdeviceError> {
         let code = self.new_channel;
         self.new_channel += 1;
 
@@ -78,7 +78,7 @@ impl RemoteServerClient {
         self.build_channel(code)
     }
 
-    fn build_channel(&mut self, code: u32) -> Result<Channel, IdeviceError> {
+    fn build_channel(&mut self, code: u32) -> Result<Channel<R>, IdeviceError> {
         Ok(Channel {
             client: self,
             channel: code,
@@ -135,7 +135,7 @@ impl RemoteServerClient {
     }
 }
 
-impl Channel<'_> {
+impl<R: ReadWrite> Channel<'_, R> {
     pub async fn read_message(&mut self) -> Result<Message, IdeviceError> {
         self.client.read_message(self.channel).await
     }
