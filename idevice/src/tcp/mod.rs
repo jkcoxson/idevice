@@ -15,22 +15,13 @@ pub(crate) async fn log_packet(file: &Arc<tokio::sync::Mutex<tokio::fs::File>>, 
     debug!("Logging {} byte packet", packet.len());
     let packet = packet.to_vec();
     let file = file.to_owned();
+    let now = SystemTime::now();
     tokio::task::spawn(async move {
         let mut file = file.lock().await;
-        file.write_all(
-            &(SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as u32)
-                .to_le_bytes(),
-        )
-        .await
-        .unwrap();
-        let micros = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_micros()
-            % 1_000_000_000;
+        file.write_all(&(now.duration_since(UNIX_EPOCH).unwrap().as_secs() as u32).to_le_bytes())
+            .await
+            .unwrap();
+        let micros = now.duration_since(UNIX_EPOCH).unwrap().as_micros() % 1_000_000_000;
         file.write_all(&(micros as u32).to_le_bytes())
             .await
             .unwrap();
