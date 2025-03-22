@@ -9,7 +9,7 @@ use std::{
 use clap::{Arg, Command};
 use idevice::{
     core_device_proxy::CoreDeviceProxy, debug_proxy::DebugProxyClient,
-    tunneld::get_tunneld_devices, xpc::XPCDevice, IdeviceService,
+    tunneld::get_tunneld_devices, xpc::XPCDevice, IdeviceService, ReadWrite,
 };
 use tokio::net::TcpStream;
 
@@ -63,7 +63,7 @@ async fn main() {
     let pairing_file = matches.get_one::<String>("pairing_file");
     let host = matches.get_one::<String>("host");
 
-    let mut dp = if matches.get_flag("tunneld") {
+    let mut dp: DebugProxyClient<Box<dyn ReadWrite>> = if matches.get_flag("tunneld") {
         let socket = SocketAddr::new(
             IpAddr::from_str("127.0.0.1").unwrap(),
             idevice::tunneld::DEFAULT_PORT,
