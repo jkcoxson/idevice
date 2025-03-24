@@ -24,7 +24,6 @@ pub struct UsbmuxdAddrHandle(pub UsbmuxdAddr);
 ///
 /// # Safety
 /// `addr` must be a valid sockaddr
-/// `label` must be a valid null-terminated C string
 /// `usbmuxd_connection` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn idevice_usbmuxd_new_tcp_connection(
@@ -65,7 +64,6 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_tcp_connection(
 ///
 /// # Safety
 /// `addr` must be a valid CStr
-/// `label` must be a valid null-terminated C string
 /// `usbmuxd_connection` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 #[cfg(unix)]
@@ -83,6 +81,44 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_unix_socket_connection(
         let stream = tokio::net::UnixStream::connect(addr).await?;
         Ok(UsbmuxdConnection::new(Box::new(stream), tag))
     });
+
+    match res {
+        Ok(r) => {
+            let boxed = Box::new(UsbmuxdConnectionHandle(r));
+            unsafe { *usbmuxd_connection = Box::into_raw(boxed) };
+            IdeviceErrorCode::IdeviceSuccess
+        }
+        Err(e) => e.into(),
+    }
+}
+
+/// Connects to a usbmuxd instance over the default connection for the platform
+///
+/// # Arguments
+/// * [`addr`] - The socket path to connect to
+/// * [`tag`] - A tag that will be returned by usbmuxd responses
+/// * [`usbmuxd_connection`] - On success, will be set to point to a newly allocated UsbmuxdConnection handle
+///
+/// # Returns
+/// An error code indicating success or failure
+///
+/// # Safety
+/// `addr` must be a valid CStr
+/// `usbmuxd_connection` must be a valid, non-null pointer to a location where the handle will be stored
+pub unsafe extern "C" fn idevice_usbmuxd_new_default_connection(
+    tag: u32,
+    usbmuxd_connection: *mut *mut UsbmuxdConnectionHandle,
+) -> IdeviceErrorCode {
+    let addr = match UsbmuxdAddr::from_env_var() {
+        Ok(a) => a,
+        Err(e) => {
+            log::error!("Invalid address set: {e:?}");
+            return IdeviceErrorCode::InvalidArg;
+        }
+    };
+
+    let res: Result<UsbmuxdConnection, IdeviceError> =
+        RUNTIME.block_on(async move { addr.connect(tag).await });
 
     match res {
         Ok(r) => {

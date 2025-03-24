@@ -1,6 +1,7 @@
 // Jackson Coxson
 
 mod errors;
+pub mod installation_proxy;
 pub mod logging;
 mod pairing_file;
 pub mod provider;
