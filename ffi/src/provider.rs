@@ -67,7 +67,7 @@ pub unsafe extern "C" fn idevice_tcp_provider_new(
 /// `provider` must be a valid pointer to a TcpProvider handle that was allocated by this library,
 /// or NULL (in which case this function does nothing)
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tcp_provider_free(provider: *mut TcpProvider) {
+pub unsafe extern "C" fn tcp_provider_free(provider: *mut TcpProviderHandle) {
     if !provider.is_null() {
         unsafe { drop(Box::from_raw(provider)) };
     }
@@ -143,7 +143,7 @@ pub unsafe extern "C" fn usbmuxd_provider_new(
 /// `provider` must be a valid pointer to a UsbmuxdProvider handle that was allocated by this library,
 /// or NULL (in which case this function does nothing)
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn usbmuxd_provider_free(provider: *mut UsbmuxdProvider) {
+pub unsafe extern "C" fn usbmuxd_provider_free(provider: *mut UsbmuxdProviderHandle) {
     if !provider.is_null() {
         unsafe { drop(Box::from_raw(provider)) };
     }

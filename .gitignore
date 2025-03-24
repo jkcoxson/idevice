@@ -7,3 +7,4 @@ Image.dmg.trustcache
 idevice.h
 /ffi/examples/build
 /.cache
+/ffi/examples/.cache
