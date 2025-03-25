@@ -1,16 +1,10 @@
 // Jackson Coxson
 
-use std::ffi::c_void;
-
-use idevice::{
-    IdeviceError, IdeviceService, heartbeat::HeartbeatClient,
-    installation_proxy::InstallationProxyClient,
-};
+use idevice::{IdeviceError, IdeviceService, heartbeat::HeartbeatClient};
 
 use crate::{
     IdeviceErrorCode, IdeviceHandle, RUNTIME,
     provider::{TcpProviderHandle, UsbmuxdProviderHandle},
-    util,
 };
 
 pub struct HeartbeatClientHandle(pub HeartbeatClient);

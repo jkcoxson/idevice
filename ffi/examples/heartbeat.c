@@ -20,9 +20,8 @@ int main() {
 
   // Read pairing file (replace with your pairing file path)
   IdevicePairingFile *pairing_file = NULL;
-  IdeviceErrorCode err = idevice_pairing_file_read(
-      "/Users/jacksoncoxson/Desktop/storage/00008140-001809302684801C.plist",
-      &pairing_file);
+  IdeviceErrorCode err =
+      idevice_pairing_file_read("pairing_file.plist", &pairing_file);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to read pairing file: %d\n", err);
     return 1;
