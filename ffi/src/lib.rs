@@ -4,6 +4,7 @@ mod errors;
 pub mod heartbeat;
 pub mod installation_proxy;
 pub mod logging;
+pub mod mounter;
 mod pairing_file;
 pub mod provider;
 pub mod usbmuxd;
