@@ -44,6 +44,7 @@ pub enum IdeviceErrorCode {
     InvalidArgument = -36,
     UnknownErrorType = -37,
     // FFI specific bindings
+    ServiceNotFound = -997,
     BufferTooSmall = -998,
     InvalidString = -999,
     InvalidArg = -1000,

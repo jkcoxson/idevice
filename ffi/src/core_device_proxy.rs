@@ -1,5 +1,7 @@
 // Jackson Coxson
 
+use std::ffi::{CString, c_char};
+
 use idevice::{
     IdeviceError, IdeviceService, core_device_proxy::CoreDeviceProxy, tcp::adapter::Adapter,
 };
@@ -245,12 +247,11 @@ pub unsafe extern "C" fn core_device_proxy_recv(
 pub unsafe extern "C" fn core_device_proxy_get_client_parameters(
     handle: *mut CoreDeviceProxyHandle,
     mtu: *mut u16,
-    address: *mut u8,
-    address_len: usize,
-    netmask: *mut u8,
-    netmask_len: usize,
+    address: *mut *mut c_char,
+    netmask: *mut *mut c_char,
 ) -> IdeviceErrorCode {
-    if handle.is_null() || mtu.is_null() || address.is_null() || netmask.is_null() {
+    if handle.is_null() {
+        log::error!("Passed null handle");
         return IdeviceErrorCode::InvalidArg;
     }
 
@@ -261,17 +262,9 @@ pub unsafe extern "C" fn core_device_proxy_get_client_parameters(
         *mtu = params.mtu;
     }
 
-    // Copy address string
-    if address_len < params.address.len() + 1 || netmask_len < params.netmask.len() + 1 {
-        return IdeviceErrorCode::BufferTooSmall;
-    }
-
     unsafe {
-        std::ptr::copy_nonoverlapping(params.address.as_ptr(), address, params.address.len());
-        *address.add(params.address.len()) = 0; // Null terminator
-
-        std::ptr::copy_nonoverlapping(params.netmask.as_ptr(), netmask, params.netmask.len());
-        *netmask.add(params.netmask.len()) = 0; // Null terminator
+        *address = CString::new(params.address.clone()).unwrap().into_raw();
+        *netmask = CString::new(params.netmask.clone()).unwrap().into_raw();
     }
 
     IdeviceErrorCode::IdeviceSuccess
@@ -292,23 +285,18 @@ pub unsafe extern "C" fn core_device_proxy_get_client_parameters(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn core_device_proxy_get_server_address(
     handle: *mut CoreDeviceProxyHandle,
-    address: *mut u8,
-    address_len: usize,
+    address: *mut *mut c_char,
 ) -> IdeviceErrorCode {
-    if handle.is_null() || address.is_null() {
+    if handle.is_null() {
         return IdeviceErrorCode::InvalidArg;
     }
 
     let proxy = unsafe { &(*handle).0 };
-    let server_addr = &proxy.handshake.server_address;
-
-    if address_len < server_addr.len() + 1 {
-        return IdeviceErrorCode::BufferTooSmall;
-    }
 
     unsafe {
-        std::ptr::copy_nonoverlapping(server_addr.as_ptr(), address, server_addr.len());
-        *address.add(server_addr.len()) = 0; // Null terminator
+        *address = CString::new(proxy.handshake.server_address.clone())
+            .unwrap()
+            .into_raw();
     }
 
     IdeviceErrorCode::IdeviceSuccess
