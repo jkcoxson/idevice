@@ -26,7 +26,6 @@ int main() {
     fprintf(stderr, "Failed to read pairing file: %d\n", err);
     return 1;
   }
-  printf("Read the pairing file");
 
   // Create TCP provider
   TcpProviderHandle *provider = NULL;
@@ -62,11 +61,9 @@ int main() {
     return 1;
   }
 
-  // Cast the result to plist_t array (assuming the binding returns plist_t)
+  // Cast the result to plist_t array
   plist_t *app_list = (plist_t *)apps;
 
-  // Iterate through apps (this is a simplified example - you'd need proper
-  // plist handling)
   printf("Found %zu apps:\n", apps_len);
   for (size_t i = 0; i < apps_len; i++) {
     plist_t app = app_list[i];
@@ -82,7 +79,6 @@ int main() {
   }
 
   // Cleanup
-  // Note: You'd need to properly free the plist array here
   installation_proxy_client_free(client);
   tcp_provider_free(provider);
 

@@ -69,6 +69,7 @@ pub unsafe extern "C" fn idevice_tcp_provider_new(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tcp_provider_free(provider: *mut TcpProviderHandle) {
     if !provider.is_null() {
+        log::debug!("Freeing TCP provider");
         unsafe { drop(Box::from_raw(provider)) };
     }
 }

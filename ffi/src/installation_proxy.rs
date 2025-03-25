@@ -31,16 +31,24 @@ pub unsafe extern "C" fn installation_proxy_connect_tcp(
     provider: *mut TcpProviderHandle,
     client: *mut *mut InstallationProxyClientHandle,
 ) -> IdeviceErrorCode {
-    if provider.is_null() {
-        log::error!("Provider is null");
+    if provider.is_null() || client.is_null() {
+        log::error!("Null pointer provided");
         return IdeviceErrorCode::InvalidArg;
     }
-    let provider = unsafe { Box::from_raw(provider) }.0;
 
     let res: Result<InstallationProxyClient, IdeviceError> = RUNTIME.block_on(async move {
-        let res = InstallationProxyClient::connect(&provider).await;
-        std::mem::forget(provider);
-        res
+        // Take ownership of the provider (without immediately dropping it)
+        let provider_box = unsafe { Box::from_raw(provider) };
+
+        // Get a reference to the inner value
+        let provider_ref = &provider_box.0;
+
+        // Connect using the reference
+        let result = InstallationProxyClient::connect(provider_ref).await;
+
+        // Explicitly keep the provider_box alive until after connect completes
+        std::mem::forget(provider_box);
+        result
     });
 
     match res {
@@ -49,7 +57,12 @@ pub unsafe extern "C" fn installation_proxy_connect_tcp(
             unsafe { *client = Box::into_raw(boxed) };
             IdeviceErrorCode::IdeviceSuccess
         }
-        Err(e) => e.into(),
+        Err(e) => {
+            // If connection failed, the provider_box was already forgotten,
+            // so we need to reconstruct it to avoid leak
+            let _ = unsafe { Box::from_raw(provider) };
+            e.into()
+        }
     }
 }
 
@@ -74,12 +87,20 @@ pub unsafe extern "C" fn installation_proxy_connect_usbmuxd(
         log::error!("Provider is null");
         return IdeviceErrorCode::InvalidArg;
     }
-    let provider = unsafe { Box::from_raw(provider) }.0;
 
     let res: Result<InstallationProxyClient, IdeviceError> = RUNTIME.block_on(async move {
-        let res = InstallationProxyClient::connect(&provider).await;
-        std::mem::forget(provider);
-        res
+        // Take ownership of the provider (without immediately dropping it)
+        let provider_box = unsafe { Box::from_raw(provider) };
+
+        // Get a reference to the inner value
+        let provider_ref = &provider_box.0;
+
+        // Connect using the reference
+        let result = InstallationProxyClient::connect(provider_ref).await;
+
+        // Explicitly keep the provider_box alive until after connect completes
+        std::mem::forget(provider_box);
+        result
     });
 
     match res {
@@ -211,6 +232,7 @@ pub unsafe extern "C" fn installation_proxy_client_free(
     handle: *mut InstallationProxyClientHandle,
 ) {
     if !handle.is_null() {
+        log::debug!("Freeing installation_proxy_client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }
