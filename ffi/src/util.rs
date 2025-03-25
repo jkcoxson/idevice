@@ -6,6 +6,7 @@ use std::{
 };
 
 use libc::{sockaddr_in, sockaddr_in6};
+use plist::Value;
 
 use crate::IdeviceErrorCode;
 
@@ -74,4 +75,12 @@ pub(crate) fn c_addr_to_rust(addr: *const libc::sockaddr) -> Result<IpAddr, Idev
             }
         }
     }
+}
+
+pub(crate) fn plist_to_libplist(v: &Value) -> plist_plus::Plist {
+    let buf = Vec::new();
+    let mut writer = std::io::BufWriter::new(buf);
+    plist::to_writer_xml(&mut writer, v).unwrap();
+    let buf = String::from_utf8(writer.into_inner().unwrap()).unwrap();
+    plist_plus::Plist::from_xml(buf).unwrap()
 }

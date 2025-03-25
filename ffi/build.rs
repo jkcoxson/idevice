@@ -12,6 +12,7 @@ fn main() {
         )
         .with_language(cbindgen::Language::C)
         .with_sys_include("sys/socket.h")
+        .with_sys_include("plist/plist.h")
         .generate()
         .expect("Unable to generate bindings")
         .write_to_file("idevice.h");
