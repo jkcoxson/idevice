@@ -1,5 +1,6 @@
 // Jackson Coxson
 
+pub mod adapter;
 pub mod core_device_proxy;
 mod errors;
 pub mod heartbeat;
