@@ -136,6 +136,7 @@ pub unsafe extern "C" fn idevice_pairing_file_serialize(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn idevice_pairing_file_free(pairing_file: *mut IdevicePairingFile) {
     if !pairing_file.is_null() {
+        log::debug!("Freeing pairing file");
         let _ = unsafe { Box::from_raw(pairing_file) };
     }
 }

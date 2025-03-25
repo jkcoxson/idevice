@@ -197,7 +197,7 @@ pub unsafe extern "C" fn installation_proxy_get_apps(
     let res: Result<Vec<*mut c_void>, IdeviceError> = RUNTIME.block_on(async {
         client.0.get_apps(app_type, bundle_ids).await.map(|apps| {
             apps.into_values()
-                .map(|v| util::plist_to_libplist(&v).get_pointer())
+                .map(|v| util::plist_to_libplist(&v))
                 .collect()
         })
     });
