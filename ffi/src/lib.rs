@@ -1,6 +1,7 @@
 // Jackson Coxson
 
 mod errors;
+pub mod heartbeat;
 pub mod installation_proxy;
 pub mod logging;
 mod pairing_file;
@@ -19,6 +20,7 @@ use tokio::runtime::{self, Runtime};
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
     runtime::Builder::new_multi_thread()
         .enable_io()
+        .enable_time()
         .build()
         .unwrap()
 });
