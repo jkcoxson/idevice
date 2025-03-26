@@ -2,6 +2,7 @@
 
 pub mod adapter;
 pub mod core_device_proxy;
+pub mod debug_proxy;
 mod errors;
 pub mod heartbeat;
 pub mod installation_proxy;
