@@ -9,6 +9,7 @@ pub mod logging;
 pub mod mounter;
 mod pairing_file;
 pub mod provider;
+pub mod remotexpc;
 pub mod usbmuxd;
 pub mod util;
 
