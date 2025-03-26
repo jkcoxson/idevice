@@ -27,15 +27,15 @@ pub struct Channel<'a, R: ReadWrite> {
 }
 
 impl<R: ReadWrite> RemoteServerClient<R> {
-    pub fn new(idevice: R) -> Result<Self, IdeviceError> {
+    pub fn new(idevice: R) -> Self {
         let mut channels = HashMap::new();
         channels.insert(0, VecDeque::new());
-        Ok(Self {
+        Self {
             idevice,
             current_message: 0,
             new_channel: 1,
             channels,
-        })
+        }
     }
 
     pub fn into_inner(self) -> R {
