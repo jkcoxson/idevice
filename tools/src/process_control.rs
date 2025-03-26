@@ -110,8 +110,7 @@ async fn main() {
         .await
         .expect("Failed to connect");
 
-        let mut rs_client =
-            idevice::dvt::remote_server::RemoteServerClient::new(Box::new(stream)).unwrap();
+        let mut rs_client = idevice::dvt::remote_server::RemoteServerClient::new(Box::new(stream));
         rs_client.read_message(0).await.expect("no read??");
         let mut pc_client =
             idevice::dvt::process_control::ProcessControlClient::new(&mut rs_client)
@@ -164,8 +163,7 @@ async fn main() {
         let mut adapter = client.into_inner();
         adapter.connect(service.port).await.unwrap();
 
-        let mut rs_client =
-            idevice::dvt::remote_server::RemoteServerClient::new(Box::new(adapter)).unwrap();
+        let mut rs_client = idevice::dvt::remote_server::RemoteServerClient::new(Box::new(adapter));
         rs_client.read_message(0).await.expect("no read??");
         let mut pc_client =
             idevice::dvt::process_control::ProcessControlClient::new(&mut rs_client)
