@@ -13,7 +13,7 @@ tokio = { version = "1.44.1", features = ["full"] }
 libc = "0.2.171"
 openssl-sys = { version = "0.9", features = ["vendored"] }
 plist = "1.7.1"
-plist_plus = { version = "0.2.6", features = ["vendored"] }
+plist_plus = { version = "0.2.6", features = ["dynamic"] }
 
 [build-dependencies]
 cbindgen = "0.28.0"

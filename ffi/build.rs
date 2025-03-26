@@ -16,4 +16,6 @@ fn main() {
         .generate()
         .expect("Unable to generate bindings")
         .write_to_file("idevice.h");
+
+    println!("cargo:rustc-link-arg=-lplist-2.0");
 }
