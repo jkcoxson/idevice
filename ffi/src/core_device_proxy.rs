@@ -376,7 +376,7 @@ pub unsafe extern "C" fn core_device_proxy_create_tcp_adapter(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn core_device_proxy_free(handle: *mut CoreDeviceProxyHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing core_deivce_proxy");
+        log::debug!("Freeing core_device_proxy");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }
