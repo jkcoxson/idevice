@@ -19,4 +19,4 @@ plist_plus = { version = "0.2.6", features = ["dynamic"] }
 cbindgen = "0.28.0"
 
 [lib]
-crate-type = ["staticlib", "cdylib"]
+crate-type = ["staticlib"]
