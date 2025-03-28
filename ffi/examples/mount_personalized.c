@@ -34,6 +34,19 @@ static uint8_t *read_file(const char *path, size_t *len) {
   return buffer;
 }
 
+// Callback function to show progress
+void progress_callback(size_t progress, size_t total, void *context) {
+  size_t percent = (progress * 100) / total;
+
+  printf("\rUpload progress: %zu%%", percent);
+  fflush(stdout);
+
+  // Print newline when complete
+  if (progress == total) {
+    printf("\n");
+  }
+}
+
 int main(int argc, char **argv) {
   if (argc < 5) {
     fprintf(stderr,
@@ -166,12 +179,12 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // Mount personalized image
-  err = image_mounter_mount_personalized_tcp(
+  // Mount personalized image with progress callback
+  err = image_mounter_mount_personalized_tcp_with_callback(
       mounter_client, provider, image, image_len, trustcache, trustcache_len,
       build_manifest, manifest_len,
       NULL, // info_plist
-      unique_chip_id);
+      unique_chip_id, progress_callback, NULL);
 
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to mount personalized image: %d\n", err);
