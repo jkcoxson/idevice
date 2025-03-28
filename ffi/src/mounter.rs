@@ -740,9 +740,86 @@ pub unsafe extern "C" fn image_mounter_roll_cryptex_nonce(
 /// # Safety
 /// All pointers must be valid (except optional ones which can be null)
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn image_mounter_mount_personalized(
+pub unsafe extern "C" fn image_mounter_mount_personalized_usbmuxd(
     client: *mut ImageMounterHandle,
     provider: *mut UsbmuxdProviderHandle,
+    image: *const u8,
+    image_len: libc::size_t,
+    trust_cache: *const u8,
+    trust_cache_len: libc::size_t,
+    build_manifest: *const u8,
+    build_manifest_len: libc::size_t,
+    info_plist: *const c_void,
+    unique_chip_id: u64,
+) -> IdeviceErrorCode {
+    if provider.is_null() || image.is_null() || trust_cache.is_null() || build_manifest.is_null() {
+        return IdeviceErrorCode::InvalidArg;
+    }
+
+    let image_slice = unsafe { std::slice::from_raw_parts(image, image_len) };
+    let trust_cache_slice = unsafe { std::slice::from_raw_parts(trust_cache, trust_cache_len) };
+    let build_manifest_slice =
+        unsafe { std::slice::from_raw_parts(build_manifest, build_manifest_len) };
+
+    let info_plist = if !info_plist.is_null() {
+        Some(
+            unsafe { Box::from_raw(info_plist as *mut Value) }
+                .as_ref()
+                .clone(),
+        )
+    } else {
+        None
+    };
+
+    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+        let mut client_box = unsafe { Box::from_raw(client) };
+        let provider_box = unsafe { Box::from_raw(provider) };
+        let client_ref = &mut client_box.0;
+        let provider_ref = &provider_box.0;
+        let result = client_ref
+            .mount_personalized(
+                provider_ref,
+                image_slice.to_vec(),
+                trust_cache_slice.to_vec(),
+                build_manifest_slice,
+                info_plist,
+                unique_chip_id,
+            )
+            .await;
+        std::mem::forget(client_box);
+        std::mem::forget(provider_box);
+        result
+    });
+
+    match res {
+        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
+        Err(e) => e.into(),
+    }
+}
+
+/// Mounts a personalized developer image
+///
+/// # Arguments
+/// * [`client`] - A valid ImageMounter handle
+/// * [`provider`] - A valid provider handle
+/// * [`image`] - Pointer to the image data
+/// * [`image_len`] - Length of the image data
+/// * [`trust_cache`] - Pointer to the trust cache data
+/// * [`trust_cache_len`] - Length of the trust cache data
+/// * [`build_manifest`] - Pointer to the build manifest data
+/// * [`build_manifest_len`] - Length of the build manifest data
+/// * [`info_plist`] - Pointer to info plist (optional)
+/// * [`unique_chip_id`] - The device's unique chip ID
+///
+/// # Returns
+/// An error code indicating success or failure
+///
+/// # Safety
+/// All pointers must be valid (except optional ones which can be null)
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn image_mounter_mount_personalized_tcp(
+    client: *mut ImageMounterHandle,
+    provider: *mut TcpProviderHandle,
     image: *const u8,
     image_len: libc::size_t,
     trust_cache: *const u8,
@@ -819,9 +896,97 @@ pub unsafe extern "C" fn image_mounter_mount_personalized(
 /// # Safety
 /// All pointers must be valid (except optional ones which can be null)
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn image_mounter_mount_personalized_with_callback(
+pub unsafe extern "C" fn image_mounter_mount_personalized_usbmuxd_with_callback(
     client: *mut ImageMounterHandle,
     provider: *mut UsbmuxdProviderHandle,
+    image: *const u8,
+    image_len: libc::size_t,
+    trust_cache: *const u8,
+    trust_cache_len: libc::size_t,
+    build_manifest: *const u8,
+    build_manifest_len: libc::size_t,
+    info_plist: *const c_void,
+    unique_chip_id: u64,
+    callback: extern "C" fn(progress: libc::size_t, total: libc::size_t, context: *mut c_void),
+    context: *mut c_void,
+) -> IdeviceErrorCode {
+    if provider.is_null() || image.is_null() || trust_cache.is_null() || build_manifest.is_null() {
+        return IdeviceErrorCode::InvalidArg;
+    }
+
+    let image_slice = unsafe { std::slice::from_raw_parts(image, image_len) };
+    let trust_cache_slice = unsafe { std::slice::from_raw_parts(trust_cache, trust_cache_len) };
+    let build_manifest_slice =
+        unsafe { std::slice::from_raw_parts(build_manifest, build_manifest_len) };
+
+    let info_plist = if !info_plist.is_null() {
+        Some(
+            unsafe { Box::from_raw(info_plist as *mut Value) }
+                .as_ref()
+                .clone(),
+        )
+    } else {
+        None
+    };
+
+    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+        let mut client_box = unsafe { Box::from_raw(client) };
+        let provider_box = unsafe { Box::from_raw(provider) };
+        let client_ref = &mut client_box.0;
+        let provider_ref = &provider_box.0;
+
+        let callback_wrapper = |((progress, total), context)| async move {
+            callback(progress, total, context);
+        };
+
+        let result = client_ref
+            .mount_personalized_with_callback(
+                provider_ref,
+                image_slice.to_vec(),
+                trust_cache_slice.to_vec(),
+                build_manifest_slice,
+                info_plist,
+                unique_chip_id,
+                callback_wrapper,
+                context,
+            )
+            .await;
+        std::mem::forget(client_box);
+        std::mem::forget(provider_box);
+        result
+    });
+
+    match res {
+        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
+        Err(e) => e.into(),
+    }
+}
+
+/// Mounts a personalized developer image with progress callback
+///
+/// # Arguments
+/// * [`client`] - A valid ImageMounter handle
+/// * [`provider`] - A valid provider handle
+/// * [`image`] - Pointer to the image data
+/// * [`image_len`] - Length of the image data
+/// * [`trust_cache`] - Pointer to the trust cache data
+/// * [`trust_cache_len`] - Length of the trust cache data
+/// * [`build_manifest`] - Pointer to the build manifest data
+/// * [`build_manifest_len`] - Length of the build manifest data
+/// * [`info_plist`] - Pointer to info plist (optional)
+/// * [`unique_chip_id`] - The device's unique chip ID
+/// * [`callback`] - Progress callback function
+/// * [`context`] - User context to pass to callback
+///
+/// # Returns
+/// An error code indicating success or failure
+///
+/// # Safety
+/// All pointers must be valid (except optional ones which can be null)
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn image_mounter_mount_personalized_tcp_with_callback(
+    client: *mut ImageMounterHandle,
+    provider: *mut TcpProviderHandle,
     image: *const u8,
     image_len: libc::size_t,
     trust_cache: *const u8,
