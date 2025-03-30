@@ -1,7 +1,7 @@
 // Jackson Coxson
 
 use std::{
-    ffi::{CString, c_char},
+    ffi::{CStr, CString, c_char},
     fs::File,
 };
 
@@ -46,7 +46,7 @@ pub unsafe extern "C" fn idevice_init_logger(
     ));
 
     if !file_path.is_null() {
-        let file_path = match unsafe { CString::from_raw(file_path) }.to_str() {
+        let file_path = match unsafe { CStr::from_ptr(file_path) }.to_str() {
             Ok(f) => f.to_string(),
             Err(_) => {
                 return IdeviceLoggerError::InvalidPathString;
