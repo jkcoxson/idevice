@@ -53,6 +53,10 @@ path = "src/debug_proxy.rs"
 name = "misagent"
 path = "src/misagent.rs"
 
+[[bin]]
+name = "location_simulation"
+path = "src/location_simulation.rs"
+
 [dependencies]
 idevice = { path = "../idevice", features = ["full"] }
 tokio = { version = "1.43", features = ["io-util", "macros", "time", "full"] }

@@ -50,6 +50,7 @@ heartbeat = []
 installation_proxy = []
 misagent = []
 mounter = ["dep:sha2"]
+location_simulation = []
 tcp = ["tokio/net"]
 tunnel_tcp_stack = ["dep:rand", "dep:futures", "tokio/fs"]
 tss = ["dep:uuid", "dep:reqwest"]
@@ -73,6 +74,7 @@ full = [
   "mounter",
   "usbmuxd",
   "xpc",
+  "location_simulation",
   "tcp",
   "tunnel_tcp_stack",
   "tss",
