@@ -1,7 +1,7 @@
 // Jackson Coxson
 
 use std::{
-    ffi::{CStr, CString, c_char},
+    ffi::{CStr, c_char},
     fs::File,
 };
 
