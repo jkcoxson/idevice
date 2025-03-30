@@ -8,3 +8,5 @@ idevice.h
 /ffi/examples/build
 /.cache
 /ffi/examples/.cache
+.vscode
+build

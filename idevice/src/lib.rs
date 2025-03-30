@@ -30,6 +30,8 @@ pub mod usbmuxd;
 mod util;
 #[cfg(feature = "xpc")]
 pub mod xpc;
+#[cfg(feature = "sbservices")]
+pub mod sbservices;
 
 use log::{debug, error, trace};
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};

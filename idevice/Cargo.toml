@@ -48,6 +48,7 @@ debug_proxy = []
 dvt = ["dep:byteorder", "dep:ns-keyed-archive"]
 heartbeat = []
 installation_proxy = []
+sbservices = []
 misagent = []
 mounter = ["dep:sha2"]
 tcp = ["tokio/net"]
@@ -77,6 +78,7 @@ full = [
   "tunnel_tcp_stack",
   "tss",
   "tunneld",
+  "sbservices"
 ]
 
 # Why: https://github.com/rust-lang/cargo/issues/1197

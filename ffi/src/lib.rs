@@ -15,6 +15,7 @@ pub mod provider;
 pub mod remote_server;
 pub mod remotexpc;
 pub mod usbmuxd;
+pub mod sbservices;
 pub mod util;
 
 pub use errors::*;
