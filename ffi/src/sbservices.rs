@@ -1,4 +1,4 @@
-use std::ffi::{c_void, CStr};
+use std::ffi::{CStr, c_void};
 
 use idevice::{IdeviceError, IdeviceService, sbservices::SpringBoardServicesClient};
 
@@ -13,7 +13,7 @@ pub struct SpringBoardServicesClientHandle(pub SpringBoardServicesClient);
 pub struct plist_t;
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn springboard_services_proxy_connect_tcp(
+pub unsafe extern "C" fn springboard_services_connect_tcp(
     provider: *mut TcpProviderHandle,
     client: *mut *mut SpringBoardServicesClientHandle,
 ) -> IdeviceErrorCode {
@@ -53,7 +53,7 @@ pub unsafe extern "C" fn springboard_services_proxy_connect_tcp(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn springboard_services_proxy_connect_usbmuxd(
+pub unsafe extern "C" fn springboard_services_connect_usbmuxd(
     provider: *mut UsbmuxdProviderHandle,
     client: *mut *mut SpringBoardServicesClientHandle,
 ) -> IdeviceErrorCode {
@@ -88,7 +88,7 @@ pub unsafe extern "C" fn springboard_services_proxy_connect_usbmuxd(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn springboard_services_proxy_new(
+pub unsafe extern "C" fn springboard_services_new(
     socket: *mut IdeviceHandle,
     client: *mut *mut SpringBoardServicesClientHandle,
 ) -> IdeviceErrorCode {
@@ -116,7 +116,7 @@ pub unsafe extern "C" fn springboard_services_proxy_new(
 /// `client` must be a valid pointer to a handle allocated by this library
 /// `out_result` must be a valid, non-null pointer to a location where the result will be stored
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn springboard_services_proxy_get_icon(
+pub unsafe extern "C" fn springboard_services_get_icon(
     client: *mut SpringBoardServicesClientHandle,
     bundle_identifier: *const libc::c_char,
     out_result: *mut *mut c_void,
@@ -128,16 +128,14 @@ pub unsafe extern "C" fn springboard_services_proxy_get_icon(
     }
     let client = unsafe { &mut *client };
 
-
     let name_cstr = unsafe { CStr::from_ptr(bundle_identifier) };
     let bundle_id = match name_cstr.to_str() {
         Ok(s) => s.to_string(),
         Err(_) => return IdeviceErrorCode::InvalidArg,
     };
 
-    let res: Result<Vec<u8>, IdeviceError> = RUNTIME.block_on(async {
-        client.0.get_icon_pngdata(bundle_id).await
-    });
+    let res: Result<Vec<u8>, IdeviceError> =
+        RUNTIME.block_on(async { client.0.get_icon_pngdata(bundle_id).await });
 
     match res {
         Ok(r) => {
@@ -156,16 +154,10 @@ pub unsafe extern "C" fn springboard_services_proxy_get_icon(
     }
 }
 
-
-
-
-
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn springboard_services_proxy_free(
-    handle: *mut SpringBoardServicesClientHandle,
-) {
+pub unsafe extern "C" fn springboard_services_free(handle: *mut SpringBoardServicesClientHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing springboard_services_proxy_client");
+        log::debug!("Freeing springboard_services_client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }

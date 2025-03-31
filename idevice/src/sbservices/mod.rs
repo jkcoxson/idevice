@@ -1,7 +1,7 @@
 use crate::{lockdownd::LockdowndClient, Idevice, IdeviceError, IdeviceService};
 
 pub struct SpringBoardServicesClient {
-    pub idevice: Idevice
+    pub idevice: Idevice,
 }
 
 impl IdeviceService for SpringBoardServicesClient {
@@ -40,7 +40,7 @@ impl SpringBoardServicesClient {
     /// `bundle_identifier` - The identifier of the app to get icon
     pub async fn get_icon_pngdata(
         &mut self,
-        bundle_identifier: String
+        bundle_identifier: String,
     ) -> Result<Vec<u8>, IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("command".into(), "getIconPNGData".into());
@@ -51,9 +51,7 @@ impl SpringBoardServicesClient {
 
         let mut res = self.idevice.read_plist().await?;
         match res.remove("pngData") {
-            Some(plist::Value::Data(res)) => {
-                Ok(res)
-            }
+            Some(plist::Value::Data(res)) => Ok(res),
             _ => Err(IdeviceError::UnexpectedResponse),
         }
     }

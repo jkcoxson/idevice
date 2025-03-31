@@ -19,6 +19,8 @@ pub mod misagent;
 pub mod mounter;
 pub mod pairing_file;
 pub mod provider;
+#[cfg(feature = "sbservices")]
+pub mod sbservices;
 #[cfg(feature = "tunnel_tcp_stack")]
 pub mod tcp;
 #[cfg(feature = "tss")]
@@ -30,8 +32,6 @@ pub mod usbmuxd;
 mod util;
 #[cfg(feature = "xpc")]
 pub mod xpc;
-#[cfg(feature = "sbservices")]
-pub mod sbservices;
 
 use log::{debug, error, trace};
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
