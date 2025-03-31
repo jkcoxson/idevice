@@ -9,9 +9,18 @@ use crate::{
 
 pub struct SpringBoardServicesClientHandle(pub SpringBoardServicesClient);
 
-#[allow(non_camel_case_types)]
-pub struct plist_t;
-
+/// Connects to the Springboard service using a TCP provider
+///
+/// # Arguments
+/// * [`provider`] - A TcpProvider
+/// * [`client`] - On success, will be set to point to a newly allocated SpringBoardServicesClient handle
+///
+/// # Returns
+/// An error code indicating success or failure
+///
+/// # Safety
+/// `provider` must be a valid pointer to a handle allocated by this library
+/// `client` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn springboard_services_connect_tcp(
     provider: *mut TcpProviderHandle,
@@ -52,6 +61,18 @@ pub unsafe extern "C" fn springboard_services_connect_tcp(
     }
 }
 
+/// Connects to the Springboard service using a usbmuxd provider
+///
+/// # Arguments
+/// * [`provider`] - A UsbmuxdProvider
+/// * [`client`] - On success, will be set to point to a newly allocated SpringBoardServicesClient handle
+///
+/// # Returns
+/// An error code indicating success or failure
+///
+/// # Safety
+/// `provider` must be a valid pointer to a handle allocated by this library
+/// `client` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn springboard_services_connect_usbmuxd(
     provider: *mut UsbmuxdProviderHandle,
@@ -87,6 +108,18 @@ pub unsafe extern "C" fn springboard_services_connect_usbmuxd(
     }
 }
 
+/// Creates a new SpringBoardServices client from an existing Idevice connection
+///
+/// # Arguments
+/// * [`socket`] - An IdeviceSocket handle
+/// * [`client`] - On success, will be set to point to a newly allocated SpringBoardServicesClient handle
+///
+/// # Returns
+/// An error code indicating success or failure
+///
+/// # Safety
+/// `socket` must be a valid pointer to a handle allocated by this library
+/// `client` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn springboard_services_new(
     socket: *mut IdeviceHandle,
@@ -154,6 +187,14 @@ pub unsafe extern "C" fn springboard_services_get_icon(
     }
 }
 
+/// Frees an SpringBoardServicesClient handle
+///
+/// # Arguments
+/// * [`handle`] - The handle to free
+///
+/// # Safety
+/// `handle` must be a valid pointer to the handle that was allocated by this library,
+/// or NULL (in which case this function does nothing)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn springboard_services_free(handle: *mut SpringBoardServicesClientHandle) {
     if !handle.is_null() {
