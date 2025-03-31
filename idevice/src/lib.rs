@@ -19,6 +19,8 @@ pub mod misagent;
 pub mod mounter;
 pub mod pairing_file;
 pub mod provider;
+#[cfg(feature = "sbservices")]
+pub mod sbservices;
 #[cfg(feature = "tunnel_tcp_stack")]
 pub mod tcp;
 #[cfg(feature = "tss")]
