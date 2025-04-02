@@ -1,7 +1,9 @@
 // Jackson Coxson
 
-use clap::{Arg, Command};
-use idevice::{misagent::MisagentClient, pretty_print_plist, IdeviceService};
+use std::path::PathBuf;
+
+use clap::{arg, value_parser, Arg, Command};
+use idevice::{misagent::MisagentClient, IdeviceService};
 
 mod common;
 
@@ -26,8 +28,7 @@ async fn main() {
         .arg(
             Arg::new("udid")
                 .value_name("UDID")
-                .help("UDID of the device (overrides host/pairing file)")
-                .index(1),
+                .help("UDID of the device (overrides host/pairing file)"),
         )
         .arg(
             Arg::new("about")
@@ -35,7 +36,19 @@ async fn main() {
                 .help("Show about information")
                 .action(clap::ArgAction::SetTrue),
         )
-        .subcommand(Command::new("list").about("Lists the images mounted on the device"))
+        .subcommand(
+            Command::new("list")
+                .about("Lists the images mounted on the device")
+                .arg(
+                    arg!(-s --save <FOLDER> "the folder to save the profiles to")
+                        .value_parser(value_parser!(PathBuf)),
+                ),
+        )
+        .subcommand(
+            Command::new("remove")
+                .about("Remove a provisioning profile")
+                .arg(Arg::new("id").required(true).index(1)),
+        )
         .get_matches();
 
     if matches.get_flag("about") {
@@ -59,14 +72,29 @@ async fn main() {
         .await
         .expect("Unable to connect to misagent");
 
-    if matches.subcommand_matches("list").is_some() {
+    if let Some(matches) = matches.subcommand_matches("list") {
         let images = misagent_client
             .copy_all()
             .await
             .expect("Unable to get images");
-        for i in images {
-            println!("{}", pretty_print_plist(&i));
+        for i in &images {
+            // println!("{:?}", i);
         }
+        if let Some(path) = matches.get_one::<PathBuf>("save") {
+            tokio::fs::create_dir_all(path)
+                .await
+                .expect("Unable to create save DIR");
+
+            for (index, image) in images.iter().enumerate() {
+                let f = path.join(format!("{index}.pem"));
+                tokio::fs::write(f, image)
+                    .await
+                    .expect("Failed to write image");
+            }
+        }
+    } else if let Some(matches) = matches.subcommand_matches("remove") {
+        let id = matches.get_one::<String>("id").expect("No ID passed");
+        misagent_client.remove(id).await.expect("Failed to remove");
     } else {
         eprintln!("Invalid usage, pass -h for help");
     }

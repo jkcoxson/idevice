@@ -294,6 +294,10 @@ pub enum IdeviceError {
     #[error("image not mounted")]
     ImageNotMounted,
 
+    #[cfg(feature = "misagent")]
+    #[error("misagent operation failed")]
+    MisagentFailure,
+
     #[cfg(any(feature = "tss", feature = "tunneld"))]
     #[error("http reqwest error")]
     Reqwest(#[from] reqwest::Error),
