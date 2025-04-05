@@ -43,6 +43,7 @@ tun-rs = { version = "2.0.8", features = ["async_tokio"] }
 bytes = "1.10.1"
 
 [features]
+afc = []
 core_device_proxy = ["dep:serde_json", "dep:json", "dep:byteorder"]
 debug_proxy = []
 dvt = ["dep:byteorder", "dep:ns-keyed-archive"]
@@ -66,6 +67,7 @@ xpc = [
   "dep:json",
 ]
 full = [
+  "afc",
   "core_device_proxy",
   "debug_proxy",
   "dvt",
@@ -80,7 +82,7 @@ full = [
   "tunnel_tcp_stack",
   "tss",
   "tunneld",
-  "sbservices"
+  "sbservices",
 ]
 
 # Why: https://github.com/rust-lang/cargo/issues/1197

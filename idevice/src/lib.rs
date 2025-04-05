@@ -1,5 +1,7 @@
 // Jackson Coxson
 
+#[cfg(feature = "afc")]
+pub mod afc;
 #[cfg(feature = "core_device_proxy")]
 pub mod core_device_proxy;
 #[cfg(feature = "debug_proxy")]
@@ -297,6 +299,18 @@ pub enum IdeviceError {
     #[cfg(feature = "misagent")]
     #[error("misagent operation failed")]
     MisagentFailure,
+
+    #[cfg(feature = "afc")]
+    #[error("afc error")]
+    Afc(#[from] afc::errors::AfcError),
+
+    #[cfg(feature = "afc")]
+    #[error("unknown afc opcode")]
+    UnknownAfcOpcode,
+
+    #[cfg(feature = "afc")]
+    #[error("invalid afc magic")]
+    InvalidAfcMagic,
 
     #[cfg(any(feature = "tss", feature = "tunneld"))]
     #[error("http reqwest error")]

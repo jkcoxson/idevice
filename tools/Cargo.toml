@@ -57,6 +57,11 @@ path = "src/misagent.rs"
 name = "location_simulation"
 path = "src/location_simulation.rs"
 
+
+[[bin]]
+name = "afc"
+path = "src/afc.rs"
+
 [dependencies]
 idevice = { path = "../idevice", features = ["full"] }
 tokio = { version = "1.43", features = ["io-util", "macros", "time", "full"] }
