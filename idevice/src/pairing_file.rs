@@ -3,20 +3,17 @@
 use std::path::Path;
 
 use log::warn;
-use openssl::{
-    pkey::{PKey, Private},
-    x509::X509,
-};
 use plist::Data;
+use rustls::pki_types::{pem::PemObject, CertificateDer};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug)]
 pub struct PairingFile {
-    pub device_certificate: X509,
-    pub host_private_key: PKey<Private>,
-    pub host_certificate: X509,
-    pub root_private_key: PKey<Private>,
-    pub root_certificate: X509,
+    pub device_certificate: CertificateDer<'static>,
+    pub host_private_key: Vec<u8>, // the private key doesn't implement clone...
+    pub host_certificate: CertificateDer<'static>,
+    pub root_private_key: Vec<u8>,
+    pub root_certificate: CertificateDer<'static>,
     pub system_buid: String,
     pub host_id: String,
     pub escrow_bag: Vec<u8>,
@@ -74,7 +71,7 @@ impl PairingFile {
     }
 
     pub fn serialize(self) -> Result<Vec<u8>, crate::IdeviceError> {
-        let raw = RawPairingFile::try_from(self)?;
+        let raw = RawPairingFile::from(self);
 
         let mut buf = Vec::new();
         plist::to_writer_xml(&mut buf, &raw)?;
@@ -83,19 +80,21 @@ impl PairingFile {
 }
 
 impl TryFrom<RawPairingFile> for PairingFile {
-    type Error = openssl::error::ErrorStack;
+    type Error = rustls::pki_types::pem::Error;
 
     fn try_from(value: RawPairingFile) -> Result<Self, Self::Error> {
         Ok(Self {
-            device_certificate: X509::from_pem(&Into::<Vec<u8>>::into(value.device_certificate))?,
-            host_private_key: PKey::private_key_from_pem(&Into::<Vec<u8>>::into(
-                value.host_private_key,
+            device_certificate: CertificateDer::from_pem_slice(&Into::<Vec<u8>>::into(
+                value.device_certificate,
             ))?,
-            host_certificate: X509::from_pem(&Into::<Vec<u8>>::into(value.host_certificate))?,
-            root_private_key: PKey::private_key_from_pem(&Into::<Vec<u8>>::into(
-                value.root_private_key,
+            host_private_key: Into::<Vec<u8>>::into(value.host_private_key),
+            host_certificate: CertificateDer::from_pem_slice(&Into::<Vec<u8>>::into(
+                value.host_certificate,
             ))?,
-            root_certificate: X509::from_pem(&Into::<Vec<u8>>::into(value.root_certificate))?,
+            root_private_key: Into::<Vec<u8>>::into(value.root_private_key),
+            root_certificate: CertificateDer::from_pem_slice(&Into::<Vec<u8>>::into(
+                value.root_certificate,
+            ))?,
             system_buid: value.system_buid,
             host_id: value.host_id,
             escrow_bag: value.escrow_bag.into(),
@@ -105,22 +104,20 @@ impl TryFrom<RawPairingFile> for PairingFile {
     }
 }
 
-impl TryFrom<PairingFile> for RawPairingFile {
-    type Error = openssl::error::ErrorStack;
-
-    fn try_from(value: PairingFile) -> Result<Self, Self::Error> {
-        Ok(Self {
-            device_certificate: Data::new(value.device_certificate.to_pem()?),
-            host_private_key: Data::new(value.host_private_key.private_key_to_pem_pkcs8()?),
-            host_certificate: Data::new(value.host_certificate.to_pem()?),
-            root_private_key: Data::new(value.root_private_key.private_key_to_pem_pkcs8()?),
-            root_certificate: Data::new(value.root_certificate.to_pem()?),
+impl From<PairingFile> for RawPairingFile {
+    fn from(value: PairingFile) -> Self {
+        Self {
+            device_certificate: Data::new(value.device_certificate.to_vec()),
+            host_private_key: Data::new(value.host_private_key),
+            host_certificate: Data::new(value.host_certificate.to_vec()),
+            root_private_key: Data::new(value.root_private_key),
+            root_certificate: Data::new(value.root_certificate.to_vec()),
             system_buid: value.system_buid,
             host_id: value.host_id.clone(),
             escrow_bag: Data::new(value.escrow_bag),
             wifi_mac_address: value.wifi_mac_address,
             udid: value.udid,
-        })
+        }
     }
 }
 

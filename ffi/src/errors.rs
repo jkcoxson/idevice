@@ -7,8 +7,8 @@ pub enum IdeviceErrorCode {
     IdeviceSuccess = 0,
     // Main library
     Socket = -1,
-    Ssl = -2,
-    SslSetup = -3,
+    Tls = -2,
+    TlsBuilderFailed = -3,
     Plist = -4,
     Utf8 = -5,
     UnexpectedResponse = -6,
@@ -55,8 +55,8 @@ impl From<IdeviceError> for IdeviceErrorCode {
     fn from(err: IdeviceError) -> Self {
         match err {
             IdeviceError::Socket(_) => IdeviceErrorCode::Socket,
-            IdeviceError::Ssl(_) => IdeviceErrorCode::Ssl,
-            IdeviceError::SslSetup(_) => IdeviceErrorCode::SslSetup,
+            IdeviceError::Rustls(_) => IdeviceErrorCode::Tls,
+            IdeviceError::TlsBuilderFailed(_) => IdeviceErrorCode::TlsBuilderFailed,
             IdeviceError::Plist(_) => IdeviceErrorCode::Plist,
             IdeviceError::Utf8(_) => IdeviceErrorCode::Utf8,
             IdeviceError::UnexpectedResponse => IdeviceErrorCode::UnexpectedResponse,

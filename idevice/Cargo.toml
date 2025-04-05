@@ -12,7 +12,8 @@ keywords = ["lockdownd", "ios"]
 
 [dependencies]
 tokio = { version = "1.43", features = ["io-util"] }
-tokio-openssl = { version = "0.6" }
+tokio-rustls = "0.26"
+rustls = "0.23"
 
 plist = { version = "1.7" }
 serde = { version = "1", features = ["derive"] }
@@ -32,7 +33,10 @@ serde_json = { version = "1", optional = true }
 json = { version = "0.12", optional = true }
 byteorder = { version = "1.5", optional = true }
 
-reqwest = { version = "0.12", features = ["json"], optional = true }
+reqwest = { version = "0.12", features = [
+  "json",
+  "rustls-tls",
+], optional = true, default-features = false }
 rand = { version = "0.9", optional = true }
 futures = { version = "0.3", optional = true }
 
@@ -85,10 +89,3 @@ full = [
   "tunneld",
   "sbservices",
 ]
-
-# Why: https://github.com/rust-lang/cargo/issues/1197
-[target.'cfg(windows)'.dependencies]
-openssl = { version = "0.10", features = ["vendored"] }
-
-[target.'cfg(not(windows))'.dependencies]
-openssl = { version = "0.10" }

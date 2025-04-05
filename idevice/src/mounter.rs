@@ -1,7 +1,6 @@
 // Jackson Coxson
 
 use log::debug;
-use openssl::sha::Sha384;
 
 use crate::{lockdownd::LockdowndClient, Idevice, IdeviceError, IdeviceService};
 
@@ -364,9 +363,10 @@ impl ImageMounter {
         S: Clone,
     {
         // Try to fetch personalization manifest
+        use sha2::{Digest, Sha384};
         let mut hasher = Sha384::new();
         hasher.update(&image);
-        let image_hash = hasher.finish();
+        let image_hash = hasher.finalize();
         let manifest = match self
             .query_personalization_manifest("DeveloperDiskImage", image_hash.to_vec())
             .await

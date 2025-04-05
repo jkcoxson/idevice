@@ -23,6 +23,7 @@ pub mod pairing_file;
 pub mod provider;
 #[cfg(feature = "sbservices")]
 pub mod sbservices;
+mod sni;
 #[cfg(feature = "tunnel_tcp_stack")]
 pub mod tcp;
 #[cfg(feature = "tss")]
@@ -36,9 +37,12 @@ mod util;
 pub mod xpc;
 
 use log::{debug, error, trace};
-use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use provider::IdeviceProvider;
-use std::io::{self, BufWriter};
+use rustls::{crypto::CryptoProvider, pki_types::ServerName};
+use std::{
+    io::{self, BufWriter},
+    sync::Arc,
+};
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -213,24 +217,18 @@ impl Idevice {
         &mut self,
         pairing_file: &pairing_file::PairingFile,
     ) -> Result<(), IdeviceError> {
-        let connector = SslConnector::builder(SslMethod::tls()).unwrap();
-
-        let mut connector = connector
-            .build()
-            .configure()
-            .unwrap()
-            .into_ssl("ur mom")
-            .unwrap();
-
-        connector.set_certificate(&pairing_file.host_certificate)?;
-        connector.set_private_key(&pairing_file.host_private_key)?;
-        connector.set_verify(SslVerifyMode::empty());
+        if CryptoProvider::get_default().is_none() {
+            CryptoProvider::install_default(rustls::crypto::aws_lc_rs::default_provider()).unwrap();
+        }
+        let config = sni::create_client_config(pairing_file)?;
+        let connector = tokio_rustls::TlsConnector::from(Arc::new(config));
 
         let socket = self.socket.take().unwrap();
+        let socket = connector
+            .connect(ServerName::try_from("iOS").unwrap(), socket)
+            .await?;
 
-        let mut ssl_stream = tokio_openssl::SslStream::new(connector, socket)?;
-        std::pin::Pin::new(&mut ssl_stream).connect().await?;
-        self.socket = Some(Box::new(ssl_stream));
+        self.socket = Some(Box::new(socket));
 
         Ok(())
     }
@@ -241,10 +239,12 @@ impl Idevice {
 pub enum IdeviceError {
     #[error("device socket io failed")]
     Socket(#[from] io::Error),
-    #[error("ssl io failed")]
-    Ssl(#[from] openssl::ssl::Error),
-    #[error("ssl failed to setup")]
-    SslSetup(#[from] openssl::error::ErrorStack),
+    #[error("PEM parse failed")]
+    PemParseFailed(#[from] rustls::pki_types::pem::Error),
+    #[error("TLS error")]
+    Rustls(#[from] rustls::Error),
+    #[error("TLS verifiction build failed")]
+    TlsBuilderFailed(#[from] rustls::server::VerifierBuilderError),
     #[error("io on plist")]
     Plist(#[from] plist::Error),
     #[error("can't convert bytes to utf8")]
