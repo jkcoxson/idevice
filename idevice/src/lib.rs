@@ -17,12 +17,12 @@ pub mod installation_proxy;
 pub mod lockdown;
 #[cfg(feature = "misagent")]
 pub mod misagent;
-#[cfg(feature = "mounter")]
+#[cfg(feature = "mobile_image_mounter")]
 pub mod mobile_image_mounter;
 pub mod pairing_file;
 pub mod provider;
 mod sni;
-#[cfg(feature = "sbservices")]
+#[cfg(feature = "springboardservices")]
 pub mod springboardservices;
 #[cfg(feature = "tunnel_tcp_stack")]
 pub mod tcp;

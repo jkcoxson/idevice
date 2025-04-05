@@ -54,9 +54,9 @@ debug_proxy = []
 dvt = ["dep:byteorder", "dep:ns-keyed-archive"]
 heartbeat = ["tokio/macros", "tokio/time"]
 installation_proxy = []
-sbservices = []
+springboardservices = []
 misagent = []
-mounter = ["dep:sha2"]
+mobile_image_mounter = ["dep:sha2"]
 location_simulation = []
 tcp = ["tokio/net"]
 tunnel_tcp_stack = ["dep:rand", "dep:futures", "tokio/fs"]
@@ -79,7 +79,7 @@ full = [
   "heartbeat",
   "installation_proxy",
   "misagent",
-  "mounter",
+  "mobile_image_mounter",
   "usbmuxd",
   "xpc",
   "location_simulation",
@@ -87,5 +87,5 @@ full = [
   "tunnel_tcp_stack",
   "tss",
   "tunneld",
-  "sbservices",
+  "springboardservices",
 ]
