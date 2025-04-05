@@ -2,7 +2,7 @@
 // idevice Rust implementation of libimobiledevice's ideviceinfo
 
 use clap::{Arg, Command};
-use idevice::{lockdown::LockdowndClient, pairing_file::PairingFile, IdeviceService};
+use idevice::{lockdown::LockdowndClient, IdeviceService};
 
 mod common;
 
@@ -67,8 +67,17 @@ async fn main() {
 
     println!("{:?}", lockdown_client.get_value("ProductVersion").await);
 
-    let p = PairingFile::read_from_file(pairing_file.unwrap()).unwrap();
-    println!("{:?}", lockdown_client.start_session(&p).await);
+    println!(
+        "{:?}",
+        lockdown_client
+            .start_session(
+                &provider
+                    .get_pairing_file()
+                    .await
+                    .expect("failed to get pairing file")
+            )
+            .await
+    );
     println!("{:?}", lockdown_client.idevice.get_type().await.unwrap());
     println!("{:#?}", lockdown_client.get_all_values().await);
 }
