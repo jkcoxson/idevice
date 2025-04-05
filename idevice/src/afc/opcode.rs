@@ -32,6 +32,7 @@ pub enum AfcOpcode {
     FileLock = 0x0000001B,      // FileRefLock
     MakeLink = 0x0000001C,      // MakeLink
     SetFileTime = 0x0000001E,   // Set st_mtime
+    RemovePathAndContents = 0x00000022,
 }
 
 pub enum AfcFopenMode {

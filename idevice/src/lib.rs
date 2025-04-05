@@ -314,7 +314,7 @@ pub enum IdeviceError {
 
     #[cfg(feature = "afc")]
     #[error("missing file attribute")]
-    AfcMissingFileAttribute,
+    AfcMissingAttribute,
 
     #[cfg(any(feature = "tss", feature = "tunneld"))]
     #[error("http reqwest error")]

@@ -1,9 +1,7 @@
 // Jackson Coxson
 
-use std::path::PathBuf;
-
-use clap::{arg, value_parser, Arg, Command};
-use idevice::{afc::AfcClient, misagent::MisagentClient, IdeviceService};
+use clap::{Arg, Command};
+use idevice::{afc::AfcClient, IdeviceService};
 
 mod common;
 
@@ -52,10 +50,16 @@ async fn main() {
                 .arg(Arg::new("path").required(true).index(1)),
         )
         .subcommand(
+            Command::new("remove_all")
+                .about("Remove a provisioning profile")
+                .arg(Arg::new("path").required(true).index(1)),
+        )
+        .subcommand(
             Command::new("info")
                 .about("Get info about a file")
                 .arg(Arg::new("path").required(true).index(1)),
         )
+        .subcommand(Command::new("device_info").about("Get info about the device"))
         .get_matches();
 
     if matches.get_flag("about") {
@@ -87,11 +91,21 @@ async fn main() {
         let path = matches.get_one::<String>("path").expect("No path passed");
         afc_client.mk_dir(path).await.expect("Failed to mkdir");
     } else if let Some(matches) = matches.subcommand_matches("remove") {
-        let path = matches.get_one::<String>("id").expect("No path passed");
+        let path = matches.get_one::<String>("path").expect("No path passed");
+        afc_client.remove(path).await.expect("Failed to remove");
+    } else if let Some(matches) = matches.subcommand_matches("remove_all") {
+        let path = matches.get_one::<String>("path").expect("No path passed");
+        afc_client.remove_all(path).await.expect("Failed to remove");
     } else if let Some(matches) = matches.subcommand_matches("info") {
         let path = matches.get_one::<String>("path").expect("No path passed");
         let res = afc_client
             .get_file_info(path)
+            .await
+            .expect("Failed to get file info");
+        println!("{res:#?}");
+    } else if matches.subcommand_matches("device_info").is_some() {
+        let res = afc_client
+            .get_device_info()
             .await
             .expect("Failed to get file info");
         println!("{res:#?}");
