@@ -312,6 +312,10 @@ pub enum IdeviceError {
     #[error("invalid afc magic")]
     InvalidAfcMagic,
 
+    #[cfg(feature = "afc")]
+    #[error("missing file attribute")]
+    AfcMissingFileAttribute,
+
     #[cfg(any(feature = "tss", feature = "tunneld"))]
     #[error("http reqwest error")]
     Reqwest(#[from] reqwest::Error),

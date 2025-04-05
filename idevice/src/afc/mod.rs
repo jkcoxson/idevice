@@ -1,6 +1,9 @@
 // Jackson Coxson
 
+use std::collections::HashMap;
+
 use errors::AfcError;
+use log::warn;
 use opcode::AfcOpcode;
 use packet::{AfcPacket, AfcPacketHeader};
 
@@ -15,6 +18,17 @@ pub const MAGIC: u64 = 0x4141504c36414643;
 pub struct AfcClient {
     pub idevice: Idevice,
     package_number: u64,
+}
+
+#[derive(Debug)]
+pub struct FileInfo {
+    pub size: usize,
+    pub blocks: usize,
+    pub creation: chrono::NaiveDateTime,
+    pub modified: chrono::NaiveDateTime,
+    pub st_nlink: String,
+    pub st_ifmt: String,
+    pub st_link_target: Option<String>,
 }
 
 impl IdeviceService for AfcClient {
@@ -54,7 +68,7 @@ impl AfcClient {
         }
     }
 
-    pub async fn list(&mut self, path: impl Into<String>) -> Result<Vec<String>, IdeviceError> {
+    pub async fn list_dir(&mut self, path: impl Into<String>) -> Result<Vec<String>, IdeviceError> {
         let path = path.into();
         let header_payload = path.as_bytes().to_vec();
         let header_len = header_payload.len() as u64 + AfcPacketHeader::LEN;
@@ -84,6 +98,88 @@ impl AfcClient {
             .map(|s| String::from_utf8_lossy(s).into_owned())
             .collect();
         Ok(strings)
+    }
+
+    pub async fn get_file_info(
+        &mut self,
+        path: impl Into<String>,
+    ) -> Result<FileInfo, IdeviceError> {
+        let path = path.into();
+        let header_payload = path.as_bytes().to_vec();
+        let header_len = header_payload.len() as u64 + AfcPacketHeader::LEN;
+
+        let header = AfcPacketHeader {
+            magic: MAGIC,
+            entire_len: header_len, // it's the same since the payload is empty for this
+            header_payload_len: header_len,
+            packet_num: self.package_number,
+            operation: AfcOpcode::GetFileInfo,
+        };
+        self.package_number += 1;
+
+        let packet = AfcPacket {
+            header,
+            header_payload,
+            payload: Vec::new(),
+        };
+
+        self.send(packet).await?;
+        let res = self.read().await?;
+
+        let strings: Vec<String> = res
+            .payload
+            .split(|b| *b == 0)
+            .filter(|s| !s.is_empty())
+            .map(|s| String::from_utf8_lossy(s).into_owned())
+            .collect();
+
+        let mut kvs: HashMap<String, String> = strings
+            .chunks_exact(2)
+            .map(|chunk| (chunk[0].clone(), chunk[1].clone()))
+            .collect();
+
+        let size = kvs
+            .remove("st_size")
+            .and_then(|x| x.parse::<usize>().ok())
+            .ok_or(IdeviceError::AfcMissingFileAttribute)?;
+        let blocks = kvs
+            .remove("st_blocks")
+            .and_then(|x| x.parse::<usize>().ok())
+            .ok_or(IdeviceError::AfcMissingFileAttribute)?;
+
+        let creation = kvs
+            .remove("st_birthtime")
+            .and_then(|x| x.parse::<i64>().ok())
+            .ok_or(IdeviceError::AfcMissingFileAttribute)?;
+        let creation = chrono::DateTime::from_timestamp_nanos(creation).naive_local();
+
+        let modified = kvs
+            .remove("st_mtime")
+            .and_then(|x| x.parse::<i64>().ok())
+            .ok_or(IdeviceError::AfcMissingFileAttribute)?;
+        let modified = chrono::DateTime::from_timestamp_nanos(modified).naive_local();
+
+        let st_nlink = kvs
+            .remove("st_nlink")
+            .ok_or(IdeviceError::AfcMissingFileAttribute)?;
+        let st_ifmt = kvs
+            .remove("st_ifmt")
+            .ok_or(IdeviceError::AfcMissingFileAttribute)?;
+        let st_link_target = kvs.remove("st_link_target");
+
+        if !kvs.is_empty() {
+            warn!("File info kvs not empty: {kvs:?}");
+        }
+
+        Ok(FileInfo {
+            size,
+            blocks,
+            creation,
+            modified,
+            st_nlink,
+            st_ifmt,
+            st_link_target,
+        })
     }
 
     pub async fn read(&mut self) -> Result<AfcPacket, IdeviceError> {

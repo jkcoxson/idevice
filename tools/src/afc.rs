@@ -46,6 +46,11 @@ async fn main() {
                 .about("Remove a provisioning profile")
                 .arg(Arg::new("path").required(true).index(1)),
         )
+        .subcommand(
+            Command::new("info")
+                .about("Get info about a file")
+                .arg(Arg::new("path").required(true).index(1)),
+        )
         .get_matches();
 
     if matches.get_flag("about") {
@@ -71,10 +76,17 @@ async fn main() {
 
     if let Some(matches) = matches.subcommand_matches("list") {
         let path = matches.get_one::<String>("path").expect("No path passed");
-        let res = afc_client.list(path).await.expect("Failed to read dir");
+        let res = afc_client.list_dir(path).await.expect("Failed to read dir");
         println!("{path}\n{res:#?}");
     } else if let Some(matches) = matches.subcommand_matches("remove") {
         let path = matches.get_one::<String>("id").expect("No path passed");
+    } else if let Some(matches) = matches.subcommand_matches("info") {
+        let path = matches.get_one::<String>("path").expect("No path passed");
+        let res = afc_client
+            .get_file_info(path)
+            .await
+            .expect("Failed to get file info");
+        println!("{res:#?}");
     } else {
         eprintln!("Invalid usage, pass -h for help");
     }
