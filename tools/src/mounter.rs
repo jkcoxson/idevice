@@ -1,7 +1,7 @@
 // Jackson Coxson
 // Just lists apps for now
 
-use std::path::PathBuf;
+use std::{io::Write, path::PathBuf};
 
 use clap::{arg, value_parser, Arg, Command};
 use idevice::{
@@ -195,13 +195,22 @@ async fn main() {
             .expect("Unexpected value for chip IP");
 
             mounter_client
-                .mount_personalized(
+                .mount_personalized_with_callback(
                     &*provider,
                     image,
                     trust_cache,
                     build_manifest,
                     None,
                     unique_chip_id,
+                    async |((n, d), _)| {
+                        let percent = (n as f64 / d as f64) * 100.0;
+                        print!("\rProgress: {:.2}%", percent);
+                        std::io::stdout().flush().unwrap(); // Make sure it prints immediately
+                        if n == d {
+                            println!();
+                        }
+                    },
+                    (),
                 )
                 .await
                 .expect("Unable to mount");
