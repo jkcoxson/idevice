@@ -6,6 +6,7 @@ pub mod debug_proxy;
 mod errors;
 pub mod heartbeat;
 pub mod installation_proxy;
+pub mod location_simulation;
 pub mod lockdownd;
 pub mod logging;
 pub mod mounter;
