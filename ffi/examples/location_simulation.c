@@ -95,8 +95,9 @@ int main(int argc, char **argv) {
 
   // Get debug proxy service
   XPCServiceHandle *dvt_service = NULL;
-  err = xpc_device_get_service(xpc_device, "com.apple.instruments.dtservicehub",
-                               &dvt_service);
+  err = xpc_device_get_service(
+      xpc_device, "com.apple.instruments.server.services.LocationSimulation",
+      &dvt_service);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to get DVT service: %d\n", err);
     xpc_device_free(xpc_device);
