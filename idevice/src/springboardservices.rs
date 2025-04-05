@@ -1,4 +1,4 @@
-use crate::{lockdownd::LockdowndClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdowndClient, Idevice, IdeviceError, IdeviceService};
 
 pub struct SpringBoardServicesClient {
     pub idevice: Idevice,

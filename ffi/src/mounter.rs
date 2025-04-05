@@ -2,7 +2,7 @@
 
 use std::ffi::c_void;
 
-use idevice::{IdeviceError, IdeviceService, mounter::ImageMounter};
+use idevice::{IdeviceError, IdeviceService, mobile_image_mounter::ImageMounter};
 use plist::Value;
 
 use crate::{

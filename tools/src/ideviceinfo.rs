@@ -2,7 +2,7 @@
 // idevice Rust implementation of libimobiledevice's ideviceinfo
 
 use clap::{Arg, Command};
-use idevice::{lockdownd::LockdowndClient, pairing_file::PairingFile, IdeviceService};
+use idevice::{lockdown::LockdowndClient, pairing_file::PairingFile, IdeviceService};
 
 mod common;
 

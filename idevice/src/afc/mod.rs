@@ -7,7 +7,7 @@ use log::warn;
 use opcode::AfcOpcode;
 use packet::{AfcPacket, AfcPacketHeader};
 
-use crate::{lockdownd::LockdowndClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdowndClient, Idevice, IdeviceError, IdeviceService};
 
 pub mod errors;
 pub mod opcode;

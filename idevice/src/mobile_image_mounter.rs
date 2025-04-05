@@ -2,7 +2,7 @@
 
 use log::debug;
 
-use crate::{lockdownd::LockdowndClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdowndClient, Idevice, IdeviceError, IdeviceService};
 
 #[cfg(feature = "tss")]
 use crate::tss::TSSRequest;

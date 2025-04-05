@@ -2,7 +2,7 @@
 
 use std::ffi::c_void;
 
-use idevice::{IdeviceError, IdeviceService, lockdownd::LockdowndClient};
+use idevice::{IdeviceError, IdeviceService, lockdown::LockdowndClient};
 
 use crate::{
     IdeviceErrorCode, IdeviceHandle, IdevicePairingFile, RUNTIME,

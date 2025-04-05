@@ -4,7 +4,7 @@
 use log::warn;
 use plist::Dictionary;
 
-use crate::{lockdownd::LockdowndClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdowndClient, Idevice, IdeviceError, IdeviceService};
 
 pub struct MisagentClient {
     pub idevice: Idevice,

@@ -1,6 +1,6 @@
 // Jackson Coxson
 
-use crate::{lockdownd::LockdowndClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdowndClient, Idevice, IdeviceError, IdeviceService};
 
 use byteorder::{BigEndian, WriteBytesExt};
 use serde::{Deserialize, Serialize};

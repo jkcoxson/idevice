@@ -14,16 +14,16 @@ pub mod heartbeat;
 pub mod http2;
 #[cfg(feature = "installation_proxy")]
 pub mod installation_proxy;
-pub mod lockdownd;
+pub mod lockdown;
 #[cfg(feature = "misagent")]
 pub mod misagent;
 #[cfg(feature = "mounter")]
-pub mod mounter;
+pub mod mobile_image_mounter;
 pub mod pairing_file;
 pub mod provider;
-#[cfg(feature = "sbservices")]
-pub mod sbservices;
 mod sni;
+#[cfg(feature = "sbservices")]
+pub mod springboardservices;
 #[cfg(feature = "tunnel_tcp_stack")]
 pub mod tcp;
 #[cfg(feature = "tss")]

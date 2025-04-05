@@ -1,6 +1,6 @@
 use std::ffi::{CStr, c_void};
 
-use idevice::{IdeviceError, IdeviceService, sbservices::SpringBoardServicesClient};
+use idevice::{IdeviceError, IdeviceService, springboardservices::SpringBoardServicesClient};
 
 use crate::{
     IdeviceErrorCode, IdeviceHandle, RUNTIME,

@@ -5,7 +5,8 @@ use std::{io::Write, path::PathBuf};
 
 use clap::{arg, value_parser, Arg, Command};
 use idevice::{
-    lockdownd::LockdowndClient, mounter::ImageMounter, pretty_print_plist, IdeviceService,
+    lockdown::LockdowndClient, mobile_image_mounter::ImageMounter, pretty_print_plist,
+    IdeviceService,
 };
 
 mod common;

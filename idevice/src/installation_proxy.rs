@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use crate::{lockdownd::LockdowndClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdowndClient, Idevice, IdeviceError, IdeviceService};
 
 pub struct InstallationProxyClient {
     pub idevice: Idevice,
