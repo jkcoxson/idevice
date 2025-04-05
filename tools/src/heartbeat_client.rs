@@ -61,7 +61,7 @@ async fn main() {
 
     let mut interval = 15;
     loop {
-        interval = heartbeat_client.get_marco(1000).await.unwrap();
+        interval = heartbeat_client.get_marco(interval).await.unwrap() + 5;
         heartbeat_client.send_polo().await.unwrap();
     }
 }
