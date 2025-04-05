@@ -33,10 +33,10 @@ pub struct FileInfo {
 
 #[derive(Clone, Debug)]
 pub struct DeviceInfo {
-    model: String,
-    total_bytes: usize,
-    free_bytes: usize,
-    block_size: usize,
+    pub model: String,
+    pub total_bytes: usize,
+    pub free_bytes: usize,
+    pub block_size: usize,
 }
 
 impl IdeviceService for AfcClient {

@@ -11,7 +11,7 @@ keywords = ["lockdownd", "ios"]
 
 
 [dependencies]
-tokio = { version = "1.43", features = ["io-util", "macros", "time"] }
+tokio = { version = "1.43", features = ["io-util"] }
 tokio-openssl = { version = "0.6" }
 
 plist = { version = "1.7" }
@@ -48,7 +48,7 @@ afc = ["dep:chrono"]
 core_device_proxy = ["dep:serde_json", "dep:json", "dep:byteorder"]
 debug_proxy = []
 dvt = ["dep:byteorder", "dep:ns-keyed-archive"]
-heartbeat = []
+heartbeat = ["tokio/macros", "tokio/time"]
 installation_proxy = []
 sbservices = []
 misagent = []
