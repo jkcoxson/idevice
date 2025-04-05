@@ -1,6 +1,6 @@
 // Jackson Coxson
 
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, PartialEq)]
 #[non_exhaustive]
 #[repr(C)]
 pub enum AfcError {

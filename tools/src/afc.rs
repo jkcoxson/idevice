@@ -42,6 +42,11 @@ async fn main() {
                 .arg(Arg::new("path").required(true).index(1)),
         )
         .subcommand(
+            Command::new("mkdir")
+                .about("Creates a directory")
+                .arg(Arg::new("path").required(true).index(1)),
+        )
+        .subcommand(
             Command::new("remove")
                 .about("Remove a provisioning profile")
                 .arg(Arg::new("path").required(true).index(1)),
@@ -78,6 +83,9 @@ async fn main() {
         let path = matches.get_one::<String>("path").expect("No path passed");
         let res = afc_client.list_dir(path).await.expect("Failed to read dir");
         println!("{path}\n{res:#?}");
+    } else if let Some(matches) = matches.subcommand_matches("mkdir") {
+        let path = matches.get_one::<String>("path").expect("No path passed");
+        afc_client.mk_dir(path).await.expect("Failed to mkdir");
     } else if let Some(matches) = matches.subcommand_matches("remove") {
         let path = matches.get_one::<String>("id").expect("No path passed");
     } else if let Some(matches) = matches.subcommand_matches("info") {

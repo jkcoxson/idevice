@@ -100,6 +100,32 @@ impl AfcClient {
         Ok(strings)
     }
 
+    pub async fn mk_dir(&mut self, path: impl Into<String>) -> Result<(), IdeviceError> {
+        let path = path.into();
+        let header_payload = path.as_bytes().to_vec();
+        let header_len = header_payload.len() as u64 + AfcPacketHeader::LEN;
+
+        let header = AfcPacketHeader {
+            magic: MAGIC,
+            entire_len: header_len, // it's the same since the payload is empty for this
+            header_payload_len: header_len,
+            packet_num: self.package_number,
+            operation: AfcOpcode::MakeDir,
+        };
+        self.package_number += 1;
+
+        let packet = AfcPacket {
+            header,
+            header_payload,
+            payload: Vec::new(),
+        };
+
+        self.send(packet).await?;
+        self.read().await?; // read a response to check for errors
+
+        Ok(())
+    }
+
     pub async fn get_file_info(
         &mut self,
         path: impl Into<String>,
@@ -190,7 +216,12 @@ impl AfcClient {
                 return Err(IdeviceError::UnexpectedResponse);
             }
             let code = u64::from_le_bytes(res.header_payload[..8].try_into().unwrap());
-            return Err(IdeviceError::Afc(AfcError::from(code)));
+            let e = AfcError::from(code);
+            if e == AfcError::Success {
+                return Ok(res);
+            } else {
+                return Err(IdeviceError::Afc(e));
+            }
         }
         Ok(res)
     }
