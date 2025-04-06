@@ -5,7 +5,7 @@ use std::{io::Write, path::PathBuf};
 
 use clap::{arg, value_parser, Arg, Command};
 use idevice::{
-    lockdown::LockdowndClient, mobile_image_mounter::ImageMounter, pretty_print_plist,
+    lockdown::LockdownClient, mobile_image_mounter::ImageMounter, pretty_print_plist,
     IdeviceService,
 };
 
@@ -85,7 +85,7 @@ async fn main() {
             }
         };
 
-    let mut lockdown_client = LockdowndClient::connect(&*provider)
+    let mut lockdown_client = LockdownClient::connect(&*provider)
         .await
         .expect("Unable to connect to lockdown");
 

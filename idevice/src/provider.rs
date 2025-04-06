@@ -1,4 +1,7 @@
-// Jackson Coxson
+//! iOS Device Connection Providers
+//!
+//! Provides abstractions for establishing connections to iOS devices through different
+//! transport mechanisms (TCP, USB, etc.).
 
 use std::{
     future::Future,
@@ -14,31 +17,56 @@ use crate::{pairing_file::PairingFile, Idevice, IdeviceError};
 #[cfg(feature = "usbmuxd")]
 use crate::usbmuxd::UsbmuxdAddr;
 
-/// A provider for connecting to the iOS device
-/// This is an ugly trait until async traits are stabilized
+/// Trait for providers that can establish connections to iOS devices
+///
+/// This is an async trait that abstracts over different connection methods
+/// (TCP, USB, etc.).
 pub trait IdeviceProvider: Unpin + Send + Sync + std::fmt::Debug {
+    /// Establishes a connection to the specified port on the device
+    ///
+    /// # Arguments
+    /// * `port` - The port number to connect to
+    ///
+    /// # Returns
+    /// A future that resolves to an `Idevice` connection handle
     fn connect(
         &self,
         port: u16,
     ) -> Pin<Box<dyn Future<Output = Result<Idevice, IdeviceError>> + Send>>;
 
+    /// Returns a label identifying this provider/connection
     fn label(&self) -> &str;
 
+    /// Retrieves the pairing file needed for secure communication
+    ///
+    /// # Returns
+    /// A future that resolves to the device's `PairingFile`
     fn get_pairing_file(
         &self,
     ) -> Pin<Box<dyn Future<Output = Result<PairingFile, IdeviceError>> + Send>>;
 }
 
+/// TCP-based device connection provider
 #[cfg(feature = "tcp")]
 #[derive(Debug)]
 pub struct TcpProvider {
+    /// IP address of the device
     pub addr: IpAddr,
+    /// Pairing file for secure communication
     pub pairing_file: PairingFile,
+    /// Label identifying this connection
     pub label: String,
 }
 
 #[cfg(feature = "tcp")]
 impl IdeviceProvider for TcpProvider {
+    /// Connects to the device over TCP
+    ///
+    /// # Arguments
+    /// * `port` - The TCP port to connect to
+    ///
+    /// # Returns
+    /// An `Idevice` wrapped in a future
     fn connect(
         &self,
         port: u16,
@@ -52,10 +80,12 @@ impl IdeviceProvider for TcpProvider {
         })
     }
 
+    /// Returns the connection label
     fn label(&self) -> &str {
         &self.label
     }
 
+    /// Returns the pairing file (cloned from the provider)
     fn get_pairing_file(
         &self,
     ) -> Pin<Box<dyn Future<Output = Result<PairingFile, IdeviceError>> + Send>> {
@@ -64,18 +94,31 @@ impl IdeviceProvider for TcpProvider {
     }
 }
 
+/// USB-based device connection provider using usbmuxd
 #[cfg(feature = "usbmuxd")]
 #[derive(Debug)]
 pub struct UsbmuxdProvider {
+    /// USB connection address
     pub addr: UsbmuxdAddr,
+    /// Connection tag/identifier
     pub tag: u32,
+    /// Device UDID
     pub udid: String,
+    /// Device ID
     pub device_id: u32,
+    /// Connection label
     pub label: String,
 }
 
 #[cfg(feature = "usbmuxd")]
 impl IdeviceProvider for UsbmuxdProvider {
+    /// Connects to the device over USB via usbmuxd
+    ///
+    /// # Arguments
+    /// * `port` - The port number to connect to on the device
+    ///
+    /// # Returns
+    /// An `Idevice` wrapped in a future
     fn connect(
         &self,
         port: u16,
@@ -91,10 +134,12 @@ impl IdeviceProvider for UsbmuxdProvider {
         })
     }
 
+    /// Returns the connection label
     fn label(&self) -> &str {
         &self.label
     }
 
+    /// Retrieves the pairing record from usbmuxd
     fn get_pairing_file(
         &self,
     ) -> Pin<Box<dyn Future<Output = Result<PairingFile, IdeviceError>> + Send>> {
@@ -108,3 +153,4 @@ impl IdeviceProvider for UsbmuxdProvider {
         })
     }
 }
+

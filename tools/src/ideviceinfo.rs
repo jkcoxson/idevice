@@ -2,7 +2,7 @@
 // idevice Rust implementation of libimobiledevice's ideviceinfo
 
 use clap::{Arg, Command};
-use idevice::{lockdown::LockdowndClient, IdeviceService};
+use idevice::{lockdown::LockdownClient, IdeviceService};
 
 mod common;
 
@@ -57,7 +57,7 @@ async fn main() {
             }
         };
 
-    let mut lockdown_client = match LockdowndClient::connect(&*provider).await {
+    let mut lockdown_client = match LockdownClient::connect(&*provider).await {
         Ok(l) => l,
         Err(e) => {
             eprintln!("Unable to connect to lockdown: {e:?}");

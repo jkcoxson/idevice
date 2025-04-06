@@ -1,4 +1,7 @@
-// Thanks DebianArch
+//! XPC (Cross-Process Communication) Implementation
+//!
+//! Provides functionality for interacting with Apple's XPC protocol over HTTP/2,
+//! which is used for inter-process communication between iOS/macOS components.
 
 use std::collections::HashMap;
 
@@ -14,24 +17,33 @@ use format::{XPCFlag, XPCMessage, XPCObject};
 use log::{debug, warn};
 use serde::Deserialize;
 
-pub mod cdtunnel;
 pub mod error;
-pub mod format;
+mod format;
 
+/// Represents an XPC connection to a device with available services
 pub struct XPCDevice<R: ReadWrite> {
+    /// The underlying XPC connection
     pub connection: XPCConnection<R>,
+    /// Map of available XPC services by name
     pub services: HashMap<String, XPCService>,
 }
 
+/// Describes an available XPC service
 #[derive(Debug, Clone, Deserialize)]
 pub struct XPCService {
+    /// Required entitlement to access this service
     pub entitlement: String,
+    /// Port number where the service is available
     pub port: u16,
+    /// Whether the service uses remote XPC
     pub uses_remote_xpc: bool,
+    /// Optional list of supported features
     pub features: Option<Vec<String>>,
+    /// Optional service version number
     pub service_version: Option<i64>,
 }
 
+/// Manages an active XPC connection over HTTP/2
 pub struct XPCConnection<R: ReadWrite> {
     pub(crate) inner: http2::Connection<R>,
     root_message_id: u64,
@@ -39,9 +51,22 @@ pub struct XPCConnection<R: ReadWrite> {
 }
 
 impl<R: ReadWrite> XPCDevice<R> {
+    /// Creates a new XPC device connection
+    ///
+    /// # Arguments
+    /// * `stream` - The underlying transport stream
+    ///
+    /// # Returns
+    /// A connected XPCDevice instance with discovered services
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - The connection fails
+    /// - The service discovery response is malformed
     pub async fn new(stream: R) -> Result<Self, IdeviceError> {
         let mut connection = XPCConnection::new(stream).await?;
 
+        // Read initial services message
         let data = connection.read_message(http2::ROOT_CHANNEL).await?;
 
         let data = match data.message {
@@ -56,6 +81,7 @@ impl<R: ReadWrite> XPCDevice<R> {
             None => return Err(IdeviceError::UnexpectedResponse),
         };
 
+        // Parse available services
         let mut services = HashMap::new();
         for (name, service) in data.into_iter() {
             match service.as_dictionary() {
@@ -131,18 +157,34 @@ impl<R: ReadWrite> XPCDevice<R> {
         })
     }
 
+    /// Consumes the device and returns the underlying transport stream
     pub fn into_inner(self) -> R {
         self.connection.inner.stream
     }
 }
 
 impl<R: ReadWrite> XPCConnection<R> {
+    /// Channel ID for root messages
     pub const ROOT_CHANNEL: u32 = http2::ROOT_CHANNEL;
+    /// Channel ID for reply messages
     pub const REPLY_CHANNEL: u32 = http2::REPLY_CHANNEL;
+    /// Initial stream ID for HTTP/2 connection
     const INIT_STREAM: u32 = http2::INIT_STREAM;
 
+    /// Establishes a new XPC connection
+    ///
+    /// # Arguments
+    /// * `stream` - The underlying transport stream
+    ///
+    /// # Returns
+    /// A connected XPCConnection instance
+    ///
+    /// # Errors
+    /// Returns `XPCError` if the connection handshake fails
     pub async fn new(stream: R) -> Result<Self, XPCError> {
         let mut client = http2::Connection::new(stream).await?;
+
+        // Configure HTTP/2 settings
         client
             .send_frame(SettingsFrame::new(
                 [
@@ -154,14 +196,19 @@ impl<R: ReadWrite> XPCConnection<R> {
                 Default::default(),
             ))
             .await?;
+
+        // Update window size
         client
             .send_frame(WindowUpdateFrame::new(Self::INIT_STREAM, 983041))
             .await?;
+
         let mut xpc_client = Self {
             inner: client,
             root_message_id: 1,
             reply_message_id: 1,
         };
+
+        // Perform XPC handshake
         xpc_client
             .send_recv_message(
                 Self::ROOT_CHANNEL,
@@ -173,7 +220,6 @@ impl<R: ReadWrite> XPCConnection<R> {
             )
             .await?;
 
-        // we are here. we send data to stream_id 3 yet we get data from stream 1 ???
         xpc_client
             .send_recv_message(
                 Self::REPLY_CHANNEL,
@@ -195,6 +241,14 @@ impl<R: ReadWrite> XPCConnection<R> {
         Ok(xpc_client)
     }
 
+    /// Sends a message and waits for the response
+    ///
+    /// # Arguments
+    /// * `stream_id` - The channel/stream to use
+    /// * `message` - The XPC message to send
+    ///
+    /// # Returns
+    /// The response message
     pub async fn send_recv_message(
         &mut self,
         stream_id: u32,
@@ -204,6 +258,7 @@ impl<R: ReadWrite> XPCConnection<R> {
         self.read_message(stream_id).await
     }
 
+    /// Sends an XPC message without waiting for a response
     pub async fn send_message(
         &mut self,
         stream_id: u32,
@@ -215,6 +270,7 @@ impl<R: ReadWrite> XPCConnection<R> {
         Ok(())
     }
 
+    /// Reads an XPC message from the specified stream
     pub async fn read_message(&mut self, stream_id: u32) -> Result<XPCMessage, XPCError> {
         let mut buf = self.inner.read_streamid(stream_id).await?;
         loop {
@@ -236,3 +292,4 @@ impl<R: ReadWrite> XPCConnection<R> {
         }
     }
 }
+

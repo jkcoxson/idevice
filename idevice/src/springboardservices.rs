@@ -1,18 +1,46 @@
-use crate::{lockdown::LockdowndClient, Idevice, IdeviceError, IdeviceService};
+//! SpringBoard Services Client
+//!
+//! Provides functionality for interacting with the SpringBoard services on iOS devices,
+//! which manages home screen and app icon related operations.
 
+use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
+
+/// Client for interacting with the iOS SpringBoard services
+///
+/// This service provides access to home screen and app icon functionality,
+/// such as retrieving app icons.
 pub struct SpringBoardServicesClient {
+    /// The underlying device connection with established SpringBoard services
     pub idevice: Idevice,
 }
 
 impl IdeviceService for SpringBoardServicesClient {
+    /// Returns the SpringBoard services name as registered with lockdownd
     fn service_name() -> &'static str {
         "com.apple.springboardservices"
     }
 
+    /// Establishes a connection to the SpringBoard services
+    ///
+    /// # Arguments
+    /// * `provider` - Device connection provider
+    ///
+    /// # Returns
+    /// A connected `SpringBoardServicesClient` instance
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if any step of the connection process fails
+    ///
+    /// # Process
+    /// 1. Connects to lockdownd service
+    /// 2. Starts a lockdown session
+    /// 3. Requests the SpringBoard services port
+    /// 4. Establishes connection to the service port
+    /// 5. Optionally starts TLS if required by service
     async fn connect(
         provider: &dyn crate::provider::IdeviceProvider,
     ) -> Result<Self, IdeviceError> {
-        let mut lockdown = LockdowndClient::connect(provider).await?;
+        let mut lockdown = LockdownClient::connect(provider).await?;
         lockdown
             .start_session(&provider.get_pairing_file().await?)
             .await?;
@@ -31,13 +59,33 @@ impl IdeviceService for SpringBoardServicesClient {
 }
 
 impl SpringBoardServicesClient {
+    /// Creates a new SpringBoard services client from an existing device connection
+    ///
+    /// # Arguments
+    /// * `idevice` - Pre-established device connection
     pub fn new(idevice: Idevice) -> Self {
         Self { idevice }
     }
 
-    /// Gets the icon of a spceified app
+    /// Retrieves the PNG icon data for a specified app
+    ///
     /// # Arguments
-    /// `bundle_identifier` - The identifier of the app to get icon
+    /// * `bundle_identifier` - The bundle identifier of the app (e.g., "com.apple.Maps")
+    ///
+    /// # Returns
+    /// The raw PNG data of the app icon
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The app doesn't exist
+    /// - The response is malformed
+    ///
+    /// # Example
+    /// ```rust
+    /// let icon_data = client.get_icon_pngdata("com.apple.Maps".to_string()).await?;
+    /// std::fs::write("maps_icon.png", icon_data)?;
+    /// ```
     pub async fn get_icon_pngdata(
         &mut self,
         bundle_identifier: String,
@@ -56,3 +104,4 @@ impl SpringBoardServicesClient {
         }
     }
 }
+

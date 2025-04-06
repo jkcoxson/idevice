@@ -7,7 +7,7 @@ use log::warn;
 use opcode::AfcOpcode;
 use packet::{AfcPacket, AfcPacketHeader};
 
-use crate::{lockdown::LockdowndClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
 
 pub mod errors;
 pub mod opcode;
@@ -47,7 +47,7 @@ impl IdeviceService for AfcClient {
     async fn connect(
         provider: &dyn crate::provider::IdeviceProvider,
     ) -> Result<Self, IdeviceError> {
-        let mut lockdown = LockdowndClient::connect(provider).await?;
+        let mut lockdown = LockdownClient::connect(provider).await?;
         lockdown
             .start_session(&provider.get_pairing_file().await?)
             .await?;

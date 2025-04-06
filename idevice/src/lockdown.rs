@@ -1,5 +1,7 @@
-// Jackson Coxson
-// Abstractions for lockdownd
+//! iOS Lockdown Service Client
+//!
+//! Provides functionality for interacting with the lockdown service on iOS devices,
+//! which is the primary service for device management and service discovery.
 
 use log::error;
 use plist::Value;
@@ -7,15 +9,33 @@ use serde::{Deserialize, Serialize};
 
 use crate::{pairing_file, Idevice, IdeviceError, IdeviceService};
 
-pub struct LockdowndClient {
+/// Client for interacting with the iOS lockdown service
+///
+/// This is the primary service for device management and provides:
+/// - Access to device information and settings
+/// - Service discovery and port allocation
+/// - Session management and security
+pub struct LockdownClient {
+    /// The underlying device connection with established lockdown service
     pub idevice: crate::Idevice,
 }
 
-impl IdeviceService for LockdowndClient {
+impl IdeviceService for LockdownClient {
+    /// Returns the lockdown service name as registered with the device
     fn service_name() -> &'static str {
         "com.apple.mobile.lockdown"
     }
 
+    /// Establishes a connection to the lockdown service
+    ///
+    /// # Arguments
+    /// * `provider` - Device connection provider
+    ///
+    /// # Returns
+    /// A connected `LockdownClient` instance
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if connection fails
     async fn connect(
         provider: &dyn crate::provider::IdeviceProvider,
     ) -> Result<Self, IdeviceError> {
@@ -24,22 +44,48 @@ impl IdeviceService for LockdowndClient {
     }
 }
 
+/// Internal structure for lockdown protocol requests
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-struct LockdowndRequest {
+struct LockdownRequest {
     label: String,
     key: Option<String>,
     request: String,
 }
 
-impl LockdowndClient {
+impl LockdownClient {
+    /// The default TCP port for the lockdown service
     pub const LOCKDOWND_PORT: u16 = 62078;
 
+    /// Creates a new lockdown client from an existing device connection
+    ///
+    /// # Arguments
+    /// * `idevice` - Pre-established device connection
     pub fn new(idevice: Idevice) -> Self {
         Self { idevice }
     }
+
+    /// Retrieves a specific value from the device
+    ///
+    /// # Arguments
+    /// * `value` - The name of the value to retrieve (e.g., "DeviceName")
+    ///
+    /// # Returns
+    /// The requested value as a plist Value
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The requested value doesn't exist
+    /// - The response is malformed
+    ///
+    /// # Example
+    /// ```rust
+    /// let device_name = client.get_value("DeviceName").await?;
+    /// println!("Device name: {:?}", device_name);
+    /// ```
     pub async fn get_value(&mut self, value: impl Into<String>) -> Result<Value, IdeviceError> {
-        let req = LockdowndRequest {
+        let req = LockdownRequest {
             label: self.idevice.label.clone(),
             key: Some(value.into()),
             request: "GetValue".to_string(),
@@ -53,8 +99,25 @@ impl LockdowndClient {
         }
     }
 
+    /// Retrieves all available values from the device
+    ///
+    /// # Returns
+    /// A dictionary containing all device values
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The response is malformed
+    ///
+    /// # Example
+    /// ```rust
+    /// let all_values = client.get_all_values().await?;
+    /// for (key, value) in all_values {
+    ///     println!("{}: {:?}", key, value);
+    /// }
+    /// ```
     pub async fn get_all_values(&mut self) -> Result<plist::Dictionary, IdeviceError> {
-        let req = LockdowndRequest {
+        let req = LockdownRequest {
             label: self.idevice.label.clone(),
             key: None,
             request: "GetValue".to_string(),
@@ -68,7 +131,19 @@ impl LockdowndClient {
         }
     }
 
-    /// Starts a TLS session with the client
+    /// Starts a secure TLS session with the device
+    ///
+    /// # Arguments
+    /// * `pairing_file` - Contains the device's identity and certificates
+    ///
+    /// # Returns
+    /// `Ok(())` on successful session establishment
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - No connection is established
+    /// - The session request is denied
+    /// - TLS handshake fails
     pub async fn start_session(
         &mut self,
         pairing_file: &pairing_file::PairingFile,
@@ -116,11 +191,21 @@ impl LockdowndClient {
         Ok(())
     }
 
-    /// Asks lockdownd to pretty please start a service for us
+    /// Requests to start a service on the device
+    ///
     /// # Arguments
-    /// `identifier` - The identifier for the service you want to start
+    /// * `identifier` - The service identifier (e.g., "com.apple.debugserver")
+    ///
     /// # Returns
-    /// The port number and whether to enable SSL on success, `IdeviceError` on failure
+    /// A tuple containing:
+    /// - The port number where the service is available
+    /// - A boolean indicating whether SSL should be used
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - The service cannot be started
+    /// - The response is malformed
+    /// - The requested service doesn't exist
     pub async fn start_service(
         &mut self,
         identifier: impl Into<String>,
@@ -144,7 +229,7 @@ impl LockdowndClient {
                 if let Some(port) = port.as_unsigned() {
                     Ok((port as u16, ssl))
                 } else {
-                    error!("Port isn't an unsiged integer!");
+                    error!("Port isn't an unsigned integer!");
                     Err(IdeviceError::UnexpectedResponse)
                 }
             }
@@ -156,7 +241,8 @@ impl LockdowndClient {
     }
 }
 
-impl From<Idevice> for LockdowndClient {
+impl From<Idevice> for LockdownClient {
+    /// Converts an existing device connection into a lockdown client
     fn from(value: Idevice) -> Self {
         Self::new(value)
     }

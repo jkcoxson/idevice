@@ -1,28 +1,58 @@
-// Jackson Coxson
+//! iOS Image Mounter Client
+//!
+//! Provides functionality for mounting disk images on iOS devices, including:
+//! - Developer disk images
+//! - Personalized images
+//! - Cryptex images
+//!
+//! Handles the complete workflow from uploading images to mounting them with proper signatures.
 
 use log::debug;
 
-use crate::{lockdown::LockdowndClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
 
 #[cfg(feature = "tss")]
 use crate::tss::TSSRequest;
 
-/// Manages mounted images on the idevice.
-/// NOTE: A lockdown client must be established and queried after establishing a mounter client, or
-/// the device will stop responding to requests.
+/// Client for interacting with the iOS mobile image mounter service
+///
+/// Manages mounted images on the device.
+///
+/// # Important Note
+/// A lockdown client must be established and queried after establishing a mounter client,
+/// or the device will stop responding to requests.
 pub struct ImageMounter {
+    /// The underlying device connection with established image mounter service
     idevice: Idevice,
 }
 
 impl IdeviceService for ImageMounter {
+    /// Returns the image mounter service name as registered with lockdownd
     fn service_name() -> &'static str {
         "com.apple.mobile.mobile_image_mounter"
     }
 
+    /// Establishes a connection to the image mounter service
+    ///
+    /// # Arguments
+    /// * `provider` - Device connection provider
+    ///
+    /// # Returns
+    /// A connected `ImageMounter` instance
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if any step of the connection process fails
+    ///
+    /// # Process
+    /// 1. Connects to lockdownd service
+    /// 2. Starts a lockdown session
+    /// 3. Requests the image mounter service port
+    /// 4. Establishes connection to the service port
+    /// 5. Optionally starts TLS if required by service
     async fn connect(
         provider: &dyn crate::provider::IdeviceProvider,
     ) -> Result<Self, IdeviceError> {
-        let mut lockdown = LockdowndClient::connect(provider).await?;
+        let mut lockdown = LockdownClient::connect(provider).await?;
         lockdown
             .start_session(&provider.get_pairing_file().await?)
             .await?;
@@ -41,10 +71,21 @@ impl IdeviceService for ImageMounter {
 }
 
 impl ImageMounter {
+    /// Creates a new image mounter client from an existing device connection
+    ///
+    /// # Arguments
+    /// * `idevice` - Pre-established device connection
     pub fn new(idevice: Idevice) -> Self {
         Self { idevice }
     }
 
+    /// Retrieves a list of currently mounted devices
+    ///
+    /// # Returns
+    /// A vector of plist values describing mounted devices
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if communication fails or response is malformed
     pub async fn copy_devices(&mut self) -> Result<Vec<plist::Value>, IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("Command".into(), "CopyDevices".into());
@@ -59,7 +100,16 @@ impl ImageMounter {
         }
     }
 
-    /// Looks up an image and returns the signature
+    /// Looks up an image by type and returns its signature
+    ///
+    /// # Arguments
+    /// * `image_type` - The type of image to lookup (e.g., "Developer")
+    ///
+    /// # Returns
+    /// The image signature if found
+    ///
+    /// # Errors
+    /// Returns `IdeviceError::NotFound` if image doesn't exist
     pub async fn lookup_image(
         &mut self,
         image_type: impl Into<String>,
@@ -79,6 +129,15 @@ impl ImageMounter {
         }
     }
 
+    /// Uploads an image to the device
+    ///
+    /// # Arguments
+    /// * `image_type` - Type of image being uploaded
+    /// * `image` - The image data
+    /// * `signature` - Signature for the image
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if upload fails
     pub async fn upload_image(
         &mut self,
         image_type: impl Into<String>,
@@ -89,6 +148,21 @@ impl ImageMounter {
             .await
     }
 
+    /// Uploads an image with progress callbacks
+    ///
+    /// # Arguments
+    /// * `image_type` - Type of image being uploaded
+    /// * `image` - The image data
+    /// * `signature` - Signature for the image
+    /// * `callback` - Progress callback
+    /// * `state` - State to pass to callback
+    ///
+    /// # Type Parameters
+    /// * `Fut` - Future type returned by callback
+    /// * `S` - Type of state passed to callback
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if upload fails
     pub async fn upload_image_with_progress<Fut, S>(
         &mut self,
         image_type: impl Into<String>,
@@ -149,6 +223,16 @@ impl ImageMounter {
         Ok(())
     }
 
+    /// Mounts an image on the device
+    ///
+    /// # Arguments
+    /// * `image_type` - Type of image to mount
+    /// * `signature` - Signature for the image
+    /// * `trust_cache` - Optional trust cache data
+    /// * `info_plist` - Optional info plist for the image
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if mounting fails
     pub async fn mount_image(
         &mut self,
         image_type: impl Into<String>,
@@ -187,9 +271,15 @@ impl ImageMounter {
         Ok(())
     }
 
-    /// Unmounts an image at a specified path.
-    /// Use ``/Developer`` for pre-iOS 17 developer images.
-    /// Use ``/System/Developer`` for personalized images.
+    /// Unmounts an image at the specified path
+    ///
+    /// # Arguments
+    /// * `mount_path` - Path where image is mounted:
+    ///   - `/Developer` for pre-iOS 17 developer images
+    ///   - `/System/Developer` for personalized images
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if unmounting fails
     pub async fn unmount_image(
         &mut self,
         mount_path: impl Into<String>,
@@ -209,8 +299,20 @@ impl ImageMounter {
         }
     }
 
-    /// Queries the personalization manifest from the device.
+    /// Queries the personalization manifest from the device
+    ///
+    /// # Important
     /// On failure, the socket must be closed and reestablished.
+    ///
+    /// # Arguments
+    /// * `image_type` - Type of image to query manifest for
+    /// * `signature` - Signature of the image
+    ///
+    /// # Returns
+    /// The personalization manifest data
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if query fails
     pub async fn query_personalization_manifest(
         &mut self,
         image_type: impl Into<String>,
@@ -234,6 +336,13 @@ impl ImageMounter {
         }
     }
 
+    /// Queries the developer mode status of the device
+    ///
+    /// # Returns
+    /// `true` if developer mode is enabled, `false` otherwise
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if query fails
     pub async fn query_developer_mode_status(&mut self) -> Result<bool, IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("Command".into(), "QueryDeveloperModeStatus".into());
@@ -248,6 +357,16 @@ impl ImageMounter {
         }
     }
 
+    /// Queries the nonce value from the device
+    ///
+    /// # Arguments
+    /// * `personalized_image_type` - Optional image type to get nonce for
+    ///
+    /// # Returns
+    /// The nonce value
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if query fails
     pub async fn query_nonce(
         &mut self,
         personalized_image_type: Option<String>,
@@ -268,6 +387,16 @@ impl ImageMounter {
         }
     }
 
+    /// Queries personalization identifiers from the device
+    ///
+    /// # Arguments
+    /// * `image_type` - Optional image type to get identifiers for
+    ///
+    /// # Returns
+    /// Dictionary of personalization identifiers
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if query fails
     pub async fn query_personalization_identifiers(
         &mut self,
         image_type: Option<String>,
@@ -288,6 +417,10 @@ impl ImageMounter {
         }
     }
 
+    /// Rolls the personalization nonce on the device
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if operation fails
     pub async fn roll_personalization_nonce(&mut self) -> Result<(), IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("Command".into(), "RollPersonalizationNonce".into());
@@ -298,6 +431,10 @@ impl ImageMounter {
         Ok(())
     }
 
+    /// Rolls the cryptex nonce on the device
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if operation fails
     pub async fn roll_cryptex_nonce(&mut self) -> Result<(), IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("Command".into(), "RollCryptexNonce".into());
@@ -308,6 +445,14 @@ impl ImageMounter {
         Ok(())
     }
 
+    /// Mounts a developer disk image
+    ///
+    /// # Arguments
+    /// * `image` - The developer disk image data
+    /// * `signature` - Signature for the image
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if mounting fails
     pub async fn mount_developer(
         &mut self,
         image: &[u8],
@@ -321,6 +466,18 @@ impl ImageMounter {
     }
 
     #[cfg(feature = "tss")]
+    /// Mounts a personalized image with automatic manifest handling
+    ///
+    /// # Arguments
+    /// * `provider` - Device connection provider (used for reconnection if needed)
+    /// * `image` - The image data
+    /// * `trust_cache` - Trust cache data
+    /// * `build_manifest` - Build manifest data
+    /// * `info_plist` - Optional info plist for the image
+    /// * `unique_chip_id` - Device's unique chip ID
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if mounting fails
     pub async fn mount_personalized(
         &mut self,
         provider: &dyn crate::provider::IdeviceProvider,
@@ -344,9 +501,28 @@ impl ImageMounter {
     }
 
     #[cfg(feature = "tss")]
-    /// Calling this has the potential of closing the socket,
-    /// so a provider is required for this abstraction.
-    #[allow(clippy::too_many_arguments)] // literally nobody asked
+    /// Mounts a personalized image with progress callbacks
+    ///
+    /// # Important
+    /// This may close the socket on failure, requiring reconnection.
+    ///
+    /// # Arguments
+    /// * `provider` - Device connection provider
+    /// * `image` - The image data
+    /// * `trust_cache` - Trust cache data
+    /// * `build_manifest` - Build manifest data
+    /// * `info_plist` - Optional info plist for the image
+    /// * `unique_chip_id` - Device's unique chip ID
+    /// * `callback` - Progress callback
+    /// * `state` - State to pass to callback
+    ///
+    /// # Type Parameters
+    /// * `Fut` - Future type returned by callback
+    /// * `S` - Type of state passed to callback
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if mounting fails
+    #[allow(clippy::too_many_arguments)]
     pub async fn mount_personalized_with_callback<Fut, S>(
         &mut self,
         provider: &dyn crate::provider::IdeviceProvider,
@@ -385,7 +561,7 @@ impl ImageMounter {
             }
         };
 
-        debug!("Uploading imaage");
+        debug!("Uploading image");
         self.upload_image_with_progress("Personalized", &image, manifest.clone(), callback, state)
             .await?;
 
@@ -397,6 +573,17 @@ impl ImageMounter {
     }
 
     #[cfg(feature = "tss")]
+    /// Retrieves a personalization manifest from Apple's TSS server
+    ///
+    /// # Arguments
+    /// * `build_manifest` - Build manifest dictionary
+    /// * `unique_chip_id` - Device's unique chip ID
+    ///
+    /// # Returns
+    /// The manifest data
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if manifest retrieval fails
     pub async fn get_manifest_from_tss(
         &mut self,
         build_manifest: &plist::Dictionary,
@@ -589,3 +776,4 @@ impl ImageMounter {
         }
     }
 }
+

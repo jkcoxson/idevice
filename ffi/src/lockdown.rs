@@ -2,14 +2,14 @@
 
 use std::ffi::c_void;
 
-use idevice::{IdeviceError, IdeviceService, lockdown::LockdowndClient};
+use idevice::{IdeviceError, IdeviceService, lockdown::LockdownClient};
 
 use crate::{
     IdeviceErrorCode, IdeviceHandle, IdevicePairingFile, RUNTIME,
     provider::{TcpProviderHandle, UsbmuxdProviderHandle},
 };
 
-pub struct LockdowndClientHandle(pub LockdowndClient);
+pub struct LockdowndClientHandle(pub LockdownClient);
 
 /// Connects to lockdownd service using TCP provider
 ///
@@ -33,10 +33,10 @@ pub unsafe extern "C" fn lockdownd_connect_tcp(
         return IdeviceErrorCode::InvalidArg;
     }
 
-    let res: Result<LockdowndClient, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<LockdownClient, IdeviceError> = RUNTIME.block_on(async move {
         let provider_box = unsafe { Box::from_raw(provider) };
         let provider_ref = &provider_box.0;
-        let result = LockdowndClient::connect(provider_ref).await;
+        let result = LockdownClient::connect(provider_ref).await;
         std::mem::forget(provider_box);
         result
     });
@@ -76,10 +76,10 @@ pub unsafe extern "C" fn lockdownd_connect_usbmuxd(
         return IdeviceErrorCode::InvalidArg;
     }
 
-    let res: Result<LockdowndClient, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<LockdownClient, IdeviceError> = RUNTIME.block_on(async move {
         let provider_box = unsafe { Box::from_raw(provider) };
         let provider_ref = &provider_box.0;
-        let result = LockdowndClient::connect(provider_ref).await;
+        let result = LockdownClient::connect(provider_ref).await;
         std::mem::forget(provider_box);
         result
     });
@@ -115,7 +115,7 @@ pub unsafe extern "C" fn lockdownd_new(
         return IdeviceErrorCode::InvalidArg;
     }
     let socket = unsafe { Box::from_raw(socket) }.0;
-    let r = LockdowndClient::new(socket);
+    let r = LockdownClient::new(socket);
     let boxed = Box::new(LockdowndClientHandle(r));
     unsafe { *client = Box::into_raw(boxed) };
     IdeviceErrorCode::IdeviceSuccess

@@ -1,68 +1,172 @@
-// Jackson Coxson
-// Messages contain:
-// - 32 byte header
-// - 16 byte payload header
-// - Optional auxiliary
-//   - 16 byte aux header, useless
-//   - Aux data
-// - Payload (NSKeyedArchive)
+//! Instruments protocol message format implementation
+//!
+//! This module handles the serialization and deserialization of messages used in
+//! the iOS instruments protocol. The message format consists of:
+//! - 32-byte message header
+//! - 16-byte payload header
+//! - Optional auxiliary data section
+//! - Payload data (typically NSKeyedArchive format)
+//!
+//! # Message Structure
+//! ```text
+//! +---------------------+
+//! |   MessageHeader     | 32 bytes
+//! +---------------------+
+//! |   PayloadHeader     | 16 bytes
+//! +---------------------+
+//! |   AuxHeader         | 16 bytes (if aux present)
+//! |   Aux data          | variable length
+//! +---------------------+
+//! |   Payload data      | variable length (NSKeyedArchive)
+//! +---------------------+
+//! ```
+//!
+//! # Example
+//! ```rust,no_run
+//! use plist::Value;
+//! use your_crate::IdeviceError;
+//! use your_crate::dvt::message::{Message, MessageHeader, PayloadHeader, AuxValue};
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), IdeviceError> {
+//! // Create a new message
+//! let header = MessageHeader::new(
+//!     1,      // fragment_id
+//!     1,      // fragment_count  
+//!     123,    // identifier
+//!     0,      // conversation_index
+//!     42,     // channel
+//!     true    // expects_reply
+//! );
+//!
+//! let message = Message::new(
+//!     header,
+//!     PayloadHeader::method_invocation(),
+//!     Some(AuxValue::from_values(vec![
+//!         AuxValue::String("param".into()),
+//!         AuxValue::U32(123),
+//!     ])),
+//!     Some(Value::String("data".into()))
+//! );
+//!
+//! // Serialize message
+//! let bytes = message.serialize();
+//!
+//! // Deserialize message (from async reader)
+//! # let mut reader = &bytes[..];
+//! let deserialized = Message::from_reader(&mut reader).await?;
+//! # Ok(())
+//! # }
 
 use plist::Value;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::IdeviceError;
 
+/// Message header containing metadata about the message
+///
+/// 32-byte structure that appears at the start of every message
 #[derive(Debug, Clone, PartialEq)]
 pub struct MessageHeader {
-    magic: u32,      // 0x795b3d1f
-    header_len: u32, // will always be 32 bytes
+    /// Magic number identifying the protocol (0x1F3D5B79)
+    magic: u32,
+    /// Length of this header (always 32)
+    header_len: u32,
+    /// Fragment identifier for multipart messages
     fragment_id: u16,
+    /// Total number of fragments
     fragment_count: u16,
-    length: u32, // Length of of the payload
+    /// Total length of payload (headers + aux + data)
+    length: u32,
+    /// Unique message identifier
     identifier: u32,
+    /// Conversation tracking index
     conversation_index: u32,
+    /// Channel number this message belongs to
     pub channel: u32,
+    /// Whether a reply is expected
     expects_reply: bool,
 }
 
+/// Payload header containing information about the message contents
+///
+/// 16-byte structure following the message header
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct PayloadHeader {
+    /// Flags controlling message processing
     flags: u32,
+    /// Length of auxiliary data section
     aux_length: u32,
+    /// Total length of payload (aux + data)
     total_length: u64,
 }
 
+/// Header for auxiliary data section
+///
+/// 16-byte structure preceding auxiliary data
 #[derive(Debug, Default, PartialEq)]
 pub struct AuxHeader {
+    /// Buffer size hint (often 496)
     buffer_size: u32,
+    /// Unknown field (typically 0)
     unknown: u32,
+    /// Actual size of auxiliary data
     aux_size: u32,
+    /// Unknown field (typically 0)
     unknown2: u32,
 }
 
+/// Auxiliary data container
+///
+/// Contains a header and a collection of typed values
 #[derive(Debug, PartialEq)]
 pub struct Aux {
+    /// Auxiliary data header
     pub header: AuxHeader,
+    /// Collection of auxiliary values
     pub values: Vec<AuxValue>,
 }
 
+/// Typed auxiliary value that can be included in messages
 #[derive(PartialEq)]
 pub enum AuxValue {
-    String(String), // 0x01
-    Array(Vec<u8>), // 0x02
-    U32(u32),       // 0x03
-    I64(i64),       // 0x06
+    /// UTF-8 string value (type 0x01)
+    String(String),
+    /// Raw byte array (type 0x02)
+    Array(Vec<u8>),
+    /// 32-bit unsigned integer (type 0x03)
+    U32(u32),
+    /// 64-bit signed integer (type 0x06)
+    I64(i64),
 }
 
+/// Complete protocol message
 #[derive(Debug, PartialEq)]
 pub struct Message {
+    /// Message metadata header
     pub message_header: MessageHeader,
+    /// Payload description header
     pub payload_header: PayloadHeader,
+    /// Optional auxiliary data
     pub aux: Option<Aux>,
+    /// Optional payload data (typically NSKeyedArchive)
     pub data: Option<Value>,
 }
 
 impl Aux {
+    /// Parses auxiliary data from bytes
+    ///
+    /// # Arguments
+    /// * `bytes` - Raw byte slice containing auxiliary data
+    ///
+    /// # Returns
+    /// * `Ok(Aux)` - Parsed auxiliary data
+    /// * `Err(IdeviceError)` - If parsing fails
+    ///
+    /// # Errors
+    /// * `IdeviceError::NotEnoughBytes` if input is too short
+    /// * `IdeviceError::UnknownAuxValueType` for unsupported types
+    /// * `IdeviceError` for other parsing failures
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, IdeviceError> {
         if bytes.len() < 16 {
             return Err(IdeviceError::NotEnoughBytes(bytes.len(), 24));
@@ -129,8 +233,12 @@ impl Aux {
         Ok(Self { header, values })
     }
 
-    // Creates the default struct
-    // Note that the header isn't updated until serialization
+    /// Creates new auxiliary data from values
+    ///
+    /// Note: Header fields are populated during serialization
+    ///
+    /// # Arguments
+    /// * `values` - Collection of auxiliary values to include
     pub fn from_values(values: Vec<AuxValue>) -> Self {
         Self {
             header: AuxHeader::default(),
@@ -138,7 +246,9 @@ impl Aux {
         }
     }
 
-    /// Serializes the values with the correctly sized header
+    /// Serializes auxiliary data to bytes
+    ///
+    /// Includes properly formatted header with updated size fields
     pub fn serialize(&self) -> Vec<u8> {
         let mut values_payload = Vec::new();
         for v in self.values.iter() {
@@ -180,14 +290,27 @@ impl Aux {
 }
 
 impl AuxValue {
-    // Returns an array AuxType
+    /// Creates an auxiliary value containing NSKeyedArchived data
+    ///
+    /// # Arguments
+    /// * `v` - Plist value to archive
     pub fn archived_value(v: impl Into<plist::Value>) -> Self {
         Self::Array(ns_keyed_archive::encode::encode_to_bytes(v.into()).expect("Failed to encode"))
     }
 }
 
 impl MessageHeader {
-    /// Creates a new header. Note that during serialization, the length will be updated
+    /// Creates a new message header
+    ///
+    /// Note: Length field is updated during message serialization
+    ///
+    /// # Arguments
+    /// * `fragment_id` - Identifier for message fragments
+    /// * `fragment_count` - Total fragments in message
+    /// * `identifier` - Unique message ID
+    /// * `conversation_index` - Conversation tracking number
+    /// * `channel` - Channel number
+    /// * `expects_reply` - Whether response is expected
     pub fn new(
         fragment_id: u16,
         fragment_count: u16,
@@ -209,6 +332,7 @@ impl MessageHeader {
         }
     }
 
+    /// Serializes header to bytes
     pub fn serialize(&self) -> Vec<u8> {
         let mut res = Vec::new();
         res.extend_from_slice(&self.magic.to_le_bytes());
@@ -226,10 +350,12 @@ impl MessageHeader {
 }
 
 impl PayloadHeader {
+    /// Creates a new payload header
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Serializes header to bytes
     pub fn serialize(&self) -> Vec<u8> {
         let mut res = Vec::new();
         res.extend_from_slice(&self.flags.to_le_bytes());
@@ -239,6 +365,7 @@ impl PayloadHeader {
         res
     }
 
+    /// Creates header for method invocation messages
     pub fn method_invocation() -> Self {
         Self {
             flags: 2,
@@ -246,12 +373,24 @@ impl PayloadHeader {
         }
     }
 
+    /// Updates flags to indicate reply expectation
     pub fn apply_expects_reply_map(&mut self) {
         self.flags |= 0x1000
     }
 }
 
 impl Message {
+    /// Reads and parses a message from an async reader
+    ///
+    /// # Arguments
+    /// * `reader` - Async reader to read from
+    ///
+    /// # Returns  
+    /// * `Ok(Message)` - Parsed message
+    /// * `Err(IdeviceError)` - If reading/parsing fails
+    ///
+    /// # Errors
+    /// * Various IdeviceError variants for IO and parsing failures
     pub async fn from_reader<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Self, IdeviceError> {
         let mut buf = [0u8; 32];
         reader.read_exact(&mut buf).await?;
@@ -304,6 +443,13 @@ impl Message {
         })
     }
 
+    /// Creates a new message
+    ///
+    /// # Arguments
+    /// * `message_header` - Message metadata
+    /// * `payload_header` - Payload description  
+    /// * `aux` - Optional auxiliary data
+    /// * `data` - Optional payload data
     pub fn new(
         message_header: MessageHeader,
         payload_header: PayloadHeader,
@@ -318,6 +464,9 @@ impl Message {
         }
     }
 
+    /// Serializes message to bytes
+    ///
+    /// Updates length fields in headers automatically
     pub fn serialize(&self) -> Vec<u8> {
         let aux = match &self.aux {
             Some(a) => a.serialize(),

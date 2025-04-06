@@ -1,13 +1,28 @@
-// Jackson Coxson
+//! CoreDeviceProxy and CDTunnelPacket utilities for interacting with
+//! iOS's CoreDeviceProxy service. This service starts an L3 (TUN) tunnel
+//! for "trusted" services introduced in iOS 17.
+//!
+//! This module handles the construction and parsing of `CDTunnelPacket` messages
+//! and manages a handshake and data tunnel to the CoreDeviceProxy daemon on iOS devices.
+//!
+//! # Overview
+//! - `CDTunnelPacket` is used to parse and serialize packets sent over the CoreDeviceProxy channel.
+//! - `CoreDeviceProxy` is a service client that initializes the tunnel, handles handshakes,
+//!   and optionally supports creating a software-based TCP/IP tunnel (behind a feature flag).
+//!
+//! # Features
+//! - `tunnel_tcp_stack`: Enables software TCP/IP tunnel creation using a virtual adapter. See the tcp moduel.
 
-use crate::{lockdown::LockdowndClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
 
 use byteorder::{BigEndian, WriteBytesExt};
 use serde::{Deserialize, Serialize};
 use std::io::{self, Write};
 
+/// A representation of a CDTunnel packet used in the CoreDeviceProxy protocol.
 #[derive(Debug, PartialEq)]
 pub struct CDTunnelPacket {
+    /// The body of the packet, typically JSON-encoded data.
     body: Vec<u8>,
 }
 
@@ -15,27 +30,32 @@ impl CDTunnelPacket {
     const MAGIC: &'static [u8] = b"CDTunnel";
 
     /// Parses a byte slice into a `CDTunnelPacket`.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - A byte slice containing the raw packet data.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(CDTunnelPacket)` if the input is a valid packet.
+    /// * `Err(IdeviceError)` if parsing fails due to invalid magic, length, or size.
     pub fn parse(input: &[u8]) -> Result<Self, IdeviceError> {
         if input.len() < Self::MAGIC.len() + 2 {
             return Err(IdeviceError::CdtunnelPacketTooShort);
         }
 
-        // Validate the magic bytes
         if &input[0..Self::MAGIC.len()] != Self::MAGIC {
             return Err(IdeviceError::CdtunnelPacketInvalidMagic);
         }
 
-        // Parse the body length
         let length_offset = Self::MAGIC.len();
         let body_length =
             u16::from_be_bytes([input[length_offset], input[length_offset + 1]]) as usize;
 
-        // Validate the body length
         if input.len() < length_offset + 2 + body_length {
             return Err(IdeviceError::PacketSizeMismatch);
         }
 
-        // Extract the body
         let body_start = length_offset + 2;
         let body = input[body_start..body_start + body_length].to_vec();
 
@@ -43,37 +63,55 @@ impl CDTunnelPacket {
     }
 
     /// Serializes the `CDTunnelPacket` into a byte vector.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vec<u8>)` containing the serialized packet.
+    /// * `Err(io::Error)` if writing to the output buffer fails.
     pub fn serialize(&self) -> io::Result<Vec<u8>> {
         let mut output = Vec::new();
 
-        // Write the magic bytes
         output.write_all(Self::MAGIC)?;
-
-        // Write the body length
         output.write_u16::<BigEndian>(self.body.len() as u16)?;
-
-        // Write the body
         output.write_all(&self.body)?;
 
         Ok(output)
     }
 }
 
+/// A high-level client for the `com.apple.internal.devicecompute.CoreDeviceProxy` service.
+///
+/// Handles session negotiation, handshake, and tunnel communication.
 pub struct CoreDeviceProxy {
+    /// The underlying idevice connection used for communication.
     pub idevice: Idevice,
+    /// The handshake response received during initialization.
     pub handshake: HandshakeResponse,
+    /// The maximum transmission unit used for reading.
     pub mtu: u32,
 }
 
 impl IdeviceService for CoreDeviceProxy {
+    /// Returns the name of the service used for launching the CoreDeviceProxy.
     fn service_name() -> &'static str {
         "com.apple.internal.devicecompute.CoreDeviceProxy"
     }
 
+    /// Connects to the CoreDeviceProxy service
+    ///
+    /// # Arguments
+    ///
+    /// * `provider` - An implementation of `IdeviceProvider` that supplies
+    ///   pairing data and socket connections.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(CoreDeviceProxy)` if connection and handshake succeed.
+    /// * `Err(IdeviceError)` if any step fails.
     async fn connect(
         provider: &dyn crate::provider::IdeviceProvider,
     ) -> Result<Self, IdeviceError> {
-        let mut lockdown = LockdowndClient::connect(provider).await?;
+        let mut lockdown = LockdownClient::connect(provider).await?;
         lockdown
             .start_session(&provider.get_pairing_file().await?)
             .await?;
@@ -91,6 +129,7 @@ impl IdeviceService for CoreDeviceProxy {
     }
 }
 
+/// Request sent to initiate the handshake with the CoreDeviceProxy.
 #[derive(Serialize)]
 struct HandshakeRequest {
     #[serde(rename = "type")]
@@ -98,13 +137,18 @@ struct HandshakeRequest {
     mtu: u32,
 }
 
+/// Parameters returned as part of the handshake response from the proxy server.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientParameters {
+    /// The MTU (maximum transmission unit) for the connection.
     pub mtu: u16,
+    /// The IP address assigned to the client.
     pub address: String,
+    /// The subnet mask for the tunnel.
     pub netmask: String,
 }
 
+/// Handshake response structure received from the CoreDeviceProxy.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HandshakeResponse {
     #[serde(rename = "clientParameters")]
@@ -120,6 +164,16 @@ pub struct HandshakeResponse {
 impl CoreDeviceProxy {
     const DEFAULT_MTU: u32 = 16000;
 
+    /// Constructs a new `CoreDeviceProxy` by performing a handshake on the given `Idevice`.
+    ///
+    /// # Arguments
+    ///
+    /// * `idevice` - The connected `Idevice` socket.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(CoreDeviceProxy)` on successful handshake.
+    /// * `Err(IdeviceError)` if the handshake fails.
     pub async fn new(mut idevice: Idevice) -> Result<Self, IdeviceError> {
         let req = HandshakeRequest {
             packet_type: "clientHandshakeRequest".to_string(),
@@ -152,15 +206,37 @@ impl CoreDeviceProxy {
         })
     }
 
+    /// Sends a raw data packet through the tunnel.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The raw bytes to send.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the data is successfully sent.
+    /// * `Err(IdeviceError)` if sending fails.
     pub async fn send(&mut self, data: &[u8]) -> Result<(), IdeviceError> {
         self.idevice.send_raw(data).await?;
         Ok(())
     }
 
+    /// Receives up to `mtu` bytes from the tunnel.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vec<u8>)` containing the received data.
+    /// * `Err(IdeviceError)` if reading fails.
     pub async fn recv(&mut self) -> Result<Vec<u8>, IdeviceError> {
         self.idevice.read_any(self.mtu).await
     }
 
+    /// Creates a software-based TCP tunnel adapter, if the `tunnel_tcp_stack` feature is enabled.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Adapter)` for the software TCP stack.
+    /// * `Err(IdeviceError)` if IP parsing or socket extraction fails.
     #[cfg(feature = "tunnel_tcp_stack")]
     pub fn create_software_tunnel(self) -> Result<crate::tcp::adapter::Adapter, IdeviceError> {
         let our_ip = self

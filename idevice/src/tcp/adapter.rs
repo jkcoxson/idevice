@@ -1,5 +1,65 @@
-// Jackson Coxson
-// Simpler TCP stack
+//! A simplified TCP network stack implementation.
+//!
+//! This module provides a naive TCP stack implementation designed for simple,
+//! reliable network environments. It handles basic TCP operations while making
+//! significant simplifying assumptions about the underlying transport.
+//!
+//! # Features
+//! - Basic TCP connection establishment (3-way handshake)
+//! - Data transmission with PSH flag
+//! - Connection teardown
+//! - Optional PCAP packet capture
+//! - Implements `AsyncRead` and `AsyncWrite` for Tokio compatibility
+//!
+//! # Limitations
+//! - Only supports one connection at a time
+//! - No proper sequence number tracking
+//! - No retransmission or congestion control
+//! - Requires 100% reliable underlying transport
+//! - Minimal error handling
+//!
+//! # Example
+//! ```rust,no_run
+//! use std::net::{IpAddr, Ipv4Addr};
+//! use tokio::io::{AsyncReadExt, AsyncWriteExt};
+//! use your_crate::tcp::Adapter;
+//! use your_crate::ReadWrite; // Assuming you have a ReadWrite trait
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Create a transport connection (this would be your actual transport)
+//!     let transport = /* your transport implementing ReadWrite */;
+//!
+//!     // Create TCP adapter
+//!     let host_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 2));
+//!     let peer_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
+//!     let mut adapter = Adapter::new(Box::new(transport), host_ip, peer_ip);
+//!
+//!     // Optional: enable packet capture
+//!     adapter.pcap("capture.pcap").await?;
+//!
+//!     // Connect to remote server
+//!     adapter.connect(80).await?;
+//!
+//!     // Send HTTP request
+//!     adapter.write_all(b"GET / HTTP/1.1\r\nHost: example.com\r\n\r\n").await?;
+//!     adapter.flush().await?;
+//!
+//!     // Read response
+//!     let mut buf = vec![0; 1024];
+//!     let n = adapter.read(&mut buf).await?;
+//!     println!("Received: {}", String::from_utf8_lossy(&buf[..n]));
+//!
+//!     // Close connection
+//!     adapter.close().await?;
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//! # Warning
+//! This implementation makes significant simplifications and should not be used
+//! in production environments or with unreliable network transports.
 
 use std::{future::Future, net::IpAddr, path::Path, sync::Arc, task::Poll};
 
@@ -19,32 +79,57 @@ enum AdapterState {
     None,
 }
 
-/// An extremely naive, limited and dangerous stack
-/// Only one connection can be live at a time
-/// Acks aren't tracked, and are silently ignored
-/// Only use when the underlying transport is 100% reliable
+/// A simplified TCP network stack implementation.
+///
+/// This is an extremely naive, limited, and dangerous TCP stack implementation.
+/// Key limitations:
+/// - Only one connection can be active at a time
+/// - ACKs aren't properly tracked and are silently ignored
+/// - Should only be used when the underlying transport is 100% reliable
+///
+/// The adapter implements `AsyncRead` and `AsyncWrite` for convenient IO operations.
 #[derive(Debug)]
 pub struct Adapter {
+    /// The underlying transport connection
     peer: Box<dyn ReadWrite>,
+    /// The local IP address
     host_ip: IpAddr,
+    /// The remote peer's IP address
     peer_ip: IpAddr,
+    /// Current connection state
     state: AdapterState,
 
     // TCP state
+    /// Current sequence number
     seq: u32,
+    /// Current acknowledgement number
     ack: u32,
+    /// Local port number
     host_port: u16,
+    /// Remote port number
     peer_port: u16,
 
     // Read buffer to cache unused bytes
+    /// Buffer for storing unread received data
     read_buffer: Vec<u8>,
+    /// Buffer for storing data to be sent
     write_buffer: Vec<u8>,
 
     // Logging
+    /// Optional PCAP file for packet logging
     pcap: Option<Arc<Mutex<tokio::fs::File>>>,
 }
 
 impl Adapter {
+    /// Creates a new TCP adapter instance.
+    ///
+    /// # Arguments
+    /// * `peer` - The underlying transport connection implementing `ReadWrite`
+    /// * `host_ip` - The local IP address to use
+    /// * `peer_ip` - The remote IP address to connect to
+    ///
+    /// # Returns
+    /// A new unconnected `Adapter` instance
     pub fn new(peer: Box<dyn ReadWrite>, host_ip: IpAddr, peer_ip: IpAddr) -> Self {
         Self {
             peer,
@@ -61,6 +146,18 @@ impl Adapter {
         }
     }
 
+    /// Initiates a TCP connection to the specified port.
+    ///
+    /// # Arguments
+    /// * `port` - The remote port number to connect to
+    ///
+    /// # Returns
+    /// * `Ok(())` if connection was successful
+    /// * `Err(std::io::Error)` if connection failed
+    ///
+    /// # Errors
+    /// * Returns `InvalidData` if the SYN-ACK response is invalid
+    /// * Returns other IO errors if underlying transport fails
     pub async fn connect(&mut self, port: u16) -> Result<(), std::io::Error> {
         self.read_buffer = Vec::new();
         self.write_buffer = Vec::new();
@@ -110,6 +207,14 @@ impl Adapter {
         Ok(())
     }
 
+    /// Enables packet capture to a PCAP file.
+    ///
+    /// # Arguments
+    /// * `path` - The filesystem path to write the PCAP data to
+    ///
+    /// # Returns
+    /// * `Ok(())` if PCAP file was successfully created
+    /// * `Err(std::io::Error)` if file creation failed
     pub async fn pcap(&mut self, path: impl AsRef<Path>) -> Result<(), std::io::Error> {
         let mut file = tokio::fs::File::create(path).await?;
 
@@ -134,6 +239,14 @@ impl Adapter {
         Ok(())
     }
 
+    /// Closes the TCP connection.
+    ///
+    /// # Returns
+    /// * `Ok(())` if connection was closed cleanly
+    /// * `Err(std::io::Error)` if closing failed
+    ///
+    /// # Errors
+    /// * Returns IO errors if underlying transport fails during close
     pub async fn close(&mut self) -> Result<(), std::io::Error> {
         let tcp_packet = TcpPacket::create(
             self.host_ip,
@@ -191,7 +304,17 @@ impl Adapter {
         Ok(())
     }
 
-    /// Sends a packet
+    /// Sends a TCP packet with PSH flag set (pushing data).
+    ///
+    /// # Arguments
+    /// * `data` - The payload data to send
+    ///
+    /// # Returns
+    /// * `Ok(())` if data was sent successfully
+    /// * `Err(std::io::Error)` if sending failed
+    ///
+    /// # Errors
+    /// * Returns IO errors if underlying transport fails
     pub async fn psh(&mut self, data: &[u8]) -> Result<(), std::io::Error> {
         trace!("pshing {} bytes", data.len());
         let tcp_packet = TcpPacket::create(
@@ -230,6 +353,15 @@ impl Adapter {
         Ok(())
     }
 
+    /// Receives data from the connection.
+    ///
+    /// # Returns
+    /// * `Ok(Vec<u8>)` containing received data
+    /// * `Err(std::io::Error)` if receiving failed
+    ///
+    /// # Errors
+    /// * Returns `ConnectionReset` if connection was reset or closed
+    /// * Returns other IO errors if underlying transport fails
     pub async fn recv(&mut self) -> Result<Vec<u8>, std::io::Error> {
         loop {
             let res = self.read_tcp_packet().await?;
@@ -324,6 +456,18 @@ impl Adapter {
 }
 
 impl AsyncRead for Adapter {
+    /// Attempts to read from the connection into the provided buffer.
+    ///
+    /// Uses an internal read buffer to cache any extra received data.
+    ///
+    /// # Returns
+    /// * `Poll::Ready(Ok(()))` if data was read successfully
+    /// * `Poll::Ready(Err(e))` if an error occurred
+    /// * `Poll::Pending` if operation would block
+    ///
+    /// # Errors
+    /// * Returns `NotConnected` if adapter isn't connected
+    /// * Propagates any underlying transport errors
     fn poll_read(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -377,6 +521,17 @@ impl AsyncRead for Adapter {
 }
 
 impl AsyncWrite for Adapter {
+    /// Attempts to write data to the connection.
+    ///
+    /// Data is buffered internally until flushed.
+    ///
+    /// # Returns
+    /// * `Poll::Ready(Ok(n))` with number of bytes written
+    /// * `Poll::Ready(Err(e))` if an error occurred
+    /// * `Poll::Pending` if operation would block
+    ///
+    /// # Errors
+    /// * Returns `NotConnected` if adapter isn't connected
     fn poll_write(
         mut self: std::pin::Pin<&mut Self>,
         _cx: &mut std::task::Context<'_>,

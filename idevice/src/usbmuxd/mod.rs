@@ -1,4 +1,7 @@
-// Jackson Coxson
+//! USB Multiplexing Daemon (usbmuxd) Client
+//!
+//! Provides functionality for interacting with the usbmuxd service which manages
+//! connections to iOS devices over USB and network and pairing files
 
 use std::{
     net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
@@ -18,36 +21,57 @@ use crate::{
 mod des;
 mod raw_packet;
 
+/// Represents the connection type of a device
 #[derive(Debug, Clone)]
 pub enum Connection {
+    /// Connected via USB
     Usb,
+    /// Connected via network with specific IP address
     Network(IpAddr),
+    /// Unknown connection type with description
     Unknown(String),
 }
 
+/// Represents a device connected through usbmuxd
 #[derive(Debug, Clone)]
 pub struct UsbmuxdDevice {
+    /// How the device is connected
     pub connection_type: Connection,
+    /// Unique Device Identifier
     pub udid: String,
+    /// usbmuxd-assigned device ID
     pub device_id: u32,
 }
 
+/// Active connection to the usbmuxd service
 pub struct UsbmuxdConnection {
     socket: Box<dyn ReadWrite>,
     tag: u32,
 }
 
+/// Address of the usbmuxd service
 #[derive(Clone, Debug)]
 pub enum UsbmuxdAddr {
+    /// Unix domain socket path (Unix systems only)
     #[cfg(unix)]
     UnixSocket(String),
+    /// TCP socket address
     TcpSocket(SocketAddr),
 }
 
 impl UsbmuxdAddr {
+    /// Default TCP port for usbmuxd
     pub const DEFAULT_PORT: u16 = 27015;
+    /// Default Unix socket path for usbmuxd
     pub const SOCKET_FILE: &'static str = "/var/run/usbmuxd";
 
+    /// Connects to the usbmuxd service
+    ///
+    /// # Returns
+    /// A boxed transport stream
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if connection fails
     pub async fn to_socket(&self) -> Result<Box<dyn ReadWrite>, IdeviceError> {
         Ok(match self {
             #[cfg(unix)]
@@ -56,11 +80,24 @@ impl UsbmuxdAddr {
         })
     }
 
+    /// Creates a new usbmuxd connection
+    ///
+    /// # Arguments
+    /// * `tag` - Connection tag/identifier
+    ///
+    /// # Returns
+    /// A connected `UsbmuxdConnection`
     pub async fn connect(&self, tag: u32) -> Result<UsbmuxdConnection, IdeviceError> {
         let socket = self.to_socket().await?;
         Ok(UsbmuxdConnection::new(socket, tag))
     }
 
+    /// Creates a UsbmuxdAddr from environment variable
+    ///
+    /// Checks `USBMUXD_SOCKET_ADDRESS` environment variable, falls back to default
+    ///
+    /// # Returns
+    /// Configured UsbmuxdAddr or parse error
     pub fn from_env_var() -> Result<Self, AddrParseError> {
         Ok(match std::env::var("USBMUXD_SOCKET_ADDRESS") {
             Ok(var) => {
@@ -79,6 +116,9 @@ impl UsbmuxdAddr {
 }
 
 impl Default for UsbmuxdAddr {
+    /// Creates default usbmuxd address based on platform:
+    /// - Unix: Uses default socket path
+    /// - Non-Unix: Uses localhost TCP port
     fn default() -> Self {
         #[cfg(not(unix))]
         {
@@ -93,12 +133,22 @@ impl Default for UsbmuxdAddr {
 }
 
 impl UsbmuxdConnection {
+    /// Binary PLIST protocol version
     pub const BINARY_PLIST_VERSION: u32 = 0;
+    /// XML PLIST protocol version
     pub const XML_PLIST_VERSION: u32 = 1;
 
+    /// Result message type
     pub const RESULT_MESSAGE_TYPE: u32 = 1;
+    /// PLIST message type
     pub const PLIST_MESSAGE_TYPE: u32 = 8;
 
+    /// Creates a default usbmuxd connection
+    ///
+    /// Uses default address based on platform
+    ///
+    /// # Returns
+    /// Connected `UsbmuxdConnection` or error
     pub async fn default() -> Result<Self, IdeviceError> {
         let socket = UsbmuxdAddr::default().to_socket().await?;
 
@@ -108,10 +158,25 @@ impl UsbmuxdConnection {
         })
     }
 
+    /// Creates a new usbmuxd connection
+    ///
+    /// # Arguments
+    /// * `socket` - The transport stream
+    /// * `tag` - Connection tag/identifier
     pub fn new(socket: Box<dyn ReadWrite>, tag: u32) -> Self {
         Self { socket, tag }
     }
 
+    /// Lists all connected devices
+    ///
+    /// # Returns
+    /// Vector of connected devices
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - Response is malformed
+    /// - Device info is incomplete
     pub async fn get_devices(&mut self) -> Result<Vec<UsbmuxdDevice>, IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("MessageType".into(), "ListDevices".into());
@@ -135,13 +200,13 @@ impl UsbmuxdConnection {
 
                         match addr[0] {
                             0x02 => {
-                                // ipv4
+                                // IPv4
                                 Connection::Network(IpAddr::V4(Ipv4Addr::new(
                                     addr[4], addr[5], addr[6], addr[7],
                                 )))
                             }
                             0x1E => {
-                                // ipv6
+                                // IPv6
                                 if addr.len() < 24 {
                                     warn!("IPv6 address is less than 24 bytes");
                                     return Err(IdeviceError::UnexpectedResponse);
@@ -182,6 +247,13 @@ impl UsbmuxdConnection {
         Ok(devs)
     }
 
+    /// Gets a specific device by UDID
+    ///
+    /// # Arguments
+    /// * `udid` - The device UDID to find
+    ///
+    /// # Returns
+    /// The matching device or error if not found
     pub async fn get_device(&mut self, udid: &str) -> Result<UsbmuxdDevice, IdeviceError> {
         let devices = self.get_devices().await?;
         match devices.into_iter().find(|x| x.udid == udid) {
@@ -190,6 +262,13 @@ impl UsbmuxdConnection {
         }
     }
 
+    /// Gets the pairing record for a device
+    ///
+    /// # Arguments
+    /// * `udid` - The device UDID
+    ///
+    /// # Returns
+    /// The pairing file or error
     pub async fn get_pair_record(&mut self, udid: &str) -> Result<PairingFile, IdeviceError> {
         debug!("Getting pair record for {udid}");
         let mut req = plist::Dictionary::new();
@@ -204,6 +283,10 @@ impl UsbmuxdConnection {
         }
     }
 
+    /// Gets the BUID
+    ///
+    /// # Returns
+    /// The BUID string or error
     pub async fn get_buid(&mut self) -> Result<String, IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("MessageType".into(), "ReadBUID".into());
@@ -216,6 +299,15 @@ impl UsbmuxdConnection {
         }
     }
 
+    /// Connects to a service on the device
+    ///
+    /// # Arguments
+    /// * `device_id` - usbmuxd device ID
+    /// * `port` - TCP port to connect to (host byte order)
+    /// * `label` - Connection label
+    ///
+    /// # Returns
+    /// An `Idevice` connection or error
     pub async fn connect_to_device(
         mut self,
         device_id: u32,
@@ -243,6 +335,7 @@ impl UsbmuxdConnection {
         }
     }
 
+    /// Writes a PLIST message to usbmuxd
     async fn write_plist(&mut self, req: plist::Dictionary) -> Result<(), IdeviceError> {
         let raw = raw_packet::RawPacket::new(
             req,
@@ -257,6 +350,7 @@ impl UsbmuxdConnection {
         Ok(())
     }
 
+    /// Reads a PLIST message from usbmuxd
     async fn read_plist(&mut self) -> Result<plist::Dictionary, IdeviceError> {
         let mut header_buffer = [0; 16];
         self.socket.read_exact(&mut header_buffer).await?;
@@ -276,6 +370,15 @@ impl UsbmuxdConnection {
 }
 
 impl UsbmuxdDevice {
+    /// Creates a provider for this device
+    ///
+    /// # Arguments
+    /// * `addr` - usbmuxd address
+    /// * `tag` - Connection tag
+    /// * `label` - Connection label
+    ///
+    /// # Returns
+    /// Configured `UsbmuxdProvider`
     pub fn to_provider(
         &self,
         addr: UsbmuxdAddr,
@@ -293,3 +396,4 @@ impl UsbmuxdDevice {
         }
     }
 }
+

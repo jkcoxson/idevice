@@ -1,7 +1,27 @@
-// Jackson Coxson
+//! Utility Functions
+//!
+//! Provides helper functions for working with Apple's Property List (PLIST) format,
+//! including serialization and pretty-printing utilities.
 
 use plist::Value;
 
+/// Converts a PLIST dictionary to XML-formatted bytes
+///
+/// # Arguments
+/// * `p` - The PLIST dictionary to serialize
+///
+/// # Returns
+/// A byte vector containing the XML representation
+///
+/// # Panics
+/// Will panic if serialization fails (should only happen with invalid data)
+///
+/// # Example
+/// ```rust
+/// let mut dict = plist::Dictionary::new();
+/// dict.insert("key".into(), "value".into());
+/// let xml_bytes = plist_to_xml_bytes(&dict);
+/// ```
 pub fn plist_to_xml_bytes(p: &plist::Dictionary) -> Vec<u8> {
     let buf = Vec::new();
     let mut writer = std::io::BufWriter::new(buf);
@@ -10,10 +30,32 @@ pub fn plist_to_xml_bytes(p: &plist::Dictionary) -> Vec<u8> {
     writer.into_inner().unwrap()
 }
 
+/// Pretty-prints a PLIST value with indentation
+///
+/// # Arguments
+/// * `p` - The PLIST value to format
+///
+/// # Returns
+/// A formatted string representation
 pub fn pretty_print_plist(p: &Value) -> String {
     print_plist(p, 0)
 }
 
+/// Pretty-prints a PLIST dictionary with key-value pairs
+///
+/// # Arguments
+/// * `dict` - The dictionary to format
+///
+/// # Returns
+/// A formatted string representation with newlines and indentation
+///
+/// # Example
+/// ```rust
+/// let mut dict = plist::Dictionary::new();
+/// dict.insert("name".into(), "John".into());
+/// dict.insert("age".into(), 30.into());
+/// println!("{}", pretty_print_dictionary(&dict));
+/// ```
 pub fn pretty_print_dictionary(dict: &plist::Dictionary) -> String {
     let items: Vec<String> = dict
         .iter()
@@ -22,6 +64,14 @@ pub fn pretty_print_dictionary(dict: &plist::Dictionary) -> String {
     format!("{{\n{}\n}}", items.join(",\n"))
 }
 
+/// Internal recursive function for printing PLIST values with indentation
+///
+/// # Arguments
+/// * `p` - The PLIST value to format
+/// * `indentation` - Current indentation level
+///
+/// # Returns
+/// Formatted string representation
 fn print_plist(p: &Value, indentation: usize) -> String {
     let indent = " ".repeat(indentation);
     match p {
@@ -75,3 +125,4 @@ fn print_plist(p: &Value, indentation: usize) -> String {
         _ => "Unknown".to_string(),
     }
 }
+

@@ -1,4 +1,53 @@
-// Jackson Coxson
+//! Remote Server Client implementation for iOS instruments protocol.
+//!
+//! This module provides a client for communicating with iOS devices through the
+//! remote server protocol used by instruments. It handles channel management and
+//! message passing between the host and device.
+//!
+//! Remote Server communicates via NSKeyedArchives. These archives are binary plists
+//! formatted specifically for naive recreation at the target.
+//! Requests are sent as method calls to objective C objects on the device.
+//!
+//! # Overview
+//! The client manages multiple communication channels and provides methods for:
+//! - Creating new channels
+//! - Sending method calls
+//! - Reading responses
+//!
+//! # Example
+//! ```rust,no_run
+//! use std::sync::Arc;
+//! use tokio::net::TcpStream;
+//! use your_crate::{ReadWrite, IdeviceError};
+//! use your_crate::instruments::RemoteServerClient;
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), IdeviceError> {
+//!     // Establish connection to device over the tunnel (see XPC docs)
+//!     let transport = TcpStream::connect("1.2.3.4:1234").await?;
+//!
+//!     // Create client
+//!     let mut client = RemoteServerClient::new(transport);
+//!
+//!     // Read the first message
+//!     client.read_message(0).await?;
+//!
+//!     // Call a method on root channel
+//!     client.call_method(
+//!         0,
+//!         Some("someMethod"),
+//!         Some(vec![AuxValue::String("param".into())]),
+//!         true
+//!     ).await?;
+//!
+//!     // Read response
+//!     let response = client.read_message(0).await?;
+//!     println!("Got response: {:?}", response);
+//!
+//!
+//!     Ok(())
+//! }
+//! ```
 
 use std::collections::{HashMap, VecDeque};
 
@@ -6,27 +55,46 @@ use log::{debug, warn};
 use tokio::io::AsyncWriteExt;
 
 use crate::{
-    dvt::message::{Aux, Message, MessageHeader, PayloadHeader},
+    dvt::message::{Aux, AuxValue, Message, MessageHeader, PayloadHeader},
     IdeviceError, ReadWrite,
 };
 
-use super::message::AuxValue;
-
+/// Message type identifier for instruments protocol
 pub const INSTRUMENTS_MESSAGE_TYPE: u32 = 2;
 
+/// Client for communicating with iOS remote server protocol
+///
+/// Manages multiple communication channels and handles message serialization/deserialization.
+/// Each channel operates independently and maintains its own message queue.
 pub struct RemoteServerClient<R: ReadWrite> {
+    /// The underlying device connection
     idevice: R,
+    /// Counter for message identifiers
     current_message: u32,
+    /// Next available channel number
     new_channel: u32,
+    /// Map of channel numbers to their message queues
     channels: HashMap<u32, VecDeque<Message>>,
 }
 
+/// Handle to a specific communication channel
+///
+/// Provides channel-specific operations for use on the remote server client.
 pub struct Channel<'a, R: ReadWrite> {
+    /// Reference to parent client
     client: &'a mut RemoteServerClient<R>,
+    /// Channel number this handle operates on
     channel: u32,
 }
 
 impl<R: ReadWrite> RemoteServerClient<R> {
+    /// Creates a new RemoteServerClient with the given transport
+    ///
+    /// # Arguments
+    /// * `idevice` - The underlying transport implementing ReadWrite
+    ///
+    /// # Returns
+    /// A new client instance with root channel (0) initialized
     pub fn new(idevice: R) -> Self {
         let mut channels = HashMap::new();
         channels.insert(0, VecDeque::new());
@@ -38,10 +106,12 @@ impl<R: ReadWrite> RemoteServerClient<R> {
         }
     }
 
+    /// Consumes the client and returns the underlying transport
     pub fn into_inner(self) -> R {
         self.idevice
     }
 
+    /// Returns a handle to the root channel (channel 0)
     pub fn root_channel(&mut self) -> Channel<R> {
         Channel {
             client: self,
@@ -49,6 +119,18 @@ impl<R: ReadWrite> RemoteServerClient<R> {
         }
     }
 
+    /// Creates a new channel with the given identifier
+    ///
+    /// # Arguments
+    /// * `identifier` - String identifier for the new channel
+    ///
+    /// # Returns
+    /// * `Ok(Channel)` - Handle to the new channel
+    /// * `Err(IdeviceError)` - If channel creation fails
+    ///
+    /// # Errors
+    /// * `IdeviceError::UnexpectedResponse` if server responds with unexpected data
+    /// * Other IO or serialization errors
     pub async fn make_channel(
         &mut self,
         identifier: impl Into<String>,
@@ -89,6 +171,20 @@ impl<R: ReadWrite> RemoteServerClient<R> {
         })
     }
 
+    /// Calls a method on the specified channel
+    ///
+    /// # Arguments
+    /// * `channel` - Channel number to call method on
+    /// * `data` - Optional method data (plist value)
+    /// * `args` - Optional arguments for the method
+    /// * `expect_reply` - Whether to expect a response
+    ///
+    /// # Returns
+    /// * `Ok(())` - If method was successfully called
+    /// * `Err(IdeviceError)` - If call failed
+    ///
+    /// # Errors
+    /// IO or serialization errors
     pub async fn call_method(
         &mut self,
         channel: u32,
@@ -110,6 +206,20 @@ impl<R: ReadWrite> RemoteServerClient<R> {
         Ok(())
     }
 
+    /// Reads the next message from the specified channel
+    ///
+    /// Checks cached messages first, then reads from transport if needed.
+    ///
+    /// # Arguments
+    /// * `channel` - Channel number to read from
+    ///
+    /// # Returns
+    /// * `Ok(Message)` - The received message
+    /// * `Err(IdeviceError)` - If read failed
+    ///
+    /// # Errors
+    /// * `IdeviceError::UnknownChannel` if channel doesn't exist
+    /// * Other IO or deserialization errors
     pub async fn read_message(&mut self, channel: u32) -> Result<Message, IdeviceError> {
         // Determine if we already have a message cached
         let cache = match self.channels.get_mut(&channel) {
@@ -140,10 +250,32 @@ impl<R: ReadWrite> RemoteServerClient<R> {
 }
 
 impl<R: ReadWrite> Channel<'_, R> {
+    /// Reads the next message from the remote server on this channel
+    ///
+    /// # Returns
+    /// * `Ok(Message)` - The received message
+    /// * `Err(IdeviceError)` - If read failed
+    ///
+    /// # Errors
+    /// * `IdeviceError::UnknownChannel` if channel doesn't exist
+    /// * Other IO or deserialization errors
     pub async fn read_message(&mut self) -> Result<Message, IdeviceError> {
         self.client.read_message(self.channel).await
     }
 
+    /// Calls a method on the specified channel
+    ///
+    /// # Arguments
+    /// * `method` - Optional method data (plist value)
+    /// * `args` - Optional arguments for the method
+    /// * `expect_reply` - Whether to expect a response
+    ///
+    /// # Returns
+    /// * `Ok(())` - If method was successfully called
+    /// * `Err(IdeviceError)` - If call failed
+    ///
+    /// # Errors
+    /// IO or serialization errors
     pub async fn call_method(
         &mut self,
         method: Option<impl Into<plist::Value>>,

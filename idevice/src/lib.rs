@@ -12,7 +12,7 @@ pub mod dvt;
 #[cfg(feature = "heartbeat")]
 pub mod heartbeat;
 #[cfg(feature = "xpc")]
-pub mod http2;
+mod http2;
 #[cfg(feature = "installation_proxy")]
 pub mod installation_proxy;
 pub mod lockdown;
@@ -49,24 +49,58 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub use util::{pretty_print_dictionary, pretty_print_plist};
 
+/// A trait combining all required characteristics for a device communication socket
+///
+/// This serves as a convenience trait for any type that can be used as an asynchronous
+/// read/write socket for device communication. Combines common async I/O traits with
+/// thread safety and debugging requirements.
+///
+/// Tokio's TcpStream and UnixStream implement this trait.
 pub trait ReadWrite: AsyncRead + AsyncWrite + Unpin + Send + Sync + std::fmt::Debug {}
+
+// Blanket implementation for any compatible type
 impl<T: AsyncRead + AsyncWrite + Unpin + Send + Sync + std::fmt::Debug> ReadWrite for T {}
 
+/// Interface for services that can be connected to on an iOS device
+///
+/// Implement this trait to define new services that can be accessed through the
+/// device connection protocol.
 pub trait IdeviceService: Sized {
+    /// Returns the service name as advertised by the device
     fn service_name() -> &'static str;
+
+    /// Establishes a connection to this service
+    ///
+    /// # Arguments
+    /// * `provider` - The device provider that can supply connections
     fn connect(
         provider: &dyn IdeviceProvider,
     ) -> impl std::future::Future<Output = Result<Self, IdeviceError>> + Send;
 }
 
+/// Type alias for boxed device connection sockets
+///
+/// Used to enable dynamic dispatch of different connection types while maintaining
+/// the required ReadWrite characteristics.
 pub type IdeviceSocket = Box<dyn ReadWrite>;
 
+/// Main handle for communicating with an iOS device
+///
+/// Manages the connection socket and provides methods for common device operations
+/// and message exchange.
 pub struct Idevice {
-    socket: Option<Box<dyn ReadWrite>>, // in a box for now to use the ReadWrite trait for further uses
+    /// The underlying connection socket, boxed for dynamic dispatch
+    socket: Option<Box<dyn ReadWrite>>,
+    /// Unique label identifying this connection
     label: String,
 }
 
 impl Idevice {
+    /// Creates a new device connection handle
+    ///
+    /// # Arguments
+    /// * `socket` - The established connection socket
+    /// * `label` - Unique identifier for this connection
     pub fn new(socket: Box<dyn ReadWrite>, label: impl Into<String>) -> Self {
         Self {
             socket: Some(socket),
@@ -74,6 +108,15 @@ impl Idevice {
         }
     }
 
+    /// Queries the device type
+    ///
+    /// Sends a QueryType request and parses the response
+    ///
+    /// # Returns
+    /// The device type string on success
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if communication fails or response is invalid
     pub async fn get_type(&mut self) -> Result<String, IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("Label".into(), self.label.clone().into());
@@ -87,6 +130,12 @@ impl Idevice {
         }
     }
 
+    /// Performs RSD (Remote Service Discovery) check-in procedure
+    ///
+    /// Establishes the basic service connection protocol
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if the protocol sequence isn't followed correctly
     pub async fn rsd_checkin(&mut self) -> Result<(), IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("Label".into(), self.label.clone().into());
@@ -116,7 +165,13 @@ impl Idevice {
         Ok(())
     }
 
-    /// Sends a plist to the socket
+    /// Sends a plist-formatted message to the device
+    ///
+    /// # Arguments
+    /// * `message` - The plist value to send
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if serialization or transmission fails
     async fn send_plist(&mut self, message: plist::Value) -> Result<(), IdeviceError> {
         if let Some(socket) = &mut self.socket {
             debug!("Sending plist: {}", pretty_print_plist(&message));
@@ -135,11 +190,30 @@ impl Idevice {
         }
     }
 
-    /// Sends raw bytes to the socket
+    /// Sends raw binary data to the device
+    ///
+    /// # Arguments
+    /// * `message` - The bytes to send
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if transmission fails
     async fn send_raw(&mut self, message: &[u8]) -> Result<(), IdeviceError> {
         self.send_raw_with_progress(message, |_| async {}, ()).await
     }
 
+    /// Sends raw binary data with progress callbacks
+    ///
+    /// # Arguments
+    /// * `message` - The bytes to send
+    /// * `callback` - Progress callback invoked after each chunk
+    /// * `state` - Arbitrary state passed to callback
+    ///
+    /// # Type Parameters
+    /// * `Fut` - Future type returned by callback
+    /// * `S` - Type of state passed to callback
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if transmission fails
     async fn send_raw_with_progress<Fut, S>(
         &mut self,
         message: &[u8],
@@ -165,7 +239,16 @@ impl Idevice {
         }
     }
 
-    /// Reads raw bytes from the socket
+    /// Reads exactly `len` bytes from the device
+    ///
+    /// # Arguments
+    /// * `len` - Exact number of bytes to read
+    ///
+    /// # Returns
+    /// The received bytes
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if reading fails or connection is closed prematurely
     async fn read_raw(&mut self, len: usize) -> Result<Vec<u8>, IdeviceError> {
         if let Some(socket) = &mut self.socket {
             let mut buf = vec![0; len];
@@ -176,7 +259,16 @@ impl Idevice {
         }
     }
 
-    /// Reads bytes from the socket until it doesn't
+    /// Reads up to `max_size` bytes from the device
+    ///
+    /// # Arguments
+    /// * `max_size` - Maximum number of bytes to read
+    ///
+    /// # Returns
+    /// The received bytes (may be shorter than max_size)
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if reading fails
     async fn read_any(&mut self, max_size: u32) -> Result<Vec<u8>, IdeviceError> {
         if let Some(socket) = &mut self.socket {
             let mut buf = vec![0; max_size as usize];
@@ -187,7 +279,13 @@ impl Idevice {
         }
     }
 
-    /// Read a plist from the socket
+    /// Reads a plist-formatted message from the device
+    ///
+    /// # Returns
+    /// The parsed plist dictionary
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if reading, parsing fails, or device reports an error
     async fn read_plist(&mut self) -> Result<plist::Dictionary, IdeviceError> {
         if let Some(socket) = &mut self.socket {
             debug!("Reading response size");
@@ -213,7 +311,13 @@ impl Idevice {
         }
     }
 
-    /// Wraps current connection in TLS
+    /// Upgrades the connection to TLS using device pairing credentials
+    ///
+    /// # Arguments
+    /// * `pairing_file` - Contains the device's identity and certificates
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if TLS handshake fails or credentials are invalid
     pub async fn start_session(
         &mut self,
         pairing_file: &pairing_file::PairingFile,
@@ -235,6 +339,7 @@ impl Idevice {
     }
 }
 
+/// Comprehensive error type for all device communication failures
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum IdeviceError {
@@ -362,6 +467,14 @@ pub enum IdeviceError {
 }
 
 impl IdeviceError {
+    /// Converts a device-reported error string to a typed error
+    ///
+    /// # Arguments
+    /// * `e` - The error string from device
+    /// * `context` - Full plist context containing additional error details
+    ///
+    /// # Returns
+    /// Some(IdeviceError) if the string maps to a known error type, None otherwise
     fn from_device_error_type(e: &str, context: &plist::Dictionary) -> Option<Self> {
         match e {
             "GetProhibited" => Some(Self::GetProhibited),

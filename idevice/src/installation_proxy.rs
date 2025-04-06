@@ -1,23 +1,48 @@
-// Jackson Coxson
-// Incomplete implementation for installation_proxy
+//! iOS Installation Proxy Service Client
+//!
+//! Provides functionality for interacting with the installation_proxy service on iOS devices,
+//! which allows querying and managing installed applications.
 
 use std::collections::HashMap;
 
-use crate::{lockdown::LockdowndClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
 
+/// Client for interacting with the iOS installation proxy service
+///
+/// This service provides access to information about installed applications
+/// and can perform application management operations.
 pub struct InstallationProxyClient {
+    /// The underlying device connection with established installation_proxy service
     pub idevice: Idevice,
 }
 
 impl IdeviceService for InstallationProxyClient {
+    /// Returns the installation proxy service name as registered with lockdownd
     fn service_name() -> &'static str {
         "com.apple.mobile.installation_proxy"
     }
 
+    /// Establishes a connection to the installation proxy service
+    ///
+    /// # Arguments
+    /// * `provider` - Device connection provider
+    ///
+    /// # Returns
+    /// A connected `InstallationProxyClient` instance
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if any step of the connection process fails
+    ///
+    /// # Process
+    /// 1. Connects to lockdownd service
+    /// 2. Starts a lockdown session
+    /// 3. Requests the installation proxy service port
+    /// 4. Establishes connection to the service port
+    /// 5. Optionally starts TLS if required by service
     async fn connect(
         provider: &dyn crate::provider::IdeviceProvider,
     ) -> Result<Self, IdeviceError> {
-        let mut lockdown = LockdowndClient::connect(provider).await?;
+        let mut lockdown = LockdownClient::connect(provider).await?;
         lockdown
             .start_session(&provider.get_pairing_file().await?)
             .await?;
@@ -35,14 +60,39 @@ impl IdeviceService for InstallationProxyClient {
 }
 
 impl InstallationProxyClient {
+    /// Creates a new installation proxy client from an existing device connection
+    ///
+    /// # Arguments
+    /// * `idevice` - Pre-established device connection
     pub fn new(idevice: Idevice) -> Self {
         Self { idevice }
     }
 
-    /// Gets installed apps on the device
+    /// Retrieves information about installed applications
+    ///
     /// # Arguments
-    /// `application_type` - The application type to filter by
-    /// `bundle_identifiers` - The identifiers to filter by
+    /// * `application_type` - Optional filter for application type:
+    ///   - "System" for system applications
+    ///   - "User" for user-installed applications
+    ///   - "Any" for all applications (default)
+    /// * `bundle_identifiers` - Optional list of specific bundle IDs to query
+    ///
+    /// # Returns
+    /// A HashMap mapping bundle identifiers to application information plist values
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The response is malformed
+    /// - The service returns an error
+    ///
+    /// # Example
+    /// ```rust
+    /// let apps = client.get_apps(Some("User".to_string()), None).await?;
+    /// for (bundle_id, info) in apps {
+    ///     println!("{}: {:?}", bundle_id, info);
+    /// }
+    /// ```
     pub async fn get_apps(
         &mut self,
         application_type: Option<String>,
@@ -55,7 +105,7 @@ impl InstallationProxyClient {
                 .into_iter()
                 .map(plist::Value::String)
                 .collect::<Vec<plist::Value>>();
-            options.insert("BundleIDs".into(), ids.into()).unwrap();
+            options.insert("BundleIDs".into(), ids.into());
         }
         options.insert("ApplicationType".into(), application_type.into());
 
@@ -75,3 +125,4 @@ impl InstallationProxyClient {
         }
     }
 }
+

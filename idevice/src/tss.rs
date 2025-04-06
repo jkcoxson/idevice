@@ -1,20 +1,34 @@
-// Jackson Coxson
-// Thanks pymobiledevice3
+//! Ticket Signature Server (TSS) Client
+//!
+//! Provides functionality for interacting with Apple's TSS service to:
+//! - Request personalized firmware components
+//! - Apply restore request rules for device-specific parameters
+//! - Handle cryptographic signing operations
 
 use log::{debug, warn};
 use plist::Value;
 
 use crate::{util::plist_to_xml_bytes, IdeviceError};
 
+/// TSS client version string sent in requests
 const TSS_CLIENT_VERSION_STRING: &str = "libauthinstall-1033.0.2";
+/// Apple's TSS endpoint URL
 const TSS_CONTROLLER_ACTION_URL: &str = "http://gs.apple.com/TSS/controller?action=2";
 
+/// Represents a TSS request to Apple's signing server
 #[derive(Debug)]
 pub struct TSSRequest {
+    /// The underlying plist dictionary containing request parameters
     inner: plist::Dictionary,
 }
 
 impl TSSRequest {
+    /// Creates a new TSS request with default headers
+    ///
+    /// Initializes with:
+    /// - Host platform info
+    /// - Client version string
+    /// - Random UUID for request identification
     pub fn new() -> Self {
         let mut inner = plist::Dictionary::new();
         inner.insert("@HostPlatformInfo".into(), "mac".into());
@@ -26,12 +40,35 @@ impl TSSRequest {
         Self { inner }
     }
 
+    /// Inserts a key-value pair into the TSS request
+    ///
+    /// # Arguments
+    /// * `key` - The parameter name
+    /// * `val` - The parameter value (will be converted to plist::Value)
     pub fn insert(&mut self, key: impl Into<String>, val: impl Into<Value>) {
         let key = key.into();
         let val = val.into();
         self.inner.insert(key, val);
     }
 
+    /// Sends the TSS request to Apple's servers
+    ///
+    /// # Returns
+    /// The parsed plist response from Apple
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - The request fails
+    /// - The response is malformed
+    /// - Apple returns a non-success status
+    ///
+    /// # Example
+    /// ```rust
+    /// let mut request = TSSRequest::new();
+    /// request.insert("ApBoardID", board_id);
+    /// request.insert("ApChipID", chip_id);
+    /// let response = request.send().await?;
+    /// ```
     pub async fn send(&self) -> Result<plist::Value, IdeviceError> {
         debug!(
             "Sending TSS request: {}",
@@ -51,7 +88,7 @@ impl TSSRequest {
             .text()
             .await?;
 
-        debug!("Apple responeded with {res}");
+        debug!("Apple responded with {res}");
         let res = res.trim_start_matches("STATUS=0&");
         let res = res.trim_start_matches("MESSAGE=");
         if !res.starts_with("SUCCESS") {
@@ -68,11 +105,24 @@ impl TSSRequest {
 }
 
 impl Default for TSSRequest {
+    /// Creates a default TSS request (same as `new()`)
     fn default() -> Self {
         Self::new()
     }
 }
 
+/// Applies restore request rules to modify input parameters
+///
+/// # Arguments
+/// * `input` - The dictionary to modify based on rules
+/// * `parameters` - Device parameters to check conditions against
+/// * `rules` - List of rules to apply
+///
+/// # Process
+/// For each rule:
+/// 1. Checks all conditions against the parameters
+/// 2. If all conditions are met, applies the rule's actions
+/// 3. Actions can add, modify or remove parameters
 pub fn apply_restore_request_rules(
     input: &mut plist::Dictionary,
     parameters: &plist::Dictionary,
@@ -122,6 +172,7 @@ pub fn apply_restore_request_rules(
             };
 
             for (key, value) in actions {
+                // Skip special values (255 typically means "ignore")
                 if let Some(i) = value.as_unsigned_integer() {
                     if i == 255 {
                         continue;
@@ -133,7 +184,7 @@ pub fn apply_restore_request_rules(
                     }
                 }
 
-                input.remove(key); // Explicitly remove before inserting, like Python
+                input.remove(key); // Explicitly remove before inserting
                 input.insert(key.to_owned(), value.to_owned());
             }
         } else {
@@ -141,3 +192,4 @@ pub fn apply_restore_request_rules(
         }
     }
 }
+
