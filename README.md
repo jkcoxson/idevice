@@ -44,7 +44,6 @@ To keep dependency bloat and compile time down, everything is contained in featu
 Finish the following:
 
 - lockdown support
-- afc
 - installation_proxy
 - sprinboard
 
