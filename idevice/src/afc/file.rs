@@ -22,7 +22,7 @@ impl FileDescriptor<'_> {
 
         let header = AfcPacketHeader {
             magic: super::MAGIC,
-            entire_len: header_len, // it's the same since the payload is empty for this
+            entire_len: header_len,
             header_payload_len: header_len,
             packet_num: self.client.package_number,
             operation: AfcOpcode::FileClose,
@@ -52,7 +52,7 @@ impl FileDescriptor<'_> {
 
             let header = AfcPacketHeader {
                 magic: super::MAGIC,
-                entire_len: header_len, // it's the same since the payload is empty for this
+                entire_len: header_len,
                 header_payload_len: header_len,
                 packet_num: self.client.package_number,
                 operation: AfcOpcode::Read,
@@ -72,5 +72,33 @@ impl FileDescriptor<'_> {
         }
 
         Ok(collected_bytes)
+    }
+
+    pub async fn write(&mut self, bytes: &[u8]) -> Result<(), IdeviceError> {
+        let chunks = bytes.chunks(MAX_TRANSFER as usize);
+
+        for chunk in chunks {
+            let header_payload = self.fd.to_le_bytes().to_vec();
+            let header_len = header_payload.len() as u64 + AfcPacketHeader::LEN;
+
+            let header = AfcPacketHeader {
+                magic: super::MAGIC,
+                entire_len: header_len + chunk.len() as u64,
+                header_payload_len: header_len,
+                packet_num: self.client.package_number,
+                operation: AfcOpcode::Write,
+            };
+            self.client.package_number += 1;
+
+            let packet = AfcPacket {
+                header,
+                header_payload,
+                payload: chunk.to_vec(),
+            };
+
+            self.client.send(packet).await?;
+            self.client.read().await?;
+        }
+        Ok(())
     }
 }

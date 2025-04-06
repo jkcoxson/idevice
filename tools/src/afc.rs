@@ -1,6 +1,8 @@
 // Jackson Coxson
 
-use clap::{Arg, Command};
+use std::path::PathBuf;
+
+use clap::{value_parser, Arg, Command};
 use idevice::{
     afc::{opcode::AfcFopenMode, AfcClient},
     IdeviceService,
@@ -47,6 +49,17 @@ async fn main() {
                 .about("Creates a directory")
                 .arg(Arg::new("path").required(true).index(1))
                 .arg(Arg::new("save").required(true).index(2)),
+        )
+        .subcommand(
+            Command::new("upload")
+                .about("Creates a directory")
+                .arg(
+                    Arg::new("file")
+                        .required(true)
+                        .index(1)
+                        .value_parser(value_parser!(PathBuf)),
+                )
+                .arg(Arg::new("path").required(true).index(2)),
         )
         .subcommand(
             Command::new("mkdir")
@@ -112,6 +125,17 @@ async fn main() {
         tokio::fs::write(save, res)
             .await
             .expect("Failed to write to file");
+    } else if let Some(matches) = matches.subcommand_matches("upload") {
+        let file = matches.get_one::<PathBuf>("file").expect("No path passed");
+        let path = matches.get_one::<String>("path").expect("No path passed");
+
+        let bytes = tokio::fs::read(file).await.expect("Failed to read file");
+        let mut file = afc_client
+            .open(path, AfcFopenMode::WrOnly)
+            .await
+            .expect("Failed to open");
+
+        file.write(&bytes).await.expect("Failed to upload bytes");
     } else if let Some(matches) = matches.subcommand_matches("remove") {
         let path = matches.get_one::<String>("path").expect("No path passed");
         afc_client.remove(path).await.expect("Failed to remove");
