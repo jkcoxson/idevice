@@ -406,6 +406,10 @@ pub enum IdeviceError {
     #[error("misagent operation failed")]
     MisagentFailure,
 
+    #[cfg(feature = "installation_proxy")]
+    #[error("installation proxy operation failed")]
+    InstallationProxyOperationFailed(String),
+
     #[cfg(feature = "afc")]
     #[error("afc error")]
     Afc(#[from] afc::errors::AfcError),

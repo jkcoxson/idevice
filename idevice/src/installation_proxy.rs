@@ -5,6 +5,9 @@
 
 use std::collections::HashMap;
 
+use log::warn;
+use plist::Dictionary;
+
 use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
 
 /// Client for interacting with the iOS installation proxy service
@@ -124,5 +127,273 @@ impl InstallationProxyClient {
             _ => Err(IdeviceError::UnexpectedResponse),
         }
     }
-}
 
+    /// Installs an application package on the device
+    ///
+    /// # Arguments
+    /// * `package_path` - Path to the .ipa package in the AFC jail (device's installation directory)
+    /// * `options` - Optional installation options as a plist dictionary
+    /// * `callback` - Optional progress callback that receives (percent_complete, state)
+    /// * `state` - Optional state to pass to the callback
+    ///
+    /// # Returns
+    /// `Ok(())` on successful installation
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The installation fails
+    /// - The service returns an error
+    ///
+    /// # Note
+    /// The package_path should be relative to the AFC jail root
+    pub async fn install<Fut, S>(
+        &mut self,
+        package_path: impl Into<String>,
+        options: Option<plist::Value>,
+        callback: Option<impl Fn((u64, S)) -> Fut>,
+        state: Option<S>,
+    ) -> Result<(), IdeviceError>
+    where
+        Fut: std::future::Future<Output = ()>,
+        S: Clone,
+    {
+        let package_path = package_path.into();
+        let options = options.unwrap_or(plist::Value::Dictionary(Dictionary::new()));
+
+        let mut command = Dictionary::new();
+        command.insert("Command".into(), "Install".into());
+        command.insert("ClientOptions".into(), options);
+        command.insert("PackagePath".into(), package_path.into());
+
+        self.idevice
+            .send_plist(plist::Value::Dictionary(command))
+            .await?;
+
+        self.watch_completion(callback, state).await
+    }
+
+    /// Upgrades an existing application on the device
+    ///
+    /// # Arguments
+    /// * `package_path` - Path to the .ipa package in the AFC jail (device's installation directory)
+    /// * `options` - Optional upgrade options as a plist dictionary
+    /// * `callback` - Optional progress callback that receives (percent_complete, state)
+    /// * `state` - Optional state to pass to the callback
+    ///
+    /// # Returns
+    /// `Ok(())` on successful upgrade
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The upgrade fails
+    /// - The service returns an error
+    pub async fn upgrade<Fut, S>(
+        &mut self,
+        package_path: impl Into<String>,
+        options: Option<plist::Value>,
+        callback: Option<impl Fn((u64, S)) -> Fut>,
+        state: Option<S>,
+    ) -> Result<(), IdeviceError>
+    where
+        Fut: std::future::Future<Output = ()>,
+        S: Clone,
+    {
+        let package_path = package_path.into();
+        let options = options.unwrap_or(plist::Value::Dictionary(Dictionary::new()));
+
+        let mut command = Dictionary::new();
+        command.insert("Command".into(), "Upgrade".into());
+        command.insert("ClientOptions".into(), options);
+        command.insert("PackagePath".into(), package_path.into());
+
+        self.idevice
+            .send_plist(plist::Value::Dictionary(command))
+            .await?;
+
+        self.watch_completion(callback, state).await
+    }
+
+    /// Uninstalls an application from the device
+    ///
+    /// # Arguments
+    /// * `bundle_id` - Bundle identifier of the application to uninstall
+    /// * `options` - Optional uninstall options as a plist dictionary
+    /// * `callback` - Optional progress callback that receives (percent_complete, state)
+    /// * `state` - Optional state to pass to the callback
+    ///
+    /// # Returns
+    /// `Ok(())` on successful uninstallation
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The uninstallation fails
+    /// - The service returns an error
+    pub async fn uninstall<Fut, S>(
+        &mut self,
+        bundle_id: impl Into<String>,
+        options: Option<plist::Value>,
+        callback: Option<impl Fn((u64, S)) -> Fut>,
+        state: Option<S>,
+    ) -> Result<(), IdeviceError>
+    where
+        Fut: std::future::Future<Output = ()>,
+        S: Clone,
+    {
+        let bundle_id = bundle_id.into();
+        let options = options.unwrap_or(plist::Value::Dictionary(Dictionary::new()));
+
+        let mut command = Dictionary::new();
+        command.insert("Command".into(), "Uninstall".into());
+        command.insert("ApplicationIdentifier".into(), bundle_id.into());
+        command.insert("ClientOptions".into(), options);
+
+        self.idevice
+            .send_plist(plist::Value::Dictionary(command))
+            .await?;
+
+        self.watch_completion(callback, state).await
+    }
+
+    /// Checks if the device capabilities match the required capabilities
+    ///
+    /// # Arguments
+    /// * `capabilities` - List of required capabilities as plist values
+    /// * `options` - Optional check options as a plist dictionary
+    ///
+    /// # Returns
+    /// `true` if all capabilities are supported, `false` otherwise
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The service returns an error
+    pub async fn check_capabilities_match(
+        &mut self,
+        capabilities: Vec<plist::Value>,
+        options: Option<plist::Value>,
+    ) -> Result<bool, IdeviceError> {
+        let options = options.unwrap_or(plist::Value::Dictionary(Dictionary::new()));
+
+        let mut command = Dictionary::new();
+        command.insert("Command".into(), "CheckCapabilitiesMatch".into());
+        command.insert("ClientOptions".into(), options);
+        command.insert("Capabilities".into(), capabilities.into());
+
+        self.idevice
+            .send_plist(plist::Value::Dictionary(command))
+            .await?;
+        let mut res = self.idevice.read_plist().await?;
+
+        if let Some(caps) = res.remove("LookupResult").and_then(|x| x.as_boolean()) {
+            Ok(caps)
+        } else {
+            Err(IdeviceError::UnexpectedResponse)
+        }
+    }
+
+    /// Browses installed applications on the device
+    ///
+    /// # Arguments
+    /// * `options` - Optional browse options as a plist dictionary
+    ///
+    /// # Returns
+    /// A vector of plist values representing application information
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The service returns an error
+    ///
+    /// # Note
+    /// This method streams application information in chunks and collects them into a single vector
+    pub async fn browse(
+        &mut self,
+        options: Option<plist::Value>,
+    ) -> Result<Vec<plist::Value>, IdeviceError> {
+        let options = options.unwrap_or(plist::Value::Dictionary(Dictionary::new()));
+
+        let mut command = Dictionary::new();
+        command.insert("Command".into(), "Browse".into());
+        command.insert("ClientOptions".into(), options);
+
+        self.idevice
+            .send_plist(plist::Value::Dictionary(command))
+            .await?;
+
+        let mut values = Vec::new();
+        loop {
+            let mut res = self.idevice.read_plist().await?;
+
+            if let Some(list) = res.remove("CurrentList").and_then(|x| x.into_array()) {
+                for v in list.into_iter() {
+                    values.push(v);
+                }
+            } else {
+                warn!("browse didn't contain current list");
+                break;
+            }
+
+            if let Some(status) = res.get("Status").and_then(|x| x.as_string()) {
+                if status == "Complete" {
+                    break;
+                }
+            }
+        }
+        Ok(values)
+    }
+
+    /// Watches for operation completion and handles progress callbacks
+    ///
+    /// # Arguments
+    /// * `callback` - Optional progress callback that receives (percent_complete, state)
+    /// * `state` - Optional state to pass to the callback
+    ///
+    /// # Returns
+    /// `Ok(())` when the operation completes successfully
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The operation fails
+    /// - The service returns an error
+    async fn watch_completion<Fut, S>(
+        &mut self,
+        callback: Option<impl Fn((u64, S)) -> Fut>,
+        state: Option<S>,
+    ) -> Result<(), IdeviceError>
+    where
+        Fut: std::future::Future<Output = ()>,
+        S: Clone,
+    {
+        loop {
+            let mut res = self.idevice.read_plist().await?;
+
+            if let Some(e) = res.remove("ErrorDescription").and_then(|x| x.into_string()) {
+                return Err(IdeviceError::InstallationProxyOperationFailed(
+                    e.to_string(),
+                ));
+            }
+
+            if let Some(c) = res
+                .remove("PercentComplete")
+                .and_then(|x| x.as_unsigned_integer())
+            {
+                if let Some(callback) = &callback {
+                    if let Some(state) = &state {
+                        callback((c, state.clone())).await;
+                    }
+                }
+            }
+
+            if let Some(c) = res.remove("Status").and_then(|x| x.into_string()) {
+                if c == "Complete" {
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+}

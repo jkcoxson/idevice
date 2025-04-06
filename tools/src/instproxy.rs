@@ -36,6 +36,9 @@ async fn main() {
                 .help("Show about information")
                 .action(clap::ArgAction::SetTrue),
         )
+        .subcommand(Command::new("lookup").about("Gets the apps on the device"))
+        .subcommand(Command::new("browse").about("Browses the apps on the device"))
+        .subcommand(Command::new("check_capabilities").about("Check the capabilities"))
         .get_matches();
 
     if matches.get_flag("about") {
@@ -48,23 +51,34 @@ async fn main() {
     let host = matches.get_one::<String>("host");
     let pairing_file = matches.get_one::<String>("pairing_file");
 
-    let provider =
-        match common::get_provider(udid, host, pairing_file, "ideviceinfo-jkcoxson").await {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("{e}");
-                return;
-            }
-        };
+    let provider = match common::get_provider(udid, host, pairing_file, "instproxy-jkcoxson").await
+    {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("{e}");
+            return;
+        }
+    };
 
     let mut instproxy_client = InstallationProxyClient::connect(&*provider)
         .await
         .expect("Unable to connect to instproxy");
-    let apps = instproxy_client
-        .get_apps(Some("User".to_string()), None)
-        .await
-        .unwrap();
-    for app in apps.keys() {
-        println!("{app}");
+    if matches.subcommand_matches("lookup").is_some() {
+        let apps = instproxy_client
+            .get_apps(Some("User".to_string()), None)
+            .await
+            .unwrap();
+        for app in apps.keys() {
+            println!("{app}");
+        }
+    } else if matches.subcommand_matches("browse").is_some() {
+        instproxy_client.browse(None).await.expect("browse failed");
+    } else if matches.subcommand_matches("check_capabilities").is_some() {
+        instproxy_client
+            .check_capabilities_match(Vec::new(), None)
+            .await
+            .expect("check failed");
+    } else {
+        eprintln!("Invalid usage, pass -h for help");
     }
 }
