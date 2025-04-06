@@ -35,6 +35,7 @@ pub enum AfcOpcode {
     RemovePathAndContents = 0x00000022,
 }
 
+#[repr(u64)]
 pub enum AfcFopenMode {
     RdOnly = 0x00000001,   // r   O_RDONLY
     Rw = 0x00000002,       // r+  O_RDWR   | O_CREAT

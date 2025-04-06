@@ -1,7 +1,10 @@
 // Jackson Coxson
 
 use clap::{Arg, Command};
-use idevice::{afc::AfcClient, IdeviceService};
+use idevice::{
+    afc::{opcode::AfcFopenMode, AfcClient},
+    IdeviceService,
+};
 
 mod common;
 
@@ -38,6 +41,12 @@ async fn main() {
             Command::new("list")
                 .about("Lists the items in the directory")
                 .arg(Arg::new("path").required(true).index(1)),
+        )
+        .subcommand(
+            Command::new("download")
+                .about("Creates a directory")
+                .arg(Arg::new("path").required(true).index(1))
+                .arg(Arg::new("save").required(true).index(2)),
         )
         .subcommand(
             Command::new("mkdir")
@@ -90,6 +99,19 @@ async fn main() {
     } else if let Some(matches) = matches.subcommand_matches("mkdir") {
         let path = matches.get_one::<String>("path").expect("No path passed");
         afc_client.mk_dir(path).await.expect("Failed to mkdir");
+    } else if let Some(matches) = matches.subcommand_matches("download") {
+        let path = matches.get_one::<String>("path").expect("No path passed");
+        let save = matches.get_one::<String>("save").expect("No path passed");
+
+        let mut file = afc_client
+            .open(path, AfcFopenMode::RdOnly)
+            .await
+            .expect("Failed to open");
+
+        let res = file.read().await.expect("Failed to read");
+        tokio::fs::write(save, res)
+            .await
+            .expect("Failed to write to file");
     } else if let Some(matches) = matches.subcommand_matches("remove") {
         let path = matches.get_one::<String>("path").expect("No path passed");
         afc_client.remove(path).await.expect("Failed to remove");

@@ -3,13 +3,15 @@
 use std::collections::HashMap;
 
 use errors::AfcError;
+use file::FileDescriptor;
 use log::warn;
-use opcode::AfcOpcode;
+use opcode::{AfcFopenMode, AfcOpcode};
 use packet::{AfcPacket, AfcPacketHeader};
 
 use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
 
 pub mod errors;
+pub mod file;
 pub mod opcode;
 pub mod packet;
 
@@ -327,6 +329,45 @@ impl AfcClient {
         self.read().await?; // read a response to check for errors
 
         Ok(())
+    }
+
+    pub async fn open(
+        &mut self,
+        path: impl Into<String>,
+        mode: AfcFopenMode,
+    ) -> Result<FileDescriptor, IdeviceError> {
+        let path = path.into();
+        let mut header_payload = (mode as u64).to_le_bytes().to_vec();
+        header_payload.extend(path.as_bytes());
+        let header_len = header_payload.len() as u64 + AfcPacketHeader::LEN;
+
+        let header = AfcPacketHeader {
+            magic: MAGIC,
+            entire_len: header_len, // it's the same since the payload is empty for this
+            header_payload_len: header_len,
+            packet_num: self.package_number,
+            operation: AfcOpcode::FileOpen,
+        };
+        self.package_number += 1;
+
+        let packet = AfcPacket {
+            header,
+            header_payload,
+            payload: Vec::new(),
+        };
+
+        self.send(packet).await?;
+        let res = self.read().await?;
+        if res.header_payload.len() < 8 {
+            warn!("Header payload fd is less than 8 bytes");
+            return Err(IdeviceError::UnexpectedResponse);
+        }
+        let fd = u64::from_le_bytes(res.header_payload[..8].try_into().unwrap());
+        Ok(FileDescriptor {
+            client: self,
+            fd,
+            path,
+        })
     }
 
     pub async fn read(&mut self) -> Result<AfcPacket, IdeviceError> {
