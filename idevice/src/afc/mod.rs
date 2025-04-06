@@ -370,6 +370,80 @@ impl AfcClient {
         })
     }
 
+    pub async fn link(
+        &mut self,
+        target: impl Into<String>,
+        source: impl Into<String>,
+        kind: opcode::LinkType,
+    ) -> Result<(), IdeviceError> {
+        let target = target.into();
+        let source = source.into();
+
+        let mut header_payload = (kind as u64).to_le_bytes().to_vec();
+        header_payload.extend(target.as_bytes());
+        header_payload.push(0);
+        header_payload.extend(source.as_bytes());
+        header_payload.push(0);
+
+        let header_len = header_payload.len() as u64 + AfcPacketHeader::LEN;
+
+        let header = AfcPacketHeader {
+            magic: MAGIC,
+            entire_len: header_len,
+            header_payload_len: header_len,
+            packet_num: self.package_number,
+            operation: AfcOpcode::MakeLink,
+        };
+        self.package_number += 1;
+
+        let packet = AfcPacket {
+            header,
+            header_payload,
+            payload: Vec::new(),
+        };
+
+        self.send(packet).await?;
+        self.read().await?;
+
+        Ok(())
+    }
+
+    pub async fn rename(
+        &mut self,
+        source: impl Into<String>,
+        target: impl Into<String>,
+    ) -> Result<(), IdeviceError> {
+        let target = target.into();
+        let source = source.into();
+
+        let mut header_payload = source.as_bytes().to_vec();
+        header_payload.push(0);
+        header_payload.extend(target.as_bytes());
+        header_payload.push(0);
+
+        let header_len = header_payload.len() as u64 + AfcPacketHeader::LEN;
+
+        let header = AfcPacketHeader {
+            magic: MAGIC,
+            entire_len: header_len,
+            header_payload_len: header_len,
+            packet_num: self.package_number,
+            operation: AfcOpcode::RenamePath,
+        };
+        self.package_number += 1;
+
+        let packet = AfcPacket {
+            header,
+            header_payload,
+            payload: Vec::new(),
+        };
+
+        self.send(packet).await?;
+        self.read().await?;
+
+        Ok(())
+    }
+
     pub async fn read(&mut self) -> Result<AfcPacket, IdeviceError> {
         let res = AfcPacket::read(&mut self.idevice).await?;
         if res.header.operation == AfcOpcode::Status {

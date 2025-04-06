@@ -45,6 +45,12 @@ pub enum AfcFopenMode {
     RdAppend = 0x00000006, // a+  O_RDWR   | O_APPEND | O_CREAT
 }
 
+#[repr(u64)]
+pub enum LinkType {
+    Hardlink = 0x00000001,
+    Symlink = 0x00000002,
+}
+
 impl TryFrom<u64> for AfcOpcode {
     type Error = ();
 
