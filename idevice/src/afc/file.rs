@@ -7,8 +7,11 @@ use super::{
     packet::{AfcPacket, AfcPacketHeader},
 };
 
+/// Maximum transfer size for file operations (64KB)
 const MAX_TRANSFER: u64 = 64 * 1024; // this is what go-ios uses
 
+/// Handle for an open file on the device.
+/// Call close before dropping
 pub struct FileDescriptor<'a> {
     pub(crate) client: &'a mut super::AfcClient,
     pub(crate) fd: u64,
@@ -16,6 +19,7 @@ pub struct FileDescriptor<'a> {
 }
 
 impl FileDescriptor<'_> {
+    /// Closes the file descriptor
     pub async fn close(self) -> Result<(), IdeviceError> {
         let header_payload = self.fd.to_le_bytes().to_vec();
         let header_len = header_payload.len() as u64 + AfcPacketHeader::LEN;
@@ -40,6 +44,10 @@ impl FileDescriptor<'_> {
         Ok(())
     }
 
+    /// Reads the entire contents of the file
+    ///
+    /// # Returns
+    /// A vector containing the file's data
     pub async fn read(&mut self) -> Result<Vec<u8>, IdeviceError> {
         // Get the file size first
         let mut bytes_left = self.client.get_file_info(&self.path).await?.size;
@@ -74,6 +82,10 @@ impl FileDescriptor<'_> {
         Ok(collected_bytes)
     }
 
+    /// Writes data to the file
+    ///
+    /// # Arguments
+    /// * `bytes` - Data to write to the file
     pub async fn write(&mut self, bytes: &[u8]) -> Result<(), IdeviceError> {
         let chunks = bytes.chunks(MAX_TRANSFER as usize);
 

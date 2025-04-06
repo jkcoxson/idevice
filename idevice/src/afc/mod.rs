@@ -1,4 +1,7 @@
-// Jackson Coxson
+//! AFC (Apple File Conduit) client implementation for interacting with iOS devices.
+//!
+//! This module provides functionality to interact with the file system of iOS devices
+//! through the AFC protocol.
 
 use std::collections::HashMap;
 
@@ -15,29 +18,45 @@ pub mod file;
 pub mod opcode;
 pub mod packet;
 
+/// The magic number used in AFC protocol communications
 pub const MAGIC: u64 = 0x4141504c36414643;
 
+/// Client for interacting with the AFC service on iOS devices
 pub struct AfcClient {
+    /// The underlying iDevice connection
     pub idevice: Idevice,
     package_number: u64,
 }
 
+/// Information about a file on the device
 #[derive(Clone, Debug)]
 pub struct FileInfo {
+    /// Size of the file in bytes
     pub size: usize,
+    /// Number of blocks allocated for the file
     pub blocks: usize,
+    /// Creation timestamp of the file
     pub creation: chrono::NaiveDateTime,
+    /// Last modification timestamp of the file
     pub modified: chrono::NaiveDateTime,
+    /// Number of hard links to the file
     pub st_nlink: String,
+    /// File type (e.g., "S_IFREG" for regular file)
     pub st_ifmt: String,
+    /// Target path if this is a symbolic link
     pub st_link_target: Option<String>,
 }
 
+/// Information about the device's filesystem
 #[derive(Clone, Debug)]
 pub struct DeviceInfo {
+    /// Device model identifier
     pub model: String,
+    /// Total storage capacity in bytes
     pub total_bytes: usize,
+    /// Free storage space in bytes
     pub free_bytes: usize,
+    /// Filesystem block size in bytes
     pub block_size: usize,
 }
 
@@ -46,6 +65,13 @@ impl IdeviceService for AfcClient {
         "com.apple.afc"
     }
 
+    /// Connects to the AFC service on the device
+    ///
+    /// # Arguments
+    /// * `provider` - The iDevice provider to use for the connection
+    ///
+    /// # Returns
+    /// A new `AfcClient` instance on success
     async fn connect(
         provider: &dyn crate::provider::IdeviceProvider,
     ) -> Result<Self, IdeviceError> {
@@ -71,6 +97,10 @@ impl IdeviceService for AfcClient {
 }
 
 impl AfcClient {
+    /// Creates a new AFC client from an existing iDevice connection
+    ///
+    /// # Arguments
+    /// * `idevice` - An established iDevice connection
     pub fn new(idevice: Idevice) -> Self {
         Self {
             idevice,
@@ -78,6 +108,13 @@ impl AfcClient {
         }
     }
 
+    /// Lists the contents of a directory on the device
+    ///
+    /// # Arguments
+    /// * `path` - Path to the directory to list
+    ///
+    /// # Returns
+    /// A vector of file/directory names in the specified directory
     pub async fn list_dir(&mut self, path: impl Into<String>) -> Result<Vec<String>, IdeviceError> {
         let path = path.into();
         let header_payload = path.as_bytes().to_vec();
@@ -110,6 +147,10 @@ impl AfcClient {
         Ok(strings)
     }
 
+    /// Creates a new directory on the device
+    ///
+    /// # Arguments
+    /// * `path` - Path of the directory to create
     pub async fn mk_dir(&mut self, path: impl Into<String>) -> Result<(), IdeviceError> {
         let path = path.into();
         let header_payload = path.as_bytes().to_vec();
@@ -136,6 +177,13 @@ impl AfcClient {
         Ok(())
     }
 
+    /// Retrieves information about a file or directory
+    ///
+    /// # Arguments
+    /// * `path` - Path to the file or directory
+    ///
+    /// # Returns
+    /// A `FileInfo` struct containing information about the file
     pub async fn get_file_info(
         &mut self,
         path: impl Into<String>,
@@ -218,6 +266,10 @@ impl AfcClient {
         })
     }
 
+    /// Retrieves information about the device's filesystem
+    ///
+    /// # Returns
+    /// A `DeviceInfo` struct containing device filesystem information
     pub async fn get_device_info(&mut self) -> Result<DeviceInfo, IdeviceError> {
         let header_len = AfcPacketHeader::LEN;
 
@@ -279,6 +331,10 @@ impl AfcClient {
         })
     }
 
+    /// Removes a file or directory
+    ///
+    /// # Arguments
+    /// * `path` - Path to the file or directory to remove
     pub async fn remove(&mut self, path: impl Into<String>) -> Result<(), IdeviceError> {
         let path = path.into();
         let header_payload = path.as_bytes().to_vec();
@@ -305,6 +361,10 @@ impl AfcClient {
         Ok(())
     }
 
+    /// Recursively removes a directory and all its contents
+    ///
+    /// # Arguments
+    /// * `path` - Path to the directory to remove
     pub async fn remove_all(&mut self, path: impl Into<String>) -> Result<(), IdeviceError> {
         let path = path.into();
         let header_payload = path.as_bytes().to_vec();
@@ -331,6 +391,14 @@ impl AfcClient {
         Ok(())
     }
 
+    /// Opens a file on the device
+    ///
+    /// # Arguments
+    /// * `path` - Path to the file to open
+    /// * `mode` - Opening mode (read, write, etc.)
+    ///
+    /// # Returns
+    /// A `FileDescriptor` struct for the opened file
     pub async fn open(
         &mut self,
         path: impl Into<String>,
@@ -370,6 +438,12 @@ impl AfcClient {
         })
     }
 
+    /// Creates a hard or symbolic link
+    ///
+    /// # Arguments
+    /// * `target` - Target path of the link
+    /// * `source` - Path where the link should be created
+    /// * `kind` - Type of link to create (hard or symbolic)
     pub async fn link(
         &mut self,
         target: impl Into<String>,
@@ -408,6 +482,11 @@ impl AfcClient {
         Ok(())
     }
 
+    /// Renames a file or directory
+    ///
+    /// # Arguments
+    /// * `source` - Current path of the file/directory
+    /// * `target` - New path for the file/directory
     pub async fn rename(
         &mut self,
         source: impl Into<String>,
@@ -444,6 +523,10 @@ impl AfcClient {
         Ok(())
     }
 
+    /// Reads a response packet from the device
+    ///
+    /// # Returns
+    /// The received `AfcPacket`
     pub async fn read(&mut self) -> Result<AfcPacket, IdeviceError> {
         let res = AfcPacket::read(&mut self.idevice).await?;
         if res.header.operation == AfcOpcode::Status {
@@ -462,6 +545,10 @@ impl AfcClient {
         Ok(res)
     }
 
+    /// Sends a packet to the device
+    ///
+    /// # Arguments
+    /// * `packet` - The packet to send
     pub async fn send(&mut self, packet: AfcPacket) -> Result<(), IdeviceError> {
         let packet = packet.serialize();
         self.idevice.send_raw(&packet).await?;
