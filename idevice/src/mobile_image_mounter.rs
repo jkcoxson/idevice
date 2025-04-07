@@ -10,6 +10,7 @@
 use log::debug;
 
 use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
+use sha2::{Digest, Sha384};
 
 #[cfg(feature = "tss")]
 use crate::tss::TSSRequest;
@@ -539,7 +540,6 @@ impl ImageMounter {
         S: Clone,
     {
         // Try to fetch personalization manifest
-        use sha2::{Digest, Sha384};
         let mut hasher = Sha384::new();
         hasher.update(&image);
         let image_hash = hasher.finalize();
@@ -776,4 +776,3 @@ impl ImageMounter {
         }
     }
 }
-

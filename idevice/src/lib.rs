@@ -184,6 +184,7 @@ impl Idevice {
             let len = message.len() as u32;
             socket.write_all(&len.to_be_bytes()).await?;
             socket.write_all(message.as_bytes()).await?;
+            socket.flush().await?;
             Ok(())
         } else {
             Err(IdeviceError::NoEstablishedConnection)
@@ -233,6 +234,7 @@ impl Idevice {
                 socket.write_all(part).await?;
                 callback(((i, part_len), state.clone())).await;
             }
+            socket.flush().await?;
             Ok(())
         } else {
             Err(IdeviceError::NoEstablishedConnection)
@@ -330,7 +332,7 @@ impl Idevice {
 
         let socket = self.socket.take().unwrap();
         let socket = connector
-            .connect(ServerName::try_from("iOS").unwrap(), socket)
+            .connect(ServerName::try_from("Device").unwrap(), socket)
             .await?;
 
         self.socket = Some(Box::new(socket));
