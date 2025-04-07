@@ -3,6 +3,7 @@
 use std::{
     ffi::c_int,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    os::raw::c_void,
 };
 
 use libc::{sockaddr_in, sockaddr_in6};
@@ -86,4 +87,13 @@ pub(crate) fn plist_to_libplist(v: &Value) -> *mut libc::c_void {
     let ptr = p.get_pointer();
     p.false_drop();
     ptr
+}
+
+pub(crate) fn libplist_to_plist(v: *mut c_void) -> Value {
+    let v: plist_plus::Plist = v.into();
+    let v_string = v.to_string();
+    v.false_drop();
+
+    let reader = std::io::Cursor::new(v_string.as_bytes());
+    plist::from_reader(reader).unwrap()
 }
