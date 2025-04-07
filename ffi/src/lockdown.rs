@@ -210,7 +210,8 @@ pub unsafe extern "C" fn lockdownd_start_service(
 ///
 /// # Arguments
 /// * `client` - A valid LockdowndClient handle
-/// * `value` - The value to get (null-terminated string)
+/// * `key` - The value to get (null-terminated string)
+/// * `domain` - The value to get (null-terminated string)
 /// * `out_plist` - Pointer to store the returned plist value
 ///
 /// # Returns
@@ -223,21 +224,32 @@ pub unsafe extern "C" fn lockdownd_start_service(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lockdownd_get_value(
     client: *mut LockdowndClientHandle,
-    value: *const libc::c_char,
+    key: *const libc::c_char,
+    domain: *const libc::c_char,
     out_plist: *mut *mut c_void,
 ) -> IdeviceErrorCode {
-    if value.is_null() || out_plist.is_null() {
+    if key.is_null() || out_plist.is_null() {
         return IdeviceErrorCode::InvalidArg;
     }
 
-    let value = unsafe { std::ffi::CStr::from_ptr(value) }
+    let value = unsafe { std::ffi::CStr::from_ptr(key) }
         .to_string_lossy()
         .into_owned();
+
+    let domain = if domain.is_null() {
+        None
+    } else {
+        Some(
+            unsafe { std::ffi::CStr::from_ptr(domain) }
+                .to_string_lossy()
+                .into_owned(),
+        )
+    };
 
     let res: Result<plist::Value, IdeviceError> = RUNTIME.block_on(async move {
         let mut client_box = unsafe { Box::from_raw(client) };
         let client_ref = &mut client_box.0;
-        let res = client_ref.get_value(value).await;
+        let res = client_ref.get_value(value, domain).await;
         std::mem::forget(client_box);
         res
     });

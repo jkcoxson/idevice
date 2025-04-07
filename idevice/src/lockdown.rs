@@ -84,14 +84,25 @@ impl LockdownClient {
     /// let device_name = client.get_value("DeviceName").await?;
     /// println!("Device name: {:?}", device_name);
     /// ```
-    pub async fn get_value(&mut self, value: impl Into<String>) -> Result<Value, IdeviceError> {
-        let req = LockdownRequest {
-            label: self.idevice.label.clone(),
-            key: Some(value.into()),
-            request: "GetValue".to_string(),
-        };
-        let message = plist::to_value(&req)?;
-        self.idevice.send_plist(message).await?;
+    pub async fn get_value(
+        &mut self,
+        key: impl Into<String>,
+        domain: Option<String>,
+    ) -> Result<Value, IdeviceError> {
+        let key = key.into();
+
+        let mut request = plist::Dictionary::new();
+        request.insert("Label".into(), self.idevice.label.clone().into());
+        request.insert("Request".into(), "GetValue".into());
+        request.insert("Key".into(), key.into());
+
+        if let Some(domain) = domain {
+            request.insert("Domain".into(), domain.into());
+        }
+
+        self.idevice
+            .send_plist(plist::Value::Dictionary(request))
+            .await?;
         let message: plist::Dictionary = self.idevice.read_plist().await?;
         match message.get("Value") {
             Some(m) => Ok(m.to_owned()),

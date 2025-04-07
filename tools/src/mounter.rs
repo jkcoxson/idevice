@@ -89,14 +89,17 @@ async fn main() {
         .await
         .expect("Unable to connect to lockdown");
 
-    let product_version = match lockdown_client.get_value("ProductVersion").await {
+    let product_version = match lockdown_client.get_value("ProductVersion", None).await {
         Ok(p) => p,
         Err(_) => {
             lockdown_client
                 .start_session(&provider.get_pairing_file().await.unwrap())
                 .await
                 .unwrap();
-            lockdown_client.get_value("ProductVersion").await.unwrap()
+            lockdown_client
+                .get_value("ProductVersion", None)
+                .await
+                .unwrap()
         }
     };
     let product_version = product_version
@@ -179,7 +182,7 @@ async fn main() {
                 .await
                 .expect("Unable to read signature");
 
-            let unique_chip_id = match lockdown_client.get_value("UniqueChipID").await {
+            let unique_chip_id = match lockdown_client.get_value("UniqueChipID", None).await {
                 Ok(u) => u,
                 Err(_) => {
                     lockdown_client
@@ -187,7 +190,7 @@ async fn main() {
                         .await
                         .expect("Unable to start session");
                     lockdown_client
-                        .get_value("UniqueChipID")
+                        .get_value("UniqueChipID", None)
                         .await
                         .expect("Unable to get UniqueChipID")
                 }
