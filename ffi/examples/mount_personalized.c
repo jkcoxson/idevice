@@ -150,7 +150,7 @@ int main(int argc, char **argv) {
 
   // Get UniqueChipID
   plist_t unique_chip_id_plist = NULL;
-  err = lockdownd_get_value(lockdown_client, "UniqueChipID",
+  err = lockdownd_get_value(lockdown_client, "UniqueChipID", NULL,
                             &unique_chip_id_plist);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to get UniqueChipID: %d\n", err);

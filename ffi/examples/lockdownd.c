@@ -1,7 +1,9 @@
 // Jackson Coxson
 
 #include "idevice.h"
+#include "plist/plist.h"
 #include <arpa/inet.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,7 +66,7 @@ int main() {
 
   // Get device name
   plist_t name_plist = NULL;
-  err = lockdownd_get_value(client, "DeviceName", &name_plist);
+  err = lockdownd_get_value(client, "DeviceName", NULL, &name_plist);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to get device name: %d\n", err);
   } else {
@@ -77,7 +79,7 @@ int main() {
 
   // Get product version
   plist_t version_plist = NULL;
-  err = lockdownd_get_value(client, "ProductVersion", &version_plist);
+  err = lockdownd_get_value(client, "ProductVersion", NULL, &version_plist);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to get product version: %d\n", err);
   } else {
@@ -86,6 +88,20 @@ int main() {
     printf("iOS version: %s\n", version);
     free(version);
     plist_free(version_plist);
+  }
+
+  // Get product version
+  plist_t developer_mode_plist = NULL;
+  err =
+      lockdownd_get_value(client, "DeveloperModeStatus",
+                          "com.apple.security.mac.amfi", &developer_mode_plist);
+  if (err != IdeviceSuccess) {
+    fprintf(stderr, "Failed to get product version: %d\n", err);
+  } else {
+    uint8_t enabled = 0;
+    plist_get_bool_val(developer_mode_plist, &enabled);
+    printf("Developer mode enabled: %s\n", enabled ? "true" : "false");
+    plist_free(developer_mode_plist);
   }
 
   // Get all values
