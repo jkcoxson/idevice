@@ -133,8 +133,6 @@ impl InstallationProxyClient {
     /// # Arguments
     /// * `package_path` - Path to the .ipa package in the AFC jail (device's installation directory)
     /// * `options` - Optional installation options as a plist dictionary
-    /// * `callback` - Optional progress callback that receives (percent_complete, state)
-    /// * `state` - Optional state to pass to the callback
     ///
     /// # Returns
     /// `Ok(())` on successful installation
@@ -147,12 +145,40 @@ impl InstallationProxyClient {
     ///
     /// # Note
     /// The package_path should be relative to the AFC jail root
-    pub async fn install<Fut, S>(
+    pub async fn install(
         &mut self,
         package_path: impl Into<String>,
         options: Option<plist::Value>,
-        callback: Option<impl Fn((u64, S)) -> Fut>,
-        state: Option<S>,
+    ) -> Result<(), IdeviceError> {
+        self.install_with_callback(package_path, options, |_| async {}, ())
+            .await
+    }
+
+    /// Installs an application package on the device
+    ///
+    /// # Arguments
+    /// * `package_path` - Path to the .ipa package in the AFC jail (device's installation directory)
+    /// * `options` - Optional installation options as a plist dictionary
+    /// * `callback` - Progress callback that receives (percent_complete, state)
+    /// * `state` - State to pass to the callback
+    ///
+    /// # Returns
+    /// `Ok(())` on successful installation
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The installation fails
+    /// - The service returns an error
+    ///
+    /// # Note
+    /// The package_path should be relative to the AFC jail root
+    pub async fn install_with_callback<Fut, S>(
+        &mut self,
+        package_path: impl Into<String>,
+        options: Option<plist::Value>,
+        callback: impl Fn((u64, S)) -> Fut,
+        state: S,
     ) -> Result<(), IdeviceError>
     where
         Fut: std::future::Future<Output = ()>,
@@ -178,8 +204,6 @@ impl InstallationProxyClient {
     /// # Arguments
     /// * `package_path` - Path to the .ipa package in the AFC jail (device's installation directory)
     /// * `options` - Optional upgrade options as a plist dictionary
-    /// * `callback` - Optional progress callback that receives (percent_complete, state)
-    /// * `state` - Optional state to pass to the callback
     ///
     /// # Returns
     /// `Ok(())` on successful upgrade
@@ -189,12 +213,37 @@ impl InstallationProxyClient {
     /// - Communication fails
     /// - The upgrade fails
     /// - The service returns an error
-    pub async fn upgrade<Fut, S>(
+    pub async fn upgrade(
         &mut self,
         package_path: impl Into<String>,
         options: Option<plist::Value>,
-        callback: Option<impl Fn((u64, S)) -> Fut>,
-        state: Option<S>,
+    ) -> Result<(), IdeviceError> {
+        self.upgrade_with_callback(package_path, options, |_| async {}, ())
+            .await
+    }
+
+    /// Upgrades an existing application on the device
+    ///
+    /// # Arguments
+    /// * `package_path` - Path to the .ipa package in the AFC jail (device's installation directory)
+    /// * `options` - Optional upgrade options as a plist dictionary
+    /// * `callback` - Progress callback that receives (percent_complete, state)
+    /// * `state` - State to pass to the callback
+    ///
+    /// # Returns
+    /// `Ok(())` on successful upgrade
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The upgrade fails
+    /// - The service returns an error
+    pub async fn upgrade_with_callback<Fut, S>(
+        &mut self,
+        package_path: impl Into<String>,
+        options: Option<plist::Value>,
+        callback: impl Fn((u64, S)) -> Fut,
+        state: S,
     ) -> Result<(), IdeviceError>
     where
         Fut: std::future::Future<Output = ()>,
@@ -220,8 +269,6 @@ impl InstallationProxyClient {
     /// # Arguments
     /// * `bundle_id` - Bundle identifier of the application to uninstall
     /// * `options` - Optional uninstall options as a plist dictionary
-    /// * `callback` - Optional progress callback that receives (percent_complete, state)
-    /// * `state` - Optional state to pass to the callback
     ///
     /// # Returns
     /// `Ok(())` on successful uninstallation
@@ -231,12 +278,37 @@ impl InstallationProxyClient {
     /// - Communication fails
     /// - The uninstallation fails
     /// - The service returns an error
-    pub async fn uninstall<Fut, S>(
+    pub async fn uninstall(
         &mut self,
         bundle_id: impl Into<String>,
         options: Option<plist::Value>,
-        callback: Option<impl Fn((u64, S)) -> Fut>,
-        state: Option<S>,
+    ) -> Result<(), IdeviceError> {
+        self.uninstall_with_callback(bundle_id, options, |_| async {}, ())
+            .await
+    }
+
+    /// Uninstalls an application from the device
+    ///
+    /// # Arguments
+    /// * `bundle_id` - Bundle identifier of the application to uninstall
+    /// * `options` - Optional uninstall options as a plist dictionary
+    /// * `callback` - Progress callback that receives (percent_complete, state)
+    /// * `state` - State to pass to the callback
+    ///
+    /// # Returns
+    /// `Ok(())` on successful uninstallation
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The uninstallation fails
+    /// - The service returns an error
+    pub async fn uninstall_with_callback<Fut, S>(
+        &mut self,
+        bundle_id: impl Into<String>,
+        options: Option<plist::Value>,
+        callback: impl Fn((u64, S)) -> Fut,
+        state: S,
     ) -> Result<(), IdeviceError>
     where
         Fut: std::future::Future<Output = ()>,
@@ -361,8 +433,8 @@ impl InstallationProxyClient {
     /// - The service returns an error
     async fn watch_completion<Fut, S>(
         &mut self,
-        callback: Option<impl Fn((u64, S)) -> Fut>,
-        state: Option<S>,
+        callback: impl Fn((u64, S)) -> Fut,
+        state: S,
     ) -> Result<(), IdeviceError>
     where
         Fut: std::future::Future<Output = ()>,
@@ -381,11 +453,7 @@ impl InstallationProxyClient {
                 .remove("PercentComplete")
                 .and_then(|x| x.as_unsigned_integer())
             {
-                if let Some(callback) = &callback {
-                    if let Some(state) = &state {
-                        callback((c, state.clone())).await;
-                    }
-                }
+                callback((c, state.clone())).await;
             }
 
             if let Some(c) = res.remove("Status").and_then(|x| x.into_string()) {
