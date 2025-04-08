@@ -1,6 +1,7 @@
 // Jackson Coxson
 
 pub mod adapter;
+pub mod amfi;
 pub mod core_device_proxy;
 pub mod debug_proxy;
 mod errors;

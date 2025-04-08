@@ -3,6 +3,8 @@
 
 #[cfg(feature = "afc")]
 pub mod afc;
+#[cfg(feature = "amfi")]
+pub mod amfi;
 #[cfg(feature = "core_device_proxy")]
 pub mod core_device_proxy;
 #[cfg(feature = "debug_proxy")]

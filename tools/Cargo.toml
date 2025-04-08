@@ -57,10 +57,13 @@ path = "src/misagent.rs"
 name = "location_simulation"
 path = "src/location_simulation.rs"
 
-
 [[bin]]
 name = "afc"
 path = "src/afc.rs"
+
+[[bin]]
+name = "amfi"
+path = "src/amfi.rs"
 
 [dependencies]
 idevice = { path = "../idevice", features = ["full"] }
