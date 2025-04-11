@@ -43,6 +43,13 @@ pub enum IdeviceErrorCode {
     Utf8Error = -35,
     InvalidArgument = -36,
     UnknownErrorType = -37,
+    PemParseFailed = -38,
+    MisagentFailure = -39,
+    InstallationProxyOperationFailed = -40,
+    Afc = -41,
+    UnknownAfcOpcode = -42,
+    InvalidAfcMagic = -43,
+    AfcMissingAttribute = -44,
     // FFI specific bindings
     AdapterIOFailed = -996,
     ServiceNotFound = -997,
@@ -93,6 +100,15 @@ impl From<IdeviceError> for IdeviceErrorCode {
             IdeviceError::Utf8Error => IdeviceErrorCode::Utf8Error,
             IdeviceError::InvalidArgument => IdeviceErrorCode::InvalidArgument,
             IdeviceError::UnknownErrorType(_) => IdeviceErrorCode::UnknownErrorType,
+            IdeviceError::PemParseFailed(_) => IdeviceErrorCode::PemParseFailed,
+            IdeviceError::MisagentFailure => IdeviceErrorCode::MisagentFailure,
+            IdeviceError::InstallationProxyOperationFailed(_) => {
+                IdeviceErrorCode::InstallationProxyOperationFailed
+            }
+            IdeviceError::Afc(_) => IdeviceErrorCode::Afc,
+            IdeviceError::UnknownAfcOpcode => IdeviceErrorCode::UnknownAfcOpcode,
+            IdeviceError::InvalidAfcMagic => IdeviceErrorCode::InvalidAfcMagic,
+            IdeviceError::AfcMissingAttribute => IdeviceErrorCode::AfcMissingAttribute,
             _ => IdeviceErrorCode::InternalError,
         }
     }
