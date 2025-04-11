@@ -11,6 +11,7 @@ pub mod installation_proxy;
 pub mod location_simulation;
 pub mod lockdown;
 pub mod logging;
+pub mod misagent;
 pub mod mounter;
 mod pairing_file;
 pub mod process_control;
