@@ -39,7 +39,7 @@ pub async fn get_provider(
                 return Err(format!("Device not found: {e:?}"));
             }
         };
-        Box::new(dev.to_provider(UsbmuxdAddr::from_env_var().unwrap(), 1, label))
+        Box::new(dev.to_provider(UsbmuxdAddr::from_env_var().unwrap(), label))
     } else if host.is_some() && pairing_file.is_some() {
         let host = match IpAddr::from_str(host.unwrap()) {
             Ok(h) => h,
@@ -80,7 +80,7 @@ pub async fn get_provider(
         if devs.is_empty() {
             return Err("No devices connected!".to_string());
         }
-        Box::new(devs[0].to_provider(UsbmuxdAddr::from_env_var().unwrap(), 0, label))
+        Box::new(devs[0].to_provider(UsbmuxdAddr::from_env_var().unwrap(), label))
     };
     Ok(provider)
 }
