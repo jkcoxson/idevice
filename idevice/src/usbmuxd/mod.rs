@@ -379,21 +379,15 @@ impl UsbmuxdDevice {
     ///
     /// # Returns
     /// Configured `UsbmuxdProvider`
-    pub fn to_provider(
-        &self,
-        addr: UsbmuxdAddr,
-        tag: u32,
-        label: impl Into<String>,
-    ) -> UsbmuxdProvider {
+    pub fn to_provider(&self, addr: UsbmuxdAddr, label: impl Into<String>) -> UsbmuxdProvider {
         let label = label.into();
 
         UsbmuxdProvider {
             addr,
-            tag,
+            tag: self.device_id,
             udid: self.udid.clone(),
             device_id: self.device_id,
             label,
         }
     }
 }
-
