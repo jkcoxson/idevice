@@ -5,6 +5,8 @@
 pub mod afc;
 #[cfg(feature = "amfi")]
 pub mod amfi;
+#[cfg(feature = "pair")]
+mod ca;
 #[cfg(feature = "core_device_proxy")]
 pub mod core_device_proxy;
 #[cfg(feature = "debug_proxy")]
@@ -413,6 +415,14 @@ pub enum IdeviceError {
     #[error("image not mounted")]
     ImageNotMounted,
 
+    #[cfg(feature = "pair")]
+    #[error("pairing trust dialog pending")]
+    PairingDialogResponsePending,
+
+    #[cfg(feature = "pair")]
+    #[error("user denied pairing trust")]
+    UserDeniedPairing,
+
     #[cfg(feature = "misagent")]
     #[error("misagent operation failed")]
     MisagentFailure,
@@ -496,6 +506,10 @@ impl IdeviceError {
             "InvalidHostID" => Some(Self::InvalidHostID),
             "SessionInactive" => Some(Self::SessionInactive),
             "DeviceLocked" => Some(Self::DeviceLocked),
+            #[cfg(feature = "pair")]
+            "PairingDialogResponsePending" => Some(Self::PairingDialogResponsePending),
+            #[cfg(feature = "pair")]
+            "UserDeniedPairing" => Some(Self::UserDeniedPairing),
             "InternalError" => {
                 let detailed_error = context
                     .get("DetailedError")

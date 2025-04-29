@@ -250,6 +250,94 @@ impl LockdownClient {
             }
         }
     }
+
+    /// Generates a pairing file and sends it to the device for trusting.
+    /// Note that this does NOT save the file to usbmuxd's cache. That's a responsibility of the
+    /// caller.
+    /// Note that this function is computationally heavy in a debug build.
+    ///
+    /// # Arguments
+    /// * `host_id` - The host ID, in the form of a UUID. Typically generated from the host name
+    /// * `wifi_mac` - The MAC address of the WiFi interface. Does not affect anything.
+    /// * `system_buid` - UUID fetched from usbmuxd. Doesn't appear to affect function.
+    ///
+    /// # Returns
+    /// The newly generated pairing record
+    ///
+    /// # Errors
+    /// Returns `IdeviceError`
+    #[cfg(feature = "pair")]
+    pub async fn pair(
+        &mut self,
+        host_id: impl Into<String>,
+        wifi_mac: impl Into<String>,
+        system_buid: impl Into<String>,
+    ) -> Result<crate::pairing_file::PairingFile, IdeviceError> {
+        let host_id = host_id.into();
+        let wifi_mac = wifi_mac.into();
+        let system_buid = system_buid.into();
+
+        let pub_key = self.get_value("DevicePublicKey", None).await?;
+        let pub_key = match pub_key.as_data().map(|x| x.to_vec()) {
+            Some(p) => p,
+            None => {
+                log::warn!("Did not get public key data response");
+                return Err(IdeviceError::UnexpectedResponse);
+            }
+        };
+
+        let ca = crate::ca::generate_certificates(&pub_key, None).unwrap();
+        let mut pair_record = plist::Dictionary::new();
+        pair_record.insert("DevicePublicKey".into(), plist::Value::Data(pub_key));
+        pair_record.insert("DeviceCertificate".into(), plist::Value::Data(ca.dev_cert));
+        pair_record.insert(
+            "HostCertificate".into(),
+            plist::Value::Data(ca.host_cert.clone()),
+        );
+        pair_record.insert("HostID".into(), host_id.into());
+        pair_record.insert("RootCertificate".into(), plist::Value::Data(ca.host_cert));
+        pair_record.insert(
+            "RootPrivateKey".into(),
+            plist::Value::Data(ca.private_key.clone()),
+        );
+        pair_record.insert("WiFiMACAddress".into(), wifi_mac.into());
+        pair_record.insert("SystemBUID".into(), system_buid.into());
+
+        let mut options = plist::Dictionary::new();
+        options.insert("ExtendedPairingErrors".into(), true.into());
+
+        let mut req = plist::Dictionary::new();
+        req.insert("Label".into(), self.idevice.label.clone().into());
+        req.insert("Request".into(), "Pair".into());
+        req.insert(
+            "PairRecord".into(),
+            plist::Value::Dictionary(pair_record.clone()),
+        );
+        req.insert("ProtocolVersion".into(), "2".into());
+        req.insert("PairingOptions".into(), plist::Value::Dictionary(options));
+
+        loop {
+            self.idevice.send_plist(req.clone().into()).await?;
+            match self.idevice.read_plist().await {
+                Ok(escrow) => {
+                    pair_record.insert("HostPrivateKey".into(), plist::Value::Data(ca.private_key));
+                    if let Some(escrow) = escrow.get("EscrowBag").and_then(|x| x.as_data()) {
+                        pair_record.insert("EscrowBag".into(), plist::Value::Data(escrow.to_vec()));
+                    }
+
+                    let p = crate::pairing_file::PairingFile::from_value(
+                        &plist::Value::Dictionary(pair_record),
+                    )?;
+
+                    break Ok(p);
+                }
+                Err(IdeviceError::PairingDialogResponsePending) => {
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+                Err(e) => break Err(e),
+            }
+        }
+    }
 }
 
 impl From<Idevice> for LockdownClient {

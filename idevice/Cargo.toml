@@ -40,7 +40,13 @@ reqwest = { version = "0.12", features = [
 rand = { version = "0.9", optional = true }
 futures = { version = "0.3", optional = true }
 
-sha2 = { version = "0.10", optional = true }
+sha2 = { version = "0.10", optional = true, features = ["oid"] }
+
+rsa = { version = "0.9", optional = true, features = ["sha2"] }
+x509-cert = { version = "0.2", optional = true, features = [
+  "builder",
+  "pem",
+], default-features = false }
 
 [dev-dependencies]
 tokio = { version = "1.43", features = ["fs"] }
@@ -59,6 +65,7 @@ springboardservices = []
 misagent = []
 mobile_image_mounter = ["dep:sha2"]
 location_simulation = []
+pair = ["chrono/default", "dep:sha2", "dep:rsa", "dep:x509-cert"]
 tcp = ["tokio/net"]
 tunnel_tcp_stack = ["dep:rand", "dep:futures", "tokio/fs", "tokio/sync"]
 tss = ["dep:uuid", "dep:reqwest"]
@@ -82,6 +89,7 @@ full = [
   "installation_proxy",
   "misagent",
   "mobile_image_mounter",
+  "pair",
   "usbmuxd",
   "xpc",
   "location_simulation",
