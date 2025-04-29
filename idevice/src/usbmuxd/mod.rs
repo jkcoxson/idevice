@@ -22,7 +22,7 @@ mod des;
 mod raw_packet;
 
 /// Represents the connection type of a device
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Connection {
     /// Connected via USB
     Usb,
