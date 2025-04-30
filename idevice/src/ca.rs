@@ -72,7 +72,6 @@ pub(crate) fn generate_certificates(
     private_key: Option<RsaPrivateKey>,
 ) -> Result<CaReturn, Box<dyn std::error::Error>> {
     // Load device public key
-    println!("{}", std::str::from_utf8(device_public_key_pem)?);
     let device_public_key =
         RsaPublicKey::from_pkcs1_pem(std::str::from_utf8(device_public_key_pem)?)?;
 
