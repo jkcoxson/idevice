@@ -69,10 +69,19 @@ async fn main() {
         .to_string();
     let id = uuid::Uuid::new_v4().to_string().to_uppercase();
 
-    let pairing_file = lockdown_client
+    let mut pairing_file = lockdown_client
         .pair(id, mac_address, u.get_buid().await.unwrap())
         .await
         .expect("Failed to pair");
+
+    // Test the pairing file
+    lockdown_client
+        .start_session(&pairing_file)
+        .await
+        .expect("Pairing file test failed");
+
+    // Add the UDID (jitterbug spec)
+    pairing_file.udid = Some(dev.udid);
 
     println!(
         "{}",
