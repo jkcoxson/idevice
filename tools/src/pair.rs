@@ -6,7 +6,6 @@ use idevice::{
     usbmuxd::{Connection, UsbmuxdAddr, UsbmuxdConnection},
     IdeviceService,
 };
-use mac_address::get_mac_address;
 
 mod common;
 
@@ -63,14 +62,10 @@ async fn main() {
             return;
         }
     };
-    let mac_address = get_mac_address()
-        .expect("Failed to get MAC")
-        .expect("No MAC??")
-        .to_string();
     let id = uuid::Uuid::new_v4().to_string().to_uppercase();
 
     let mut pairing_file = lockdown_client
-        .pair(id, mac_address, u.get_buid().await.unwrap())
+        .pair(id, u.get_buid().await.unwrap())
         .await
         .expect("Failed to pair");
 

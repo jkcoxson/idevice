@@ -258,7 +258,6 @@ impl LockdownClient {
     ///
     /// # Arguments
     /// * `host_id` - The host ID, in the form of a UUID. Typically generated from the host name
-    /// * `wifi_mac` - The MAC address of the WiFi interface. Does not affect anything.
     /// * `system_buid` - UUID fetched from usbmuxd. Doesn't appear to affect function.
     ///
     /// # Returns
@@ -270,11 +269,9 @@ impl LockdownClient {
     pub async fn pair(
         &mut self,
         host_id: impl Into<String>,
-        wifi_mac: impl Into<String>,
         system_buid: impl Into<String>,
     ) -> Result<crate::pairing_file::PairingFile, IdeviceError> {
         let host_id = host_id.into();
-        let wifi_mac = wifi_mac.into();
         let system_buid = system_buid.into();
 
         let pub_key = self.get_value("DevicePublicKey", None).await?;
@@ -282,6 +279,15 @@ impl LockdownClient {
             Some(p) => p,
             None => {
                 log::warn!("Did not get public key data response");
+                return Err(IdeviceError::UnexpectedResponse);
+            }
+        };
+
+        let wifi_mac = self.get_value("WiFiAddress", None).await?;
+        let wifi_mac = match wifi_mac.as_string() {
+            Some(w) => w,
+            None => {
+                log::warn!("Did not get WiFiAddress string");
                 return Err(IdeviceError::UnexpectedResponse);
             }
         };

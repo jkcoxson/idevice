@@ -1236,7 +1236,6 @@ dependencies = [
  "env_logger 0.11.8",
  "idevice",
  "log",
- "mac_address",
  "ns-keyed-archive",
  "plist",
  "sha2",
