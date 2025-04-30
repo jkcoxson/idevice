@@ -423,6 +423,10 @@ pub enum IdeviceError {
     #[error("user denied pairing trust")]
     UserDeniedPairing,
 
+    #[cfg(feature = "pair")]
+    #[error("device is locked")]
+    PasswordProtected,
+
     #[cfg(feature = "misagent")]
     #[error("misagent operation failed")]
     MisagentFailure,
@@ -510,6 +514,8 @@ impl IdeviceError {
             "PairingDialogResponsePending" => Some(Self::PairingDialogResponsePending),
             #[cfg(feature = "pair")]
             "UserDeniedPairing" => Some(Self::UserDeniedPairing),
+            #[cfg(feature = "pair")]
+            "PasswordProtected" => Some(Self::PasswordProtected),
             "InternalError" => {
                 let detailed_error = context
                     .get("DetailedError")
