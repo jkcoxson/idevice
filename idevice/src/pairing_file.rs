@@ -149,18 +149,28 @@ impl TryFrom<RawPairingFile> for PairingFile {
     ///
     /// Performs validation of cryptographic materials during conversion.
     fn try_from(value: RawPairingFile) -> Result<Self, Self::Error> {
+        // Convert raw data into certificates and keys with proper PEM format
+        let device_cert_data = Into::<Vec<u8>>::into(value.device_certificate);
+        let host_private_key_data = Into::<Vec<u8>>::into(value.host_private_key);
+        let host_cert_data = Into::<Vec<u8>>::into(value.host_certificate);
+        let root_private_key_data = Into::<Vec<u8>>::into(value.root_private_key);
+        let root_cert_data = Into::<Vec<u8>>::into(value.root_certificate);
+
+        // Ensure device certificate has proper PEM headers
+        let device_certificate_pem = ensure_pem_headers(&device_cert_data, "CERTIFICATE");
+        
+        // Ensure host certificate has proper PEM headers
+        let host_certificate_pem = ensure_pem_headers(&host_cert_data, "CERTIFICATE");
+        
+        // Ensure root certificate has proper PEM headers
+        let root_certificate_pem = ensure_pem_headers(&root_cert_data, "CERTIFICATE");
+        
         Ok(Self {
-            device_certificate: CertificateDer::from_pem_slice(&Into::<Vec<u8>>::into(
-                value.device_certificate,
-            ))?,
-            host_private_key: Into::<Vec<u8>>::into(value.host_private_key),
-            host_certificate: CertificateDer::from_pem_slice(&Into::<Vec<u8>>::into(
-                value.host_certificate,
-            ))?,
-            root_private_key: Into::<Vec<u8>>::into(value.root_private_key),
-            root_certificate: CertificateDer::from_pem_slice(&Into::<Vec<u8>>::into(
-                value.root_certificate,
-            ))?,
+            device_certificate: CertificateDer::from_pem_slice(&device_certificate_pem)?,
+            host_private_key: host_private_key_data,
+            host_certificate: CertificateDer::from_pem_slice(&host_certificate_pem)?,
+            root_private_key: root_private_key_data,
+            root_certificate: CertificateDer::from_pem_slice(&root_certificate_pem)?,
             system_buid: value.system_buid,
             host_id: value.host_id,
             escrow_bag: value.escrow_bag.into(),
@@ -173,18 +183,90 @@ impl TryFrom<RawPairingFile> for PairingFile {
 impl From<PairingFile> for RawPairingFile {
     /// Converts a structured pairing file into a raw pairing file for serialization
     fn from(value: PairingFile) -> Self {
+        // Ensure certificates include proper PEM format
+        let device_cert_data = ensure_pem_headers(&value.device_certificate.to_vec(), "CERTIFICATE");
+        let host_cert_data = ensure_pem_headers(&value.host_certificate.to_vec(), "CERTIFICATE");
+        let root_cert_data = ensure_pem_headers(&value.root_certificate.to_vec(), "CERTIFICATE");
+        
+        // Ensure private keys include proper PEM format
+        let host_private_key_data = ensure_pem_headers(&value.host_private_key, "PRIVATE KEY");
+        let root_private_key_data = ensure_pem_headers(&value.root_private_key, "PRIVATE KEY");
+
         Self {
-            device_certificate: Data::new(value.device_certificate.to_vec()),
-            host_private_key: Data::new(value.host_private_key),
-            host_certificate: Data::new(value.host_certificate.to_vec()),
-            root_private_key: Data::new(value.root_private_key),
-            root_certificate: Data::new(value.root_certificate.to_vec()),
+            device_certificate: Data::new(device_cert_data),
+            host_private_key: Data::new(host_private_key_data),
+            host_certificate: Data::new(host_cert_data),
+            root_private_key: Data::new(root_private_key_data),
+            root_certificate: Data::new(root_cert_data),
             system_buid: value.system_buid,
             host_id: value.host_id.clone(),
             escrow_bag: Data::new(value.escrow_bag),
             wifi_mac_address: value.wifi_mac_address,
             udid: value.udid,
         }
+    }
+}
+
+/// Helper function to ensure data has proper PEM headers
+/// If the data already has headers, it returns it as is
+/// If not, it adds the appropriate BEGIN and END headers
+fn ensure_pem_headers(data: &[u8], pem_type: &str) -> Vec<u8> {
+    if is_pem_formatted(data) {
+        return data.to_vec();
+    }
+    
+    // If it's just base64 data, add PEM headers
+    let mut result = Vec::new();
+    
+    // Add header
+    let header = format!("-----BEGIN {}-----\n", pem_type);
+    result.extend_from_slice(header.as_bytes());
+    
+    // Add base64 content with line breaks every 64 characters
+    let base64_content = if is_base64(data) {
+        // Clean up any existing whitespace/newlines
+        let data_str = String::from_utf8_lossy(data);
+        data_str.replace('\n', "").replace('\r', "").replace(' ', "").into_bytes()
+    } else {
+        base64::encode(data).into_bytes()
+    };
+    
+    // Format base64 content with proper line breaks (64 chars per line)
+    for (i, chunk) in base64_content.chunks(64).enumerate() {
+        if i > 0 {
+            result.push(b'\n');
+        }
+        result.extend_from_slice(chunk);
+    }
+    
+    // Add a final newline before the footer
+    result.push(b'\n');
+    
+    // Add footer
+    let footer = format!("-----END {}-----", pem_type);
+    result.extend_from_slice(footer.as_bytes());
+    
+    result
+}
+
+/// Check if data is already in PEM format
+fn is_pem_formatted(data: &[u8]) -> bool {
+    if let Ok(data_str) = std::str::from_utf8(data) {
+        data_str.contains("-----BEGIN") && data_str.contains("-----END")
+    } else {
+        false
+    }
+}
+
+/// Check if data is already base64 encoded
+fn is_base64(data: &[u8]) -> bool {
+    if let Ok(data_str) = std::str::from_utf8(data) {
+        // Simple check to see if string contains only valid base64 characters
+        data_str.chars().all(|c| {
+            c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '=' || c.is_whitespace()
+        })
+    } else {
+        false
     }
 }
 
