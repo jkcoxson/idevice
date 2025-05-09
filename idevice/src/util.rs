@@ -2,6 +2,7 @@
 //!
 //! Provides helper functions for working with Apple's Property List (PLIST) format,
 //! including serialization and pretty-printing utilities.
+#![allow(dead_code)] // functions might not be used by all features
 
 use plist::Value;
 
@@ -125,4 +126,3 @@ fn print_plist(p: &Value, indentation: usize) -> String {
         _ => "Unknown".to_string(),
     }
 }
-

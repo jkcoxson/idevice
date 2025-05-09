@@ -3,11 +3,7 @@
 //! Provides abstractions for establishing connections to iOS devices through different
 //! transport mechanisms (TCP, USB, etc.).
 
-use std::{
-    future::Future,
-    net::{IpAddr, SocketAddr},
-    pin::Pin,
-};
+use std::{future::Future, pin::Pin};
 
 #[cfg(feature = "tcp")]
 use tokio::net::TcpStream;
@@ -51,7 +47,7 @@ pub trait IdeviceProvider: Unpin + Send + Sync + std::fmt::Debug {
 #[derive(Debug)]
 pub struct TcpProvider {
     /// IP address of the device
-    pub addr: IpAddr,
+    pub addr: std::net::IpAddr,
     /// Pairing file for secure communication
     pub pairing_file: PairingFile,
     /// Label identifying this connection
@@ -74,7 +70,7 @@ impl IdeviceProvider for TcpProvider {
         let addr = self.addr;
         let label = self.label.clone();
         Box::pin(async move {
-            let socket_addr = SocketAddr::new(addr, port);
+            let socket_addr = std::net::SocketAddr::new(addr, port);
             let stream = TcpStream::connect(socket_addr).await?;
             Ok(Idevice::new(Box::new(stream), label))
         })
@@ -153,4 +149,3 @@ impl IdeviceProvider for UsbmuxdProvider {
         })
     }
 }
-

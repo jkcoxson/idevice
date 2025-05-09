@@ -180,7 +180,7 @@ impl Idevice {
     ///
     /// # Errors
     /// Returns `IdeviceError` if transmission fails
-    async fn send_raw(&mut self, message: &[u8]) -> Result<(), IdeviceError> {
+    pub async fn send_raw(&mut self, message: &[u8]) -> Result<(), IdeviceError> {
         self.send_raw_with_progress(message, |_| async {}, ()).await
     }
 
@@ -197,7 +197,7 @@ impl Idevice {
     ///
     /// # Errors
     /// Returns `IdeviceError` if transmission fails
-    async fn send_raw_with_progress<Fut, S>(
+    pub async fn send_raw_with_progress<Fut, S>(
         &mut self,
         message: &[u8],
         callback: impl Fn(((usize, usize), S)) -> Fut,
@@ -233,7 +233,7 @@ impl Idevice {
     ///
     /// # Errors
     /// Returns `IdeviceError` if reading fails or connection is closed prematurely
-    async fn read_raw(&mut self, len: usize) -> Result<Vec<u8>, IdeviceError> {
+    pub async fn read_raw(&mut self, len: usize) -> Result<Vec<u8>, IdeviceError> {
         if let Some(socket) = &mut self.socket {
             let mut buf = vec![0; len];
             socket.read_exact(&mut buf).await?;
@@ -253,7 +253,7 @@ impl Idevice {
     ///
     /// # Errors
     /// Returns `IdeviceError` if reading fails
-    async fn read_any(&mut self, max_size: u32) -> Result<Vec<u8>, IdeviceError> {
+    pub async fn read_any(&mut self, max_size: u32) -> Result<Vec<u8>, IdeviceError> {
         if let Some(socket) = &mut self.socket {
             let mut buf = vec![0; max_size as usize];
             let len = socket.read(&mut buf).await?;
