@@ -9,6 +9,8 @@ pub mod amfi;
 mod ca;
 #[cfg(feature = "core_device_proxy")]
 pub mod core_device_proxy;
+#[cfg(feature = "crashreportcopymobile")]
+pub mod crashreportcopymobile;
 #[cfg(feature = "debug_proxy")]
 pub mod debug_proxy;
 #[cfg(feature = "dvt")]
@@ -450,6 +452,10 @@ pub enum IdeviceError {
     #[cfg(feature = "afc")]
     #[error("missing file attribute")]
     AfcMissingAttribute,
+
+    #[cfg(feature = "crashreportcopymobile")]
+    #[error("crash report mover sent the wrong response")]
+    CrashReportMoverBadResponse(Vec<u8>),
 
     #[cfg(any(feature = "tss", feature = "tunneld"))]
     #[error("http reqwest error")]

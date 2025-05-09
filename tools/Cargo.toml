@@ -62,6 +62,10 @@ name = "afc"
 path = "src/afc.rs"
 
 [[bin]]
+name = "crash_logs"
+path = "src/crash_logs.rs"
+
+[[bin]]
 name = "amfi"
 path = "src/amfi.rs"
 
