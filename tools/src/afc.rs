@@ -46,7 +46,7 @@ async fn main() {
         )
         .subcommand(
             Command::new("download")
-                .about("Creates a directory")
+                .about("Downloads a file")
                 .arg(Arg::new("path").required(true).index(1))
                 .arg(Arg::new("save").required(true).index(2)),
         )
