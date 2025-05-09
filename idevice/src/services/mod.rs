@@ -12,6 +12,8 @@ pub mod debug_proxy;
 pub mod dvt;
 #[cfg(feature = "heartbeat")]
 pub mod heartbeat;
+#[cfg(feature = "house_arrest")]
+pub mod house_arrest;
 #[cfg(feature = "installation_proxy")]
 pub mod installation_proxy;
 pub mod lockdown;
