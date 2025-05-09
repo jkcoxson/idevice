@@ -81,10 +81,3 @@ clap = { version = "4.5" }
 plist = { version = "1.7" }
 ns-keyed-archive = "0.1.2"
 uuid = "1.16"
-
-# When testing the pair binary, creating certificates takes forever
-[profile.dev.package.idevice]
-opt-level = 3
-
-[profile.dev]
-opt-level = 3
