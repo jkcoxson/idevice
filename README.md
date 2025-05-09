@@ -51,7 +51,6 @@ Finish the following:
 
 Implement the following:
 
-- amfi
 - companion_proxy
 - diagnostics
 - house_arrest
