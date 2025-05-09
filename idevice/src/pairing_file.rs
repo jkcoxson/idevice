@@ -158,13 +158,13 @@ impl TryFrom<RawPairingFile> for PairingFile {
 
         // Ensure device certificate has proper PEM headers
         let device_certificate_pem = ensure_pem_headers(&device_cert_data, "CERTIFICATE");
-        
+
         // Ensure host certificate has proper PEM headers
         let host_certificate_pem = ensure_pem_headers(&host_cert_data, "CERTIFICATE");
-        
+
         // Ensure root certificate has proper PEM headers
         let root_certificate_pem = ensure_pem_headers(&root_cert_data, "CERTIFICATE");
-        
+
         Ok(Self {
             device_certificate: CertificateDer::from_pem_slice(&device_certificate_pem)?,
             host_private_key: host_private_key_data,
@@ -184,10 +184,10 @@ impl From<PairingFile> for RawPairingFile {
     /// Converts a structured pairing file into a raw pairing file for serialization
     fn from(value: PairingFile) -> Self {
         // Ensure certificates include proper PEM format
-        let device_cert_data = ensure_pem_headers(&value.device_certificate.to_vec(), "CERTIFICATE");
-        let host_cert_data = ensure_pem_headers(&value.host_certificate.to_vec(), "CERTIFICATE");
-        let root_cert_data = ensure_pem_headers(&value.root_certificate.to_vec(), "CERTIFICATE");
-        
+        let device_cert_data = ensure_pem_headers(&value.device_certificate, "CERTIFICATE");
+        let host_cert_data = ensure_pem_headers(&value.host_certificate, "CERTIFICATE");
+        let root_cert_data = ensure_pem_headers(&value.root_certificate, "CERTIFICATE");
+
         // Ensure private keys include proper PEM format
         let host_private_key_data = ensure_pem_headers(&value.host_private_key, "PRIVATE KEY");
         let root_private_key_data = ensure_pem_headers(&value.root_private_key, "PRIVATE KEY");
@@ -214,23 +214,24 @@ fn ensure_pem_headers(data: &[u8], pem_type: &str) -> Vec<u8> {
     if is_pem_formatted(data) {
         return data.to_vec();
     }
-    
+
     // If it's just base64 data, add PEM headers
     let mut result = Vec::new();
-    
+
     // Add header
     let header = format!("-----BEGIN {}-----\n", pem_type);
     result.extend_from_slice(header.as_bytes());
-    
+
     // Add base64 content with line breaks every 64 characters
     let base64_content = if is_base64(data) {
         // Clean up any existing whitespace/newlines
         let data_str = String::from_utf8_lossy(data);
-        data_str.replace('\n', "").replace('\r', "").replace(' ', "").into_bytes()
+        data_str.replace(['\n', '\r', ' '], "").into_bytes()
     } else {
-        base64::encode(data).into_bytes()
+        let engine = base64::prelude::BASE64_STANDARD;
+        base64::Engine::encode(&engine, data).into_bytes()
     };
-    
+
     // Format base64 content with proper line breaks (64 chars per line)
     for (i, chunk) in base64_content.chunks(64).enumerate() {
         if i > 0 {
@@ -238,14 +239,14 @@ fn ensure_pem_headers(data: &[u8], pem_type: &str) -> Vec<u8> {
         }
         result.extend_from_slice(chunk);
     }
-    
+
     // Add a final newline before the footer
     result.push(b'\n');
-    
+
     // Add footer
     let footer = format!("-----END {}-----", pem_type);
     result.extend_from_slice(footer.as_bytes());
-    
+
     result
 }
 
@@ -282,4 +283,3 @@ fn test_pairing_file_roundtrip() {
 
     assert_eq!(f[..output.len()], output);
 }
-
