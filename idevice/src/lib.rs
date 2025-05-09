@@ -1,36 +1,11 @@
 #![doc = include_str!("../README.md")]
 // Jackson Coxson
 
-#[cfg(feature = "afc")]
-pub mod afc;
-#[cfg(feature = "amfi")]
-pub mod amfi;
 #[cfg(feature = "pair")]
 mod ca;
-#[cfg(feature = "core_device_proxy")]
-pub mod core_device_proxy;
-#[cfg(feature = "crashreportcopymobile")]
-pub mod crashreportcopymobile;
-#[cfg(feature = "debug_proxy")]
-pub mod debug_proxy;
-#[cfg(feature = "dvt")]
-pub mod dvt;
-#[cfg(feature = "heartbeat")]
-pub mod heartbeat;
-#[cfg(feature = "xpc")]
-mod http2;
-#[cfg(feature = "installation_proxy")]
-pub mod installation_proxy;
-pub mod lockdown;
-#[cfg(feature = "misagent")]
-pub mod misagent;
-#[cfg(feature = "mobile_image_mounter")]
-pub mod mobile_image_mounter;
 pub mod pairing_file;
 pub mod provider;
 mod sni;
-#[cfg(feature = "springboardservices")]
-pub mod springboardservices;
 #[cfg(feature = "tunnel_tcp_stack")]
 pub mod tcp;
 #[cfg(feature = "tss")]
@@ -40,8 +15,9 @@ pub mod tunneld;
 #[cfg(feature = "usbmuxd")]
 pub mod usbmuxd;
 mod util;
-#[cfg(feature = "xpc")]
-pub mod xpc;
+
+pub mod services;
+pub use services::*;
 
 use log::{debug, error, trace};
 use provider::IdeviceProvider;

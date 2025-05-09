@@ -4,16 +4,12 @@
 //! which is used for inter-process communication between iOS/macOS components.
 
 use std::collections::HashMap;
+mod http2;
 
-use crate::{
-    http2::{
-        self,
-        h2::{SettingsFrame, WindowUpdateFrame},
-    },
-    IdeviceError, ReadWrite,
-};
+use crate::{IdeviceError, ReadWrite};
 use error::XPCError;
 use format::{XPCFlag, XPCMessage, XPCObject};
+use http2::h2::{SettingsFrame, WindowUpdateFrame};
 use log::{debug, warn};
 use serde::Deserialize;
 
@@ -292,4 +288,3 @@ impl<R: ReadWrite> XPCConnection<R> {
         }
     }
 }
-

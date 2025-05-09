@@ -1,6 +1,6 @@
 // DebianArch
 
-use crate::http2::error::Http2Error;
+use super::http2::error::Http2Error;
 use std::{
     array::TryFromSliceError, error::Error, ffi::FromVecWithNulError, io, num::TryFromIntError,
     str::Utf8Error,
