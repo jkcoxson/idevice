@@ -88,6 +88,7 @@ full = [
   "debug_proxy",
   "dvt",
   "heartbeat",
+  "house_arrest",
   "installation_proxy",
   "misagent",
   "mobile_image_mounter",

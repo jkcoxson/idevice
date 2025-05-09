@@ -90,7 +90,9 @@ impl HouseArrestClient {
         self.vend(bundle_id, "VendContainer".into()).await
     }
 
-    /// Requests access to the app's Documents directory over AFC
+    /// Requests access to the app's Documents directory over AFC.
+    /// Note that you can only access the /Documents directory. Permission will be denied
+    /// otherwise.
     ///
     /// # Arguments
     /// * `bundle_id` - The bundle identifier of the target app (e.g., "com.example.MyApp")

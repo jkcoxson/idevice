@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use clap::{value_parser, Arg, Command};
 use idevice::{
     afc::{opcode::AfcFopenMode, AfcClient},
+    house_arrest::HouseArrestClient,
     IdeviceService,
 };
 
@@ -15,7 +16,7 @@ async fn main() {
     env_logger::init();
 
     let matches = Command::new("afc")
-        .about("Start a tunnel")
+        .about("Manage files on the device")
         .arg(
             Arg::new("host")
                 .long("host")
@@ -32,6 +33,20 @@ async fn main() {
             Arg::new("udid")
                 .value_name("UDID")
                 .help("UDID of the device (overrides host/pairing file)"),
+        )
+        .arg(
+            Arg::new("documents")
+                .long("documents")
+                .value_name("BUNDLE_ID")
+                .help("Read the documents from a bundle. Note that when vending documents, you can only access files in /Documents")
+                .global(true),
+        )
+        .arg(
+            Arg::new("container")
+                .long("container")
+                .value_name("BUNDLE_ID")
+                .help("Read the container contents of a bundle")
+                .global(true),
         )
         .arg(
             Arg::new("about")
@@ -101,9 +116,26 @@ async fn main() {
             return;
         }
     };
-    let mut afc_client = AfcClient::connect(&*provider)
-        .await
-        .expect("Unable to connect to misagent");
+
+    let mut afc_client = if let Some(bundle_id) = matches.get_one::<String>("container") {
+        let h = HouseArrestClient::connect(&*provider)
+            .await
+            .expect("Failed to connect to house arrest");
+        h.vend_container(bundle_id)
+            .await
+            .expect("Failed to vend container")
+    } else if let Some(bundle_id) = matches.get_one::<String>("documents") {
+        let h = HouseArrestClient::connect(&*provider)
+            .await
+            .expect("Failed to connect to house arrest");
+        h.vend_documents(bundle_id)
+            .await
+            .expect("Failed to vend documents")
+    } else {
+        AfcClient::connect(&*provider)
+            .await
+            .expect("Unable to connect to misagent")
+    };
 
     if let Some(matches) = matches.subcommand_matches("list") {
         let path = matches.get_one::<String>("path").expect("No path passed");
