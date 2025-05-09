@@ -295,6 +295,38 @@ impl Idevice {
         }
     }
 
+    #[cfg(feature = "syslog_relay")]
+    async fn read_until_delim(
+        &mut self,
+        delimiter: &[u8],
+    ) -> Result<Option<bytes::BytesMut>, IdeviceError> {
+        if let Some(socket) = &mut self.socket {
+            let mut buffer = bytes::BytesMut::with_capacity(1024);
+            let mut temp = [0u8; 1024];
+
+            loop {
+                let n = socket.read(&mut temp).await?;
+                if n == 0 {
+                    if buffer.is_empty() {
+                        return Ok(None); // EOF and no data
+                    } else {
+                        return Ok(Some(buffer)); // EOF but return partial data
+                    }
+                }
+
+                buffer.extend_from_slice(&temp[..n]);
+
+                if let Some(pos) = buffer.windows(delimiter.len()).position(|w| w == delimiter) {
+                    let mut line = buffer.split_to(pos + delimiter.len());
+                    line.truncate(line.len() - delimiter.len()); // remove delimiter
+                    return Ok(Some(line));
+                }
+            }
+        } else {
+            Err(IdeviceError::NoEstablishedConnection)
+        }
+    }
+
     /// Upgrades the connection to TLS using device pairing credentials
     ///
     /// # Arguments

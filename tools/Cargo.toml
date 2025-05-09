@@ -73,6 +73,10 @@ path = "src/amfi.rs"
 name = "pair"
 path = "src/pair.rs"
 
+[[bin]]
+name = "syslog_relay"
+path = "src/syslog_relay.rs"
+
 [dependencies]
 idevice = { path = "../idevice", features = ["full"] }
 tokio = { version = "1.43", features = ["io-util", "macros", "time", "full"] }

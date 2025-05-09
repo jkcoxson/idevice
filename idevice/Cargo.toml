@@ -2,7 +2,7 @@
 name = "idevice"
 description = "A Rust library to interact with services on iOS devices."
 authors = ["Jackson Coxson"]
-version = "0.1.30"
+version = "0.1.31"
 edition = "2021"
 license = "MIT"
 documentation = "https://docs.rs/idevice"
@@ -32,6 +32,7 @@ chrono = { version = "0.4.40", optional = true, default-features = false }
 serde_json = { version = "1", optional = true }
 json = { version = "0.12", optional = true }
 byteorder = { version = "1.5", optional = true }
+bytes = { version = "1.10", optional = true }
 
 reqwest = { version = "0.12", features = [
   "json",
@@ -68,6 +69,7 @@ misagent = []
 mobile_image_mounter = ["dep:sha2"]
 location_simulation = []
 pair = ["chrono/default", "dep:sha2", "dep:rsa", "dep:x509-cert"]
+syslog_relay = ["dep:bytes"]
 tcp = ["tokio/net"]
 tunnel_tcp_stack = ["dep:rand", "dep:futures", "tokio/fs", "tokio/sync"]
 tss = ["dep:uuid", "dep:reqwest"]
@@ -101,6 +103,7 @@ full = [
   "tss",
   "tunneld",
   "springboardservices",
+  "syslog_relay",
 ]
 
 [package.metadata.docs.rs]
