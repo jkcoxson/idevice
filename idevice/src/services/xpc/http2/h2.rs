@@ -16,19 +16,6 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub fn new(stream_id: u32, flags: u8, frame_type: FrameType) -> Self {
-        Self {
-            stream_id,
-            flags,
-            frame_type,
-            body: Vec::new(),
-        }
-    }
-
-    pub fn set_body(&mut self, body: Vec<u8>) {
-        self.body = body;
-    }
-
     pub fn deserialize(buf: &[u8]) -> Result<Self, Http2Error> {
         let mut len_buf = buf[0..3].to_vec();
         len_buf.insert(0, 0);
@@ -72,13 +59,8 @@ pub struct SettingsFrame {
 }
 
 impl SettingsFrame {
-    pub const HEADER_TABLE_SIZE: u16 = 0x01;
-    pub const ENABLE_PUSH: u16 = 0x02;
     pub const MAX_CONCURRENT_STREAMS: u16 = 0x03;
     pub const INITIAL_WINDOW_SIZE: u16 = 0x04;
-    pub const MAX_FRAME_SIZE: u16 = 0x05;
-    pub const MAX_HEADER_LIST_SIZE: u16 = 0x06;
-    pub const ENABLE_CONNECT_PROTOCOL: u16 = 0x08;
 
     pub const ACK: u8 = 0x01;
     pub fn new(/*stream_id: u32, */ settings: HashMap<u16, u32>, flags: u8) -> Self {
@@ -136,7 +118,6 @@ impl From<Frame> for SettingsFrame {
 
 pub struct WindowUpdateFrame {
     frame: Frame,
-    pub window_increment: u32,
 }
 
 impl WindowUpdateFrame {
@@ -152,7 +133,6 @@ impl WindowUpdateFrame {
                 frame_type: FrameType::WindowUpdate,
                 body: window_increment.to_be_bytes().to_vec(),
             },
-            window_increment,
         }
     }
 }
@@ -165,11 +145,7 @@ impl Framable for WindowUpdateFrame {
 
 impl From<Frame> for WindowUpdateFrame {
     fn from(value: Frame) -> Self {
-        let body = value.body.clone();
-        Self {
-            frame: value,
-            window_increment: u32::from_be_bytes(body.try_into().unwrap()),
-        }
+        Self { frame: value }
     }
 }
 
@@ -178,7 +154,6 @@ pub struct HeadersFrame {
 }
 
 impl HeadersFrame {
-    pub const END_STREAM: u8 = 0x01;
     pub const END_HEADERS: u8 = 0x04;
     pub const PADDED: u8 = 0x08;
     pub const PRIORITY: u8 = 0x20;
@@ -279,9 +254,3 @@ impl From<u8> for FrameType {
         unsafe { std::mem::transmute::<_, FrameType>(value) }
     }
 }
-
-// impl Drop for Connection {
-//     fn drop(&mut self) {
-
-//     }
-// }

@@ -77,9 +77,6 @@ async fn main() {
             .copy_all()
             .await
             .expect("Unable to get images");
-        for i in &images {
-            // println!("{:?}", i);
-        }
         if let Some(path) = matches.get_one::<PathBuf>("save") {
             tokio::fs::create_dir_all(path)
                 .await

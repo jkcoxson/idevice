@@ -7,8 +7,6 @@ use idevice::{
     IdeviceService,
 };
 
-mod common;
-
 #[tokio::main]
 async fn main() {
     env_logger::init();
