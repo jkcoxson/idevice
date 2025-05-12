@@ -198,7 +198,7 @@ impl UsbmuxdConnection {
                             return Err(IdeviceError::UnexpectedResponse);
                         }
 
-                        match addr[0] {
+                        match addr[1] {
                             0x02 => {
                                 // IPv4
                                 Connection::Network(IpAddr::V4(Ipv4Addr::new(
