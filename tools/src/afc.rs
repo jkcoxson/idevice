@@ -31,6 +31,7 @@ async fn main() {
         )
         .arg(
             Arg::new("udid")
+                .long("udid")
                 .value_name("UDID")
                 .help("UDID of the device (overrides host/pairing file)"),
         )
