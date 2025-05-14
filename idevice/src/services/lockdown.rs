@@ -142,6 +142,48 @@ impl LockdownClient {
         }
     }
 
+    /// Sets a value on the device
+    ///
+    /// # Arguments
+    /// * `key` - The key to set
+    /// * `value` - The plist value to set
+    /// * `domain` - An optional domain to set by
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The response is malformed
+    ///
+    /// # Example
+    /// ```rust
+    /// client.set_value("EnableWifiDebugging", true.into(), Some("com.apple.mobile.wireless_lockdown".to_string())).await?;
+    /// ```
+    pub async fn set_value(
+        &mut self,
+        key: impl Into<String>,
+        value: Value,
+        domain: Option<String>,
+    ) -> Result<(), IdeviceError> {
+        let key = key.into();
+
+        let mut req = plist::Dictionary::new();
+        req.insert("Label".into(), self.idevice.label.clone().into());
+        req.insert("Request".into(), "SetValue".into());
+        req.insert("Key".into(), key.into());
+        req.insert("Value".into(), value);
+
+        if let Some(domain) = domain {
+            req.insert("Domain".into(), domain.into());
+        }
+
+        self.idevice
+            .send_plist(plist::Value::Dictionary(req))
+            .await?;
+        self.idevice.read_plist().await?;
+
+        Ok(())
+    }
+
     /// Starts a secure TLS session with the device
     ///
     /// # Arguments
