@@ -19,6 +19,7 @@ pub mod provider;
 pub mod remote_server;
 pub mod remotexpc;
 pub mod sbservices;
+pub mod syslog_relay;
 pub mod usbmuxd;
 pub mod util;
 
