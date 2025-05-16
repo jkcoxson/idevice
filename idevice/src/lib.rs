@@ -352,23 +352,6 @@ impl Idevice {
         }
     }
 
-    async fn read_until_byte(&mut self, stopper: u8) -> Result<Vec<u8>, IdeviceError> {
-        if let Some(socket) = &mut self.socket {
-            let mut buf = Vec::new();
-
-            loop {
-                let b = socket.read_u8().await?;
-                if b == stopper {
-                    return Ok(buf);
-                } else {
-                    buf.push(b);
-                }
-            }
-        } else {
-            Err(IdeviceError::NoEstablishedConnection)
-        }
-    }
-
     /// Upgrades the connection to TLS using device pairing credentials
     ///
     /// # Arguments
