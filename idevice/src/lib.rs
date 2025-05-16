@@ -173,6 +173,31 @@ impl Idevice {
         }
     }
 
+    /// Sends a binary plist-formatted message to the device
+    ///
+    /// # Arguments
+    /// * `message` - The plist value to send
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if serialization or transmission fails
+    async fn send_bplist(&mut self, message: plist::Value) -> Result<(), IdeviceError> {
+        if let Some(socket) = &mut self.socket {
+            debug!("Sending plist: {}", pretty_print_plist(&message));
+
+            let buf = Vec::new();
+            let mut writer = BufWriter::new(buf);
+            message.to_writer_binary(&mut writer)?;
+            let message = writer.into_inner().unwrap();
+            let len = message.len() as u32;
+            socket.write_all(&len.to_be_bytes()).await?;
+            socket.write_all(&message).await?;
+            socket.flush().await?;
+            Ok(())
+        } else {
+            Err(IdeviceError::NoEstablishedConnection)
+        }
+    }
+
     /// Sends raw binary data to the device
     ///
     /// # Arguments
@@ -320,6 +345,23 @@ impl Idevice {
                     let mut line = buffer.split_to(pos + delimiter.len());
                     line.truncate(line.len() - delimiter.len()); // remove delimiter
                     return Ok(Some(line));
+                }
+            }
+        } else {
+            Err(IdeviceError::NoEstablishedConnection)
+        }
+    }
+
+    async fn read_until_byte(&mut self, stopper: u8) -> Result<Vec<u8>, IdeviceError> {
+        if let Some(socket) = &mut self.socket {
+            let mut buf = Vec::new();
+
+            loop {
+                let b = socket.read_u8().await?;
+                if b == stopper {
+                    return Ok(buf);
+                } else {
+                    buf.push(b);
                 }
             }
         } else {
