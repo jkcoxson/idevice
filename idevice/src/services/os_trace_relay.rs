@@ -61,7 +61,7 @@ impl IdeviceService for OsTraceRelayClient {
 
 /// An initialized client for receiving logs
 pub struct OsTraceRelayReceiver {
-    pub inner: OsTraceRelayClient,
+    inner: OsTraceRelayClient,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
