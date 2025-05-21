@@ -498,8 +498,16 @@ pub enum IdeviceError {
     InternalError(String),
 
     #[cfg(feature = "xpc")]
-    #[error("xpc message failed")]
-    Xpc(#[from] xpc::error::XPCError),
+    #[error("unknown http frame type")]
+    UnknownFrame(u8),
+
+    #[cfg(feature = "xpc")]
+    #[error("unknown http setting type")]
+    UnknownHttpSetting(u16),
+
+    #[cfg(feature = "xpc")]
+    #[error("Unintialized stream ID")]
+    UninitializedStreamId,
 
     #[cfg(feature = "dvt")]
     #[error("NSKeyedArchive error")]
