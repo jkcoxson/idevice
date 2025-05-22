@@ -66,19 +66,19 @@ pub struct OsTraceRelayReceiver {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OsTraceLog {
-    pid: u32,
-    timestamp: NaiveDateTime,
-    level: LogLevel,
-    image_name: String,
-    filename: String,
-    message: String,
-    label: Option<SyslogLabel>,
+    pub pid: u32,
+    pub timestamp: NaiveDateTime,
+    pub level: LogLevel,
+    pub image_name: String,
+    pub filename: String,
+    pub message: String,
+    pub label: Option<SyslogLabel>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyslogLabel {
-    subsystem: String,
-    category: String,
+    pub subsystem: String,
+    pub category: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
