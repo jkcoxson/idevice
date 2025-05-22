@@ -96,7 +96,7 @@ async fn main() {
     println!("rsd port: {}", tun_proxy.handshake.server_rsd_port);
     println!("-----------------------------");
 
-    let mut buf = vec![0; 1500];
+    let mut buf = vec![0; 20_000]; // XPC is big lol
     loop {
         tokio::select! {
             Ok(len) = async_dev.recv(&mut buf) => {

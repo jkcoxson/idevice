@@ -1,13 +1,13 @@
 // Jackson Coxson
 
 use frame::HttpFrame;
-use log::warn;
+use log::{debug, warn};
 use std::collections::{HashMap, VecDeque};
 use tokio::io::AsyncWriteExt;
 
 use crate::{IdeviceError, ReadWrite};
 
-mod frame;
+pub mod frame;
 pub use frame::Setting;
 
 const HTTP2_MAGIC: &[u8] = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".as_bytes();
@@ -40,6 +40,7 @@ impl<R: ReadWrite> Http2Client<R> {
         }
         .serialize();
         self.inner.write_all(&frame).await?;
+        self.inner.flush().await?;
         Ok(())
     }
 
@@ -54,6 +55,7 @@ impl<R: ReadWrite> Http2Client<R> {
         }
         .serialize();
         self.inner.write_all(&frame).await?;
+        self.inner.flush().await?;
         Ok(())
     }
 
@@ -61,25 +63,34 @@ impl<R: ReadWrite> Http2Client<R> {
         self.cache.insert(stream_id, VecDeque::new());
         let frame = frame::HeadersFrame { stream_id }.serialize();
         self.inner.write_all(&frame).await?;
+        self.inner.flush().await?;
+        Ok(())
+    }
+
+    pub async fn send(&mut self, payload: Vec<u8>, stream_id: u32) -> Result<(), IdeviceError> {
+        let frame = frame::DataFrame { stream_id, payload }.serialize();
+        self.inner.write_all(&frame).await?;
+        self.inner.flush().await?;
         Ok(())
     }
 
     pub async fn read(&mut self, stream_id: u32) -> Result<Vec<u8>, IdeviceError> {
         // See if we already have a cached message from another read
-        let c = match self.cache.get_mut(&stream_id) {
-            Some(c) => c,
+        match self.cache.get_mut(&stream_id) {
+            Some(c) => {
+                if let Some(d) = c.pop_front() {
+                    return Ok(d);
+                }
+            }
             None => {
-                warn!("Requested stream ID is not in cache");
-                return Err(IdeviceError::UninitializedStreamId);
+                self.cache.insert(stream_id, VecDeque::new());
             }
         };
-        if let Some(d) = c.pop_front() {
-            return Ok(d);
-        }
 
         // handle packets until we get what we want
         loop {
             let frame = frame::Frame::next(&mut self.inner).await?;
+            // debug!("Got frame: {frame:#?}");
             match frame {
                 frame::Frame::Settings(settings_frame) => {
                     if settings_frame.flags != 1 {
@@ -91,16 +102,25 @@ impl<R: ReadWrite> Http2Client<R> {
                         }
                         .serialize();
                         self.inner.write_all(&frame).await?;
+                        self.inner.flush().await?;
                     }
                 }
                 frame::Frame::Data(data_frame) => {
+                    debug!(
+                        "Got data frame for {} with {} bytes",
+                        data_frame.stream_id,
+                        data_frame.payload.len()
+                    );
                     if data_frame.stream_id == stream_id {
                         return Ok(data_frame.payload);
                     } else {
                         let c = match self.cache.get_mut(&data_frame.stream_id) {
                             Some(c) => c,
                             None => {
-                                warn!("Received message for stream ID not in cache");
+                                warn!(
+                                    "Received message for stream ID {} not in cache",
+                                    data_frame.stream_id
+                                );
                                 continue;
                             }
                         };

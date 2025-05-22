@@ -2,7 +2,7 @@
 // Print out all the RemoteXPC services
 
 use clap::{Arg, Command};
-use idevice::{core_device_proxy::CoreDeviceProxy, xpc::XPCDevice, IdeviceService};
+use idevice::{core_device_proxy::CoreDeviceProxy, xpc::RemoteXpcClient, IdeviceService};
 
 mod common;
 
@@ -66,7 +66,7 @@ async fn main() {
     adapter.connect(rsd_port).await.expect("no RSD connect");
 
     // Make the connection to RemoteXPC
-    let client = XPCDevice::new(Box::new(adapter)).await.unwrap();
+    let mut client = RemoteXpcClient::new(Box::new(adapter)).await.unwrap();
 
-    println!("{:#?}", client.services);
+    println!("{:#?}", client.do_handshake().await);
 }

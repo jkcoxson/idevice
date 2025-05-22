@@ -509,6 +509,34 @@ pub enum IdeviceError {
     #[error("Unintialized stream ID")]
     UninitializedStreamId,
 
+    #[cfg(feature = "xpc")]
+    #[error("unknown XPC type")]
+    UnknownXpcType(u32),
+
+    #[cfg(feature = "xpc")]
+    #[error("malformed XPC message")]
+    MalformedXpc,
+
+    #[cfg(feature = "xpc")]
+    #[error("invalid XPC magic")]
+    InvalidXpcMagic,
+
+    #[cfg(feature = "xpc")]
+    #[error("unexpected XPC version")]
+    UnexpectedXpcVersion,
+
+    #[cfg(feature = "xpc")]
+    #[error("invalid C string")]
+    InvalidCString,
+
+    #[cfg(feature = "xpc")]
+    #[error("stream reset")]
+    HttpStreamReset,
+
+    #[cfg(feature = "xpc")]
+    #[error("go away packet received")]
+    HttpGoAway(String),
+
     #[cfg(feature = "dvt")]
     #[error("NSKeyedArchive error")]
     NsKeyedArchiveError(#[from] ns_keyed_archive::ConverterError),

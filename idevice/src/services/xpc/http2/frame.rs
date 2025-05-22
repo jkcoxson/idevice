@@ -7,6 +7,8 @@ pub trait HttpFrame {
     fn serialize(&self) -> Vec<u8>;
 }
 
+#[derive(Debug)]
+#[allow(dead_code)] // we don't care about frames from the device
 pub enum Frame {
     Settings(SettingsFrame),
     WindowUpdate(WindowUpdateFrame),
@@ -15,10 +17,10 @@ pub enum Frame {
 }
 
 impl Frame {
-    pub async fn next(socket: &mut impl ReadWrite) -> Result<Self, IdeviceError> {
+    pub async fn next(mut socket: &mut impl ReadWrite) -> Result<Self, IdeviceError> {
         // Read the len of the frame
         let mut buf = [0u8; 3];
-        socket.read_exact(&mut buf).await?;
+        tokio::io::AsyncReadExt::read_exact(&mut socket, &mut buf).await?;
         let frame_len = u32::from_be_bytes([0x00, buf[0], buf[1], buf[2]]);
 
         // Read the fields
@@ -26,8 +28,8 @@ impl Frame {
         let flags = socket.read_u8().await?;
         let stream_id = socket.read_u32().await?;
 
-        let body = vec![0; frame_len as usize];
-        socket.read_exact(&mut buf).await?;
+        let mut body = vec![0; frame_len as usize];
+        socket.read_exact(&mut body).await?;
 
         Ok(match frame_type {
             0x00 => {
@@ -41,6 +43,7 @@ impl Frame {
                 // headers
                 Self::Headers(HeadersFrame { stream_id })
             }
+            0x03 => return Err(IdeviceError::HttpStreamReset),
             0x04 => {
                 // settings
                 let mut body = std::io::Cursor::new(body);
@@ -67,6 +70,14 @@ impl Frame {
                     flags,
                 })
             }
+            0x07 => {
+                let msg = if body.len() < 8 {
+                    "<MISSING>".to_string()
+                } else {
+                    String::from_utf8_lossy(&body[8..]).to_string()
+                };
+                return Err(IdeviceError::HttpGoAway(msg));
+            }
             0x08 => {
                 // window update
                 if body.len() != 4 {
@@ -86,21 +97,17 @@ impl Frame {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct SettingsFrame {
     pub settings: Vec<Setting>,
     pub stream_id: u32,
     pub flags: u8,
 }
 
+#[derive(Debug, Clone)]
 pub enum Setting {
     MaxConcurrentStreams(u32),
     InitialWindowSize(u32),
-}
-
-impl SettingsFrame {
-    pub fn ack(&mut self) {
-        self.flags = 1; // this seems to be the only http flag used
-    }
 }
 
 impl Setting {
@@ -142,6 +149,7 @@ impl HttpFrame for SettingsFrame {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct WindowUpdateFrame {
     pub increment_size: u32,
     pub stream_id: u32,
@@ -156,6 +164,7 @@ impl HttpFrame for WindowUpdateFrame {
     }
 }
 
+#[derive(Debug, Clone)]
 /// We don't actually care about this frame according to spec. This is just to open new channels.
 pub struct HeadersFrame {
     pub stream_id: u32,
@@ -169,6 +178,7 @@ impl HttpFrame for HeadersFrame {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct DataFrame {
     pub stream_id: u32,
     pub payload: Vec<u8>,
