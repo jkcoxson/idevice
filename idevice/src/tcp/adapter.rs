@@ -61,22 +61,45 @@
 //! This implementation makes significant simplifications and should not be used
 //! in production environments or with unreliable network transports.
 
-use std::{future::Future, net::IpAddr, path::Path, sync::Arc, task::Poll};
+use std::{collections::HashMap, io::ErrorKind, net::IpAddr, path::Path, sync::Arc};
 
 use log::trace;
-use tokio::{
-    io::{AsyncRead, AsyncWrite, AsyncWriteExt},
-    sync::Mutex,
-};
+use tokio::{io::AsyncWriteExt, sync::Mutex};
 
 use crate::ReadWrite;
 
 use super::packets::{Ipv4Packet, Ipv6Packet, ProtocolNumber, TcpFlags, TcpPacket};
 
-#[derive(Clone, Debug, PartialEq)]
-enum AdapterState {
+#[derive(Debug, Clone)]
+struct ConnectionState {
+    seq: u32,
+    ack: u32,
+    host_port: u16,
+    peer_port: u16,
+    read_buffer: Vec<u8>,
+    write_buffer: Vec<u8>,
+    status: ConnectionStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum ConnectionStatus {
+    WaitingForSyn,
     Connected,
-    None,
+    Error(ErrorKind),
+}
+
+impl ConnectionState {
+    fn new(host_port: u16, peer_port: u16) -> Self {
+        Self {
+            seq: rand::random(),
+            ack: 0,
+            host_port,
+            peer_port,
+            read_buffer: Vec::new(),
+            write_buffer: Vec::new(),
+            status: ConnectionStatus::WaitingForSyn,
+        }
+    }
 }
 
 /// A simplified TCP network stack implementation.
@@ -96,24 +119,8 @@ pub struct Adapter {
     host_ip: IpAddr,
     /// The remote peer's IP address
     peer_ip: IpAddr,
-    /// Current connection state
-    state: AdapterState,
 
-    // TCP state
-    /// Current sequence number
-    seq: u32,
-    /// Current acknowledgement number
-    ack: u32,
-    /// Local port number
-    host_port: u16,
-    /// Remote port number
-    peer_port: u16,
-
-    // Read buffer to cache unused bytes
-    /// Buffer for storing unread received data
-    read_buffer: Vec<u8>,
-    /// Buffer for storing data to be sent
-    write_buffer: Vec<u8>,
+    states: HashMap<u16, ConnectionState>, // host port by state
 
     // Logging
     /// Optional PCAP file for packet logging
@@ -135,13 +142,7 @@ impl Adapter {
             peer,
             host_ip,
             peer_ip,
-            state: AdapterState::None,
-            seq: 0,
-            ack: 0,
-            host_port: 1024,
-            peer_port: 1024,
-            read_buffer: Vec::new(),
-            write_buffer: Vec::new(),
+            states: HashMap::new(),
             pcap: None,
         }
     }
@@ -158,26 +159,25 @@ impl Adapter {
     /// # Errors
     /// * Returns `InvalidData` if the SYN-ACK response is invalid
     /// * Returns other IO errors if underlying transport fails
-    pub async fn connect(&mut self, port: u16) -> Result<(), std::io::Error> {
-        self.read_buffer = Vec::new();
-        self.write_buffer = Vec::new();
-
-        // Randomize seq
-        self.seq = rand::random();
-        self.ack = 0;
-
-        // Choose a random port
-        self.host_port = rand::random();
-        self.peer_port = port;
+    pub(crate) async fn connect(&mut self, port: u16) -> Result<u16, std::io::Error> {
+        let host_port = loop {
+            let host_port: u16 = rand::random();
+            if self.states.contains_key(&host_port) {
+                continue;
+            } else {
+                break host_port;
+            }
+        };
+        let state = ConnectionState::new(host_port, port);
 
         // Create the TCP packet
         let tcp_packet = TcpPacket::create(
             self.host_ip,
             self.peer_ip,
-            self.host_port,
-            self.peer_port,
-            self.seq,
-            self.ack,
+            state.host_port,
+            state.peer_port,
+            state.seq,
+            state.ack,
             TcpFlags {
                 syn: true,
                 ..Default::default()
@@ -187,24 +187,28 @@ impl Adapter {
         );
         let ip_packet = self.ip_wrap(&tcp_packet);
         self.peer.write_all(&ip_packet).await?;
-        self.log_packet(&ip_packet).await?;
+        self.log_packet(&ip_packet)?;
 
         // Wait for the syn ack
-        let res = self.read_tcp_packet().await?;
-        if !(res.flags.syn && res.flags.ack) {
-            log::error!("Didn't get syn ack: {res:#?}, {self:#?}");
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "No syn ack",
-            ));
+        self.states.insert(host_port, state);
+        loop {
+            self.process_tcp_packet().await?;
+            if let Some(s) = self.states.get(&host_port) {
+                match s.status {
+                    ConnectionStatus::Connected => {
+                        break;
+                    }
+                    ConnectionStatus::Error(e) => {
+                        return Err(std::io::Error::new(e, "failed to connect"))
+                    }
+                    ConnectionStatus::WaitingForSyn => {
+                        continue;
+                    }
+                }
+            }
         }
-        self.seq = self.seq.wrapping_add(1);
 
-        // Ack back
-        self.ack().await?;
-
-        self.state = AdapterState::Connected;
-        Ok(())
+        Ok(host_port)
     }
 
     /// Enables packet capture to a PCAP file.
@@ -232,9 +236,9 @@ impl Adapter {
         Ok(())
     }
 
-    async fn log_packet(&mut self, packet: &[u8]) -> Result<(), std::io::Error> {
+    fn log_packet(&self, packet: &[u8]) -> Result<(), std::io::Error> {
         if let Some(file) = &self.pcap {
-            super::log_packet(file, packet).await;
+            super::log_packet(file, packet);
         }
         Ok(())
     }
@@ -247,61 +251,63 @@ impl Adapter {
     ///
     /// # Errors
     /// * Returns IO errors if underlying transport fails during close
-    pub async fn close(&mut self) -> Result<(), std::io::Error> {
-        let tcp_packet = TcpPacket::create(
-            self.host_ip,
-            self.peer_ip,
-            self.host_port,
-            self.peer_port,
-            self.seq,
-            self.ack,
-            TcpFlags {
-                fin: true,
-                ack: true,
-                ..Default::default()
-            },
-            u16::MAX - 1,
-            &[],
-        );
-        let ip_packet = self.ip_wrap(&tcp_packet);
-        self.peer.write_all(&ip_packet).await?;
-        self.log_packet(&ip_packet).await?;
+    pub(crate) async fn close(&mut self, host_port: u16) -> Result<(), std::io::Error> {
+        if let Some(state) = self.states.remove(&host_port) {
+            let tcp_packet = TcpPacket::create(
+                self.host_ip,
+                self.peer_ip,
+                state.host_port,
+                state.peer_port,
+                state.seq,
+                state.ack,
+                TcpFlags {
+                    fin: true,
+                    ack: true,
+                    ..Default::default()
+                },
+                u16::MAX - 1,
+                &[],
+            );
+            let ip_packet = self.ip_wrap(&tcp_packet);
+            self.peer.write_all(&ip_packet).await?;
+            self.log_packet(&ip_packet)?;
 
-        loop {
-            let res = self.read_tcp_packet().await?;
-            if res.flags.psh || !res.payload.is_empty() {
-                self.ack().await?;
-                continue;
-            }
-
-            if res.flags.ack || res.flags.fin || res.flags.rst {
-                break;
-            }
+            Ok(())
+        } else {
+            Err(std::io::Error::new(
+                ErrorKind::NotConnected,
+                "not connected",
+            ))
         }
-        self.state = AdapterState::None;
-        Ok(())
     }
 
-    async fn ack(&mut self) -> Result<(), std::io::Error> {
-        let tcp_packet = TcpPacket::create(
-            self.host_ip,
-            self.peer_ip,
-            self.host_port,
-            self.peer_port,
-            self.seq,
-            self.ack,
-            TcpFlags {
-                ack: true,
-                ..Default::default()
-            },
-            u16::MAX - 1,
-            &[],
-        );
-        let ip_packet = self.ip_wrap(&tcp_packet);
-        self.peer.write_all(&ip_packet).await?;
-        self.log_packet(&ip_packet).await?;
+    async fn ack(&mut self, host_port: u16) -> Result<(), std::io::Error> {
+        if let Some(state) = self.states.get_mut(&host_port) {
+            let tcp_packet = TcpPacket::create(
+                self.host_ip,
+                self.peer_ip,
+                state.host_port,
+                state.peer_port,
+                state.seq,
+                state.ack,
+                TcpFlags {
+                    ack: true,
+                    ..Default::default()
+                },
+                u16::MAX - 1,
+                &[],
+            );
+            let ip_packet = self.ip_wrap(&tcp_packet);
+            self.peer.write_all(&ip_packet).await?;
+            self.log_packet(&ip_packet)?;
 
-        Ok(())
+            Ok(())
+        } else {
+            Err(std::io::Error::new(
+                ErrorKind::NotConnected,
+                "not connected",
+            ))
+        }
     }
 
     /// Sends a TCP packet with PSH flag set (pushing data).
@@ -315,42 +321,131 @@ impl Adapter {
     ///
     /// # Errors
     /// * Returns IO errors if underlying transport fails
-    pub async fn psh(&mut self, data: &[u8]) -> Result<(), std::io::Error> {
-        trace!("pshing {} bytes", data.len());
-        let tcp_packet = TcpPacket::create(
-            self.host_ip,
-            self.peer_ip,
-            self.host_port,
-            self.peer_port,
-            self.seq,
-            self.ack,
-            TcpFlags {
-                psh: true,
-                ack: true,
-                ..Default::default()
-            },
-            u16::MAX - 1,
-            data,
-        );
-        let ip_packet = self.ip_wrap(&tcp_packet);
-        self.peer.write_all(&ip_packet).await?;
-        self.log_packet(&ip_packet).await?;
+    async fn psh(&mut self, data: &[u8], host_port: u16) -> Result<(), std::io::Error> {
+        let data_len = if let Some(state) = self.states.get(&host_port) {
+            // Check to make sure we haven't closed since last operation
+            if let ConnectionStatus::Error(e) = state.status {
+                return Err(std::io::Error::new(e, "socket error"));
+            }
+            trace!("pshing {} bytes", data.len());
+            let tcp_packet = TcpPacket::create(
+                self.host_ip,
+                self.peer_ip,
+                state.host_port,
+                state.peer_port,
+                state.seq,
+                state.ack,
+                TcpFlags {
+                    psh: true,
+                    ack: true,
+                    ..Default::default()
+                },
+                u16::MAX - 1,
+                data,
+            );
+            let ip_packet = self.ip_wrap(&tcp_packet);
+            self.peer.write_all(&ip_packet).await?;
+            self.log_packet(&ip_packet)?;
+            data.len() as u32
+        } else {
+            return Err(std::io::Error::new(
+                ErrorKind::NotConnected,
+                "not connected",
+            ));
+        };
 
-        self.seq = self.seq.wrapping_add(data.len() as u32);
+        // We have to re-borrow, since we're mutating state
+        if let Some(state) = self.states.get_mut(&host_port) {
+            state.seq = state.seq.wrapping_add(data_len);
+        }
 
         Ok(())
     }
 
     /// Flushes the packets
-    async fn write_buffer_flush(&mut self) -> Result<(), std::io::Error> {
-        if self.write_buffer.is_empty() {
-            return Ok(());
+    pub(crate) async fn write_buffer_flush(&mut self) -> Result<(), std::io::Error> {
+        for (_, state) in self.states.clone() {
+            let writer_buffer = state.write_buffer.clone();
+            if writer_buffer.is_empty() {
+                continue;
+            }
+
+            println!("flushing...");
+            self.psh(&writer_buffer, state.host_port).await.ok(); // don't care
+            println!("flushed {} bytes", writer_buffer.len());
+
+            // we have to borrow mutably after self.psh
+            if let Some(state) = self.states.get_mut(&state.host_port) {
+                state.write_buffer.clear();
+            }
         }
-        trace!("Flushing {} bytes", self.write_buffer.len());
-        let write_buffer = self.write_buffer.clone();
-        self.psh(&write_buffer).await?;
-        self.write_buffer = Vec::new();
         Ok(())
+    }
+
+    pub(crate) fn queue_send(
+        &mut self,
+        payload: &[u8],
+        host_port: u16,
+    ) -> Result<(), std::io::Error> {
+        if let Some(state) = self.states.get_mut(&host_port) {
+            state.write_buffer.extend_from_slice(payload);
+        } else {
+            return Err(std::io::Error::new(
+                ErrorKind::NotConnected,
+                "not connected",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn uncache(
+        &mut self,
+        to_copy: usize,
+        host_port: u16,
+    ) -> Result<Vec<u8>, std::io::Error> {
+        if let Some(state) = self.states.get_mut(&host_port) {
+            let to_copy = if to_copy > state.read_buffer.len() {
+                state.read_buffer.len()
+            } else {
+                to_copy
+            };
+
+            let res = state.read_buffer[..to_copy].to_vec();
+            state.read_buffer = state.read_buffer[to_copy..].to_vec();
+            Ok(res)
+        } else {
+            Err(std::io::Error::new(
+                ErrorKind::NotConnected,
+                "not connected",
+            ))
+        }
+    }
+
+    pub(crate) fn cache_read(
+        &mut self,
+        payload: &[u8],
+        host_port: u16,
+    ) -> Result<(), std::io::Error> {
+        if let Some(state) = self.states.get_mut(&host_port) {
+            state.read_buffer.extend_from_slice(payload);
+            Ok(())
+        } else {
+            Err(std::io::Error::new(
+                ErrorKind::NotConnected,
+                "not connected",
+            ))
+        }
+    }
+
+    pub(crate) fn get_status(&self, host_port: u16) -> Result<ConnectionStatus, std::io::Error> {
+        if let Some(state) = self.states.get(&host_port) {
+            Ok(state.status.clone())
+        } else {
+            Err(std::io::Error::new(
+                ErrorKind::NotConnected,
+                "not connected",
+            ))
+        }
     }
 
     /// Receives data from the connection.
@@ -362,31 +457,26 @@ impl Adapter {
     /// # Errors
     /// * Returns `ConnectionReset` if connection was reset or closed
     /// * Returns other IO errors if underlying transport fails
-    pub async fn recv(&mut self) -> Result<Vec<u8>, std::io::Error> {
+    pub(crate) async fn recv(&mut self, host_port: u16) -> Result<Vec<u8>, std::io::Error> {
         loop {
-            let res = self.read_tcp_packet().await?;
-            if res.destination_port != self.host_port || res.source_port != self.peer_port {
-                continue;
-            }
-            if res.flags.psh || !res.payload.is_empty() {
-                self.ack().await?;
-                break Ok(res.payload);
-            }
-            if res.flags.rst {
-                self.state = AdapterState::None;
-                break Err(std::io::Error::new(
-                    std::io::ErrorKind::ConnectionReset,
-                    "Connection reset",
+            // Check to see if we already have some cached
+            if let Some(state) = self.states.get_mut(&host_port) {
+                if !state.read_buffer.is_empty() {
+                    let res = state.read_buffer.clone();
+                    state.read_buffer = Vec::new();
+                    return Ok(res);
+                }
+                if let ConnectionStatus::Error(e) = state.status {
+                    return Err(std::io::Error::new(e, "socket io error"));
+                }
+            } else {
+                return Err(std::io::Error::new(
+                    ErrorKind::NotConnected,
+                    "not connected",
                 ));
             }
-            if res.flags.fin {
-                self.ack().await?;
-                self.state = AdapterState::None;
-                break Err(std::io::Error::new(
-                    std::io::ErrorKind::ConnectionReset,
-                    "Connection reset",
-                ));
-            }
+
+            self.process_tcp_packet().await?;
         }
     }
 
@@ -413,24 +503,40 @@ impl Adapter {
         })
     }
 
-    async fn read_tcp_packet(&mut self) -> Result<TcpPacket, std::io::Error> {
-        loop {
-            let ip_packet = self.read_ip_packet().await?;
-            let tcp_packet = TcpPacket::parse(&ip_packet)?;
-            if tcp_packet.destination_port != self.host_port
-                || tcp_packet.source_port != self.peer_port
-            {
-                continue;
-            }
-            trace!("TCP packet: {tcp_packet:#?}");
-            self.ack = tcp_packet.sequence_number
-                + if tcp_packet.payload.is_empty() {
+    async fn process_tcp_packet(&mut self) -> Result<(), std::io::Error> {
+        let ip_packet = self.read_ip_packet().await?;
+        let res = TcpPacket::parse(&ip_packet)?;
+        let mut ack_me = None;
+        if let Some(state) = self.states.get_mut(&res.destination_port) {
+            state.ack = res.sequence_number
+                + if res.payload.is_empty() {
                     1
                 } else {
-                    tcp_packet.payload.len() as u32
+                    res.payload.len() as u32
                 };
-            break Ok(tcp_packet);
+            if res.flags.psh || !res.payload.is_empty() {
+                ack_me = Some(res.destination_port);
+                state.read_buffer.extend(res.payload)
+            }
+            if res.flags.rst {
+                state.status = ConnectionStatus::Error(ErrorKind::ConnectionReset);
+            }
+            if res.flags.fin {
+                ack_me = Some(res.destination_port);
+                state.status = ConnectionStatus::Error(ErrorKind::ConnectionReset);
+            }
+            if res.flags.syn && res.flags.ack {
+                ack_me = Some(res.destination_port);
+                state.seq = state.seq.wrapping_add(1);
+                state.status = ConnectionStatus::Connected;
+            }
         }
+
+        // we have to ack outside of the mutable state borrow
+        if let Some(a) = ack_me {
+            self.ack(a).await?;
+        }
+        Ok(())
     }
 
     fn ip_wrap(&self, packet: &[u8]) -> Vec<u8> {
@@ -452,127 +558,5 @@ impl Adapter {
                 }
             },
         }
-    }
-}
-
-impl AsyncRead for Adapter {
-    /// Attempts to read from the connection into the provided buffer.
-    ///
-    /// Uses an internal read buffer to cache any extra received data.
-    ///
-    /// # Returns
-    /// * `Poll::Ready(Ok(()))` if data was read successfully
-    /// * `Poll::Ready(Err(e))` if an error occurred
-    /// * `Poll::Pending` if operation would block
-    ///
-    /// # Errors
-    /// * Returns `NotConnected` if adapter isn't connected
-    /// * Propagates any underlying transport errors
-    fn poll_read(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &mut tokio::io::ReadBuf<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        // First, check if we have any cached data
-        if !self.read_buffer.is_empty() {
-            let to_copy = std::cmp::min(buf.remaining(), self.read_buffer.len());
-            buf.put_slice(&self.read_buffer[..to_copy]);
-
-            // Keep any remaining data in the buffer
-            if to_copy < self.read_buffer.len() {
-                self.read_buffer = self.read_buffer[to_copy..].to_vec();
-            } else {
-                self.read_buffer.clear();
-            }
-
-            return std::task::Poll::Ready(Ok(()));
-        }
-
-        // If no cached data and not connected, return error
-        if self.state != AdapterState::Connected {
-            return std::task::Poll::Ready(Err(std::io::Error::new(
-                std::io::ErrorKind::NotConnected,
-                "Adapter not connected",
-            )));
-        }
-
-        // If no cached data, try to receive new data
-        let future = async {
-            match self.recv().await {
-                Ok(data) => {
-                    let len = std::cmp::min(buf.remaining(), data.len());
-                    buf.put_slice(&data[..len]);
-
-                    // If we received more data than needed, cache the rest
-                    if len < data.len() {
-                        self.read_buffer = data[len..].to_vec();
-                    }
-
-                    Ok(())
-                }
-                Err(e) => Err(e),
-            }
-        };
-
-        // Pin the future and poll it
-        futures::pin_mut!(future);
-        future.poll(cx)
-    }
-}
-
-impl AsyncWrite for Adapter {
-    /// Attempts to write data to the connection.
-    ///
-    /// Data is buffered internally until flushed.
-    ///
-    /// # Returns
-    /// * `Poll::Ready(Ok(n))` with number of bytes written
-    /// * `Poll::Ready(Err(e))` if an error occurred
-    /// * `Poll::Pending` if operation would block
-    ///
-    /// # Errors
-    /// * Returns `NotConnected` if adapter isn't connected
-    fn poll_write(
-        mut self: std::pin::Pin<&mut Self>,
-        _cx: &mut std::task::Context<'_>,
-        buf: &[u8],
-    ) -> std::task::Poll<Result<usize, std::io::Error>> {
-        trace!("poll psh {}", buf.len());
-        if self.state != AdapterState::Connected {
-            return std::task::Poll::Ready(Err(std::io::Error::new(
-                std::io::ErrorKind::NotConnected,
-                "Adapter not connected",
-            )));
-        }
-        self.write_buffer.extend_from_slice(buf);
-        Poll::Ready(Ok(buf.len()))
-    }
-
-    fn poll_flush(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), std::io::Error>> {
-        let future = async {
-            match self.write_buffer_flush().await {
-                Ok(_) => Ok(()),
-                Err(e) => Err(e),
-            }
-        };
-
-        // Pin the future and poll it
-        futures::pin_mut!(future);
-        future.poll(cx)
-    }
-
-    fn poll_shutdown(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), std::io::Error>> {
-        // Create a future that can be polled
-        let future = async { self.close().await };
-
-        // Pin the future and poll it
-        futures::pin_mut!(future);
-        future.poll(cx)
     }
 }

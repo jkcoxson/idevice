@@ -10,8 +10,9 @@ use tokio::io::AsyncWriteExt;
 
 pub mod adapter;
 pub mod packets;
+pub mod stream;
 
-pub(crate) async fn log_packet(file: &Arc<tokio::sync::Mutex<tokio::fs::File>>, packet: &[u8]) {
+pub(crate) fn log_packet(file: &Arc<tokio::sync::Mutex<tokio::fs::File>>, packet: &[u8]) {
     debug!("Logging {} byte packet", packet.len());
     let packet = packet.to_vec();
     let file = file.to_owned();
@@ -49,6 +50,7 @@ mod tests {
         pin::Pin,
         task::{Context, Poll},
     };
+    use stream::AdapterStream;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tun_rs::DeviceBuilder;
 
@@ -186,31 +188,35 @@ mod tests {
         let mut buf = Vec::new();
         let _ = tokio::io::stdin().read(&mut buf).await.unwrap();
 
-        if let Err(e) = adapter.connect(SERVER_PORT).await {
-            println!("no connect: {e:?}");
-        }
+        let mut stream = match AdapterStream::connect(&mut adapter, SERVER_PORT).await {
+            Ok(s) => s,
+            Err(e) => {
+                println!("no connect: {e:?}");
+                return;
+            }
+        };
 
-        if let Err(e) = adapter.write_all(&[1, 2, 3, 4, 5]).await {
+        if let Err(e) = stream.write_all(&[1, 2, 3, 4, 5]).await {
             println!("no send: {e:?}");
         } else {
             let mut buf = [0u8; 4];
-            match adapter.read_exact(&mut buf).await {
+            match stream.read_exact(&mut buf).await {
                 Ok(_) => println!("recv'd {buf:?}"),
                 Err(e) => println!("no recv: {e:?}"),
             }
         }
 
-        if let Err(e) = adapter.write_all(&[69, 69, 42, 0, 1]).await {
+        if let Err(e) = stream.write_all(&[69, 69, 42, 0, 1]).await {
             println!("no send: {e:?}");
         } else {
             let mut buf = [0u8; 6];
-            match adapter.read_exact(&mut buf).await {
+            match stream.read_exact(&mut buf).await {
                 Ok(_) => println!("recv'd {buf:?}"),
                 Err(e) => println!("no recv: {e:?}"),
             }
         }
 
-        if let Err(e) = adapter.close().await {
+        if let Err(e) = stream.close().await {
             println!("no close: {e:?}");
         }
 

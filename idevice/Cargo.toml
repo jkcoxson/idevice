@@ -50,7 +50,7 @@ x509-cert = { version = "0.2", optional = true, features = [
 ], default-features = false }
 
 [dev-dependencies]
-tokio = { version = "1.43", features = ["fs"] }
+tokio = { version = "1.43", features = ["full"] }
 tun-rs = { version = "2.0.8", features = ["async_tokio"] }
 bytes = "1.10.1"
 

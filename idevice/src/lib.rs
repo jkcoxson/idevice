@@ -20,6 +20,8 @@ pub mod xpc;
 
 pub mod services;
 pub use services::*;
+
+#[cfg(feature = "xpc")]
 pub use xpc::RemoteXpcClient;
 
 use log::{debug, error, trace};

@@ -143,7 +143,7 @@ impl Ipv4Packet {
         reader.read_exact(&mut payload).await?;
         if let Some(log) = log {
             log_packet.extend_from_slice(&payload);
-            super::log_packet(log, &log_packet).await;
+            super::log_packet(log, &log_packet);
         }
 
         Ok(Self {
@@ -324,7 +324,7 @@ impl Ipv6Packet {
         reader.read_exact(&mut payload).await?;
         if let Some(log) = log {
             log_packet.extend_from_slice(&payload);
-            super::log_packet(log, &log_packet).await;
+            super::log_packet(log, &log_packet);
         }
 
         Ok(Self {
