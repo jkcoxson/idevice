@@ -49,8 +49,9 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
             None,
         ))
         .await?;
-        self.h2_client.read(ROOT_CHANNEL).await?;
-        self.h2_client.read(ROOT_CHANNEL).await?;
+
+        self.recv_root().await?;
+        self.recv_root().await?;
 
         debug!("Sending weird flags");
         self.send_root(XPCMessage::new(Some(XPCFlag::Custom(0x201)), None, None))
@@ -99,6 +100,17 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
                 return Ok(msg.to_plist());
             }
             self.reply_id += 1;
+        }
+    }
+
+    pub async fn recv_root(&mut self) -> Result<Option<plist::Value>, IdeviceError> {
+        let msg = self.h2_client.read(ROOT_CHANNEL).await?;
+        let msg = XPCMessage::decode(&msg)?;
+
+        if let Some(msg) = msg.message {
+            Ok(Some(msg.to_plist()))
+        } else {
+            Ok(None)
         }
     }
 

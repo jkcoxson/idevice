@@ -5,7 +5,7 @@ use std::{
 };
 
 use indexmap::IndexMap;
-use log::warn;
+use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 
 use crate::IdeviceError;
@@ -217,6 +217,7 @@ impl XPCObject {
     }
 
     pub fn decode(buf: &[u8]) -> Result<Self, IdeviceError> {
+        debug!("Decoding {buf:02X?}");
         if buf.len() < 8 {
             return Err(IdeviceError::NotEnoughBytes(buf.len(), 8));
         }
@@ -407,6 +408,7 @@ impl XPCMessage {
     }
 
     pub fn decode(data: &[u8]) -> Result<XPCMessage, IdeviceError> {
+        debug!("Decoding {data:02X?}");
         if data.len() < 24 {
             Err(IdeviceError::NotEnoughBytes(data.len(), 24))?
         }
@@ -421,6 +423,7 @@ impl XPCMessage {
         let body_len = u64::from_le_bytes([
             data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15],
         ]);
+        debug!("Body_len: {body_len}");
         let message_id = u64::from_le_bytes([
             data[16], data[17], data[18], data[19], data[20], data[21], data[22], data[23],
         ]);
@@ -429,22 +432,21 @@ impl XPCMessage {
                 "Body length is {body_len}, but received bytes is {}",
                 data.len()
             );
-            println!("{}", String::from_utf8_lossy(data));
             Err(IdeviceError::PacketSizeMismatch)?
         }
 
-        if body_len == 0 {
-            return Ok(XPCMessage {
-                flags,
-                message: None,
-                message_id: Some(message_id),
-            });
-        }
-        Ok(XPCMessage {
+        let res = XPCMessage {
             flags,
-            message: Some(XPCObject::decode(&data[24..24 + body_len as usize])?),
+            message: if body_len > 0 {
+                Some(XPCObject::decode(&data[24..24 + body_len as usize])?)
+            } else {
+                None
+            },
             message_id: Some(message_id),
-        })
+        };
+
+        debug!("Decoded {res:#?}");
+        Ok(res)
     }
 
     pub fn encode(self, message_id: u64) -> Result<Vec<u8>, IdeviceError> {
