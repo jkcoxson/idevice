@@ -217,7 +217,6 @@ impl XPCObject {
     }
 
     pub fn decode(buf: &[u8]) -> Result<Self, IdeviceError> {
-        debug!("Decoding {buf:02X?}");
         if buf.len() < 8 {
             return Err(IdeviceError::NotEnoughBytes(buf.len(), 8));
         }
@@ -408,7 +407,6 @@ impl XPCMessage {
     }
 
     pub fn decode(data: &[u8]) -> Result<XPCMessage, IdeviceError> {
-        debug!("Decoding {data:02X?}");
         if data.len() < 24 {
             Err(IdeviceError::NotEnoughBytes(data.len(), 24))?
         }

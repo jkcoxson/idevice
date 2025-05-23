@@ -370,9 +370,7 @@ impl Adapter {
                 continue;
             }
 
-            println!("flushing...");
             self.psh(&writer_buffer, state.host_port).await.ok(); // don't care
-            println!("flushed {} bytes", writer_buffer.len());
 
             // we have to borrow mutably after self.psh
             if let Some(state) = self.states.get_mut(&state.host_port) {
