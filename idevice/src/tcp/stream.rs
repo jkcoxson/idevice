@@ -1,4 +1,4 @@
-// Jackson Coxson
+//! A stream for the adapter
 
 use std::{future::Future, task::Poll};
 
@@ -17,6 +17,7 @@ pub struct AdapterStream<'a> {
 }
 
 impl<'a> AdapterStream<'a> {
+    /// Connect to the specified port
     pub async fn connect(adapter: &'a mut Adapter, port: u16) -> Result<Self, std::io::Error> {
         let host_port = adapter.connect(port).await?;
         Ok(Self {
@@ -26,6 +27,7 @@ impl<'a> AdapterStream<'a> {
         })
     }
 
+    /// Gracefully closes the stream
     pub async fn close(&mut self) -> Result<(), std::io::Error> {
         self.adapter.close(self.host_port).await
     }
@@ -154,5 +156,11 @@ impl AsyncWrite for AdapterStream<'_> {
         // Pin the future and poll it
         futures::pin_mut!(future);
         future.poll(cx)
+    }
+}
+
+impl Drop for AdapterStream<'_> {
+    fn drop(&mut self) {
+        self.adapter.connection_drop(self.host_port);
     }
 }
