@@ -1,17 +1,12 @@
 // Jackson Coxson
 
-use std::{
-    io::Write,
-    net::{IpAddr, SocketAddr},
-    str::FromStr,
-};
+use std::io::Write;
 
 use clap::{Arg, Command};
 use idevice::{
-    core_device_proxy::CoreDeviceProxy, debug_proxy::DebugProxyClient,
-    tunneld::get_tunneld_devices, xpc::XPCDevice, IdeviceService, ReadWrite,
+    core_device_proxy::CoreDeviceProxy, debug_proxy::DebugProxyClient, rsd::RsdClient,
+    tcp::stream::AdapterStream, IdeviceService,
 };
-use tokio::net::TcpStream;
 
 mod common;
 
@@ -63,79 +58,41 @@ async fn main() {
     let pairing_file = matches.get_one::<String>("pairing_file");
     let host = matches.get_one::<String>("host");
 
-    let mut dp: DebugProxyClient<Box<dyn ReadWrite>> = if matches.get_flag("tunneld") {
-        let socket = SocketAddr::new(
-            IpAddr::from_str("127.0.0.1").unwrap(),
-            idevice::tunneld::DEFAULT_PORT,
-        );
-        let mut devices = get_tunneld_devices(socket)
-            .await
-            .expect("Failed to get tunneld devices");
-
-        let (_udid, device) = match udid {
-            Some(u) => (
-                u.to_owned(),
-                devices.remove(u).expect("Device not in tunneld"),
-            ),
-            None => devices.into_iter().next().expect("No devices"),
+    let provider =
+        match common::get_provider(udid, host, pairing_file, "debug-proxy-jkcoxson").await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("{e}");
+                return;
+            }
         };
+    let proxy = CoreDeviceProxy::connect(&*provider)
+        .await
+        .expect("no core proxy");
+    let rsd_port = proxy.handshake.server_rsd_port;
 
-        // Make the connection to RemoteXPC
-        let client = XPCDevice::new(Box::new(
-            TcpStream::connect((device.tunnel_address.as_str(), device.tunnel_port))
-                .await
-                .unwrap(),
-        ))
+    let mut adapter = proxy.create_software_tunnel().expect("no software tunnel");
+    let stream = AdapterStream::connect(&mut adapter, rsd_port)
+        .await
+        .expect("no RSD connect");
+
+    // Make the connection to RemoteXPC
+    let mut client = RsdClient::new(stream).await.unwrap();
+
+    // Get the debug proxy
+    let service = client
+        .get_services()
+        .await
+        .unwrap()
+        .get(idevice::debug_proxy::SERVICE_NAME)
+        .expect("Client did not contain debug proxy service")
+        .to_owned();
+
+    let stream = AdapterStream::connect(&mut adapter, service.port)
         .await
         .unwrap();
 
-        // Get the debug proxy
-        let service = client
-            .services
-            .get(idevice::debug_proxy::SERVICE_NAME)
-            .expect("Client did not contain debug proxy service");
-
-        let stream = TcpStream::connect(SocketAddr::new(
-            IpAddr::from_str(&device.tunnel_address).unwrap(),
-            service.port,
-        ))
-        .await
-        .expect("Failed to connect");
-
-        DebugProxyClient::new(Box::new(stream))
-    } else {
-        let provider =
-            match common::get_provider(udid, host, pairing_file, "debug-proxy-jkcoxson").await {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!("{e}");
-                    return;
-                }
-            };
-        let proxy = CoreDeviceProxy::connect(&*provider)
-            .await
-            .expect("no core proxy");
-        let rsd_port = proxy.handshake.server_rsd_port;
-
-        let mut adapter = proxy.create_software_tunnel().expect("no software tunnel");
-        adapter.connect(rsd_port).await.expect("no RSD connect");
-
-        // Make the connection to RemoteXPC
-        let client = XPCDevice::new(Box::new(adapter)).await.unwrap();
-
-        // Get the debug proxy
-        let service = client
-            .services
-            .get(idevice::debug_proxy::SERVICE_NAME)
-            .expect("Client did not contain debug proxy service")
-            .to_owned();
-
-        let mut adapter = client.into_inner();
-        adapter.close().await.unwrap();
-        adapter.connect(service.port).await.unwrap();
-
-        DebugProxyClient::new(Box::new(adapter))
-    };
+    let mut dp = DebugProxyClient::new(stream);
 
     println!("Shell connected!");
     loop {

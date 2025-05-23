@@ -1,16 +1,9 @@
 // Jackson Coxson
 
-use std::{
-    net::{IpAddr, SocketAddr},
-    str::FromStr,
-};
-
 use clap::{Arg, Command};
 use idevice::{
-    core_device_proxy::CoreDeviceProxy, tunneld::get_tunneld_devices, xpc::XPCDevice,
-    IdeviceService,
+    core_device_proxy::CoreDeviceProxy, rsd::RsdClient, tcp::stream::AdapterStream, IdeviceService,
 };
-use tokio::net::TcpStream;
 
 mod common;
 
@@ -71,70 +64,8 @@ async fn main() {
         .get_one::<String>("bundle_id")
         .expect("No bundle ID specified");
 
-    if matches.get_flag("tunneld") {
-        let socket = SocketAddr::new(
-            IpAddr::from_str("127.0.0.1").unwrap(),
-            idevice::tunneld::DEFAULT_PORT,
-        );
-        let mut devices = get_tunneld_devices(socket)
-            .await
-            .expect("Failed to get tunneld devices");
-
-        let (_udid, device) = match udid {
-            Some(u) => (
-                u.to_owned(),
-                devices.remove(u).expect("Device not in tunneld"),
-            ),
-            None => devices.into_iter().next().expect("No devices"),
-        };
-
-        // Make the connection to RemoteXPC
-        let client = XPCDevice::new(Box::new(
-            TcpStream::connect((device.tunnel_address.as_str(), device.tunnel_port))
-                .await
-                .unwrap(),
-        ))
-        .await
-        .unwrap();
-
-        // Get the debug proxy
-        let service = client
-            .services
-            .get(idevice::dvt::SERVICE_NAME)
-            .expect("Client did not contain DVT service");
-
-        let stream = TcpStream::connect(SocketAddr::new(
-            IpAddr::from_str(&device.tunnel_address).unwrap(),
-            service.port,
-        ))
-        .await
-        .expect("Failed to connect");
-
-        let mut rs_client = idevice::dvt::remote_server::RemoteServerClient::new(Box::new(stream));
-        rs_client.read_message(0).await.expect("no read??");
-        let mut pc_client =
-            idevice::dvt::process_control::ProcessControlClient::new(&mut rs_client)
-                .await
-                .unwrap();
-
-        let pid = pc_client
-            .launch_app(bundle_id, None, None, true, false)
-            .await
-            .expect("no launch??");
-        pc_client
-            .disable_memory_limit(pid)
-            .await
-            .expect("no disable??");
-        println!("PID: {pid}");
-    } else {
-        let provider = match common::get_provider(
-            udid,
-            host,
-            pairing_file,
-            "process_control-jkcoxson",
-        )
-        .await
-        {
+    let provider =
+        match common::get_provider(udid, host, pairing_file, "process_control-jkcoxson").await {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("{e}");
@@ -142,45 +73,45 @@ async fn main() {
             }
         };
 
-        let proxy = CoreDeviceProxy::connect(&*provider)
-            .await
-            .expect("no core proxy");
-        let rsd_port = proxy.handshake.server_rsd_port;
+    let proxy = CoreDeviceProxy::connect(&*provider)
+        .await
+        .expect("no core proxy");
+    let rsd_port = proxy.handshake.server_rsd_port;
 
-        let mut adapter = proxy.create_software_tunnel().expect("no software tunnel");
-        adapter.connect(rsd_port).await.expect("no RSD connect");
+    let mut adapter = proxy.create_software_tunnel().expect("no software tunnel");
+    let stream = AdapterStream::connect(&mut adapter, rsd_port)
+        .await
+        .expect("no RSD connect");
 
-        // Make the connection to RemoteXPC
-        let client = XPCDevice::new(Box::new(adapter)).await.unwrap();
+    // Make the connection to RemoteXPC
+    let mut client = RsdClient::new(stream).await.unwrap();
 
-        // Get the debug proxy
-        let service = client
-            .services
-            .get(idevice::dvt::SERVICE_NAME)
-            .expect("Client did not contain DVT service")
-            .to_owned();
+    // Get the debug proxy
+    let service = client
+        .get_services()
+        .await
+        .unwrap()
+        .get(idevice::dvt::SERVICE_NAME)
+        .expect("Client did not contain DVT service")
+        .to_owned();
 
-        let mut adapter = client.into_inner();
-        adapter.connect(service.port).await.unwrap();
+    let stream = AdapterStream::connect(&mut adapter, service.port)
+        .await
+        .unwrap();
 
-        let mut rs_client = idevice::dvt::remote_server::RemoteServerClient::new(Box::new(adapter));
-        rs_client.read_message(0).await.expect("no read??");
-        let mut pc_client =
-            idevice::dvt::process_control::ProcessControlClient::new(&mut rs_client)
-                .await
-                .unwrap();
+    let mut rs_client = idevice::dvt::remote_server::RemoteServerClient::new(stream);
+    rs_client.read_message(0).await.expect("no read??");
+    let mut pc_client = idevice::dvt::process_control::ProcessControlClient::new(&mut rs_client)
+        .await
+        .unwrap();
 
-        let pid = pc_client
-            .launch_app(bundle_id, None, None, true, false)
-            .await
-            .expect("no launch??");
-        pc_client
-            .disable_memory_limit(pid)
-            .await
-            .expect("no disable??");
-        println!("PID: {pid}");
-
-        // let mut adapter = rs_client.into_inner();
-        // adapter.close().await.expect("no close??");
-    }
+    let pid = pc_client
+        .launch_app(bundle_id, None, None, true, false)
+        .await
+        .expect("no launch??");
+    pc_client
+        .disable_memory_limit(pid)
+        .await
+        .expect("no disable??");
+    println!("PID: {pid}");
 }
