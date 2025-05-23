@@ -15,9 +15,12 @@ pub mod tunneld;
 #[cfg(feature = "usbmuxd")]
 pub mod usbmuxd;
 mod util;
+#[cfg(feature = "xpc")]
+pub mod xpc;
 
 pub mod services;
 pub use services::*;
+pub use xpc::RemoteXpcClient;
 
 use log::{debug, error, trace};
 use provider::IdeviceProvider;

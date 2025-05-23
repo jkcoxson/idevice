@@ -23,9 +23,9 @@ pub mod misagent;
 pub mod mobile_image_mounter;
 #[cfg(feature = "syslog_relay")]
 pub mod os_trace_relay;
+#[cfg(feature = "rsd")]
+pub mod rsd;
 #[cfg(feature = "springboardservices")]
 pub mod springboardservices;
 #[cfg(feature = "syslog_relay")]
 pub mod syslog_relay;
-#[cfg(feature = "xpc")]
-pub mod xpc;

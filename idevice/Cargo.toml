@@ -69,6 +69,7 @@ misagent = []
 mobile_image_mounter = ["dep:sha2"]
 location_simulation = []
 pair = ["chrono/default", "tokio/time", "dep:sha2", "dep:rsa", "dep:x509-cert"]
+rsd = ["xpc"]
 syslog_relay = ["dep:bytes"]
 tcp = ["tokio/net"]
 tunnel_tcp_stack = ["dep:rand", "dep:futures", "tokio/fs", "tokio/sync"]
@@ -98,6 +99,7 @@ full = [
   "usbmuxd",
   "xpc",
   "location_simulation",
+  "rsd",
   "tcp",
   "tunnel_tcp_stack",
   "tss",
