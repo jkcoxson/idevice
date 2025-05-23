@@ -10,7 +10,7 @@ use crate::{IdeviceError, ReadWrite, RemoteXpcClient};
 
 /// Describes an available XPC service
 #[derive(Debug, Clone, Deserialize)]
-pub struct XPCService {
+pub struct RsdService {
     /// Required entitlement to access this service
     pub entitlement: String,
     /// Port number where the service is available
@@ -34,7 +34,7 @@ impl<R: ReadWrite> RsdClient<R> {
         })
     }
 
-    pub async fn get_services(&mut self) -> Result<HashMap<String, XPCService>, IdeviceError> {
+    pub async fn get_services(&mut self) -> Result<HashMap<String, RsdService>, IdeviceError> {
         let data = self.inner.do_handshake().await?;
 
         let data = match data
@@ -100,7 +100,7 @@ impl<R: ReadWrite> RsdClient<R> {
 
                     services.insert(
                         name.to_string(),
-                        XPCService {
+                        RsdService {
                             entitlement,
                             port,
                             uses_remote_xpc,
