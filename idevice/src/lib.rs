@@ -25,7 +25,7 @@ pub use services::*;
 pub use xpc::RemoteXpcClient;
 
 use log::{debug, error, trace};
-use provider::IdeviceProvider;
+use provider::{IdeviceProvider, RsdProvider};
 use rustls::{crypto::CryptoProvider, pki_types::ServerName};
 use std::{
     io::{self, BufWriter},
@@ -63,6 +63,25 @@ pub trait IdeviceService: Sized {
     fn connect(
         provider: &dyn IdeviceProvider,
     ) -> impl std::future::Future<Output = Result<Self, IdeviceError>> + Send;
+}
+
+pub trait RsdService: Sized {
+    fn rsd_service_name() -> &'static str;
+    fn from_stream(
+        stream: Self::Stream,
+    ) -> impl std::future::Future<Output = Result<Self, IdeviceError>> + Send;
+    fn connect_rsd<'a, S>(
+        provider: &'a mut impl RsdProvider<'a, Stream = S>,
+        handshake: &mut rsd::RsdHandshake,
+    ) -> impl std::future::Future<Output = Result<Self, IdeviceError>>
+    where
+        Self: crate::RsdService<Stream = S>,
+        S: ReadWrite,
+    {
+        handshake.connect(provider)
+    }
+
+    type Stream: ReadWrite;
 }
 
 /// Type alias for boxed device connection sockets
@@ -424,6 +443,8 @@ pub enum IdeviceError {
     HeartbeatTimeout,
     #[error("not found")]
     NotFound,
+    #[error("service not found")]
+    ServiceNotFound,
     #[error("CDTunnel packet too short")]
     CdtunnelPacketTooShort,
     #[error("CDTunnel packet invalid magic")]

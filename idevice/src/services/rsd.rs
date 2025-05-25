@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use log::warn;
 use serde::Deserialize;
 
-use crate::{IdeviceError, ReadWrite, RemoteXpcClient};
+use crate::{provider::RsdProvider, IdeviceError, ReadWrite, RemoteXpcClient};
 
 /// Describes an available XPC service
 #[derive(Debug, Clone, Deserialize)]
@@ -23,21 +23,19 @@ pub struct RsdService {
     pub service_version: Option<i64>,
 }
 
-pub struct RsdClient<R: ReadWrite> {
-    inner: RemoteXpcClient<R>,
+pub struct RsdHandshake {
+    pub services: HashMap<String, RsdService>,
+    pub protocol_version: usize,
+    pub properties: HashMap<String, plist::Value>,
+    pub uuid: String,
 }
 
-impl<R: ReadWrite> RsdClient<R> {
-    pub async fn new(socket: R) -> Result<Self, IdeviceError> {
-        Ok(Self {
-            inner: RemoteXpcClient::new(socket).await?,
-        })
-    }
+impl RsdHandshake {
+    pub async fn new(socket: impl ReadWrite) -> Result<Self, IdeviceError> {
+        let mut xpc_client = RemoteXpcClient::new(socket).await?;
+        let data = xpc_client.do_handshake().await?;
 
-    pub async fn get_services(&mut self) -> Result<HashMap<String, RsdService>, IdeviceError> {
-        let data = self.inner.do_handshake().await?;
-
-        let data = match data
+        let services_dict = match data
             .as_dictionary()
             .and_then(|x| x.get("Services"))
             .and_then(|x| x.as_dictionary())
@@ -47,8 +45,8 @@ impl<R: ReadWrite> RsdClient<R> {
         };
 
         // Parse available services
-        let mut services = HashMap::new();
-        for (name, service) in data.into_iter() {
+        let mut services: HashMap<String, RsdService> = HashMap::new();
+        for (name, service) in services_dict.into_iter() {
             match service.as_dictionary() {
                 Some(service) => {
                     let entitlement = match service.get("Entitlement").and_then(|x| x.as_string()) {
@@ -116,6 +114,64 @@ impl<R: ReadWrite> RsdClient<R> {
             }
         }
 
-        Ok(services)
+        let protocol_version = match data.as_dictionary().and_then(|x| {
+            x.get("MessagingProtocolVersion")
+                .and_then(|x| x.as_signed_integer())
+        }) {
+            Some(p) => p as usize,
+            None => {
+                return Err(IdeviceError::UnexpectedResponse);
+            }
+        };
+
+        let uuid = match data
+            .as_dictionary()
+            .and_then(|x| x.get("UUID").and_then(|x| x.as_string()))
+        {
+            Some(u) => u.to_string(),
+            None => {
+                return Err(IdeviceError::UnexpectedResponse);
+            }
+        };
+
+        let properties = match data
+            .as_dictionary()
+            .and_then(|x| x.get("Properties").and_then(|x| x.as_dictionary()))
+        {
+            Some(d) => d
+                .into_iter()
+                .map(|(name, prop)| (name.to_owned(), prop.to_owned()))
+                .collect::<HashMap<String, plist::Value>>(),
+            None => {
+                return Err(IdeviceError::UnexpectedResponse);
+            }
+        };
+
+        Ok(Self {
+            services,
+            protocol_version,
+            properties,
+            uuid,
+        })
+    }
+
+    pub async fn connect<'a, T, S>(
+        &mut self,
+        provider: &'a mut impl RsdProvider<'a, Stream = S>,
+    ) -> Result<T, IdeviceError>
+    where
+        T: crate::RsdService<Stream = S>,
+        S: ReadWrite,
+    {
+        let service_name = T::rsd_service_name();
+        let service = match self.services.get(service_name) {
+            Some(s) => s,
+            None => {
+                return Err(IdeviceError::ServiceNotFound);
+            }
+        };
+
+        let stream = provider.connect_to_service_port(service.port).await?;
+        T::from_stream(stream).await
     }
 }

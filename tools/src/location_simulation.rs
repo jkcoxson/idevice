@@ -3,7 +3,8 @@
 
 use clap::{Arg, Command};
 use idevice::{
-    core_device_proxy::CoreDeviceProxy, rsd::RsdClient, tcp::stream::AdapterStream, IdeviceService,
+    core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake, tcp::stream::AdapterStream,
+    IdeviceService, RsdService,
 };
 
 mod common;
@@ -76,22 +77,12 @@ async fn main() {
         .expect("no RSD connect");
 
     // Make the connection to RemoteXPC
-    let mut client = RsdClient::new(stream).await.unwrap();
+    let mut handshake = RsdHandshake::new(stream).await.unwrap();
 
-    // Get the debug proxy
-    let service = client
-        .get_services()
-        .await
-        .unwrap()
-        .get(idevice::dvt::SERVICE_NAME)
-        .expect("Client did not contain DVT service")
-        .to_owned();
-
-    let stream = AdapterStream::connect(&mut adapter, service.port)
-        .await
-        .unwrap();
-
-    let mut ls_client = idevice::dvt::remote_server::RemoteServerClient::new(stream);
+    let mut ls_client =
+        idevice::dvt::remote_server::RemoteServerClient::connect_rsd(&mut adapter, &mut handshake)
+            .await
+            .expect("Failed to connect");
     ls_client.read_message(0).await.expect("no read??");
 
     let mut ls_client =

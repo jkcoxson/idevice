@@ -6,7 +6,10 @@ use std::{
 };
 
 use log::debug;
+use stream::AdapterStream;
 use tokio::io::AsyncWriteExt;
+
+use crate::provider::RsdProvider;
 
 pub mod adapter;
 pub mod packets;
@@ -34,6 +37,18 @@ pub(crate) fn log_packet(file: &Arc<tokio::sync::Mutex<tokio::fs::File>>, packet
             .unwrap();
         file.write_all(&packet).await.unwrap();
     });
+}
+
+impl<'a> RsdProvider<'a> for adapter::Adapter {
+    async fn connect_to_service_port(
+        &'a mut self,
+        port: u16,
+    ) -> Result<stream::AdapterStream<'a>, crate::IdeviceError> {
+        let s = stream::AdapterStream::connect(self, port).await?;
+        Ok(s)
+    }
+
+    type Stream = AdapterStream<'a>;
 }
 
 #[cfg(test)]

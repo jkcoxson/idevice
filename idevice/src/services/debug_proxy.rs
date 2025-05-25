@@ -8,10 +8,22 @@ use log::debug;
 use std::fmt::Write;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::{IdeviceError, ReadWrite};
+use crate::{IdeviceError, ReadWrite, RsdService};
 
-/// The service name for the debug proxy as registered with lockdownd
-pub const SERVICE_NAME: &str = "com.apple.internal.dt.remote.debugproxy";
+impl<R: ReadWrite> RsdService for DebugProxyClient<R> {
+    fn rsd_service_name() -> &'static str {
+        "com.apple.internal.dt.remote.debugproxy"
+    }
+
+    async fn from_stream(stream: R) -> Result<Self, IdeviceError> {
+        Ok(Self {
+            socket: stream,
+            noack_mode: false,
+        })
+    }
+
+    type Stream = R;
+}
 
 /// Client for interacting with the iOS debug proxy service
 ///
@@ -300,4 +312,3 @@ impl From<&str> for DebugserverCommand {
         s.to_string().into()
     }
 }
-

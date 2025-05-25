@@ -4,8 +4,8 @@ use std::io::Write;
 
 use clap::{Arg, Command};
 use idevice::{
-    core_device_proxy::CoreDeviceProxy, debug_proxy::DebugProxyClient, rsd::RsdClient,
-    tcp::stream::AdapterStream, IdeviceService,
+    core_device_proxy::CoreDeviceProxy, debug_proxy::DebugProxyClient, rsd::RsdHandshake,
+    tcp::stream::AdapterStream, IdeviceService, RsdService,
 };
 
 mod common;
@@ -77,22 +77,12 @@ async fn main() {
         .expect("no RSD connect");
 
     // Make the connection to RemoteXPC
-    let mut client = RsdClient::new(stream).await.unwrap();
+    let mut handshake = RsdHandshake::new(stream).await.unwrap();
+    println!("{:?}", handshake.services);
 
-    // Get the debug proxy
-    let service = client
-        .get_services()
+    let mut dp = DebugProxyClient::connect_rsd(&mut adapter, &mut handshake)
         .await
-        .unwrap()
-        .get(idevice::debug_proxy::SERVICE_NAME)
-        .expect("Client did not contain debug proxy service")
-        .to_owned();
-
-    let stream = AdapterStream::connect(&mut adapter, service.port)
-        .await
-        .unwrap();
-
-    let mut dp = DebugProxyClient::new(stream);
+        .expect("no connect");
 
     println!("Shell connected!");
     loop {
