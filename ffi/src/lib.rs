@@ -13,6 +13,7 @@ pub mod lockdown;
 pub mod logging;
 pub mod misagent;
 pub mod mounter;
+pub mod os_trace_relay;
 mod pairing_file;
 pub mod process_control;
 pub mod provider;
