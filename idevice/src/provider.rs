@@ -157,3 +157,15 @@ impl IdeviceProvider for UsbmuxdProvider {
         })
     }
 }
+
+#[cfg(feature = "tcp")]
+impl<'a> RsdProvider<'a> for std::net::IpAddr {
+    async fn connect_to_service_port(
+        &'a mut self,
+        port: u16,
+    ) -> Result<Self::Stream, IdeviceError> {
+        Ok(tokio::net::TcpStream::connect((*self, port)).await?)
+    }
+
+    type Stream = tokio::net::TcpStream;
+}
