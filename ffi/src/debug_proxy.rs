@@ -4,9 +4,12 @@ use std::ffi::{CStr, CString, c_char};
 use std::os::raw::c_int;
 use std::ptr;
 
-use idevice::ReadWrite;
 use idevice::debug_proxy::{DebugProxyClient, DebugserverCommand};
+use idevice::tcp::stream::AdapterStream;
+use idevice::{IdeviceError, ReadWrite, RsdService};
 
+use crate::core_device_proxy::AdapterHandle;
+use crate::rsd::RsdHandshakeHandle;
 use crate::{IdeviceErrorCode, RUNTIME};
 
 /// Opaque handle to a DebugProxyClient
@@ -109,6 +112,47 @@ pub unsafe extern "C" fn debugserver_command_free(command: *mut DebugserverComma
                 Vec::from_raw_parts(command.argv, command.argv_count, command.argv_count)
             };
         }
+    }
+}
+
+/// Creates a new DebugProxyClient
+///
+/// # Arguments
+/// * [`provider`] - An adapter created by this library
+/// * [`handshake`] - An RSD handshake from the same provider
+///
+/// # Returns
+/// An error code indicating success or failure
+///
+/// # Safety
+/// `provider` must be a valid pointer to a handle allocated by this library
+/// `handshake` must be a valid pointer to a location where the handle will be stored
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn debug_proxy_connect_rsd(
+    provider: *mut AdapterHandle,
+    handshake: *mut RsdHandshakeHandle,
+    handle: *mut *mut DebugProxyHandle,
+) -> IdeviceErrorCode {
+    if provider.is_null() || handshake.is_null() || handshake.is_null() {
+        return IdeviceErrorCode::InvalidArg;
+    }
+    let res: Result<DebugProxyClient<AdapterStream>, IdeviceError> = RUNTIME.block_on(async move {
+        let provider_ref = unsafe { &mut (*provider).0 };
+        let handshake_ref = unsafe { &mut (*handshake).0 };
+
+        // Connect using the reference
+        DebugProxyClient::connect_rsd(provider_ref, handshake_ref).await
+    });
+
+    match res {
+        Ok(d) => {
+            let boxed = Box::new(DebugProxyHandle(DebugProxyClient::new(Box::new(
+                d.into_inner(),
+            ))));
+            unsafe { *handle = Box::into_raw(boxed) };
+            IdeviceErrorCode::IdeviceSuccess
+        }
+        Err(e) => e.into(),
     }
 }
 

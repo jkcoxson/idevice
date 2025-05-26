@@ -1,11 +1,11 @@
 // Jackson Coxson
 
-use std::ffi::{CString, c_char};
+use std::ffi::{CStr, c_char};
 
 use idevice::tcp::stream::AdapterStream;
 
 use crate::core_device_proxy::AdapterHandle;
-use crate::{IdeviceErrorCode, RUNTIME};
+use crate::{IdeviceErrorCode, RUNTIME, ReadWriteOpaque};
 
 pub struct AdapterStreamHandle<'a>(pub AdapterStream<'a>);
 
@@ -27,7 +27,7 @@ pub struct AdapterStreamHandle<'a>(pub AdapterStream<'a>);
 pub unsafe extern "C" fn adapter_connect(
     adapter_handle: *mut AdapterHandle,
     port: u16,
-    stream_handle: *mut *mut AdapterStreamHandle,
+    stream_handle: *mut *mut ReadWriteOpaque,
 ) -> IdeviceErrorCode {
     if adapter_handle.is_null() || stream_handle.is_null() {
         return IdeviceErrorCode::InvalidArg;
@@ -37,7 +37,13 @@ pub unsafe extern "C" fn adapter_connect(
     let res = RUNTIME.block_on(async move { AdapterStream::connect(adapter, port).await });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
+        Ok(r) => {
+            let boxed = Box::new(ReadWriteOpaque {
+                inner: Some(Box::new(r)),
+            });
+            unsafe { *stream_handle = Box::into_raw(boxed) };
+            IdeviceErrorCode::IdeviceSuccess
+        }
         Err(e) => {
             log::error!("Adapter connect failed: {}", e);
             IdeviceErrorCode::AdapterIOFailed
@@ -67,7 +73,7 @@ pub unsafe extern "C" fn adapter_pcap(
     }
 
     let adapter = unsafe { &mut (*handle).0 };
-    let c_str = unsafe { CString::from_raw(path as *mut c_char) };
+    let c_str = unsafe { CStr::from_ptr(path) };
     let path_str = match c_str.to_str() {
         Ok(s) => s,
         Err(_) => return IdeviceErrorCode::InvalidArg,

@@ -5,9 +5,9 @@
 use std::ffi::{CStr, CString};
 use std::ptr;
 
-use idevice::{ReadWrite, rsd::RsdHandshake};
+use idevice::rsd::RsdHandshake;
 
-use crate::{IdeviceErrorCode, RUNTIME};
+use crate::{IdeviceErrorCode, RUNTIME, ReadWriteOpaque};
 
 /// Opaque handle to an RsdHandshake
 pub struct RsdHandshakeHandle(pub RsdHandshake);
@@ -50,20 +50,26 @@ pub struct CRsdServiceArray {
 /// An error code indicating success or failure
 ///
 /// # Safety
-/// `socket` must be a valid pointer to a ReadWrite handle allocated by this library
+/// `socket` must be a valid pointer to a ReadWrite handle allocated by this library. It is
+/// consumed and may not be used again.
 /// `handle` must be a valid pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rsd_handshake_new(
-    socket: *mut Box<dyn ReadWrite>,
+    socket: *mut ReadWriteOpaque,
     handle: *mut *mut RsdHandshakeHandle,
 ) -> IdeviceErrorCode {
     if socket.is_null() || handle.is_null() {
         return IdeviceErrorCode::InvalidArg;
     }
 
-    let connection = unsafe { Box::from_raw(socket) };
+    let wrapper = unsafe { &mut *socket };
 
-    let res = RUNTIME.block_on(async move { RsdHandshake::new(*connection).await });
+    let res = match wrapper.inner.take() {
+        Some(mut w) => RUNTIME.block_on(async move { RsdHandshake::new(w.as_mut()).await }),
+        None => {
+            return IdeviceErrorCode::InvalidArg;
+        }
+    };
 
     match res {
         Ok(handshake) => {

@@ -21,7 +21,7 @@ pub struct IdeviceProviderHandle(pub Box<dyn IdeviceProvider>);
 ///
 /// # Safety
 /// `ip` must be a valid sockaddr
-/// `pairing_file` must never be used again
+/// `pairing_file` is consumed must never be used again
 /// `label` must be a valid Cstr
 /// `provider` must be a valid, non-null pointer to a location where the handle will be stored
 #[cfg(feature = "tcp")]

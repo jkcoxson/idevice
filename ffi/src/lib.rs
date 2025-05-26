@@ -42,7 +42,7 @@ pub mod util;
 pub use errors::*;
 pub use pairing_file::*;
 
-use idevice::{Idevice, IdeviceSocket};
+use idevice::{Idevice, IdeviceSocket, ReadWrite};
 use once_cell::sync::Lazy;
 use std::ffi::{CStr, CString, c_char};
 use tokio::runtime::{self, Runtime};
@@ -56,6 +56,11 @@ static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
 });
 
 pub const LOCKDOWN_PORT: u16 = 62078;
+
+#[repr(C)]
+pub struct ReadWriteOpaque {
+    pub inner: Option<Box<dyn ReadWrite>>,
+}
 
 /// Opaque C-compatible handle to an Idevice connection
 pub struct IdeviceHandle(pub Idevice);
