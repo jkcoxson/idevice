@@ -114,6 +114,7 @@ impl<R: ReadWrite> DebugProxyClient<R> {
 
         // Send the packet
         self.socket.write_all(packet.as_bytes()).await?;
+        self.socket.flush().await?;
 
         // Read the response
         let response = self.read_response().await?;
@@ -173,6 +174,7 @@ impl<R: ReadWrite> DebugProxyClient<R> {
     /// Returns `IdeviceError` if writing fails
     pub async fn send_raw(&mut self, bytes: &[u8]) -> Result<(), IdeviceError> {
         self.socket.write_all(bytes).await?;
+        self.socket.flush().await?;
         Ok(())
     }
 
@@ -254,6 +256,7 @@ impl<R: ReadWrite> DebugProxyClient<R> {
     /// Returns `IdeviceError` if writing fails
     pub async fn send_ack(&mut self) -> Result<(), IdeviceError> {
         self.socket.write_all(b"+").await?;
+        self.socket.flush().await?;
         Ok(())
     }
 
@@ -263,6 +266,7 @@ impl<R: ReadWrite> DebugProxyClient<R> {
     /// Returns `IdeviceError` if writing fails
     pub async fn send_noack(&mut self) -> Result<(), IdeviceError> {
         self.socket.write_all(b"-").await?;
+        self.socket.flush().await?;
         Ok(())
     }
 
