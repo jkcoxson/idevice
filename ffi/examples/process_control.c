@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
   printf("=== Setting up CoreDeviceProxy ===\n");
 
   // Create TCP provider
-  TcpProviderHandle *tcp_provider = NULL;
+  IdeviceProviderHandle *tcp_provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing,
                                  "ProcessControlTest", &tcp_provider);
   if (err != IdeviceSuccess) {
@@ -54,14 +54,14 @@ int main(int argc, char **argv) {
 
   // Connect to CoreDeviceProxy
   CoreDeviceProxyHandle *core_device = NULL;
-  err = core_device_proxy_connect_tcp(tcp_provider, &core_device);
+  err = core_device_proxy_connect(tcp_provider, &core_device);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to connect to CoreDeviceProxy: %d\n", err);
-    tcp_provider_free(tcp_provider);
+    idevice_provider_free(tcp_provider);
     idevice_pairing_file_free(pairing);
     return 1;
   }
-  tcp_provider_free(tcp_provider);
+  idevice_provider_free(tcp_provider);
 
   // Get server RSD port
   uint16_t rsd_port;
@@ -89,89 +89,37 @@ int main(int argc, char **argv) {
   }
 
   // Connect to RSD port
-  err = adapter_connect(adapter, rsd_port);
+  AdapterStreamHandle *stream = NULL;
+  err = adapter_connect(adapter, rsd_port, &stream);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to connect to RSD port: %d\n", err);
     adapter_free(adapter);
-    core_device_proxy_free(core_device);
-    idevice_pairing_file_free(pairing);
     return 1;
   }
-  printf("Successfully connected to RSD port\n");
 
-  /*****************************************************************
-   * XPC Device Setup
-   *****************************************************************/
-  printf("\n=== Setting up XPC Device ===\n");
-
-  XPCDeviceAdapterHandle *xpc_device = NULL;
-  err = xpc_device_new(adapter, &xpc_device);
+  RsdHandshakeHandle *handshake = NULL;
+  err = rsd_handshake_new(stream, &handshake);
   if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to create XPC device: %d\n", err);
+    fprintf(stderr, "Failed to perform RSD handshake: %d\n", err);
+    adapter_close(stream);
     adapter_free(adapter);
-    core_device_proxy_free(core_device);
-    idevice_pairing_file_free(pairing);
     return 1;
   }
-
-  /*****************************************************************
-   * Get DVT Service
-   *****************************************************************/
-  printf("\n=== Getting Debug Proxy Service ===\n");
-
-  XPCServiceHandle *dvt_service = NULL;
-  err = xpc_device_get_service(xpc_device, "com.apple.instruments.dtservicehub",
-                               &dvt_service);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to get DVT service: %d\n", err);
-    xpc_device_free(xpc_device);
-    return 1;
-  }
-  printf("Debug Proxy Service Port: %d\n", dvt_service->port);
-
-  /*****************************************************************
-   * Remote Server Setup
-   *****************************************************************/
-  printf("\n=== Setting up Remote Server ===\n");
-
-  // Get the adapter back from XPC device
-  AdapterHandle *debug_adapter = NULL;
-  err = xpc_device_adapter_into_inner(xpc_device, &debug_adapter);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to extract adapter: %d\n", err);
-    xpc_service_free(dvt_service);
-    xpc_device_free(xpc_device);
-    return 1;
-  }
-
-  // Connect to debug proxy port
-  adapter_close(debug_adapter);
-  err = adapter_connect(debug_adapter, dvt_service->port);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to connect to debug proxy port: %d\n", err);
-    adapter_free(debug_adapter);
-    xpc_service_free(dvt_service);
-    return 1;
-  }
-  printf("Successfully connected to debug proxy port\n");
 
   // Create RemoteServerClient
-  RemoteServerAdapterHandle *remote_server = NULL;
-  err = remote_server_adapter_new(debug_adapter, &remote_server);
+  RemoteServerHandle *remote_server = NULL;
+  err = remote_server_connect_rsd(adapter, handshake, &remote_server);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to create remote server: %d\n", err);
-    adapter_free(debug_adapter);
-    xpc_service_free(dvt_service);
+    adapter_free(adapter);
+    rsd_handshake_free(handshake);
     return 1;
   }
 
-  /*****************************************************************
-   * Process Control Test
-   *****************************************************************/
   printf("\n=== Testing Process Control ===\n");
 
   // Create ProcessControlClient
-  ProcessControlAdapterHandle *process_control = NULL;
+  ProcessControlHandle *process_control = NULL;
   err = process_control_new(remote_server, &process_control);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to create process control client: %d\n", err);

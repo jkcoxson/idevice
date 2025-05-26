@@ -29,7 +29,7 @@ int main() {
   }
 
   // Create TCP provider
-  TcpProviderHandle *provider = NULL;
+  IdeviceProviderHandle *provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing_file,
                                  "LockdowndTest", &provider);
   if (err != IdeviceSuccess) {
@@ -40,10 +40,10 @@ int main() {
 
   // Connect to lockdownd
   LockdowndClientHandle *client = NULL;
-  err = lockdownd_connect_tcp(provider, &client);
+  err = lockdownd_connect(provider, &client);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to connect to lockdownd: %d\n", err);
-    tcp_provider_free(provider);
+    idevice_provider_free(provider);
     return 1;
   }
 
@@ -60,7 +60,7 @@ int main() {
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to start session: %d\n", err);
     lockdownd_client_free(client);
-    tcp_provider_free(provider);
+    idevice_provider_free(provider);
     return 1;
   }
 
@@ -159,7 +159,7 @@ int main() {
 
   // Cleanup
   lockdownd_client_free(client);
-  tcp_provider_free(provider);
+  idevice_provider_free(provider);
 
   return 0;
 }

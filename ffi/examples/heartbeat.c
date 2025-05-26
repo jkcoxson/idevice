@@ -28,7 +28,7 @@ int main() {
   }
 
   // Create TCP provider
-  TcpProviderHandle *provider = NULL;
+  IdeviceProviderHandle *provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing_file,
                                  "ExampleProvider", &provider);
   if (err != IdeviceSuccess) {
@@ -39,13 +39,13 @@ int main() {
 
   // Connect to installation proxy
   HeartbeatClientHandle *client = NULL;
-  err = heartbeat_connect_tcp(provider, &client);
+  err = heartbeat_connect(provider, &client);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to connect to installation proxy: %d\n", err);
-    tcp_provider_free(provider);
+    idevice_provider_free(provider);
     return 1;
   }
-  tcp_provider_free(provider);
+  idevice_provider_free(provider);
 
   u_int64_t current_interval = 15;
   while (1) {

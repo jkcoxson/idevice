@@ -15,7 +15,7 @@ void print_usage(const char *program_name) {
 
 int main(int argc, char **argv) {
   // Initialize logger
-  idevice_init_logger(Debug, Disabled, NULL);
+  idevice_init_logger(Info, Disabled, NULL);
 
   if (argc < 3) {
     print_usage(argv[0]);
@@ -42,17 +42,17 @@ int main(int argc, char **argv) {
   }
 
   // Read pairing file
-  IdevicePairingFile *pairing = NULL;
-  IdeviceErrorCode err = idevice_pairing_file_read(pairing_file, &pairing);
+  struct IdevicePairingFile *pairing = NULL;
+  enum IdeviceErrorCode err = idevice_pairing_file_read(pairing_file, &pairing);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to read pairing file: %d\n", err);
     return 1;
   }
 
   // Create TCP provider
-  TcpProviderHandle *tcp_provider = NULL;
+  struct IdeviceProviderHandle *provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing,
-                                 "ProcessDebugTest", &tcp_provider);
+                                 "ProcessDebugTest", &provider);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to create TCP provider: %d\n", err);
     idevice_pairing_file_free(pairing);
@@ -60,14 +60,14 @@ int main(int argc, char **argv) {
   }
 
   // Connect to CoreDeviceProxy
-  CoreDeviceProxyHandle *core_device = NULL;
-  err = core_device_proxy_connect_tcp(tcp_provider, &core_device);
+  struct CoreDeviceProxyHandle *core_device = NULL;
+  err = core_device_proxy_connect(provider, &core_device);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to connect to CoreDeviceProxy: %d\n", err);
-    tcp_provider_free(tcp_provider);
+    idevice_provider_free(provider);
     return 1;
   }
-  tcp_provider_free(tcp_provider);
+  idevice_provider_free(provider);
 
   // Get server RSD port
   uint16_t rsd_port;
@@ -84,7 +84,7 @@ int main(int argc, char **argv) {
    *****************************************************************/
   printf("\n=== Creating TCP Tunnel Adapter ===\n");
 
-  AdapterHandle *adapter = NULL;
+  struct AdapterHandle *adapter = NULL;
   err = core_device_proxy_create_tcp_adapter(core_device, &adapter);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to create TCP adapter: %d\n", err);
@@ -93,46 +93,59 @@ int main(int argc, char **argv) {
   }
 
   // Connect to RSD port
-  err = adapter_connect(adapter, rsd_port);
+  struct ReadWriteOpaque *rsd_stream = NULL;
+  err = adapter_connect(adapter, rsd_port, &rsd_stream);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to connect to RSD port: %d\n", err);
     adapter_free(adapter);
-    core_device_proxy_free(core_device);
     return 1;
   }
   printf("Successfully connected to RSD port\n");
 
+  adapter_pcap(adapter, "jit.pcap");
+
   /*****************************************************************
-   * XPC Device Setup
+   * RSD Handshake
    *****************************************************************/
-  printf("\n=== Setting up XPC Device ===\n");
+  printf("\n=== Performing RSD Handshake ===\n");
 
-  XPCDeviceAdapterHandle *xpc_device = NULL;
-  err = xpc_device_new(adapter, &xpc_device);
+  struct RsdHandshakeHandle *rsd_handshake = NULL;
+  err = rsd_handshake_new(rsd_stream, &rsd_handshake);
   if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to create XPC device: %d\n", err);
+    fprintf(stderr, "Failed to create RSD handshake: %d\n", err);
     adapter_free(adapter);
-    core_device_proxy_free(core_device);
     return 1;
   }
 
-  // Get DebugProxy service
-  XPCServiceHandle *debug_service = NULL;
-  err = xpc_device_get_service(
-      xpc_device, "com.apple.internal.dt.remote.debugproxy", &debug_service);
+  // Get services
+  struct CRsdServiceArray *services = NULL;
+  err = rsd_get_services(rsd_handshake, &services);
   if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to get debug proxy service: %d\n", err);
+    fprintf(stderr, "Failed to get RSD services: %d\n", err);
+    rsd_handshake_free(rsd_handshake);
+    adapter_free(adapter);
     return 1;
   }
 
-  // Get ProcessControl service
-  XPCServiceHandle *pc_service = NULL;
-  err = xpc_device_get_service(xpc_device, "com.apple.instruments.dtservicehub",
-                               &pc_service);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to get process control service: %d\n", err);
-    xpc_device_free(xpc_device);
-    core_device_proxy_free(core_device);
+  // Find debug proxy and process control services
+  uint16_t debug_port = 0;
+  uint16_t pc_port = 0;
+
+  for (size_t i = 0; i < services->count; i++) {
+    struct CRsdService *service = &services->services[i];
+    if (strcmp(service->name, "com.apple.internal.dt.remote.debugproxy") == 0) {
+      debug_port = service->port;
+    } else if (strcmp(service->name, "com.apple.instruments.dtservicehub") ==
+               0) {
+      pc_port = service->port;
+    }
+  }
+
+  rsd_free_services(services);
+
+  if (debug_port == 0 || pc_port == 0) {
+    fprintf(stderr, "Required services not found\n");
+    adapter_free(adapter);
     return 1;
   }
 
@@ -141,46 +154,31 @@ int main(int argc, char **argv) {
    *****************************************************************/
   printf("\n=== Launching App ===\n");
 
-  // Get the adapter back from XPC device
-  AdapterHandle *pc_adapter = NULL;
-  err = xpc_device_adapter_into_inner(xpc_device, &pc_adapter);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to extract adapter: %d\n", err);
-    xpc_device_free(xpc_device);
-    core_device_proxy_free(core_device);
-    return 1;
-  }
-
   // Connect to process control port
-  err = adapter_connect(pc_adapter, pc_service->port);
+  struct ReadWriteOpaque *pc_stream = NULL;
+  err = adapter_connect(adapter, pc_port, &pc_stream);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to connect to process control port: %d\n", err);
-    adapter_free(pc_adapter);
-    xpc_service_free(pc_service);
-    core_device_proxy_free(core_device);
+    adapter_free(adapter);
     return 1;
   }
   printf("Successfully connected to process control port\n");
 
   // Create RemoteServerClient
-  RemoteServerAdapterHandle *remote_server = NULL;
-  err = remote_server_adapter_new(pc_adapter, &remote_server);
+  struct RemoteServerHandle *remote_server = NULL;
+  err = remote_server_new(pc_stream, &remote_server);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to create remote server: %d\n", err);
-    adapter_free(pc_adapter);
-    xpc_service_free(pc_service);
-    core_device_proxy_free(core_device);
+    adapter_free(adapter);
     return 1;
   }
 
   // Create ProcessControlClient
-  ProcessControlAdapterHandle *process_control = NULL;
+  struct ProcessControlHandle *process_control = NULL;
   err = process_control_new(remote_server, &process_control);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to create process control client: %d\n", err);
     remote_server_free(remote_server);
-    xpc_service_free(pc_service);
-    core_device_proxy_free(core_device);
     return 1;
   }
 
@@ -192,8 +190,6 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Failed to launch app: %d\n", err);
     process_control_free(process_control);
     remote_server_free(remote_server);
-    xpc_service_free(pc_service);
-    core_device_proxy_free(core_device);
     return 1;
   }
   printf("Successfully launched app with PID: %" PRIu64 "\n", pid);
@@ -203,44 +199,24 @@ int main(int argc, char **argv) {
    *****************************************************************/
   printf("\n=== Attaching Debugger ===\n");
 
-  // Get the adapter back from the remote server
-  AdapterHandle *debug_adapter = NULL;
-  err = remote_server_adapter_into_inner(remote_server, &debug_adapter);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to extract adapter: %d\n", err);
-    xpc_service_free(debug_service);
-    process_control_free(process_control);
-    remote_server_free(remote_server);
-    xpc_service_free(pc_service);
-    core_device_proxy_free(core_device);
-    return 1;
-  }
-
   // Connect to debug proxy port
-  err = adapter_connect(debug_adapter, debug_service->port);
+  struct ReadWriteOpaque *debug_stream = NULL;
+  err = adapter_connect(adapter, debug_port, &debug_stream);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to connect to debug proxy port: %d\n", err);
-    adapter_free(debug_adapter);
-    xpc_service_free(debug_service);
     process_control_free(process_control);
     remote_server_free(remote_server);
-    xpc_service_free(pc_service);
-    core_device_proxy_free(core_device);
     return 1;
   }
   printf("Successfully connected to debug proxy port\n");
 
   // Create DebugProxyClient
-  DebugProxyAdapterHandle *debug_proxy = NULL;
-  err = debug_proxy_adapter_new(debug_adapter, &debug_proxy);
+  struct DebugProxyHandle *debug_proxy = NULL;
+  err = debug_proxy_connect_rsd(adapter, rsd_handshake, &debug_proxy);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to create debug proxy client: %d\n", err);
-    adapter_free(debug_adapter);
-    xpc_service_free(debug_service);
     process_control_free(process_control);
     remote_server_free(remote_server);
-    xpc_service_free(pc_service);
-    core_device_proxy_free(core_device);
     return 1;
   }
 
@@ -248,17 +224,13 @@ int main(int argc, char **argv) {
   char attach_command[64];
   snprintf(attach_command, sizeof(attach_command), "vAttach;%" PRIx64, pid);
 
-  DebugserverCommandHandle *attach_cmd =
+  struct DebugserverCommandHandle *attach_cmd =
       debugserver_command_new(attach_command, NULL, 0);
   if (attach_cmd == NULL) {
     fprintf(stderr, "Failed to create attach command\n");
     debug_proxy_free(debug_proxy);
-    adapter_free(debug_adapter);
-    xpc_service_free(debug_service);
     process_control_free(process_control);
     remote_server_free(remote_server);
-    xpc_service_free(pc_service);
-    core_device_proxy_free(core_device);
     return 1;
   }
 
@@ -274,7 +246,8 @@ int main(int argc, char **argv) {
   }
 
   // Send detach command
-  DebugserverCommandHandle *detach_cmd = debugserver_command_new("D", NULL, 0);
+  struct DebugserverCommandHandle *detach_cmd =
+      debugserver_command_new("D", NULL, 0);
   if (detach_cmd == NULL) {
     fprintf(stderr, "Failed to create detach command\n");
   } else {
@@ -296,7 +269,10 @@ int main(int argc, char **argv) {
    * Cleanup
    *****************************************************************/
   debug_proxy_free(debug_proxy);
-  xpc_service_free(debug_service);
+  process_control_free(process_control);
+  remote_server_free(remote_server);
+  adapter_free(adapter);
+  rsd_handshake_free(rsd_handshake);
 
   printf("\nDebug session completed\n");
   return 0;

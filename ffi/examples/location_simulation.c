@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
   }
 
   // Create TCP provider
-  TcpProviderHandle *tcp_provider = NULL;
+  IdeviceProviderHandle *tcp_provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing,
                                  "LocationSimCLI", &tcp_provider);
   if (err != IdeviceSuccess) {
@@ -51,8 +51,8 @@ int main(int argc, char **argv) {
 
   // Connect to CoreDeviceProxy
   CoreDeviceProxyHandle *core_device = NULL;
-  err = core_device_proxy_connect_tcp(tcp_provider, &core_device);
-  tcp_provider_free(tcp_provider);
+  err = core_device_proxy_connect(tcp_provider, &core_device);
+  idevice_provider_free(tcp_provider);
   idevice_pairing_file_free(pairing);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to connect to CoreDeviceProxy: %d\n", err);
@@ -77,62 +77,36 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  err = adapter_connect(adapter, rsd_port);
+  // Connect to RSD port
+  AdapterStreamHandle *stream = NULL;
+  err = adapter_connect(adapter, rsd_port, &stream);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to connect to RSD port: %d\n", err);
     adapter_free(adapter);
     return 1;
   }
 
-  // Create XPC device
-  XPCDeviceAdapterHandle *xpc_device = NULL;
-  err = xpc_device_new(adapter, &xpc_device);
+  RsdHandshakeHandle *handshake = NULL;
+  err = rsd_handshake_new(stream, &handshake);
   if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to create XPC device: %d\n", err);
+    fprintf(stderr, "Failed to perform RSD handshake: %d\n", err);
+    adapter_close(stream);
     adapter_free(adapter);
     return 1;
   }
 
-  // Get debug proxy service
-  XPCServiceHandle *dvt_service = NULL;
-  err = xpc_device_get_service(
-      xpc_device, "com.apple.instruments.server.services.LocationSimulation",
-      &dvt_service);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to get DVT service: %d\n", err);
-    xpc_device_free(xpc_device);
-    return 1;
-  }
-
-  // Reuse the adapter and connect to debug proxy port
-  AdapterHandle *debug_adapter = NULL;
-  err = xpc_device_adapter_into_inner(xpc_device, &debug_adapter);
-  xpc_device_free(xpc_device);
-  xpc_service_free(dvt_service);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to extract adapter: %d\n", err);
-    return 1;
-  }
-
-  adapter_close(debug_adapter);
-  err = adapter_connect(debug_adapter, dvt_service->port);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to connect to debug proxy port: %d\n", err);
-    adapter_free(debug_adapter);
-    return 1;
-  }
-
   // Create RemoteServerClient
-  RemoteServerAdapterHandle *remote_server = NULL;
-  err = remote_server_adapter_new(debug_adapter, &remote_server);
+  RemoteServerHandle *remote_server = NULL;
+  err = remote_server_connect_rsd(adapter, handshake, &remote_server);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to create remote server: %d\n", err);
-    adapter_free(debug_adapter);
+    adapter_free(adapter);
+    rsd_handshake_free(handshake);
     return 1;
   }
 
   // Create LocationSimulationClient
-  LocationSimulationAdapterHandle *location_sim = NULL;
+  LocationSimulationHandle *location_sim = NULL;
   err = location_simulation_new(remote_server, &location_sim);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to create location simulation client: %d\n", err);

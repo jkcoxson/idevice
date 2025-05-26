@@ -27,7 +27,7 @@ int main() {
   }
 
   // Create TCP provider
-  TcpProviderHandle *provider = NULL;
+  IdeviceProviderHandle *provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing_file,
                                  "ExampleProvider", &provider);
   if (err != IdeviceSuccess) {
@@ -41,7 +41,7 @@ int main() {
   err = installation_proxy_connect_tcp(provider, &client);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to connect to installation proxy: %d\n", err);
-    tcp_provider_free(provider);
+    idevice_provider_free(provider);
     return 1;
   }
 
@@ -56,7 +56,7 @@ int main() {
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to get apps: %d\n", err);
     installation_proxy_client_free(client);
-    tcp_provider_free(provider);
+    idevice_provider_free(provider);
     return 1;
   }
 
@@ -79,7 +79,7 @@ int main() {
 
   // Cleanup
   installation_proxy_client_free(client);
-  tcp_provider_free(provider);
+  idevice_provider_free(provider);
 
   return 0;
 }

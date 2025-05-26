@@ -17,7 +17,7 @@ void print_usage(const char *program_name) {
 
 int main(int argc, char **argv) {
   // Initialize logger
-  idevice_init_logger(Debug, Disabled, NULL);
+  idevice_init_logger(Info, Disabled, NULL);
 
   if (argc < 2) {
     print_usage(argv[0]);
@@ -25,7 +25,7 @@ int main(int argc, char **argv) {
   }
 
   const char *device_ip = argv[1];
-  const char *pairing_file = argc > 2 ? argv[2] : "pairing_file.plist";
+  const char *pairing_file = argc > 2 ? argv[2] : "pairing.plist";
 
   /*****************************************************************
    * CoreDeviceProxy Setup
@@ -51,7 +51,7 @@ int main(int argc, char **argv) {
   }
 
   // Create TCP provider
-  TcpProviderHandle *tcp_provider = NULL;
+  IdeviceProviderHandle *tcp_provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing,
                                  "DebugProxyShell", &tcp_provider);
   if (err != IdeviceSuccess) {
@@ -62,14 +62,13 @@ int main(int argc, char **argv) {
 
   // Connect to CoreDeviceProxy
   CoreDeviceProxyHandle *core_device = NULL;
-  err = core_device_proxy_connect_tcp(tcp_provider, &core_device);
+  err = core_device_proxy_connect(tcp_provider, &core_device);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to connect to CoreDeviceProxy: %d\n", err);
-    tcp_provider_free(tcp_provider);
-    idevice_pairing_file_free(pairing);
+    idevice_provider_free(tcp_provider);
     return 1;
   }
-  tcp_provider_free(tcp_provider);
+  idevice_provider_free(tcp_provider);
 
   // Get server RSD port
   uint16_t rsd_port;
@@ -77,7 +76,6 @@ int main(int argc, char **argv) {
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to get server RSD port: %d\n", err);
     core_device_proxy_free(core_device);
-    idevice_pairing_file_free(pairing);
     return 1;
   }
   printf("Server RSD Port: %d\n", rsd_port);
@@ -92,92 +90,45 @@ int main(int argc, char **argv) {
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to create TCP adapter: %d\n", err);
     core_device_proxy_free(core_device);
-    idevice_pairing_file_free(pairing);
     return 1;
   }
 
   // Connect to RSD port
-  err = adapter_connect(adapter, rsd_port);
+  AdapterStreamHandle *stream = NULL;
+  err = adapter_connect(adapter, rsd_port, &stream);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to connect to RSD port: %d\n", err);
     adapter_free(adapter);
-    core_device_proxy_free(core_device);
-    idevice_pairing_file_free(pairing);
     return 1;
   }
   printf("Successfully connected to RSD port\n");
 
   /*****************************************************************
-   * XPC Device Setup
+   * RSD Handshake
    *****************************************************************/
-  printf("\n=== Setting up XPC Device ===\n");
+  printf("\n=== Performing RSD Handshake ===\n");
 
-  XPCDeviceAdapterHandle *xpc_device = NULL;
-  err = xpc_device_new(adapter, &xpc_device);
+  RsdHandshakeHandle *handshake = NULL;
+  err = rsd_handshake_new(stream, &handshake);
   if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to create XPC device: %d\n", err);
+    fprintf(stderr, "Failed to perform RSD handshake: %d\n", err);
+    adapter_close(stream);
     adapter_free(adapter);
-    core_device_proxy_free(core_device);
-    idevice_pairing_file_free(pairing);
     return 1;
   }
-
-  /*****************************************************************
-   * Get Debug Proxy Service
-   *****************************************************************/
-  printf("\n=== Getting Debug Proxy Service ===\n");
-
-  XPCServiceHandle *debug_service = NULL;
-  err = xpc_device_get_service(
-      xpc_device, "com.apple.internal.dt.remote.debugproxy", &debug_service);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to get debug proxy service: %d\n", err);
-    xpc_device_free(xpc_device);
-    adapter_free(adapter);
-    core_device_proxy_free(core_device);
-    idevice_pairing_file_free(pairing);
-    return 1;
-  }
-  printf("Debug Proxy Service Port: %d\n", debug_service->port);
 
   /*****************************************************************
    * Debug Proxy Setup
    *****************************************************************/
   printf("\n=== Setting up Debug Proxy ===\n");
 
-  // Get the adapter back from XPC device
-  AdapterHandle *debug_adapter = NULL;
-  err = xpc_device_adapter_into_inner(xpc_device, &debug_adapter);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to extract adapter: %d\n", err);
-    xpc_service_free(debug_service);
-    xpc_device_free(xpc_device);
-    core_device_proxy_free(core_device);
-    idevice_pairing_file_free(pairing);
-    return 1;
-  }
-
-  // Connect to debug proxy port
-  err = adapter_connect(debug_adapter, debug_service->port);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to connect to debug proxy port: %d\n", err);
-    adapter_free(debug_adapter);
-    xpc_service_free(debug_service);
-    core_device_proxy_free(core_device);
-    idevice_pairing_file_free(pairing);
-    return 1;
-  }
-  printf("Successfully connected to debug proxy port\n");
-
   // Create DebugProxyClient
-  DebugProxyAdapterHandle *debug_proxy = NULL;
-  err = debug_proxy_adapter_new(debug_adapter, &debug_proxy);
+  DebugProxyHandle *debug_proxy = NULL;
+  err = debug_proxy_connect_rsd(adapter, handshake, &debug_proxy);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to create debug proxy client: %d\n", err);
-    adapter_free(debug_adapter);
-    xpc_service_free(debug_service);
-    core_device_proxy_free(core_device);
-    idevice_pairing_file_free(pairing);
+    rsd_handshake_free(handshake);
+    adapter_free(adapter);
     return 1;
   }
 
@@ -264,7 +215,8 @@ int main(int argc, char **argv) {
    * Cleanup
    *****************************************************************/
   debug_proxy_free(debug_proxy);
-  xpc_service_free(debug_service);
+  rsd_handshake_free(handshake);
+  adapter_free(adapter);
 
   printf("\nDebug session ended\n");
   return 0;
