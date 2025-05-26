@@ -1,18 +1,15 @@
 // Jackson Coxson
 
-use idevice::{IdeviceError, IdeviceService, amfi::AmfiClient};
+use idevice::{IdeviceError, IdeviceService, amfi::AmfiClient, provider::IdeviceProvider};
 
-use crate::{
-    IdeviceErrorCode, IdeviceHandle, RUNTIME,
-    provider::{TcpProviderHandle, UsbmuxdProviderHandle},
-};
+use crate::{IdeviceErrorCode, IdeviceHandle, RUNTIME, provider::IdeviceProviderHandle};
 
 pub struct AmfiClientHandle(pub AmfiClient);
 
 /// Automatically creates and connects to AMFI service, returning a client handle
 ///
 /// # Arguments
-/// * [`provider`] - A TcpProvider
+/// * [`provider`] - An IdeviceProvider
 /// * [`client`] - On success, will be set to point to a newly allocated AmfiClient handle
 ///
 /// # Returns
@@ -22,8 +19,8 @@ pub struct AmfiClientHandle(pub AmfiClient);
 /// `provider` must be a valid pointer to a handle allocated by this library
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn amfi_connect_tcp(
-    provider: *mut TcpProviderHandle,
+pub unsafe extern "C" fn amfi_connect(
+    provider: *mut IdeviceProviderHandle,
     client: *mut *mut AmfiClientHandle,
 ) -> IdeviceErrorCode {
     if provider.is_null() || client.is_null() {
@@ -32,70 +29,10 @@ pub unsafe extern "C" fn amfi_connect_tcp(
     }
 
     let res: Result<AmfiClient, IdeviceError> = RUNTIME.block_on(async move {
-        // Take ownership of the provider (without immediately dropping it)
-        let provider_box = unsafe { Box::from_raw(provider) };
-
-        // Get a reference to the inner value
-        let provider_ref = &provider_box.0;
+        let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
 
         // Connect using the reference
-        let result = AmfiClient::connect(provider_ref).await;
-
-        // Explicitly keep the provider_box alive until after connect completes
-        std::mem::forget(provider_box);
-        result
-    });
-
-    match res {
-        Ok(r) => {
-            let boxed = Box::new(AmfiClientHandle(r));
-            unsafe { *client = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
-        }
-        Err(e) => {
-            // If connection failed, the provider_box was already forgotten,
-            // so we need to reconstruct it to avoid leak
-            let _ = unsafe { Box::from_raw(provider) };
-            e.into()
-        }
-    }
-}
-
-/// Automatically creates and connects to AMFI service, returning a client handle
-///
-/// # Arguments
-/// * [`provider`] - A UsbmuxdProvider
-/// * [`client`] - On success, will be set to point to a newly allocated AmfiClient handle
-///
-/// # Returns
-/// An error code indicating success or failure
-///
-/// # Safety
-/// `provider` must be a valid pointer to a handle allocated by this library
-/// `client` must be a valid, non-null pointer to a location where the handle will be stored
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn amfi_connect_usbmuxd(
-    provider: *mut UsbmuxdProviderHandle,
-    client: *mut *mut AmfiClientHandle,
-) -> IdeviceErrorCode {
-    if provider.is_null() {
-        log::error!("Provider is null");
-        return IdeviceErrorCode::InvalidArg;
-    }
-
-    let res: Result<AmfiClient, IdeviceError> = RUNTIME.block_on(async move {
-        // Take ownership of the provider (without immediately dropping it)
-        let provider_box = unsafe { Box::from_raw(provider) };
-
-        // Get a reference to the inner value
-        let provider_ref = &provider_box.0;
-
-        // Connect using the reference
-        let result = AmfiClient::connect(provider_ref).await;
-
-        // Explicitly keep the provider_box alive until after connect completes
-        std::mem::forget(provider_box);
-        result
+        AmfiClient::connect(provider_ref).await
     });
 
     match res {
@@ -118,16 +55,18 @@ pub unsafe extern "C" fn amfi_connect_usbmuxd(
 /// An error code indicating success or failure
 ///
 /// # Safety
-/// `socket` must be a valid pointer to a handle allocated by this library
+/// `socket` must be a valid pointer to a handle allocated by this library. It is consumed, and
+/// should not be used again.
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn amfi_new(
     socket: *mut IdeviceHandle,
     client: *mut *mut AmfiClientHandle,
 ) -> IdeviceErrorCode {
-    if socket.is_null() {
+    if socket.is_null() || client.is_null() {
         return IdeviceErrorCode::InvalidArg;
     }
+
     let socket = unsafe { Box::from_raw(socket) }.0;
     let r = AmfiClient::new(socket);
     let boxed = Box::new(AmfiClientHandle(r));
@@ -149,16 +88,13 @@ pub unsafe extern "C" fn amfi_new(
 pub unsafe extern "C" fn amfi_reveal_developer_mode_option_in_ui(
     client: *mut AmfiClientHandle,
 ) -> IdeviceErrorCode {
+    if client.is_null() {
+        return IdeviceErrorCode::InvalidArg;
+    }
+
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        // Take ownership of the client
-        let mut client_box = unsafe { Box::from_raw(client) };
-
-        // Get a reference to the inner value
-        let client_ref = &mut client_box.0;
-        let res = client_ref.reveal_developer_mode_option_in_ui().await;
-
-        std::mem::forget(client_box);
-        res
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.reveal_developer_mode_option_in_ui().await
     });
     match res {
         Ok(_) => IdeviceErrorCode::IdeviceSuccess,
@@ -180,16 +116,13 @@ pub unsafe extern "C" fn amfi_reveal_developer_mode_option_in_ui(
 pub unsafe extern "C" fn amfi_enable_developer_mode(
     client: *mut AmfiClientHandle,
 ) -> IdeviceErrorCode {
+    if client.is_null() {
+        return IdeviceErrorCode::InvalidArg;
+    }
+
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        // Take ownership of the client
-        let mut client_box = unsafe { Box::from_raw(client) };
-
-        // Get a reference to the inner value
-        let client_ref = &mut client_box.0;
-        let res = client_ref.enable_developer_mode().await;
-
-        std::mem::forget(client_box);
-        res
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.enable_developer_mode().await
     });
     match res {
         Ok(_) => IdeviceErrorCode::IdeviceSuccess,
@@ -211,16 +144,13 @@ pub unsafe extern "C" fn amfi_enable_developer_mode(
 pub unsafe extern "C" fn amfi_accept_developer_mode(
     client: *mut AmfiClientHandle,
 ) -> IdeviceErrorCode {
+    if client.is_null() {
+        return IdeviceErrorCode::InvalidArg;
+    }
+
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        // Take ownership of the client
-        let mut client_box = unsafe { Box::from_raw(client) };
-
-        // Get a reference to the inner value
-        let client_ref = &mut client_box.0;
-        let res = client_ref.accept_developer_mode().await;
-
-        std::mem::forget(client_box);
-        res
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.accept_developer_mode().await
     });
     match res {
         Ok(_) => IdeviceErrorCode::IdeviceSuccess,

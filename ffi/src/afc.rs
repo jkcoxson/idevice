@@ -1,23 +1,19 @@
 // Jackson Coxson
 
-use std::ffi::c_void;
-
 use idevice::{
     IdeviceError, IdeviceService,
     afc::{AfcClient, DeviceInfo, FileInfo},
+    provider::IdeviceProvider,
 };
 
-use crate::{
-    IdeviceErrorCode, IdeviceHandle, RUNTIME,
-    provider::{TcpProviderHandle, UsbmuxdProviderHandle},
-};
+use crate::{IdeviceErrorCode, IdeviceHandle, RUNTIME, provider::IdeviceProviderHandle};
 
 pub struct AfcClientHandle(pub AfcClient);
 
 /// Connects to the AFC service using a TCP provider
 ///
 /// # Arguments
-/// * [`provider`] - A TcpProvider
+/// * [`provider`] - An IdeviceProvider
 /// * [`client`] - On success, will be set to point to a newly allocated AfcClient handle
 ///
 /// # Returns
@@ -27,8 +23,8 @@ pub struct AfcClientHandle(pub AfcClient);
 /// `provider` must be a valid pointer to a handle allocated by this library
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn afc_client_connect_tcp(
-    provider: *mut TcpProviderHandle,
+pub unsafe extern "C" fn afc_client_connect(
+    provider: *mut IdeviceProviderHandle,
     client: *mut *mut AfcClientHandle,
 ) -> IdeviceErrorCode {
     if provider.is_null() || client.is_null() {
@@ -36,55 +32,10 @@ pub unsafe extern "C" fn afc_client_connect_tcp(
         return IdeviceErrorCode::InvalidArg;
     }
 
-    let res: Result<AfcClient, IdeviceError> = RUNTIME.block_on(async move {
-        let provider_box = unsafe { Box::from_raw(provider) };
-        let provider_ref = &provider_box.0;
-        let result = AfcClient::connect(provider_ref).await;
-        std::mem::forget(provider_box);
-        result
-    });
+    let res = RUNTIME.block_on(async {
+        let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
 
-    match res {
-        Ok(r) => {
-            let boxed = Box::new(AfcClientHandle(r));
-            unsafe { *client = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
-        }
-        Err(e) => {
-            let _ = unsafe { Box::from_raw(provider) };
-            e.into()
-        }
-    }
-}
-
-/// Connects to the AFC service using a Usbmuxd provider
-///
-/// # Arguments
-/// * [`provider`] - A UsbmuxdProvider
-/// * [`client`] - On success, will be set to point to a newly allocated AfcClient handle
-///
-/// # Returns
-/// An error code indicating success or failure
-///
-/// # Safety
-/// `provider` must be a valid pointer to a handle allocated by this library
-/// `client` must be a valid, non-null pointer to a location where the handle will be stored
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn afc_client_connect_usbmuxd(
-    provider: *mut UsbmuxdProviderHandle,
-    client: *mut *mut AfcClientHandle,
-) -> IdeviceErrorCode {
-    if provider.is_null() {
-        log::error!("Provider is null");
-        return IdeviceErrorCode::InvalidArg;
-    }
-
-    let res: Result<AfcClient, IdeviceError> = RUNTIME.block_on(async move {
-        let provider_box = unsafe { Box::from_raw(provider) };
-        let provider_ref = &provider_box.0;
-        let result = AfcClient::connect(provider_ref).await;
-        std::mem::forget(provider_box);
-        result
+        AfcClient::connect(provider_ref).await
     });
 
     match res {
@@ -114,7 +65,7 @@ pub unsafe extern "C" fn afc_client_new(
     socket: *mut IdeviceHandle,
     client: *mut *mut AfcClientHandle,
 ) -> IdeviceErrorCode {
-    if socket.is_null() {
+    if socket.is_null() || client.is_null() {
         return IdeviceErrorCode::InvalidArg;
     }
     let socket = unsafe { Box::from_raw(socket) }.0;
@@ -231,7 +182,7 @@ pub unsafe extern "C" fn afc_make_directory(
     client: *mut AfcClientHandle,
     path: *const libc::c_char,
 ) -> IdeviceErrorCode {
-    if path.is_null() {
+    if client.is_null() || path.is_null() {
         return IdeviceErrorCode::InvalidArg;
     }
 
@@ -242,11 +193,8 @@ pub unsafe extern "C" fn afc_make_directory(
     };
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref.mk_dir(path).await;
-        std::mem::forget(client_box);
-        result
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.mk_dir(path).await
     });
 
     match res {
@@ -286,7 +234,7 @@ pub unsafe extern "C" fn afc_get_file_info(
     path: *const libc::c_char,
     info: *mut AfcFileInfo,
 ) -> IdeviceErrorCode {
-    if path.is_null() || info.is_null() {
+    if client.is_null() || path.is_null() || info.is_null() {
         return IdeviceErrorCode::InvalidArg;
     }
 
@@ -297,11 +245,8 @@ pub unsafe extern "C" fn afc_get_file_info(
     };
 
     let res: Result<FileInfo, IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref.get_file_info(path).await;
-        std::mem::forget(client_box);
-        result
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.get_file_info(path).await
     });
 
     match res {
@@ -380,16 +325,13 @@ pub unsafe extern "C" fn afc_get_device_info(
     client: *mut AfcClientHandle,
     info: *mut AfcDeviceInfo,
 ) -> IdeviceErrorCode {
-    if info.is_null() {
+    if client.is_null() || info.is_null() {
         return IdeviceErrorCode::InvalidArg;
     }
 
     let res: Result<DeviceInfo, IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref.get_device_info().await;
-        std::mem::forget(client_box);
-        result
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.get_device_info().await
     });
 
     match res {
@@ -441,7 +383,7 @@ pub unsafe extern "C" fn afc_remove_path(
     client: *mut AfcClientHandle,
     path: *const libc::c_char,
 ) -> IdeviceErrorCode {
-    if path.is_null() {
+    if client.is_null() || path.is_null() {
         return IdeviceErrorCode::InvalidArg;
     }
 
@@ -452,11 +394,8 @@ pub unsafe extern "C" fn afc_remove_path(
     };
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref.remove(path).await;
-        std::mem::forget(client_box);
-        result
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.remove(path).await
     });
 
     match res {
@@ -482,7 +421,7 @@ pub unsafe extern "C" fn afc_remove_path_and_contents(
     client: *mut AfcClientHandle,
     path: *const libc::c_char,
 ) -> IdeviceErrorCode {
-    if path.is_null() {
+    if client.is_null() || path.is_null() {
         return IdeviceErrorCode::InvalidArg;
     }
 
@@ -493,11 +432,8 @@ pub unsafe extern "C" fn afc_remove_path_and_contents(
     };
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref.remove_all(path).await;
-        std::mem::forget(client_box);
-        result
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.remove_all(path).await
     });
 
     match res {
@@ -531,7 +467,7 @@ impl From<AfcFopenMode> for idevice::afc::opcode::AfcFopenMode {
 
 /// Handle for an open file on the device
 #[allow(dead_code)]
-pub struct AfcFileHandle(*mut c_void); // Opaque pointer
+pub struct AfcFileHandle<'a>(Box<idevice::afc::file::FileDescriptor<'a>>); // Opaque pointer
 
 /// Opens a file on the device
 ///
@@ -546,7 +482,9 @@ pub struct AfcFileHandle(*mut c_void); // Opaque pointer
 ///
 /// # Safety
 /// All pointers must be valid and non-null
-/// `path` must be a valid null-terminated C string
+/// `path` must be a valid null-terminated C string.
+/// The file handle MAY NOT be used from another thread, and is
+/// dependant upon the client it was created by.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn afc_file_open(
     client: *mut AfcClientHandle,
@@ -554,7 +492,7 @@ pub unsafe extern "C" fn afc_file_open(
     mode: AfcFopenMode,
     handle: *mut *mut AfcFileHandle,
 ) -> IdeviceErrorCode {
-    if path.is_null() || handle.is_null() {
+    if client.is_null() || path.is_null() || handle.is_null() {
         return IdeviceErrorCode::InvalidArg;
     }
 
@@ -567,18 +505,15 @@ pub unsafe extern "C" fn afc_file_open(
     let mode = mode.into();
 
     let res: Result<*mut AfcFileHandle, IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
+        let client_ref = unsafe { &mut (*client).0 };
         let result = client_ref.open(path, mode).await;
-        let res = match result {
+        match result {
             Ok(f) => {
                 let boxed = Box::new(f);
                 Ok(Box::into_raw(boxed) as *mut AfcFileHandle)
             }
             Err(e) => Err(e),
-        };
-        std::mem::forget(client_box);
-        res
+        }
     });
 
     match res {
@@ -716,7 +651,7 @@ pub unsafe extern "C" fn afc_make_link(
     source: *const libc::c_char,
     link_type: AfcLinkType,
 ) -> IdeviceErrorCode {
-    if target.is_null() || source.is_null() {
+    if client.is_null() || target.is_null() || source.is_null() {
         return IdeviceErrorCode::InvalidArg;
     }
 
@@ -738,11 +673,8 @@ pub unsafe extern "C" fn afc_make_link(
     };
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref.link(target, source, link_type).await;
-        std::mem::forget(client_box);
-        result
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.link(target, source, link_type).await
     });
 
     match res {
@@ -770,7 +702,7 @@ pub unsafe extern "C" fn afc_rename_path(
     source: *const libc::c_char,
     target: *const libc::c_char,
 ) -> IdeviceErrorCode {
-    if source.is_null() || target.is_null() {
+    if client.is_null() || source.is_null() || target.is_null() {
         return IdeviceErrorCode::InvalidArg;
     }
 
@@ -787,15 +719,27 @@ pub unsafe extern "C" fn afc_rename_path(
     };
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref.rename(source, target).await;
-        std::mem::forget(client_box);
-        result
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.rename(source, target).await
     });
 
     match res {
         Ok(_) => IdeviceErrorCode::IdeviceSuccess,
         Err(e) => e.into(),
+    }
+}
+
+/// Frees memory allocated by a file read function allocated by this library
+///
+/// # Arguments
+/// * [`info`] - Pointer to AfcDeviceInfo struct to free
+///
+/// # Safety
+/// `info` must be a valid pointer to an AfcDeviceInfo struct previously returned by afc_get_device_info
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn afc_file_read_data_free(data: *mut u8, length: libc::size_t) {
+    if !data.is_null() {
+        let boxed = unsafe { Box::from_raw(std::slice::from_raw_parts_mut(data, length)) };
+        drop(boxed);
     }
 }

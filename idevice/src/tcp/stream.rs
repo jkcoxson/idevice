@@ -31,6 +31,17 @@ impl<'a> AdapterStream<'a> {
     pub async fn close(&mut self) -> Result<(), std::io::Error> {
         self.adapter.close(self.host_port).await
     }
+
+    /// Sends data to the target
+    pub async fn psh(&mut self, payload: &[u8]) -> Result<(), std::io::Error> {
+        self.adapter.queue_send(payload, self.host_port)?;
+        self.adapter.write_buffer_flush().await?;
+        Ok(())
+    }
+
+    pub async fn recv(&mut self) -> Result<Vec<u8>, std::io::Error> {
+        self.adapter.recv(self.host_port).await
+    }
 }
 
 impl AsyncRead for AdapterStream<'_> {

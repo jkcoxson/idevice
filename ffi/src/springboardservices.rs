@@ -1,18 +1,18 @@
 use std::ffi::{CStr, c_void};
 
-use idevice::{IdeviceError, IdeviceService, springboardservices::SpringBoardServicesClient};
-
-use crate::{
-    IdeviceErrorCode, IdeviceHandle, RUNTIME,
-    provider::{TcpProviderHandle, UsbmuxdProviderHandle},
+use idevice::{
+    IdeviceError, IdeviceService, provider::IdeviceProvider,
+    springboardservices::SpringBoardServicesClient,
 };
+
+use crate::{IdeviceErrorCode, IdeviceHandle, RUNTIME, provider::IdeviceProviderHandle};
 
 pub struct SpringBoardServicesClientHandle(pub SpringBoardServicesClient);
 
-/// Connects to the Springboard service using a TCP provider
+/// Connects to the Springboard service using a provider
 ///
 /// # Arguments
-/// * [`provider`] - A TcpProvider
+/// * [`provider`] - An IdeviceProvider
 /// * [`client`] - On success, will be set to point to a newly allocated SpringBoardServicesClient handle
 ///
 /// # Returns
@@ -22,8 +22,8 @@ pub struct SpringBoardServicesClientHandle(pub SpringBoardServicesClient);
 /// `provider` must be a valid pointer to a handle allocated by this library
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn springboard_services_connect_tcp(
-    provider: *mut TcpProviderHandle,
+pub unsafe extern "C" fn springboard_services_connect(
+    provider: *mut IdeviceProviderHandle,
     client: *mut *mut SpringBoardServicesClientHandle,
 ) -> IdeviceErrorCode {
     if provider.is_null() || client.is_null() {
@@ -32,18 +32,8 @@ pub unsafe extern "C" fn springboard_services_connect_tcp(
     }
 
     let res: Result<SpringBoardServicesClient, IdeviceError> = RUNTIME.block_on(async move {
-        // Take ownership of the provider (without immediately dropping it)
-        let provider_box = unsafe { Box::from_raw(provider) };
-
-        // Get a reference to the inner value
-        let provider_ref = &provider_box.0;
-
-        // Connect using the reference
-        let result = SpringBoardServicesClient::connect(provider_ref).await;
-
-        // Explicitly keep the provider_box alive until after connect completes
-        std::mem::forget(provider_box);
-        result
+        let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
+        SpringBoardServicesClient::connect(provider_ref).await
     });
 
     match res {
@@ -61,53 +51,6 @@ pub unsafe extern "C" fn springboard_services_connect_tcp(
     }
 }
 
-/// Connects to the Springboard service using a usbmuxd provider
-///
-/// # Arguments
-/// * [`provider`] - A UsbmuxdProvider
-/// * [`client`] - On success, will be set to point to a newly allocated SpringBoardServicesClient handle
-///
-/// # Returns
-/// An error code indicating success or failure
-///
-/// # Safety
-/// `provider` must be a valid pointer to a handle allocated by this library
-/// `client` must be a valid, non-null pointer to a location where the handle will be stored
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn springboard_services_connect_usbmuxd(
-    provider: *mut UsbmuxdProviderHandle,
-    client: *mut *mut SpringBoardServicesClientHandle,
-) -> IdeviceErrorCode {
-    if provider.is_null() {
-        log::error!("Provider is null");
-        return IdeviceErrorCode::InvalidArg;
-    }
-
-    let res: Result<SpringBoardServicesClient, IdeviceError> = RUNTIME.block_on(async move {
-        // Take ownership of the provider (without immediately dropping it)
-        let provider_box = unsafe { Box::from_raw(provider) };
-
-        // Get a reference to the inner value
-        let provider_ref = &provider_box.0;
-
-        // Connect using the reference
-        let result = SpringBoardServicesClient::connect(provider_ref).await;
-
-        // Explicitly keep the provider_box alive until after connect completes
-        std::mem::forget(provider_box);
-        result
-    });
-
-    match res {
-        Ok(r) => {
-            let boxed = Box::new(SpringBoardServicesClientHandle(r));
-            unsafe { *client = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
-        }
-        Err(e) => e.into(),
-    }
-}
-
 /// Creates a new SpringBoardServices client from an existing Idevice connection
 ///
 /// # Arguments
@@ -118,7 +61,8 @@ pub unsafe extern "C" fn springboard_services_connect_usbmuxd(
 /// An error code indicating success or failure
 ///
 /// # Safety
-/// `socket` must be a valid pointer to a handle allocated by this library
+/// `socket` must be a valid pointer to a handle allocated by this library. The socket is consumed,
+/// and may not be used again.
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn springboard_services_new(

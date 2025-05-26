@@ -2,31 +2,39 @@
 
 use std::ffi::{CString, c_char};
 
+use idevice::tcp::stream::AdapterStream;
+
 use crate::core_device_proxy::AdapterHandle;
 use crate::{IdeviceErrorCode, RUNTIME};
+
+pub struct AdapterStreamHandle<'a>(pub AdapterStream<'a>);
 
 /// Connects the adapter to a specific port
 ///
 /// # Arguments
-/// * [`handle`] - The adapter handle
+/// * [`adapter_handle`] - The adapter handle
 /// * [`port`] - The port to connect to
+/// * [`stream_handle`] - A pointer to allocate the new stream to
 ///
 /// # Returns
 /// An error code indicating success or failure
 ///
 /// # Safety
-/// `handle` must be a valid pointer to a handle allocated by this library
+/// `handle` must be a valid pointer to a handle allocated by this library.
+/// Any stream allocated must be used in the same thread as the adapter. The handles are NOT thread
+/// safe.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn adapter_connect(
-    handle: *mut AdapterHandle,
+    adapter_handle: *mut AdapterHandle,
     port: u16,
+    stream_handle: *mut *mut AdapterStreamHandle,
 ) -> IdeviceErrorCode {
-    if handle.is_null() {
+    if adapter_handle.is_null() || stream_handle.is_null() {
         return IdeviceErrorCode::InvalidArg;
     }
 
-    let adapter = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move { adapter.connect(port).await });
+    let adapter = unsafe { &mut (*adapter_handle).0 };
+    let res = RUNTIME.block_on(async move { AdapterStream::connect(adapter, port).await });
 
     match res {
         Ok(_) => IdeviceErrorCode::IdeviceSuccess,
@@ -79,7 +87,7 @@ pub unsafe extern "C" fn adapter_pcap(
 /// Closes the adapter connection
 ///
 /// # Arguments
-/// * [`handle`] - The adapter handle
+/// * [`handle`] - The adapter stream handle
 ///
 /// # Returns
 /// An error code indicating success or failure
@@ -87,7 +95,7 @@ pub unsafe extern "C" fn adapter_pcap(
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn adapter_close(handle: *mut AdapterHandle) -> IdeviceErrorCode {
+pub unsafe extern "C" fn adapter_close(handle: *mut AdapterStreamHandle) -> IdeviceErrorCode {
     if handle.is_null() {
         return IdeviceErrorCode::InvalidArg;
     }
@@ -119,7 +127,7 @@ pub unsafe extern "C" fn adapter_close(handle: *mut AdapterHandle) -> IdeviceErr
 /// `data` must be a valid pointer to at least `length` bytes
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn adapter_send(
-    handle: *mut AdapterHandle,
+    handle: *mut AdapterStreamHandle,
     data: *const u8,
     length: usize,
 ) -> IdeviceErrorCode {
@@ -158,7 +166,7 @@ pub unsafe extern "C" fn adapter_send(
 /// `length` must be a valid pointer to a usize
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn adapter_recv(
-    handle: *mut AdapterHandle,
+    handle: *mut AdapterStreamHandle,
     data: *mut u8,
     length: *mut usize,
     max_length: usize,

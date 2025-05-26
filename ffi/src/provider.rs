@@ -1,13 +1,12 @@
 // Jackson Coxson
 
-use idevice::provider::{TcpProvider, UsbmuxdProvider};
+use idevice::provider::{IdeviceProvider, TcpProvider, UsbmuxdProvider};
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
 use crate::{IdeviceErrorCode, usbmuxd::UsbmuxdAddrHandle, util};
 
-pub struct TcpProviderHandle(pub TcpProvider);
-pub struct UsbmuxdProviderHandle(pub UsbmuxdProvider);
+pub struct IdeviceProviderHandle(pub Box<dyn IdeviceProvider>);
 
 /// Creates a TCP provider for idevice
 ///
@@ -25,13 +24,18 @@ pub struct UsbmuxdProviderHandle(pub UsbmuxdProvider);
 /// `pairing_file` must never be used again
 /// `label` must be a valid Cstr
 /// `provider` must be a valid, non-null pointer to a location where the handle will be stored
+#[cfg(feature = "tcp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn idevice_tcp_provider_new(
     ip: *const libc::sockaddr,
     pairing_file: *mut crate::pairing_file::IdevicePairingFile,
     label: *const c_char,
-    provider: *mut *mut TcpProviderHandle,
+    provider: *mut *mut IdeviceProviderHandle,
 ) -> IdeviceErrorCode {
+    if ip.is_null() || label.is_null() || provider.is_null() {
+        return IdeviceErrorCode::InvalidArg;
+    }
+
     let addr = match util::c_addr_to_rust(ip) {
         Ok(i) => i,
         Err(e) => {
@@ -53,23 +57,23 @@ pub unsafe extern "C" fn idevice_tcp_provider_new(
         label,
     };
 
-    let boxed = Box::new(TcpProviderHandle(t));
+    let boxed = Box::new(IdeviceProviderHandle(Box::new(t)));
     unsafe { *provider = Box::into_raw(boxed) };
     IdeviceErrorCode::IdeviceSuccess
 }
 
-/// Frees a TcpProvider handle
+/// Frees an IdeviceProvider handle
 ///
 /// # Arguments
 /// * [`provider`] - The provider handle to free
 ///
 /// # Safety
-/// `provider` must be a valid pointer to a TcpProvider handle that was allocated by this library,
-/// or NULL (in which case this function does nothing)
+/// `provider` must be a valid pointer to a IdeviceProvider handle that was allocated this library
+///  or NULL (in which case this function does nothing)
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tcp_provider_free(provider: *mut TcpProviderHandle) {
+pub unsafe extern "C" fn idevice_provider_free(provider: *mut IdeviceProviderHandle) {
     if !provider.is_null() {
-        log::debug!("Freeing TCP provider");
+        log::debug!("Freeing provider");
         unsafe { drop(Box::from_raw(provider)) };
     }
 }
@@ -81,7 +85,6 @@ pub unsafe extern "C" fn tcp_provider_free(provider: *mut TcpProviderHandle) {
 /// * [`tag`] - The tag returned in usbmuxd responses
 /// * [`udid`] - The UDID of the device to connect to
 /// * [`device_id`] - The muxer ID of the device to connect to
-/// * [`pairing_file`] - The pairing file handle to use
 /// * [`label`] - The label to use with the connection
 /// * [`provider`] - A pointer to a newly allocated provider
 ///
@@ -91,7 +94,6 @@ pub unsafe extern "C" fn tcp_provider_free(provider: *mut TcpProviderHandle) {
 /// # Safety
 /// `addr` must be a valid pointer to UsbmuxdAddrHandle created by this library, and never used again
 /// `udid` must be a valid CStr
-/// `pairing_file` must never be used again
 /// `label` must be a valid Cstr
 /// `provider` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
@@ -101,21 +103,25 @@ pub unsafe extern "C" fn usbmuxd_provider_new(
     udid: *const c_char,
     device_id: u32,
     label: *const c_char,
-    provider: *mut *mut UsbmuxdProviderHandle,
+    provider: *mut *mut IdeviceProviderHandle,
 ) -> IdeviceErrorCode {
+    if addr.is_null() || udid.is_null() || label.is_null() || provider.is_null() {
+        return IdeviceErrorCode::InvalidArg;
+    }
+
     let udid = match unsafe { CStr::from_ptr(udid) }.to_str() {
         Ok(u) => u.to_string(),
         Err(e) => {
             log::error!("Invalid UDID string: {e:?}");
-            return IdeviceErrorCode::InvalidArgument;
+            return IdeviceErrorCode::InvalidString;
         }
     };
 
     let label = match unsafe { CStr::from_ptr(label) }.to_str() {
         Ok(l) => l.to_string(),
         Err(e) => {
-            log::error!("Invalid UDID string: {e:?}");
-            return IdeviceErrorCode::InvalidArgument;
+            log::error!("Invalid label string: {e:?}");
+            return IdeviceErrorCode::InvalidArg;
         }
     };
 
@@ -129,23 +135,8 @@ pub unsafe extern "C" fn usbmuxd_provider_new(
         label,
     };
 
-    let boxed = Box::new(UsbmuxdProviderHandle(p));
+    let boxed = Box::new(IdeviceProviderHandle(Box::new(p)));
     unsafe { *provider = Box::into_raw(boxed) };
 
     IdeviceErrorCode::IdeviceSuccess
-}
-
-/// Frees a UsbmuxdProvider handle
-///
-/// # Arguments
-/// * [`provider`] - The provider handle to free
-///
-/// # Safety
-/// `provider` must be a valid pointer to a UsbmuxdProvider handle that was allocated by this library,
-/// or NULL (in which case this function does nothing)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn usbmuxd_provider_free(provider: *mut UsbmuxdProviderHandle) {
-    if !provider.is_null() {
-        unsafe { drop(Box::from_raw(provider)) };
-    }
 }

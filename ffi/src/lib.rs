@@ -1,25 +1,41 @@
 // Jackson Coxson
 
+#[cfg(feature = "tunnel_tcp_stack")]
 pub mod adapter;
+#[cfg(feature = "afc")]
 pub mod afc;
+#[cfg(feature = "amfi")]
 pub mod amfi;
+#[cfg(feature = "core_device_proxy")]
 pub mod core_device_proxy;
+#[cfg(feature = "debug_proxy")]
 pub mod debug_proxy;
 mod errors;
+#[cfg(feature = "heartbeat")]
 pub mod heartbeat;
+#[cfg(feature = "installation_proxy")]
 pub mod installation_proxy;
+#[cfg(feature = "location_simulation")]
 pub mod location_simulation;
 pub mod lockdown;
 pub mod logging;
+#[cfg(feature = "misagent")]
 pub mod misagent;
-pub mod mounter;
+#[cfg(feature = "mobile_image_mounter")]
+pub mod mobile_image_mounter;
 mod pairing_file;
+#[cfg(feature = "dvt")]
 pub mod process_control;
 pub mod provider;
+#[cfg(feature = "dvt")]
 pub mod remote_server;
-pub mod remotexpc;
-pub mod sbservices;
+#[cfg(feature = "xpc")]
+pub mod rsd;
+#[cfg(feature = "springboardservices")]
+pub mod springboardservices;
+#[cfg(feature = "syslog_relay")]
 pub mod syslog_relay;
+#[cfg(feature = "usbmuxd")]
 pub mod usbmuxd;
 pub mod util;
 
