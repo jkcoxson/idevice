@@ -43,7 +43,8 @@ async fn main() {
             Command::new("pull")
                 .about("Pulls a log")
                 .arg(Arg::new("path").required(true).index(1))
-                .arg(Arg::new("save").required(true).index(2)),
+                .arg(Arg::new("save").required(true).index(2))
+                .arg(Arg::new("dir").required(false).index(3)),
         )
         .get_matches();
 
@@ -68,8 +69,12 @@ async fn main() {
         .await
         .expect("Unable to connect to misagent");
 
-    if let Some(_matches) = matches.subcommand_matches("list") {
-        let res = crash_client.ls().await.expect("Failed to read dir");
+    if let Some(matches) = matches.subcommand_matches("list") {
+        let dir_path: Option<&String> = matches.get_one("dir");
+        let res = crash_client
+            .ls(dir_path.map(|x| x.as_str()))
+            .await
+            .expect("Failed to read dir");
         println!("{res:#?}");
     } else if matches.subcommand_matches("flush").is_some() {
         flush_reports(&*provider).await.expect("Failed to flush");

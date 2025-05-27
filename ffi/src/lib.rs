@@ -23,6 +23,8 @@ pub mod logging;
 pub mod misagent;
 #[cfg(feature = "mobile_image_mounter")]
 pub mod mobile_image_mounter;
+#[cfg(feature = "os_trace_relay")]
+pub mod os_trace_relay;
 mod pairing_file;
 #[cfg(feature = "dvt")]
 pub mod process_control;

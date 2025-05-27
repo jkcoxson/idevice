@@ -79,13 +79,17 @@ impl CrashReportCopyMobileClient {
 
     /// Lists crash report files in the root of the crash logs directory.
     ///
+    /// # Arguments
+    /// * `dir_path` - The directory to pull logs from. Default is /
+    ///
     /// # Returns
     /// A list of filenames.
     ///
     /// # Errors
     /// Returns `IdeviceError` if listing the directory fails.
-    pub async fn ls(&mut self) -> Result<Vec<String>, IdeviceError> {
-        let mut res = self.afc_client.list_dir("/").await?;
+    pub async fn ls(&mut self, dir_path: Option<&str>) -> Result<Vec<String>, IdeviceError> {
+        let path = dir_path.unwrap_or("/");
+        let mut res = self.afc_client.list_dir(path).await?;
         if res.len() > 2 {
             if &res[0] == "." {
                 res.swap_remove(0);

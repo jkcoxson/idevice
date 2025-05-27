@@ -39,6 +39,11 @@ async fn main() {
         .subcommand(Command::new("lookup").about("Gets the apps on the device"))
         .subcommand(Command::new("browse").about("Browses the apps on the device"))
         .subcommand(Command::new("check_capabilities").about("Check the capabilities"))
+        .subcommand(
+            Command::new("install")
+                .about("Install an app in the AFC jail")
+                .arg(Arg::new("path")),
+        )
         .get_matches();
 
     if matches.get_flag("about") {
@@ -78,6 +83,26 @@ async fn main() {
             .check_capabilities_match(Vec::new(), None)
             .await
             .expect("check failed");
+    } else if let Some(matches) = matches.subcommand_matches("install") {
+        let path: &String = match matches.get_one("path") {
+            Some(p) => p,
+            None => {
+                eprintln!("No path passed, pass -h for help");
+                return;
+            }
+        };
+
+        instproxy_client
+            .install_with_callback(
+                path,
+                None,
+                async |(percentage, _)| {
+                    println!("Installing: {percentage}");
+                },
+                (),
+            )
+            .await
+            .expect("Failed to install")
     } else {
         eprintln!("Invalid usage, pass -h for help");
     }
