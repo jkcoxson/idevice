@@ -26,7 +26,6 @@ base64 = { version = "0.22" }
 
 indexmap = { version = "2.7", features = ["serde"], optional = true }
 uuid = { version = "1.12", features = ["serde", "v4"], optional = true }
-async-recursion = { version = "1.1", optional = true }
 chrono = { version = "0.4.40", optional = true, default-features = false }
 
 serde_json = { version = "1", optional = true }
@@ -50,7 +49,7 @@ x509-cert = { version = "0.2", optional = true, features = [
 ], default-features = false }
 
 [dev-dependencies]
-tokio = { version = "1.43", features = ["fs"] }
+tokio = { version = "1.43", features = ["full"] }
 tun-rs = { version = "2.0.8", features = ["async_tokio"] }
 bytes = "1.10.1"
 
@@ -69,19 +68,14 @@ misagent = []
 mobile_image_mounter = ["dep:sha2"]
 location_simulation = []
 pair = ["chrono/default", "tokio/time", "dep:sha2", "dep:rsa", "dep:x509-cert"]
+rsd = ["xpc"]
 syslog_relay = ["dep:bytes"]
 tcp = ["tokio/net"]
 tunnel_tcp_stack = ["dep:rand", "dep:futures", "tokio/fs", "tokio/sync"]
 tss = ["dep:uuid", "dep:reqwest"]
 tunneld = ["dep:serde_json", "dep:json", "dep:reqwest"]
 usbmuxd = ["tokio/net"]
-xpc = [
-  "tokio/sync",
-  "dep:indexmap",
-  "dep:uuid",
-  "dep:async-recursion",
-  "dep:json",
-]
+xpc = ["dep:indexmap", "dep:uuid"]
 full = [
   "afc",
   "amfi",
@@ -98,6 +92,7 @@ full = [
   "usbmuxd",
   "xpc",
   "location_simulation",
+  "rsd",
   "tcp",
   "tunnel_tcp_stack",
   "tss",

@@ -8,7 +8,7 @@ use std::{future::Future, pin::Pin};
 #[cfg(feature = "tcp")]
 use tokio::net::TcpStream;
 
-use crate::{pairing_file::PairingFile, Idevice, IdeviceError};
+use crate::{pairing_file::PairingFile, Idevice, IdeviceError, ReadWrite};
 
 #[cfg(feature = "usbmuxd")]
 use crate::usbmuxd::UsbmuxdAddr;
@@ -40,6 +40,14 @@ pub trait IdeviceProvider: Unpin + Send + Sync + std::fmt::Debug {
     fn get_pairing_file(
         &self,
     ) -> Pin<Box<dyn Future<Output = Result<PairingFile, IdeviceError>> + Send>>;
+}
+
+pub trait RsdProvider<'a>: Unpin + Send + Sync + std::fmt::Debug {
+    fn connect_to_service_port(
+        &'a mut self,
+        port: u16,
+    ) -> impl std::future::Future<Output = Result<Self::Stream, IdeviceError>> + Send;
+    type Stream: ReadWrite;
 }
 
 /// TCP-based device connection provider
@@ -148,4 +156,16 @@ impl IdeviceProvider for UsbmuxdProvider {
             usbmuxd.get_pair_record(&udid).await
         })
     }
+}
+
+#[cfg(feature = "tcp")]
+impl<'a> RsdProvider<'a> for std::net::IpAddr {
+    async fn connect_to_service_port(
+        &'a mut self,
+        port: u16,
+    ) -> Result<Self::Stream, IdeviceError> {
+        Ok(tokio::net::TcpStream::connect((*self, port)).await?)
+    }
+
+    type Stream = tokio::net::TcpStream;
 }

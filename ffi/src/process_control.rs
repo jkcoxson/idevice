@@ -2,13 +2,13 @@
 
 use std::ffi::{CStr, c_char};
 
-use idevice::{dvt::process_control::ProcessControlClient, tcp::adapter::Adapter};
+use idevice::{ReadWrite, dvt::process_control::ProcessControlClient};
 use plist::{Dictionary, Value};
 
-use crate::{IdeviceErrorCode, RUNTIME, remote_server::RemoteServerAdapterHandle};
+use crate::{IdeviceErrorCode, RUNTIME, remote_server::RemoteServerHandle};
 
 /// Opaque handle to a ProcessControlClient
-pub struct ProcessControlAdapterHandle<'a>(pub ProcessControlClient<'a, Adapter>);
+pub struct ProcessControlHandle<'a>(pub ProcessControlClient<'a, Box<dyn ReadWrite>>);
 
 /// Creates a new ProcessControlClient from a RemoteServerClient
 ///
@@ -24,8 +24,8 @@ pub struct ProcessControlAdapterHandle<'a>(pub ProcessControlClient<'a, Adapter>
 /// `handle` must be a valid pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn process_control_new(
-    server: *mut RemoteServerAdapterHandle,
-    handle: *mut *mut ProcessControlAdapterHandle<'static>,
+    server: *mut RemoteServerHandle,
+    handle: *mut *mut ProcessControlHandle<'static>,
 ) -> IdeviceErrorCode {
     if server.is_null() || handle.is_null() {
         return IdeviceErrorCode::InvalidArg;
@@ -36,7 +36,7 @@ pub unsafe extern "C" fn process_control_new(
 
     match res {
         Ok(client) => {
-            let boxed = Box::new(ProcessControlAdapterHandle(client));
+            let boxed = Box::new(ProcessControlHandle(client));
             unsafe { *handle = Box::into_raw(boxed) };
             IdeviceErrorCode::IdeviceSuccess
         }
@@ -52,7 +52,7 @@ pub unsafe extern "C" fn process_control_new(
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn process_control_free(handle: *mut ProcessControlAdapterHandle<'static>) {
+pub unsafe extern "C" fn process_control_free(handle: *mut ProcessControlHandle<'static>) {
     if !handle.is_null() {
         let _ = unsafe { Box::from_raw(handle) };
     }
@@ -76,7 +76,7 @@ pub unsafe extern "C" fn process_control_free(handle: *mut ProcessControlAdapter
 /// All pointers must be valid or NULL where appropriate
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn process_control_launch_app(
-    handle: *mut ProcessControlAdapterHandle<'static>,
+    handle: *mut ProcessControlHandle<'static>,
     bundle_id: *const c_char,
     env_vars: *const *const c_char,
     env_vars_count: usize,
@@ -159,7 +159,7 @@ pub unsafe extern "C" fn process_control_launch_app(
 /// `handle` must be a valid pointer to a handle allocated by this library
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn process_control_kill_app(
-    handle: *mut ProcessControlAdapterHandle<'static>,
+    handle: *mut ProcessControlHandle<'static>,
     pid: u64,
 ) -> IdeviceErrorCode {
     if handle.is_null() {
@@ -188,7 +188,7 @@ pub unsafe extern "C" fn process_control_kill_app(
 /// `handle` must be a valid pointer to a handle allocated by this library
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn process_control_disable_memory_limit(
-    handle: *mut ProcessControlAdapterHandle<'static>,
+    handle: *mut ProcessControlHandle<'static>,
     pid: u64,
 ) -> IdeviceErrorCode {
     if handle.is_null() {

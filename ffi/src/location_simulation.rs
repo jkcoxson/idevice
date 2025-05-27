@@ -1,11 +1,11 @@
 // Jackson Coxson
 
-use idevice::{dvt::location_simulation::LocationSimulationClient, tcp::adapter::Adapter};
+use idevice::{ReadWrite, dvt::location_simulation::LocationSimulationClient};
 
-use crate::{IdeviceErrorCode, RUNTIME, remote_server::RemoteServerAdapterHandle};
+use crate::{IdeviceErrorCode, RUNTIME, remote_server::RemoteServerHandle};
 
 /// Opaque handle to a ProcessControlClient
-pub struct LocationSimulationAdapterHandle<'a>(pub LocationSimulationClient<'a, Adapter>);
+pub struct LocationSimulationHandle<'a>(pub LocationSimulationClient<'a, Box<dyn ReadWrite>>);
 
 /// Creates a new ProcessControlClient from a RemoteServerClient
 ///
@@ -21,8 +21,8 @@ pub struct LocationSimulationAdapterHandle<'a>(pub LocationSimulationClient<'a, 
 /// `handle` must be a valid pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn location_simulation_new(
-    server: *mut RemoteServerAdapterHandle,
-    handle: *mut *mut LocationSimulationAdapterHandle<'static>,
+    server: *mut RemoteServerHandle,
+    handle: *mut *mut LocationSimulationHandle<'static>,
 ) -> IdeviceErrorCode {
     if server.is_null() || handle.is_null() {
         return IdeviceErrorCode::InvalidArg;
@@ -33,7 +33,7 @@ pub unsafe extern "C" fn location_simulation_new(
 
     match res {
         Ok(client) => {
-            let boxed = Box::new(LocationSimulationAdapterHandle(client));
+            let boxed = Box::new(LocationSimulationHandle(client));
             unsafe { *handle = Box::into_raw(boxed) };
             IdeviceErrorCode::IdeviceSuccess
         }
@@ -49,9 +49,7 @@ pub unsafe extern "C" fn location_simulation_new(
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn location_simulation_free(
-    handle: *mut LocationSimulationAdapterHandle<'static>,
-) {
+pub unsafe extern "C" fn location_simulation_free(handle: *mut LocationSimulationHandle<'static>) {
     if !handle.is_null() {
         let _ = unsafe { Box::from_raw(handle) };
     }
@@ -69,7 +67,7 @@ pub unsafe extern "C" fn location_simulation_free(
 /// All pointers must be valid or NULL where appropriate
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn location_simulation_clear(
-    handle: *mut LocationSimulationAdapterHandle<'static>,
+    handle: *mut LocationSimulationHandle<'static>,
 ) -> IdeviceErrorCode {
     if handle.is_null() {
         return IdeviceErrorCode::InvalidArg;
@@ -98,7 +96,7 @@ pub unsafe extern "C" fn location_simulation_clear(
 /// All pointers must be valid or NULL where appropriate
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn location_simulation_set(
-    handle: *mut LocationSimulationAdapterHandle<'static>,
+    handle: *mut LocationSimulationHandle<'static>,
     latitude: f64,
     longitude: f64,
 ) -> IdeviceErrorCode {

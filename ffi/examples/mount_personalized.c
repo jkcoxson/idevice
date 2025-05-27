@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
   }
 
   // Create TCP provider
-  TcpProviderHandle *provider = NULL;
+  IdeviceProviderHandle *provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing_file,
                                  "ImageMounterTest", &provider);
   if (err != IdeviceSuccess) {
@@ -124,10 +124,10 @@ int main(int argc, char **argv) {
 
   // Connect to lockdownd
   LockdowndClientHandle *lockdown_client = NULL;
-  err = lockdownd_connect_tcp(provider, &lockdown_client);
+  err = lockdownd_connect(provider, &lockdown_client);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to connect to lockdownd: %d\n", err);
-    tcp_provider_free(provider);
+    idevice_provider_free(provider);
     free(image);
     free(trustcache);
     free(build_manifest);
@@ -139,7 +139,7 @@ int main(int argc, char **argv) {
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to start session: %d\n", err);
     lockdownd_client_free(lockdown_client);
-    tcp_provider_free(provider);
+    idevice_provider_free(provider);
     idevice_pairing_file_free(pairing_file_2);
     free(image);
     free(trustcache);
@@ -155,7 +155,7 @@ int main(int argc, char **argv) {
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to get UniqueChipID: %d\n", err);
     lockdownd_client_free(lockdown_client);
-    tcp_provider_free(provider);
+    idevice_provider_free(provider);
     free(image);
     free(trustcache);
     free(build_manifest);
@@ -168,11 +168,11 @@ int main(int argc, char **argv) {
 
   // Connect to image mounter
   ImageMounterHandle *mounter_client = NULL;
-  err = image_mounter_connect_tcp(provider, &mounter_client);
+  err = image_mounter_connect(provider, &mounter_client);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to connect to image mounter: %d\n", err);
     lockdownd_client_free(lockdown_client);
-    tcp_provider_free(provider);
+    idevice_provider_free(provider);
     free(image);
     free(trustcache);
     free(build_manifest);
@@ -180,7 +180,7 @@ int main(int argc, char **argv) {
   }
 
   // Mount personalized image with progress callback
-  err = image_mounter_mount_personalized_tcp_with_callback(
+  err = image_mounter_mount_personalized_with_callback(
       mounter_client, provider, image, image_len, trustcache, trustcache_len,
       build_manifest, manifest_len,
       NULL, // info_plist
@@ -195,7 +195,7 @@ int main(int argc, char **argv) {
   // Cleanup
   image_mounter_free(mounter_client);
   lockdownd_client_free(lockdown_client);
-  tcp_provider_free(provider);
+  idevice_provider_free(provider);
   free(image);
   free(trustcache);
   free(build_manifest);

@@ -169,7 +169,7 @@ int main(int argc, char **argv) {
   }
 
   // Create TCP provider
-  TcpProviderHandle *provider = NULL;
+  IdeviceProviderHandle *provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing_file,
                                  "ImageMounterTest", &provider);
   if (err != IdeviceSuccess) {
@@ -180,13 +180,13 @@ int main(int argc, char **argv) {
 
   // Connect to AFC service
   AfcClientHandle *client = NULL;
-  err = afc_client_connect_tcp(provider, &client);
+  err = afc_client_connect(provider, &client);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to connect to AFC service: %d\n", err);
-    tcp_provider_free(provider);
+    idevice_provider_free(provider);
     return 1;
   }
-  tcp_provider_free(provider);
+  idevice_provider_free(provider);
 
   // Process command
   int success = 1;

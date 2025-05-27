@@ -2,11 +2,10 @@
 
 use std::ffi::c_void;
 
-use idevice::{IdeviceError, IdeviceService, lockdown::LockdownClient};
+use idevice::{IdeviceError, IdeviceService, lockdown::LockdownClient, provider::IdeviceProvider};
 
 use crate::{
-    IdeviceErrorCode, IdeviceHandle, IdevicePairingFile, RUNTIME,
-    provider::{TcpProviderHandle, UsbmuxdProviderHandle},
+    IdeviceErrorCode, IdeviceHandle, IdevicePairingFile, RUNTIME, provider::IdeviceProviderHandle,
 };
 
 pub struct LockdowndClientHandle(pub LockdownClient);
@@ -14,7 +13,7 @@ pub struct LockdowndClientHandle(pub LockdownClient);
 /// Connects to lockdownd service using TCP provider
 ///
 /// # Arguments
-/// * [`provider`] - A TcpProvider
+/// * [`provider`] - An IdeviceProvider
 /// * [`client`] - On success, will be set to point to a newly allocated LockdowndClient handle
 ///
 /// # Returns
@@ -24,8 +23,8 @@ pub struct LockdowndClientHandle(pub LockdownClient);
 /// `provider` must be a valid pointer to a handle allocated by this library
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lockdownd_connect_tcp(
-    provider: *mut TcpProviderHandle,
+pub unsafe extern "C" fn lockdownd_connect(
+    provider: *mut IdeviceProviderHandle,
     client: *mut *mut LockdowndClientHandle,
 ) -> IdeviceErrorCode {
     if provider.is_null() || client.is_null() {
@@ -34,11 +33,8 @@ pub unsafe extern "C" fn lockdownd_connect_tcp(
     }
 
     let res: Result<LockdownClient, IdeviceError> = RUNTIME.block_on(async move {
-        let provider_box = unsafe { Box::from_raw(provider) };
-        let provider_ref = &provider_box.0;
-        let result = LockdownClient::connect(provider_ref).await;
-        std::mem::forget(provider_box);
-        result
+        let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
+        LockdownClient::connect(provider_ref).await
     });
 
     match res {
@@ -54,57 +50,18 @@ pub unsafe extern "C" fn lockdownd_connect_tcp(
     }
 }
 
-/// Connects to lockdownd service using Usbmuxd provider
-///
-/// # Arguments
-/// * [`provider`] - A UsbmuxdProvider
-/// * [`client`] - On success, will be set to point to a newly allocated LockdowndClient handle
-///
-/// # Returns
-/// An error code indicating success or failure
-///
-/// # Safety
-/// `provider` must be a valid pointer to a handle allocated by this library
-/// `client` must be a valid, non-null pointer to a location where the handle will be stored
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn lockdownd_connect_usbmuxd(
-    provider: *mut UsbmuxdProviderHandle,
-    client: *mut *mut LockdowndClientHandle,
-) -> IdeviceErrorCode {
-    if provider.is_null() || client.is_null() {
-        log::error!("Null pointer provided");
-        return IdeviceErrorCode::InvalidArg;
-    }
-
-    let res: Result<LockdownClient, IdeviceError> = RUNTIME.block_on(async move {
-        let provider_box = unsafe { Box::from_raw(provider) };
-        let provider_ref = &provider_box.0;
-        let result = LockdownClient::connect(provider_ref).await;
-        std::mem::forget(provider_box);
-        result
-    });
-
-    match res {
-        Ok(r) => {
-            let boxed = Box::new(LockdowndClientHandle(r));
-            unsafe { *client = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
-        }
-        Err(e) => e.into(),
-    }
-}
-
 /// Creates a new LockdowndClient from an existing Idevice connection
 ///
 /// # Arguments
-/// * [`socket`] - An IdeviceSocket handle
+/// * [`socket`] - An IdeviceSocket handle.
 /// * [`client`] - On success, will be set to point to a newly allocated LockdowndClient handle
 ///
 /// # Returns
 /// An error code indicating success or failure
 ///
 /// # Safety
-/// `socket` must be a valid pointer to a handle allocated by this library
+/// `socket` must be a valid pointer to a handle allocated by this library. The socket is consumed,
+/// and maybe not be used again.
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lockdownd_new(
@@ -139,15 +96,10 @@ pub unsafe extern "C" fn lockdownd_start_session(
     pairing_file: *mut IdevicePairingFile,
 ) -> IdeviceErrorCode {
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let pairing_file = unsafe { Box::from_raw(pairing_file) };
+        let client_ref = unsafe { &mut (*client).0 };
+        let pairing_file_ref = unsafe { &(*pairing_file).0 };
 
-        let client_ref = &mut client_box.0;
-        let res = client_ref.start_session(&pairing_file.0).await;
-
-        std::mem::forget(client_box);
-        std::mem::forget(pairing_file);
-        res
+        client_ref.start_session(pairing_file_ref).await
     });
 
     match res {
@@ -187,11 +139,8 @@ pub unsafe extern "C" fn lockdownd_start_service(
         .into_owned();
 
     let res: Result<(u16, bool), IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let res = client_ref.start_service(identifier).await;
-        std::mem::forget(client_box);
-        res
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.start_service(identifier).await
     });
 
     match res {
@@ -247,11 +196,8 @@ pub unsafe extern "C" fn lockdownd_get_value(
     };
 
     let res: Result<plist::Value, IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let res = client_ref.get_value(value, domain).await;
-        std::mem::forget(client_box);
-        res
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.get_value(value, domain).await
     });
 
     match res {
@@ -287,11 +233,8 @@ pub unsafe extern "C" fn lockdownd_get_all_values(
     }
 
     let res: Result<plist::Dictionary, IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let res = client_ref.get_all_values().await;
-        std::mem::forget(client_box);
-        res
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.get_all_values().await
     });
 
     match res {

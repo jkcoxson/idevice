@@ -33,7 +33,6 @@ pub enum IdeviceErrorCode {
     ImageNotMounted = -25,
     Reqwest = -26,
     InternalError = -27,
-    Xpc = -28,
     NsKeyedArchiveError = -29,
     UnknownAuxValueType = -30,
     UnknownChannel = -31,
@@ -50,9 +49,24 @@ pub enum IdeviceErrorCode {
     UnknownAfcOpcode = -42,
     InvalidAfcMagic = -43,
     AfcMissingAttribute = -44,
+    ServiceNotFound = -45,
+    PairingDialogResponsePending = -46,
+    UserDeniedPairing = -47,
+    PasswordProtected = -48,
+    CrashReportMoverBadResponse = -49,
+    UnknownFrame = -50,
+    UnknownHttpSetting = -51,
+    UninitializedStreamId = -52,
+    UnknownXpcType = -53,
+    MalformedXpc = -54,
+    InvalidXpcMagic = -55,
+    UnexpectedXpcVersion = -56,
+    InvalidCString = -57,
+    HttpStreamReset = -58,
+    HttpGoAway = -59,
+
     // FFI specific bindings
     AdapterIOFailed = -996,
-    ServiceNotFound = -997,
     BufferTooSmall = -998,
     InvalidString = -999,
     InvalidArg = -1000,
@@ -90,7 +104,6 @@ impl From<IdeviceError> for IdeviceErrorCode {
             IdeviceError::ImageNotMounted => IdeviceErrorCode::ImageNotMounted,
             IdeviceError::Reqwest(_) => IdeviceErrorCode::Reqwest,
             IdeviceError::InternalError(_) => IdeviceErrorCode::InternalError,
-            IdeviceError::Xpc(_) => IdeviceErrorCode::Xpc,
             IdeviceError::NsKeyedArchiveError(_) => IdeviceErrorCode::NsKeyedArchiveError,
             IdeviceError::UnknownAuxValueType(_) => IdeviceErrorCode::UnknownAuxValueType,
             IdeviceError::UnknownChannel(_) => IdeviceErrorCode::UnknownChannel,
@@ -109,6 +122,25 @@ impl From<IdeviceError> for IdeviceErrorCode {
             IdeviceError::UnknownAfcOpcode => IdeviceErrorCode::UnknownAfcOpcode,
             IdeviceError::InvalidAfcMagic => IdeviceErrorCode::InvalidAfcMagic,
             IdeviceError::AfcMissingAttribute => IdeviceErrorCode::AfcMissingAttribute,
+            IdeviceError::ServiceNotFound => IdeviceErrorCode::ServiceNotFound,
+            IdeviceError::PairingDialogResponsePending => {
+                IdeviceErrorCode::PairingDialogResponsePending
+            }
+            IdeviceError::UserDeniedPairing => IdeviceErrorCode::UserDeniedPairing,
+            IdeviceError::PasswordProtected => IdeviceErrorCode::PasswordProtected,
+            IdeviceError::CrashReportMoverBadResponse(_) => {
+                IdeviceErrorCode::CrashReportMoverBadResponse
+            }
+            IdeviceError::UnknownFrame(_) => IdeviceErrorCode::UnknownFrame,
+            IdeviceError::UnknownHttpSetting(_) => IdeviceErrorCode::UnknownHttpSetting,
+            IdeviceError::UninitializedStreamId => IdeviceErrorCode::UninitializedStreamId,
+            IdeviceError::UnknownXpcType(_) => IdeviceErrorCode::UnknownXpcType,
+            IdeviceError::MalformedXpc => IdeviceErrorCode::MalformedXpc,
+            IdeviceError::InvalidXpcMagic => IdeviceErrorCode::InvalidXpcMagic,
+            IdeviceError::UnexpectedXpcVersion => IdeviceErrorCode::UnexpectedXpcVersion,
+            IdeviceError::InvalidCString => IdeviceErrorCode::InvalidCString,
+            IdeviceError::HttpStreamReset => IdeviceErrorCode::HttpStreamReset,
+            IdeviceError::HttpGoAway(_) => IdeviceErrorCode::HttpGoAway,
             _ => IdeviceErrorCode::InternalError,
         }
     }

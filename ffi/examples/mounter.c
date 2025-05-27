@@ -112,7 +112,7 @@ int main(int argc, char **argv) {
   }
 
   // Create TCP provider
-  TcpProviderHandle *provider = NULL;
+  IdeviceProviderHandle *provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing_file,
                                  "ImageMounterTest", &provider);
   if (err != IdeviceSuccess) {
@@ -123,13 +123,13 @@ int main(int argc, char **argv) {
 
   // Connect to image mounter
   ImageMounterHandle *client = NULL;
-  err = image_mounter_connect_tcp(provider, &client);
+  err = image_mounter_connect(provider, &client);
   if (err != IdeviceSuccess) {
     fprintf(stderr, "Failed to connect to image mounter: %d\n", err);
-    tcp_provider_free(provider);
+    idevice_provider_free(provider);
     return 1;
   }
-  tcp_provider_free(provider);
+  idevice_provider_free(provider);
 
   // Process command
   int success = 1;

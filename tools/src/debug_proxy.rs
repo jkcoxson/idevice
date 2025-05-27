@@ -1,17 +1,12 @@
 // Jackson Coxson
 
-use std::{
-    io::Write,
-    net::{IpAddr, SocketAddr},
-    str::FromStr,
-};
+use std::io::Write;
 
 use clap::{Arg, Command};
 use idevice::{
-    core_device_proxy::CoreDeviceProxy, debug_proxy::DebugProxyClient,
-    tunneld::get_tunneld_devices, xpc::XPCDevice, IdeviceService, ReadWrite,
+    core_device_proxy::CoreDeviceProxy, debug_proxy::DebugProxyClient, rsd::RsdHandshake,
+    tcp::stream::AdapterStream, IdeviceService, RsdService,
 };
-use tokio::net::TcpStream;
 
 mod common;
 
@@ -63,79 +58,31 @@ async fn main() {
     let pairing_file = matches.get_one::<String>("pairing_file");
     let host = matches.get_one::<String>("host");
 
-    let mut dp: DebugProxyClient<Box<dyn ReadWrite>> = if matches.get_flag("tunneld") {
-        let socket = SocketAddr::new(
-            IpAddr::from_str("127.0.0.1").unwrap(),
-            idevice::tunneld::DEFAULT_PORT,
-        );
-        let mut devices = get_tunneld_devices(socket)
-            .await
-            .expect("Failed to get tunneld devices");
-
-        let (_udid, device) = match udid {
-            Some(u) => (
-                u.to_owned(),
-                devices.remove(u).expect("Device not in tunneld"),
-            ),
-            None => devices.into_iter().next().expect("No devices"),
+    let provider =
+        match common::get_provider(udid, host, pairing_file, "debug-proxy-jkcoxson").await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("{e}");
+                return;
+            }
         };
-
-        // Make the connection to RemoteXPC
-        let client = XPCDevice::new(Box::new(
-            TcpStream::connect((device.tunnel_address.as_str(), device.tunnel_port))
-                .await
-                .unwrap(),
-        ))
+    let proxy = CoreDeviceProxy::connect(&*provider)
         .await
-        .unwrap();
+        .expect("no core proxy");
+    let rsd_port = proxy.handshake.server_rsd_port;
 
-        // Get the debug proxy
-        let service = client
-            .services
-            .get(idevice::debug_proxy::SERVICE_NAME)
-            .expect("Client did not contain debug proxy service");
-
-        let stream = TcpStream::connect(SocketAddr::new(
-            IpAddr::from_str(&device.tunnel_address).unwrap(),
-            service.port,
-        ))
+    let mut adapter = proxy.create_software_tunnel().expect("no software tunnel");
+    let stream = AdapterStream::connect(&mut adapter, rsd_port)
         .await
-        .expect("Failed to connect");
+        .expect("no RSD connect");
 
-        DebugProxyClient::new(Box::new(stream))
-    } else {
-        let provider =
-            match common::get_provider(udid, host, pairing_file, "debug-proxy-jkcoxson").await {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!("{e}");
-                    return;
-                }
-            };
-        let proxy = CoreDeviceProxy::connect(&*provider)
-            .await
-            .expect("no core proxy");
-        let rsd_port = proxy.handshake.server_rsd_port;
+    // Make the connection to RemoteXPC
+    let mut handshake = RsdHandshake::new(stream).await.unwrap();
+    println!("{:?}", handshake.services);
 
-        let mut adapter = proxy.create_software_tunnel().expect("no software tunnel");
-        adapter.connect(rsd_port).await.expect("no RSD connect");
-
-        // Make the connection to RemoteXPC
-        let client = XPCDevice::new(Box::new(adapter)).await.unwrap();
-
-        // Get the debug proxy
-        let service = client
-            .services
-            .get(idevice::debug_proxy::SERVICE_NAME)
-            .expect("Client did not contain debug proxy service")
-            .to_owned();
-
-        let mut adapter = client.into_inner();
-        adapter.close().await.unwrap();
-        adapter.connect(service.port).await.unwrap();
-
-        DebugProxyClient::new(Box::new(adapter))
-    };
+    let mut dp = DebugProxyClient::connect_rsd(&mut adapter, &mut handshake)
+        .await
+        .expect("no connect");
 
     println!("Shell connected!");
     loop {

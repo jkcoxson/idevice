@@ -2,7 +2,10 @@
 // Just lists apps for now
 
 use clap::{Arg, Command};
-use idevice::{core_device_proxy::CoreDeviceProxy, xpc::XPCDevice, IdeviceService};
+use idevice::{
+    core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake, tcp::stream::AdapterStream,
+    IdeviceService, RsdService,
+};
 
 mod common;
 
@@ -69,26 +72,21 @@ async fn main() {
     let rsd_port = proxy.handshake.server_rsd_port;
 
     let mut adapter = proxy.create_software_tunnel().expect("no software tunnel");
-    adapter.connect(rsd_port).await.expect("no RSD connect");
+    let stream = AdapterStream::connect(&mut adapter, rsd_port)
+        .await
+        .expect("no RSD connect");
 
     // Make the connection to RemoteXPC
-    let client = XPCDevice::new(Box::new(adapter)).await.unwrap();
-
-    // Get the debug proxy
-    let service = client
-        .services
-        .get(idevice::dvt::SERVICE_NAME)
-        .expect("Client did not contain DVT service")
-        .to_owned();
-
-    let mut adapter = client.into_inner();
-    adapter.connect(service.port).await.unwrap();
-
-    let mut rs_client = idevice::dvt::remote_server::RemoteServerClient::new(Box::new(adapter));
-    rs_client.read_message(0).await.expect("no read??");
+    let mut handshake = RsdHandshake::new(stream).await.unwrap();
 
     let mut ls_client =
-        idevice::dvt::location_simulation::LocationSimulationClient::new(&mut rs_client)
+        idevice::dvt::remote_server::RemoteServerClient::connect_rsd(&mut adapter, &mut handshake)
+            .await
+            .expect("Failed to connect");
+    ls_client.read_message(0).await.expect("no read??");
+
+    let mut ls_client =
+        idevice::dvt::location_simulation::LocationSimulationClient::new(&mut ls_client)
             .await
             .expect("Unable to get channel for location simulation");
 

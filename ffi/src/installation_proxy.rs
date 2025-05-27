@@ -2,20 +2,19 @@
 
 use std::ffi::c_void;
 
-use idevice::{IdeviceError, IdeviceService, installation_proxy::InstallationProxyClient};
-
-use crate::{
-    IdeviceErrorCode, IdeviceHandle, RUNTIME,
-    provider::{TcpProviderHandle, UsbmuxdProviderHandle},
-    util,
+use idevice::{
+    IdeviceError, IdeviceService, installation_proxy::InstallationProxyClient,
+    provider::IdeviceProvider,
 };
+
+use crate::{IdeviceErrorCode, IdeviceHandle, RUNTIME, provider::IdeviceProviderHandle, util};
 
 pub struct InstallationProxyClientHandle(pub InstallationProxyClient);
 
 /// Automatically creates and connects to Installation Proxy, returning a client handle
 ///
 /// # Arguments
-/// * [`provider`] - A TcpProvider
+/// * [`provider`] - An IdeviceProvider
 /// * [`client`] - On success, will be set to point to a newly allocated InstallationProxyClient handle
 ///
 /// # Returns
@@ -26,7 +25,7 @@ pub struct InstallationProxyClientHandle(pub InstallationProxyClient);
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn installation_proxy_connect_tcp(
-    provider: *mut TcpProviderHandle,
+    provider: *mut IdeviceProviderHandle,
     client: *mut *mut InstallationProxyClientHandle,
 ) -> IdeviceErrorCode {
     if provider.is_null() || client.is_null() {
@@ -35,70 +34,8 @@ pub unsafe extern "C" fn installation_proxy_connect_tcp(
     }
 
     let res: Result<InstallationProxyClient, IdeviceError> = RUNTIME.block_on(async move {
-        // Take ownership of the provider (without immediately dropping it)
-        let provider_box = unsafe { Box::from_raw(provider) };
-
-        // Get a reference to the inner value
-        let provider_ref = &provider_box.0;
-
-        // Connect using the reference
-        let result = InstallationProxyClient::connect(provider_ref).await;
-
-        // Explicitly keep the provider_box alive until after connect completes
-        std::mem::forget(provider_box);
-        result
-    });
-
-    match res {
-        Ok(r) => {
-            let boxed = Box::new(InstallationProxyClientHandle(r));
-            unsafe { *client = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
-        }
-        Err(e) => {
-            // If connection failed, the provider_box was already forgotten,
-            // so we need to reconstruct it to avoid leak
-            let _ = unsafe { Box::from_raw(provider) };
-            e.into()
-        }
-    }
-}
-
-/// Automatically creates and connects to Installation Proxy, returning a client handle
-///
-/// # Arguments
-/// * [`provider`] - A UsbmuxdProvider
-/// * [`client`] - On success, will be set to point to a newly allocated InstallationProxyClient handle
-///
-/// # Returns
-/// An error code indicating success or failure
-///
-/// # Safety
-/// `provider` must be a valid pointer to a handle allocated by this library
-/// `client` must be a valid, non-null pointer to a location where the handle will be stored
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn installation_proxy_connect_usbmuxd(
-    provider: *mut UsbmuxdProviderHandle,
-    client: *mut *mut InstallationProxyClientHandle,
-) -> IdeviceErrorCode {
-    if provider.is_null() {
-        log::error!("Provider is null");
-        return IdeviceErrorCode::InvalidArg;
-    }
-
-    let res: Result<InstallationProxyClient, IdeviceError> = RUNTIME.block_on(async move {
-        // Take ownership of the provider (without immediately dropping it)
-        let provider_box = unsafe { Box::from_raw(provider) };
-
-        // Get a reference to the inner value
-        let provider_ref = &provider_box.0;
-
-        // Connect using the reference
-        let result = InstallationProxyClient::connect(provider_ref).await;
-
-        // Explicitly keep the provider_box alive until after connect completes
-        std::mem::forget(provider_box);
-        result
+        let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
+        InstallationProxyClient::connect(provider_ref).await
     });
 
     match res {
@@ -121,14 +58,15 @@ pub unsafe extern "C" fn installation_proxy_connect_usbmuxd(
 /// An error code indicating success or failure
 ///
 /// # Safety
-/// `socket` must be a valid pointer to a handle allocated by this library
+/// `socket` must be a valid pointer to a handle allocated by this library. The socket is consumed,
+/// and may not be used again.
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn installation_proxy_new(
     socket: *mut IdeviceHandle,
     client: *mut *mut InstallationProxyClientHandle,
 ) -> IdeviceErrorCode {
-    if socket.is_null() {
+    if socket.is_null() || client.is_null() {
         return IdeviceErrorCode::InvalidArg;
     }
     let socket = unsafe { Box::from_raw(socket) }.0;
@@ -201,11 +139,10 @@ pub unsafe extern "C" fn installation_proxy_get_apps(
     });
 
     match res {
-        Ok(r) => {
+        Ok(mut r) => {
+            let ptr = r.as_mut_ptr();
             let len = r.len();
-            let boxed_slice = r.into_boxed_slice();
-            let ptr = boxed_slice.as_ptr();
-            std::mem::forget(boxed_slice);
+            std::mem::forget(r);
 
             unsafe {
                 *out_result = ptr as *mut c_void;
@@ -637,11 +574,10 @@ pub unsafe extern "C" fn installation_proxy_browse(
     });
 
     match res {
-        Ok(r) => {
+        Ok(mut r) => {
+            let ptr = r.as_mut_ptr();
             let len = r.len();
-            let boxed_slice = r.into_boxed_slice();
-            let ptr = boxed_slice.as_ptr();
-            std::mem::forget(boxed_slice);
+            std::mem::forget(r);
 
             unsafe {
                 *out_result = ptr as *mut c_void;

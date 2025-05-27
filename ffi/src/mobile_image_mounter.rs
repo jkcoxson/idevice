@@ -2,21 +2,19 @@
 
 use std::ffi::c_void;
 
-use idevice::{IdeviceError, IdeviceService, mobile_image_mounter::ImageMounter};
+use idevice::{
+    IdeviceError, IdeviceService, mobile_image_mounter::ImageMounter, provider::IdeviceProvider,
+};
 use plist::Value;
 
-use crate::{
-    IdeviceErrorCode, IdeviceHandle, RUNTIME,
-    provider::{TcpProviderHandle, UsbmuxdProviderHandle},
-    util,
-};
+use crate::{IdeviceErrorCode, IdeviceHandle, RUNTIME, provider::IdeviceProviderHandle, util};
 
 pub struct ImageMounterHandle(pub ImageMounter);
 
-/// Connects to the Image Mounter service using a TCP provider
+/// Connects to the Image Mounter service using a provider
 ///
 /// # Arguments
-/// * [`provider`] - A TcpProvider
+/// * [`provider`] - An IdeviceProvider
 /// * [`client`] - On success, will be set to point to a newly allocated ImageMounter handle
 ///
 /// # Returns
@@ -26,8 +24,8 @@ pub struct ImageMounterHandle(pub ImageMounter);
 /// `provider` must be a valid pointer to a handle allocated by this library
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn image_mounter_connect_tcp(
-    provider: *mut TcpProviderHandle,
+pub unsafe extern "C" fn image_mounter_connect(
+    provider: *mut IdeviceProviderHandle,
     client: *mut *mut ImageMounterHandle,
 ) -> IdeviceErrorCode {
     if provider.is_null() || client.is_null() {
@@ -36,11 +34,8 @@ pub unsafe extern "C" fn image_mounter_connect_tcp(
     }
 
     let res: Result<ImageMounter, IdeviceError> = RUNTIME.block_on(async move {
-        let provider_box = unsafe { Box::from_raw(provider) };
-        let provider_ref = &provider_box.0;
-        let result = ImageMounter::connect(provider_ref).await;
-        std::mem::forget(provider_box);
-        result
+        let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
+        ImageMounter::connect(provider_ref).await
     });
 
     match res {
@@ -53,46 +48,6 @@ pub unsafe extern "C" fn image_mounter_connect_tcp(
             let _ = unsafe { Box::from_raw(provider) };
             e.into()
         }
-    }
-}
-
-/// Connects to the Image Mounter service using a Usbmuxd provider
-///
-/// # Arguments
-/// * [`provider`] - A UsbmuxdProvider
-/// * [`client`] - On success, will be set to point to a newly allocated ImageMounter handle
-///
-/// # Returns
-/// An error code indicating success or failure
-///
-/// # Safety
-/// `provider` must be a valid pointer to a handle allocated by this library
-/// `client` must be a valid, non-null pointer to a location where the handle will be stored
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn image_mounter_connect_usbmuxd(
-    provider: *mut UsbmuxdProviderHandle,
-    client: *mut *mut ImageMounterHandle,
-) -> IdeviceErrorCode {
-    if provider.is_null() {
-        log::error!("Provider is null");
-        return IdeviceErrorCode::InvalidArg;
-    }
-
-    let res: Result<ImageMounter, IdeviceError> = RUNTIME.block_on(async move {
-        let provider_box = unsafe { Box::from_raw(provider) };
-        let provider_ref = &provider_box.0;
-        let result = ImageMounter::connect(provider_ref).await;
-        std::mem::forget(provider_box);
-        result
-    });
-
-    match res {
-        Ok(r) => {
-            let boxed = Box::new(ImageMounterHandle(r));
-            unsafe { *client = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
-        }
-        Err(e) => e.into(),
     }
 }
 
@@ -159,11 +114,8 @@ pub unsafe extern "C" fn image_mounter_copy_devices(
     devices_len: *mut libc::size_t,
 ) -> IdeviceErrorCode {
     let res: Result<Vec<Value>, IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref.copy_devices().await;
-        std::mem::forget(client_box);
-        result
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.copy_devices().await
     });
 
     match res {
@@ -219,11 +171,8 @@ pub unsafe extern "C" fn image_mounter_lookup_image(
     };
 
     let res: Result<Vec<u8>, IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref.lookup_image(image_type).await;
-        std::mem::forget(client_box);
-        result
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.lookup_image(image_type).await
     });
 
     match res {
@@ -279,13 +228,10 @@ pub unsafe extern "C" fn image_mounter_upload_image(
     let signature_slice = unsafe { std::slice::from_raw_parts(signature, signature_len) };
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref
             .upload_image(image_type, image_slice, signature_slice.to_vec())
-            .await;
-        std::mem::forget(client_box);
-        result
+            .await
     });
 
     match res {
@@ -349,18 +295,15 @@ pub unsafe extern "C" fn image_mounter_mount_image(
     };
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref
             .mount_image(
                 image_type,
                 signature_slice.to_vec(),
                 trust_cache,
                 info_plist,
             )
-            .await;
-        std::mem::forget(client_box);
-        result
+            .await
     });
 
     match res {
@@ -397,11 +340,8 @@ pub unsafe extern "C" fn image_mounter_unmount_image(
     };
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref.unmount_image(mount_path).await;
-        std::mem::forget(client_box);
-        result
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.unmount_image(mount_path).await
     });
 
     match res {
@@ -432,11 +372,8 @@ pub unsafe extern "C" fn image_mounter_query_developer_mode_status(
     }
 
     let res: Result<bool, IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref.query_developer_mode_status().await;
-        std::mem::forget(client_box);
-        result
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.query_developer_mode_status().await
     });
 
     match res {
@@ -478,13 +415,10 @@ pub unsafe extern "C" fn image_mounter_mount_developer(
     let signature_slice = unsafe { std::slice::from_raw_parts(signature, signature_len) };
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref
             .mount_developer(image_slice, signature_slice.to_vec())
-            .await;
-        std::mem::forget(client_box);
-        result
+            .await
     });
 
     match res {
@@ -531,13 +465,10 @@ pub unsafe extern "C" fn image_mounter_query_personalization_manifest(
     let signature_slice = unsafe { std::slice::from_raw_parts(signature, signature_len) };
 
     let res: Result<Vec<u8>, IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref
             .query_personalization_manifest(image_type, signature_slice.to_vec())
-            .await;
-        std::mem::forget(client_box);
-        result
+            .await
     });
 
     match res {
@@ -590,11 +521,8 @@ pub unsafe extern "C" fn image_mounter_query_nonce(
     };
 
     let res: Result<Vec<u8>, IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref.query_nonce(image_type).await;
-        std::mem::forget(client_box);
-        result
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.query_nonce(image_type).await
     });
 
     match res {
@@ -645,13 +573,10 @@ pub unsafe extern "C" fn image_mounter_query_personalization_identifiers(
     };
 
     let res: Result<plist::Dictionary, IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref
             .query_personalization_identifiers(image_type)
-            .await;
-        std::mem::forget(client_box);
-        result
+            .await
     });
 
     match res {
@@ -679,11 +604,8 @@ pub unsafe extern "C" fn image_mounter_roll_personalization_nonce(
     client: *mut ImageMounterHandle,
 ) -> IdeviceErrorCode {
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref.roll_personalization_nonce().await;
-        std::mem::forget(client_box);
-        result
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.roll_personalization_nonce().await
     });
 
     match res {
@@ -707,11 +629,8 @@ pub unsafe extern "C" fn image_mounter_roll_cryptex_nonce(
     client: *mut ImageMounterHandle,
 ) -> IdeviceErrorCode {
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let client_ref = &mut client_box.0;
-        let result = client_ref.roll_cryptex_nonce().await;
-        std::mem::forget(client_box);
-        result
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.roll_cryptex_nonce().await
     });
 
     match res {
@@ -739,10 +658,11 @@ pub unsafe extern "C" fn image_mounter_roll_cryptex_nonce(
 ///
 /// # Safety
 /// All pointers must be valid (except optional ones which can be null)
+#[cfg(feature = "tss")]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn image_mounter_mount_personalized_usbmuxd(
+pub unsafe extern "C" fn image_mounter_mount_personalized(
     client: *mut ImageMounterHandle,
-    provider: *mut UsbmuxdProviderHandle,
+    provider: *mut IdeviceProviderHandle,
     image: *const u8,
     image_len: libc::size_t,
     trust_cache: *const u8,
@@ -772,11 +692,9 @@ pub unsafe extern "C" fn image_mounter_mount_personalized_usbmuxd(
     };
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let provider_box = unsafe { Box::from_raw(provider) };
-        let client_ref = &mut client_box.0;
-        let provider_ref = &provider_box.0;
-        let result = client_ref
+        let client_ref = unsafe { &mut (*client).0 };
+        let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
+        client_ref
             .mount_personalized(
                 provider_ref,
                 image_slice.to_vec(),
@@ -785,87 +703,7 @@ pub unsafe extern "C" fn image_mounter_mount_personalized_usbmuxd(
                 info_plist,
                 unique_chip_id,
             )
-            .await;
-        std::mem::forget(client_box);
-        std::mem::forget(provider_box);
-        result
-    });
-
-    match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
-    }
-}
-
-/// Mounts a personalized developer image
-///
-/// # Arguments
-/// * [`client`] - A valid ImageMounter handle
-/// * [`provider`] - A valid provider handle
-/// * [`image`] - Pointer to the image data
-/// * [`image_len`] - Length of the image data
-/// * [`trust_cache`] - Pointer to the trust cache data
-/// * [`trust_cache_len`] - Length of the trust cache data
-/// * [`build_manifest`] - Pointer to the build manifest data
-/// * [`build_manifest_len`] - Length of the build manifest data
-/// * [`info_plist`] - Pointer to info plist (optional)
-/// * [`unique_chip_id`] - The device's unique chip ID
-///
-/// # Returns
-/// An error code indicating success or failure
-///
-/// # Safety
-/// All pointers must be valid (except optional ones which can be null)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn image_mounter_mount_personalized_tcp(
-    client: *mut ImageMounterHandle,
-    provider: *mut TcpProviderHandle,
-    image: *const u8,
-    image_len: libc::size_t,
-    trust_cache: *const u8,
-    trust_cache_len: libc::size_t,
-    build_manifest: *const u8,
-    build_manifest_len: libc::size_t,
-    info_plist: *const c_void,
-    unique_chip_id: u64,
-) -> IdeviceErrorCode {
-    if provider.is_null() || image.is_null() || trust_cache.is_null() || build_manifest.is_null() {
-        return IdeviceErrorCode::InvalidArg;
-    }
-
-    let image_slice = unsafe { std::slice::from_raw_parts(image, image_len) };
-    let trust_cache_slice = unsafe { std::slice::from_raw_parts(trust_cache, trust_cache_len) };
-    let build_manifest_slice =
-        unsafe { std::slice::from_raw_parts(build_manifest, build_manifest_len) };
-
-    let info_plist = if !info_plist.is_null() {
-        Some(
-            unsafe { Box::from_raw(info_plist as *mut Value) }
-                .as_ref()
-                .clone(),
-        )
-    } else {
-        None
-    };
-
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let provider_box = unsafe { Box::from_raw(provider) };
-        let client_ref = &mut client_box.0;
-        let provider_ref = &provider_box.0;
-        let result = client_ref
-            .mount_personalized(
-                provider_ref,
-                image_slice.to_vec(),
-                trust_cache_slice.to_vec(),
-                build_manifest_slice,
-                info_plist,
-                unique_chip_id,
-            )
-            .await;
-        std::mem::forget(client_box);
-        std::mem::forget(provider_box);
-        result
+            .await
     });
 
     match res {
@@ -895,10 +733,11 @@ pub unsafe extern "C" fn image_mounter_mount_personalized_tcp(
 ///
 /// # Safety
 /// All pointers must be valid (except optional ones which can be null)
+#[cfg(feature = "tss")]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn image_mounter_mount_personalized_usbmuxd_with_callback(
+pub unsafe extern "C" fn image_mounter_mount_personalized_with_callback(
     client: *mut ImageMounterHandle,
-    provider: *mut UsbmuxdProviderHandle,
+    provider: *mut IdeviceProviderHandle,
     image: *const u8,
     image_len: libc::size_t,
     trust_cache: *const u8,
@@ -930,16 +769,14 @@ pub unsafe extern "C" fn image_mounter_mount_personalized_usbmuxd_with_callback(
     };
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let provider_box = unsafe { Box::from_raw(provider) };
-        let client_ref = &mut client_box.0;
-        let provider_ref = &provider_box.0;
+        let client_ref = unsafe { &mut (*client).0 };
+        let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
 
         let callback_wrapper = |((progress, total), context)| async move {
             callback(progress, total, context);
         };
 
-        let result = client_ref
+        client_ref
             .mount_personalized_with_callback(
                 provider_ref,
                 image_slice.to_vec(),
@@ -950,98 +787,7 @@ pub unsafe extern "C" fn image_mounter_mount_personalized_usbmuxd_with_callback(
                 callback_wrapper,
                 context,
             )
-            .await;
-        std::mem::forget(client_box);
-        std::mem::forget(provider_box);
-        result
-    });
-
-    match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
-    }
-}
-
-/// Mounts a personalized developer image with progress callback
-///
-/// # Arguments
-/// * [`client`] - A valid ImageMounter handle
-/// * [`provider`] - A valid provider handle
-/// * [`image`] - Pointer to the image data
-/// * [`image_len`] - Length of the image data
-/// * [`trust_cache`] - Pointer to the trust cache data
-/// * [`trust_cache_len`] - Length of the trust cache data
-/// * [`build_manifest`] - Pointer to the build manifest data
-/// * [`build_manifest_len`] - Length of the build manifest data
-/// * [`info_plist`] - Pointer to info plist (optional)
-/// * [`unique_chip_id`] - The device's unique chip ID
-/// * [`callback`] - Progress callback function
-/// * [`context`] - User context to pass to callback
-///
-/// # Returns
-/// An error code indicating success or failure
-///
-/// # Safety
-/// All pointers must be valid (except optional ones which can be null)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn image_mounter_mount_personalized_tcp_with_callback(
-    client: *mut ImageMounterHandle,
-    provider: *mut TcpProviderHandle,
-    image: *const u8,
-    image_len: libc::size_t,
-    trust_cache: *const u8,
-    trust_cache_len: libc::size_t,
-    build_manifest: *const u8,
-    build_manifest_len: libc::size_t,
-    info_plist: *const c_void,
-    unique_chip_id: u64,
-    callback: extern "C" fn(progress: libc::size_t, total: libc::size_t, context: *mut c_void),
-    context: *mut c_void,
-) -> IdeviceErrorCode {
-    if provider.is_null() || image.is_null() || trust_cache.is_null() || build_manifest.is_null() {
-        return IdeviceErrorCode::InvalidArg;
-    }
-
-    let image_slice = unsafe { std::slice::from_raw_parts(image, image_len) };
-    let trust_cache_slice = unsafe { std::slice::from_raw_parts(trust_cache, trust_cache_len) };
-    let build_manifest_slice =
-        unsafe { std::slice::from_raw_parts(build_manifest, build_manifest_len) };
-
-    let info_plist = if !info_plist.is_null() {
-        Some(
-            unsafe { Box::from_raw(info_plist as *mut Value) }
-                .as_ref()
-                .clone(),
-        )
-    } else {
-        None
-    };
-
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
-        let mut client_box = unsafe { Box::from_raw(client) };
-        let provider_box = unsafe { Box::from_raw(provider) };
-        let client_ref = &mut client_box.0;
-        let provider_ref = &provider_box.0;
-
-        let callback_wrapper = |((progress, total), context)| async move {
-            callback(progress, total, context);
-        };
-
-        let result = client_ref
-            .mount_personalized_with_callback(
-                provider_ref,
-                image_slice.to_vec(),
-                trust_cache_slice.to_vec(),
-                build_manifest_slice,
-                info_plist,
-                unique_chip_id,
-                callback_wrapper,
-                context,
-            )
-            .await;
-        std::mem::forget(client_box);
-        std::mem::forget(provider_box);
-        result
+            .await
     });
 
     match res {

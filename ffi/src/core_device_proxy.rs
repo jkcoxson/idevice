@@ -3,13 +3,11 @@
 use std::ffi::{CString, c_char};
 
 use idevice::{
-    IdeviceError, IdeviceService, core_device_proxy::CoreDeviceProxy, tcp::adapter::Adapter,
+    IdeviceError, IdeviceService, core_device_proxy::CoreDeviceProxy, provider::IdeviceProvider,
+    tcp::adapter::Adapter,
 };
 
-use crate::{
-    IdeviceErrorCode, IdeviceHandle, RUNTIME,
-    provider::{TcpProviderHandle, UsbmuxdProviderHandle},
-};
+use crate::{IdeviceErrorCode, IdeviceHandle, RUNTIME, provider::IdeviceProviderHandle};
 
 pub struct CoreDeviceProxyHandle(pub CoreDeviceProxy);
 pub struct AdapterHandle(pub Adapter);
@@ -17,7 +15,7 @@ pub struct AdapterHandle(pub Adapter);
 /// Automatically creates and connects to Core Device Proxy, returning a client handle
 ///
 /// # Arguments
-/// * [`provider`] - A TcpProvider
+/// * [`provider`] - An IdeviceProvider
 /// * [`client`] - On success, will be set to point to a newly allocated CoreDeviceProxy handle
 ///
 /// # Returns
@@ -27,8 +25,8 @@ pub struct AdapterHandle(pub Adapter);
 /// `provider` must be a valid pointer to a handle allocated by this library
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn core_device_proxy_connect_tcp(
-    provider: *mut TcpProviderHandle,
+pub unsafe extern "C" fn core_device_proxy_connect(
+    provider: *mut IdeviceProviderHandle,
     client: *mut *mut CoreDeviceProxyHandle,
 ) -> IdeviceErrorCode {
     if provider.is_null() || client.is_null() {
@@ -37,70 +35,10 @@ pub unsafe extern "C" fn core_device_proxy_connect_tcp(
     }
 
     let res: Result<CoreDeviceProxy, IdeviceError> = RUNTIME.block_on(async move {
-        // Take ownership of the provider (without immediately dropping it)
-        let provider_box = unsafe { Box::from_raw(provider) };
-
-        // Get a reference to the inner value
-        let provider_ref = &provider_box.0;
+        let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
 
         // Connect using the reference
-        let result = CoreDeviceProxy::connect(provider_ref).await;
-
-        // Explicitly keep the provider_box alive until after connect completes
-        std::mem::forget(provider_box);
-        result
-    });
-
-    match res {
-        Ok(r) => {
-            let boxed = Box::new(CoreDeviceProxyHandle(r));
-            unsafe { *client = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
-        }
-        Err(e) => {
-            // If connection failed, the provider_box was already forgotten,
-            // so we need to reconstruct it to avoid leak
-            let _ = unsafe { Box::from_raw(provider) };
-            e.into()
-        }
-    }
-}
-
-/// Automatically creates and connects to Core Device Proxy, returning a client handle
-///
-/// # Arguments
-/// * [`provider`] - A UsbmuxdProvider
-/// * [`client`] - On success, will be set to point to a newly allocated CoreDeviceProxy handle
-///
-/// # Returns
-/// An error code indicating success or failure
-///
-/// # Safety
-/// `provider` must be a valid pointer to a handle allocated by this library
-/// `client` must be a valid, non-null pointer to a location where the handle will be stored
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn core_device_proxy_connect_usbmuxd(
-    provider: *mut UsbmuxdProviderHandle,
-    client: *mut *mut CoreDeviceProxyHandle,
-) -> IdeviceErrorCode {
-    if provider.is_null() {
-        log::error!("Provider is null");
-        return IdeviceErrorCode::InvalidArg;
-    }
-
-    let res: Result<CoreDeviceProxy, IdeviceError> = RUNTIME.block_on(async move {
-        // Take ownership of the provider (without immediately dropping it)
-        let provider_box = unsafe { Box::from_raw(provider) };
-
-        // Get a reference to the inner value
-        let provider_ref = &provider_box.0;
-
-        // Connect using the reference
-        let result = CoreDeviceProxy::connect(provider_ref).await;
-
-        // Explicitly keep the provider_box alive until after connect completes
-        std::mem::forget(provider_box);
-        result
+        CoreDeviceProxy::connect(provider_ref).await
     });
 
     match res {
@@ -123,14 +61,15 @@ pub unsafe extern "C" fn core_device_proxy_connect_usbmuxd(
 /// An error code indicating success or failure
 ///
 /// # Safety
-/// `socket` must be a valid pointer to a handle allocated by this library
+/// `socket` must be a valid pointer to a handle allocated by this library. It is consumed and
+/// may not be used again.
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn core_device_proxy_new(
     socket: *mut IdeviceHandle,
     client: *mut *mut CoreDeviceProxyHandle,
 ) -> IdeviceErrorCode {
-    if socket.is_null() {
+    if socket.is_null() || client.is_null() {
         return IdeviceErrorCode::InvalidArg;
     }
     let socket = unsafe { Box::from_raw(socket) }.0;
@@ -233,8 +172,8 @@ pub unsafe extern "C" fn core_device_proxy_recv(
 /// # Arguments
 /// * [`handle`] - The CoreDeviceProxy handle
 /// * [`mtu`] - Pointer to store the MTU value
-/// * [`address`] - Pointer to store the IP address string (must be at least 16 bytes)
-/// * [`netmask`] - Pointer to store the netmask string (must be at least 16 bytes)
+/// * [`address`] - Pointer to store the IP address string
+/// * [`netmask`] - Pointer to store the netmask string
 ///
 /// # Returns
 /// An error code indicating success or failure
@@ -262,9 +201,21 @@ pub unsafe extern "C" fn core_device_proxy_get_client_parameters(
         *mtu = params.mtu;
     }
 
+    // Allocate both strings, but handle partial failure
+    let address_cstring = match CString::new(params.address.clone()) {
+        Ok(s) => s,
+        Err(_) => return IdeviceErrorCode::InvalidString,
+    };
+
+    let netmask_cstring = match CString::new(params.netmask.clone()) {
+        Ok(s) => s,
+        Err(_) => return IdeviceErrorCode::InvalidString,
+    };
+
+    // Only assign to output pointers after both succeed
     unsafe {
-        *address = CString::new(params.address.clone()).unwrap().into_raw();
-        *netmask = CString::new(params.netmask.clone()).unwrap().into_raw();
+        *address = address_cstring.into_raw();
+        *netmask = netmask_cstring.into_raw();
     }
 
     IdeviceErrorCode::IdeviceSuccess
@@ -274,7 +225,7 @@ pub unsafe extern "C" fn core_device_proxy_get_client_parameters(
 ///
 /// # Arguments
 /// * [`handle`] - The CoreDeviceProxy handle
-/// * [`address`] - Pointer to store the server address string (must be at least 16 bytes)
+/// * [`address`] - Pointer to store the server address string
 ///
 /// # Returns
 /// An error code indicating success or failure
@@ -294,9 +245,10 @@ pub unsafe extern "C" fn core_device_proxy_get_server_address(
     let proxy = unsafe { &(*handle).0 };
 
     unsafe {
-        *address = CString::new(proxy.handshake.server_address.clone())
-            .unwrap()
-            .into_raw();
+        *address = match CString::new(proxy.handshake.server_address.clone()) {
+            Ok(s) => s.into_raw(),
+            Err(_) => return IdeviceErrorCode::InvalidString,
+        };
     }
 
     IdeviceErrorCode::IdeviceSuccess

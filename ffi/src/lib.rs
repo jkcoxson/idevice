@@ -1,33 +1,50 @@
 // Jackson Coxson
 
+#[cfg(feature = "tunnel_tcp_stack")]
 pub mod adapter;
+#[cfg(feature = "afc")]
 pub mod afc;
+#[cfg(feature = "amfi")]
 pub mod amfi;
+#[cfg(feature = "core_device_proxy")]
 pub mod core_device_proxy;
+#[cfg(feature = "debug_proxy")]
 pub mod debug_proxy;
 mod errors;
+#[cfg(feature = "heartbeat")]
 pub mod heartbeat;
+#[cfg(feature = "installation_proxy")]
 pub mod installation_proxy;
+#[cfg(feature = "location_simulation")]
 pub mod location_simulation;
 pub mod lockdown;
 pub mod logging;
+#[cfg(feature = "misagent")]
 pub mod misagent;
-pub mod mounter;
+#[cfg(feature = "mobile_image_mounter")]
+pub mod mobile_image_mounter;
+#[cfg(feature = "os_trace_relay")]
 pub mod os_trace_relay;
 mod pairing_file;
+#[cfg(feature = "dvt")]
 pub mod process_control;
 pub mod provider;
+#[cfg(feature = "dvt")]
 pub mod remote_server;
-pub mod remotexpc;
-pub mod sbservices;
+#[cfg(feature = "xpc")]
+pub mod rsd;
+#[cfg(feature = "springboardservices")]
+pub mod springboardservices;
+#[cfg(feature = "syslog_relay")]
 pub mod syslog_relay;
+#[cfg(feature = "usbmuxd")]
 pub mod usbmuxd;
 pub mod util;
 
 pub use errors::*;
 pub use pairing_file::*;
 
-use idevice::{Idevice, IdeviceSocket};
+use idevice::{Idevice, IdeviceSocket, ReadWrite};
 use once_cell::sync::Lazy;
 use std::ffi::{CStr, CString, c_char};
 use tokio::runtime::{self, Runtime};
@@ -41,6 +58,11 @@ static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
 });
 
 pub const LOCKDOWN_PORT: u16 = 62078;
+
+#[repr(C)]
+pub struct ReadWriteOpaque {
+    pub inner: Option<Box<dyn ReadWrite>>,
+}
 
 /// Opaque C-compatible handle to an Idevice connection
 pub struct IdeviceHandle(pub Idevice);

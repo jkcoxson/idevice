@@ -1,15 +1,14 @@
-// DebianArch
-
 use std::{
     ffi::CString,
     io::{BufRead, Cursor, Read},
     ops::{BitOr, BitOrAssign},
 };
 
-use super::error::XPCError;
 use indexmap::IndexMap;
-use log::debug;
+use log::{debug, warn};
 use serde::{Deserialize, Serialize};
+
+use crate::IdeviceError;
 
 #[derive(Clone, Copy, Debug)]
 #[repr(u32)]
@@ -69,7 +68,7 @@ pub enum XPCType {
 }
 
 impl TryFrom<u32> for XPCType {
-    type Error = XPCError;
+    type Error = IdeviceError;
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
@@ -81,7 +80,7 @@ impl TryFrom<u32> for XPCType {
             0x00009000 => Ok(Self::String),
             0x00008000 => Ok(Self::Data),
             0x0000a000 => Ok(Self::Uuid),
-            _ => Err("Invalid XPCType")?,
+            _ => Err(IdeviceError::UnknownXpcType(value))?,
         }
     }
 }
@@ -147,14 +146,7 @@ impl XPCObject {
         }
     }
 
-    pub fn to_value<T: Serialize>(value: &T) -> Self {
-        match plist::to_value(value) {
-            Ok(v) => Self::from(v),
-            Err(_) => panic!("oof"),
-        }
-    }
-
-    pub fn encode(&self) -> Result<Vec<u8>, XPCError> {
+    pub fn encode(&self) -> Result<Vec<u8>, IdeviceError> {
         let mut buf = Vec::new();
         buf.extend_from_slice(&0x42133742_u32.to_le_bytes());
         buf.extend_from_slice(&0x00000005_u32.to_le_bytes());
@@ -162,7 +154,7 @@ impl XPCObject {
         Ok(buf)
     }
 
-    fn encode_object(&self, buf: &mut Vec<u8>) -> Result<(), XPCError> {
+    fn encode_object(&self, buf: &mut Vec<u8>) -> Result<(), IdeviceError> {
         match self {
             XPCObject::Bool(val) => {
                 buf.extend_from_slice(&(XPCType::Bool as u32).to_le_bytes());
@@ -224,21 +216,26 @@ impl XPCObject {
         Ok(())
     }
 
-    pub fn decode(buf: &[u8]) -> Result<Self, XPCError> {
-        let magic = u32::from_le_bytes(buf[0..4].try_into()?);
+    pub fn decode(buf: &[u8]) -> Result<Self, IdeviceError> {
+        if buf.len() < 8 {
+            return Err(IdeviceError::NotEnoughBytes(buf.len(), 8));
+        }
+        let magic = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
         if magic != 0x42133742 {
-            Err("Invalid magic for XPCObject")?
+            warn!("Invalid magic for XPCObject");
+            return Err(IdeviceError::InvalidXpcMagic);
         }
 
-        let version = u32::from_le_bytes(buf[4..8].try_into()?);
+        let version = u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]);
         if version != 0x00000005 {
-            Err("Unexpected version for XPCObject")?
+            warn!("Unexpected version for XPCObject");
+            return Err(IdeviceError::UnexpectedXpcVersion);
         }
 
         Self::decode_object(&mut Cursor::new(&buf[8..]))
     }
 
-    fn decode_object(mut cursor: &mut Cursor<&[u8]>) -> Result<Self, XPCError> {
+    fn decode_object(mut cursor: &mut Cursor<&[u8]>) -> Result<Self, IdeviceError> {
         let mut buf_32: [u8; 4] = Default::default();
         cursor.read_exact(&mut buf_32)?;
         let xpc_type = u32::from_le_bytes(buf_32);
@@ -251,10 +248,18 @@ impl XPCObject {
                 let _l = u32::from_le_bytes(buf_32);
                 cursor.read_exact(&mut buf_32)?;
                 let num_entries = u32::from_le_bytes(buf_32);
-                for _i in 0..num_entries {
+                for _ in 0..num_entries {
                     let mut key_buf = Vec::new();
                     BufRead::read_until(&mut cursor, 0, &mut key_buf)?;
-                    let key = CString::from_vec_with_nul(key_buf)?.to_str()?.to_string();
+                    let key = match CString::from_vec_with_nul(key_buf)
+                        .ok()
+                        .and_then(|x| x.to_str().ok().map(|x| x.to_string()))
+                    {
+                        Some(k) => k,
+                        None => {
+                            return Err(IdeviceError::InvalidCString);
+                        }
+                    };
                     let padding = Self::calculate_padding(key.len() + 1);
 
                     BufRead::consume(&mut cursor, padding);
@@ -292,7 +297,13 @@ impl XPCObject {
 
                 let mut key_buf = vec![0; l];
                 cursor.read_exact(&mut key_buf)?;
-                let key = CString::from_vec_with_nul(key_buf)?.to_str()?.to_string();
+                let key = match CString::from_vec_with_nul(key_buf)
+                    .ok()
+                    .and_then(|x| x.to_str().ok().map(|x| x.to_string()))
+                {
+                    Some(k) => k,
+                    None => return Err(IdeviceError::InvalidCString),
+                };
                 BufRead::consume(&mut cursor, padding);
                 Ok(XPCObject::String(key))
             }
@@ -395,40 +406,48 @@ impl XPCMessage {
         }
     }
 
-    pub fn decode(data: &[u8]) -> Result<XPCMessage, XPCError> {
+    pub fn decode(data: &[u8]) -> Result<XPCMessage, IdeviceError> {
         if data.len() < 24 {
-            Err("XPCMessage must be at least 24 bytes.")?
+            Err(IdeviceError::NotEnoughBytes(data.len(), 24))?
         }
 
-        let magic = u32::from_le_bytes(data[0..4].try_into()?);
+        let magic = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
         if magic != 0x29b00b92_u32 {
-            Err("XPCMessage magic is invalid.")?
+            warn!("XPCMessage magic is invalid.");
+            Err(IdeviceError::MalformedXpc)?
         }
 
-        let flags = u32::from_le_bytes(data[4..8].try_into()?);
-        let body_len = u64::from_le_bytes(data[8..16].try_into()?);
-        let message_id = u64::from_le_bytes(data[16..24].try_into()?);
-        if body_len + 24 > data.len().try_into()? {
-            Err("XPCMessage body length given is incorrect.")?
+        let flags = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
+        let body_len = u64::from_le_bytes([
+            data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15],
+        ]);
+        debug!("Body_len: {body_len}");
+        let message_id = u64::from_le_bytes([
+            data[16], data[17], data[18], data[19], data[20], data[21], data[22], data[23],
+        ]);
+        if body_len + 24 > data.len() as u64 {
+            warn!(
+                "Body length is {body_len}, but received bytes is {}",
+                data.len()
+            );
+            Err(IdeviceError::PacketSizeMismatch)?
         }
 
-        // for some reason the above if check doesn't work ???
-        debug!("Body length {} : {}", body_len, data.len());
-        if body_len == 0 {
-            return Ok(XPCMessage {
-                flags,
-                message: None,
-                message_id: Some(message_id),
-            });
-        }
-        Ok(XPCMessage {
+        let res = XPCMessage {
             flags,
-            message: Some(XPCObject::decode(&data[24..24 + body_len as usize])?),
+            message: if body_len > 0 {
+                Some(XPCObject::decode(&data[24..24 + body_len as usize])?)
+            } else {
+                None
+            },
             message_id: Some(message_id),
-        })
+        };
+
+        debug!("Decoded {res:#?}");
+        Ok(res)
     }
 
-    pub fn encode(self, message_id: u64) -> Result<Vec<u8>, XPCError> {
+    pub fn encode(self, message_id: u64) -> Result<Vec<u8>, IdeviceError> {
         let mut out = 0x29b00b92_u32.to_le_bytes().to_vec();
         out.extend_from_slice(&self.flags.to_le_bytes());
         match self.message {

@@ -11,7 +11,6 @@ set(EXAMPLES_DIR ${CMAKE_SOURCE_DIR}/../examples)
 
 # Find all C example files
 file(GLOB EXAMPLE_SOURCES ${EXAMPLES_DIR}/*.c)
-find_package(OpenSSL REQUIRED)
 
 # Create an executable for each example file
 foreach(EXAMPLE_FILE ${EXAMPLE_SOURCES})
@@ -27,14 +26,10 @@ foreach(EXAMPLE_FILE ${EXAMPLE_SOURCES})
     # Link the static Rust library
     target_link_libraries(${EXAMPLE_NAME} PRIVATE ${STATIC_LIB})
 
-    # Link OpenSSL
-    target_link_libraries(${EXAMPLE_NAME} PRIVATE OpenSSL::SSL OpenSSL::Crypto)
-
     # libplist
 
     if( APPLE )
       # use static linking
-      pkg_search_module(PLIST REQUIRED libplist-2.0)
       find_library( LIBPLIST libplist-2.0.a REQUIRED )
       message( STATUS "(Static linking) LIBPLIST " ${LIBPLIST} )
       target_link_libraries ( ${EXAMPLE_NAME} PRIVATE ${LIBPLIST} )
