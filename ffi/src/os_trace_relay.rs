@@ -1,11 +1,11 @@
-use std::os::raw::c_char;
 use std::ffi::CString;
+use std::os::raw::c_char;
 
-use idevice::{os_trace_relay::OsTraceRelayClient, IdeviceError, IdeviceService};
-
-use crate::{
-    provider::TcpProviderHandle, IdeviceErrorCode, RUNTIME
+use idevice::{
+    IdeviceError, IdeviceService, os_trace_relay::OsTraceRelayClient, provider::IdeviceProvider,
 };
+
+use crate::{IdeviceErrorCode, RUNTIME, provider::IdeviceProviderHandle};
 
 pub struct OsTraceRelayClientHandle(pub OsTraceRelayClient);
 pub struct OsTraceRelayReceiverHandle(pub idevice::os_trace_relay::OsTraceRelayReceiver);
@@ -29,10 +29,21 @@ pub struct SyslogLabel {
     pub category: *const c_char,
 }
 
+/// Connects to the relay with the given provider
+///
+/// # Arguments
+/// * [`provider`] - A provider created by this library
+/// * [`client`] - A pointer where the handle will be allocated
+///
+/// # Returns
+/// 0 for success, an IdeviceErrorCode otherwise
+///
+/// # Safety
+/// None of the arguments can be null. Provider must be allocated by this library.
 #[unsafe(no_mangle)]
-pub extern "C" fn os_trace_relay_connect_tcp(
-    provider: *mut TcpProviderHandle,
-    client: *mut *mut OsTraceRelayClientHandle
+pub unsafe extern "C" fn os_trace_relay_connect(
+    provider: *mut IdeviceProviderHandle,
+    client: *mut *mut OsTraceRelayClientHandle,
 ) -> IdeviceErrorCode {
     if provider.is_null() {
         log::error!("Null pointer provided");
@@ -40,14 +51,8 @@ pub extern "C" fn os_trace_relay_connect_tcp(
     }
 
     let res: Result<OsTraceRelayClient, IdeviceError> = RUNTIME.block_on(async move {
-        let provider_box = unsafe { Box::from_raw(provider) };
-        
-        let provider_ref = &provider_box.0;
-
-        let result = OsTraceRelayClient::connect(provider_ref).await;
-
-        std::mem::forget(provider_box);
-        result
+        let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
+        OsTraceRelayClient::connect(provider_ref).await
     });
 
     match res {
@@ -63,18 +68,35 @@ pub extern "C" fn os_trace_relay_connect_tcp(
     }
 }
 
+/// Frees the relay client
+///
+/// # Arguments
+/// * [`handle`] - The relay client handle
+///
+/// # Safety
+/// The handle must be allocated by this library
 #[unsafe(no_mangle)]
-pub extern "C" fn os_trace_relay_free(
-    handle: *mut OsTraceRelayClientHandle
-)  {
-     if !handle.is_null() {
+pub unsafe extern "C" fn os_trace_relay_free(handle: *mut OsTraceRelayClientHandle) {
+    if !handle.is_null() {
         log::debug!("Freeing os trace relay client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }
 
+/// Creates a handle and starts receiving logs
+///
+/// # Arguments
+/// * [`client`] - The relay client handle
+/// * [`receiver`] - A pointer to allocate the new handle to
+/// * [`pid`] - An optional pointer to a PID to get logs for. May be null.
+///
+/// # Returns
+/// 0 for success, an IdeviceErrorCode otherwise
+///
+/// # Safety
+/// The handle must be allocated by this library. It is consumed, and must never be used again.
 #[unsafe(no_mangle)]
-pub extern "C" fn os_trace_relay_start_trace(
+pub unsafe extern "C" fn os_trace_relay_start_trace(
     client: *mut OsTraceRelayClientHandle,
     receiver: *mut *mut OsTraceRelayReceiverHandle,
     pid: *const u32,
@@ -91,13 +113,8 @@ pub extern "C" fn os_trace_relay_start_trace(
     };
 
     let client_owned = unsafe { Box::from_raw(client) };
-    
-    let res= RUNTIME.block_on(async {
-        client_owned
-            .0
-            .start_trace(pid_option)
-            .await
-    });
+
+    let res = RUNTIME.block_on(async { client_owned.0.start_trace(pid_option).await });
 
     match res {
         Ok(relay) => {
@@ -105,58 +122,75 @@ pub extern "C" fn os_trace_relay_start_trace(
             unsafe { *receiver = Box::into_raw(boxed) };
 
             IdeviceErrorCode::IdeviceSuccess
-        },
+        }
         Err(e) => e.into(),
     }
 }
 
+/// Frees the receiver handle
+///
+/// # Arguments
+/// * [`handle`] - The relay receiver client handle
+///
+/// # Safety
+/// The handle must be allocated by this library. It is consumed, and must never be used again.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn os_trace_relay_receiver_free(
-    handle: *mut OsTraceRelayReceiverHandle
-) {
+pub unsafe extern "C" fn os_trace_relay_receiver_free(handle: *mut OsTraceRelayReceiverHandle) {
     if !handle.is_null() {
         log::debug!("Freeing syslog relay client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }
 
+/// Gets the PID list from the device
+///
+/// # Arguments
+/// * [`client`] - The relay receiver client handle
+/// * [`list`] - A pointer to allocate a list of PIDs to
+///
+/// # Returns
+/// 0 for success, an IdeviceErrorCode otherwise
+///
+/// # Safety
+/// The handle must be allocated by this library.
 #[unsafe(no_mangle)]
-pub extern "C" fn os_trace_relay_get_pid_list(
+pub unsafe extern "C" fn os_trace_relay_get_pid_list(
     client: *mut OsTraceRelayClientHandle,
     list: *mut *mut Vec<u64>,
 ) -> IdeviceErrorCode {
-    let res = RUNTIME.block_on(async {
-        unsafe { &mut *client }
-            .0
-            .get_pid_list()
-            .await
-    });
+    let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.get_pid_list().await });
 
     match res {
         Ok(r) => {
             unsafe { *list = Box::into_raw(Box::new(r)) };
             IdeviceErrorCode::IdeviceSuccess
-        },
+        }
         Err(e) => e.into(),
     }
 }
 
+/// Gets the next log from the relay
+///
+/// # Arguments
+/// * [`client`] - The relay receiver client handle
+/// * [`log`] - A pointer to allocate the new log
+///
+/// # Returns
+/// 0 for success, an IdeviceErrorCode otherwise
+///
+/// # Safety
+/// The handle must be allocated by this library.
 #[unsafe(no_mangle)]
-pub extern "C" fn os_trace_relay_next(
+pub unsafe extern "C" fn os_trace_relay_next(
     client: *mut OsTraceRelayReceiverHandle,
-    log: *mut *mut OsTraceLog
+    log: *mut *mut OsTraceLog,
 ) -> IdeviceErrorCode {
     if client.is_null() {
         log::error!("Null pointer provided");
         return IdeviceErrorCode::InvalidArg;
     }
 
-    let res = RUNTIME.block_on(async {
-        unsafe { &mut *client }
-            .0
-            .next()
-            .await
-    });
+    let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.next().await });
 
     match res {
         Ok(r) => {
@@ -176,7 +210,7 @@ pub extern "C" fn os_trace_relay_next(
                     std::ptr::null()
                 },
             });
-            
+
             unsafe { *log = Box::into_raw(log_entry) };
             IdeviceErrorCode::IdeviceSuccess
         }
@@ -184,6 +218,16 @@ pub extern "C" fn os_trace_relay_next(
     }
 }
 
+/// Frees a log received from the relay
+///
+/// # Arguments
+/// * [`log`] - The log to free
+///
+/// # Returns
+/// 0 for success, an IdeviceErrorCode otherwise
+///
+/// # Safety
+/// The log must be allocated by this library. It is consumed and must not be used again.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn os_trace_relay_free_log(log: *mut OsTraceLog) {
     if !log.is_null() {
@@ -199,19 +243,20 @@ pub unsafe extern "C" fn os_trace_relay_free_log(log: *mut OsTraceLog) {
             }
             if !(*log).label.is_null() {
                 let label = &*(*log).label;
-                
+
                 if !label.subsystem.is_null() {
                     let _ = CString::from_raw(label.subsystem as *mut c_char);
                 }
-                
+
                 if !label.category.is_null() {
                     let _ = CString::from_raw(label.category as *mut c_char);
                 }
 
                 let _ = Box::from_raw((*log).label as *mut SyslogLabel);
             }
-            
+
             let _ = Box::from_raw(log);
         }
     }
 }
+
