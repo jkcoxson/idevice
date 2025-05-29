@@ -49,7 +49,7 @@ async fn main() {
         .get_matches();
 
     if matches.get_flag("about") {
-        println!("simulate_location - Sets the simlulated location on an iOS device");
+        println!("simulate_location - Sets the simulated location on an iOS device");
         println!("Copyright (c) 2025 Jackson Coxson");
         return;
     }
