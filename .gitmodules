@@ -1,0 +1,3 @@
+[submodule "ffi/libplist"]
+	path = ffi/libplist
+	url = https://github.com/libimobiledevice/libplist.git

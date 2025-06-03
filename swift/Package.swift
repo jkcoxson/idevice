@@ -14,11 +14,19 @@ let package = Package(
             name: "IDevice",
             targets: ["IDevice"]
         ),
+        .library(
+            name: "plist",
+            targets: ["plist"],
+        ),
     ],
     targets: [
         .binaryTarget(
             name: "IDevice",
             path: "IDevice.xcframework"
+        ),
+        .binaryTarget(
+            name: "plist",
+            path: "plist.xcframework"
         ),
     ]
 )
