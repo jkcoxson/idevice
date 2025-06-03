@@ -1,12 +1,14 @@
 // Jackson Coxson
 
+use std::ptr::null_mut;
+
 use idevice::{
     IdeviceError, IdeviceService,
     afc::{AfcClient, DeviceInfo, FileInfo},
     provider::IdeviceProvider,
 };
 
-use crate::{IdeviceErrorCode, IdeviceHandle, RUNTIME, provider::IdeviceProviderHandle};
+use crate::{IdeviceFfiError, IdeviceHandle, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
 
 pub struct AfcClientHandle(pub AfcClient);
 
@@ -17,7 +19,7 @@ pub struct AfcClientHandle(pub AfcClient);
 /// * [`client`] - On success, will be set to point to a newly allocated AfcClient handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `provider` must be a valid pointer to a handle allocated by this library
@@ -26,10 +28,10 @@ pub struct AfcClientHandle(pub AfcClient);
 pub unsafe extern "C" fn afc_client_connect(
     provider: *mut IdeviceProviderHandle,
     client: *mut *mut AfcClientHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
         log::error!("Null pointer provided");
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let res = RUNTIME.block_on(async {
@@ -42,9 +44,9 @@ pub unsafe extern "C" fn afc_client_connect(
         Ok(r) => {
             let boxed = Box::new(AfcClientHandle(r));
             unsafe { *client = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -55,7 +57,7 @@ pub unsafe extern "C" fn afc_client_connect(
 /// * [`client`] - On success, will be set to point to a newly allocated AfcClient handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `socket` must be a valid pointer to a handle allocated by this library
@@ -64,15 +66,15 @@ pub unsafe extern "C" fn afc_client_connect(
 pub unsafe extern "C" fn afc_client_new(
     socket: *mut IdeviceHandle,
     client: *mut *mut AfcClientHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if socket.is_null() || client.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
     let socket = unsafe { Box::from_raw(socket) }.0;
     let r = AfcClient::new(socket);
     let boxed = Box::new(AfcClientHandle(r));
     unsafe { *client = Box::into_raw(boxed) };
-    IdeviceErrorCode::IdeviceSuccess
+    null_mut()
 }
 
 /// Frees an AfcClient handle
@@ -100,7 +102,7 @@ pub unsafe extern "C" fn afc_client_free(handle: *mut AfcClientHandle) {
 /// * [`count`] - Will be set to the number of entries
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// All pointers must be valid and non-null
@@ -111,9 +113,9 @@ pub unsafe extern "C" fn afc_list_directory(
     path: *const libc::c_char,
     entries: *mut *mut *mut libc::c_char,
     count: *mut libc::size_t,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if path.is_null() || entries.is_null() || count.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let path_cstr = unsafe { std::ffi::CStr::from_ptr(path) };
@@ -141,7 +143,7 @@ pub unsafe extern "C" fn afc_list_directory(
             let layout = std::alloc::Layout::array::<*mut libc::c_char>(string_count + 1).unwrap();
             let ptr = unsafe { std::alloc::alloc(layout) as *mut *mut libc::c_char };
             if ptr.is_null() {
-                return IdeviceErrorCode::InvalidArg;
+                return ffi_err!(IdeviceError::FfiInvalidArg);
             }
 
             // Fill the array with pointers to the strings, then leak each CString
@@ -159,9 +161,9 @@ pub unsafe extern "C" fn afc_list_directory(
                 *count = string_count;
             }
 
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -172,7 +174,7 @@ pub unsafe extern "C" fn afc_list_directory(
 /// * [`path`] - Path of the directory to create (UTF-8 null-terminated)
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -181,15 +183,15 @@ pub unsafe extern "C" fn afc_list_directory(
 pub unsafe extern "C" fn afc_make_directory(
     client: *mut AfcClientHandle,
     path: *const libc::c_char,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || path.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let path_cstr = unsafe { std::ffi::CStr::from_ptr(path) };
     let path = match path_cstr.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
@@ -198,8 +200,8 @@ pub unsafe extern "C" fn afc_make_directory(
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -223,7 +225,7 @@ pub struct AfcFileInfo {
 /// * [`info`] - Will be populated with file information
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` and `path` must be valid pointers
@@ -233,15 +235,15 @@ pub unsafe extern "C" fn afc_get_file_info(
     client: *mut AfcClientHandle,
     path: *const libc::c_char,
     info: *mut AfcFileInfo,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || path.is_null() || info.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let path_cstr = unsafe { std::ffi::CStr::from_ptr(path) };
     let path = match path_cstr.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let res: Result<FileInfo, IdeviceError> = RUNTIME.block_on(async move {
@@ -270,9 +272,9 @@ pub unsafe extern "C" fn afc_get_file_info(
                     None => std::ptr::null_mut(),
                 };
             }
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -316,7 +318,7 @@ pub struct AfcDeviceInfo {
 /// * [`info`] - Will be populated with device information
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` and `info` must be valid pointers
@@ -324,9 +326,9 @@ pub struct AfcDeviceInfo {
 pub unsafe extern "C" fn afc_get_device_info(
     client: *mut AfcClientHandle,
     info: *mut AfcDeviceInfo,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || info.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let res: Result<DeviceInfo, IdeviceError> = RUNTIME.block_on(async move {
@@ -344,9 +346,9 @@ pub unsafe extern "C" fn afc_get_device_info(
                 (*info).free_bytes = device_info.free_bytes;
                 (*info).block_size = device_info.block_size;
             }
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -373,7 +375,7 @@ pub unsafe extern "C" fn afc_device_info_free(info: *mut AfcDeviceInfo) {
 /// * [`path`] - Path to the file or directory to remove (UTF-8 null-terminated)
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -382,15 +384,15 @@ pub unsafe extern "C" fn afc_device_info_free(info: *mut AfcDeviceInfo) {
 pub unsafe extern "C" fn afc_remove_path(
     client: *mut AfcClientHandle,
     path: *const libc::c_char,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || path.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let path_cstr = unsafe { std::ffi::CStr::from_ptr(path) };
     let path = match path_cstr.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
@@ -399,8 +401,8 @@ pub unsafe extern "C" fn afc_remove_path(
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -411,7 +413,7 @@ pub unsafe extern "C" fn afc_remove_path(
 /// * [`path`] - Path to the directory to remove (UTF-8 null-terminated)
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -420,15 +422,15 @@ pub unsafe extern "C" fn afc_remove_path(
 pub unsafe extern "C" fn afc_remove_path_and_contents(
     client: *mut AfcClientHandle,
     path: *const libc::c_char,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || path.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let path_cstr = unsafe { std::ffi::CStr::from_ptr(path) };
     let path = match path_cstr.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
@@ -437,8 +439,8 @@ pub unsafe extern "C" fn afc_remove_path_and_contents(
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -478,7 +480,7 @@ pub struct AfcFileHandle<'a>(Box<idevice::afc::file::FileDescriptor<'a>>); // Op
 /// * [`handle`] - Will be set to a new file handle on success
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// All pointers must be valid and non-null
@@ -491,15 +493,15 @@ pub unsafe extern "C" fn afc_file_open(
     path: *const libc::c_char,
     mode: AfcFopenMode,
     handle: *mut *mut AfcFileHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || path.is_null() || handle.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let path_cstr = unsafe { std::ffi::CStr::from_ptr(path) };
     let path = match path_cstr.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let mode = mode.into();
@@ -519,9 +521,9 @@ pub unsafe extern "C" fn afc_file_open(
     match res {
         Ok(f) => {
             unsafe { *handle = f }
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -531,22 +533,22 @@ pub unsafe extern "C" fn afc_file_open(
 /// * [`handle`] - File handle to close
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn afc_file_close(handle: *mut AfcFileHandle) -> IdeviceErrorCode {
+pub unsafe extern "C" fn afc_file_close(handle: *mut AfcFileHandle) -> *mut IdeviceFfiError {
     if handle.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let fd = unsafe { Box::from_raw(handle as *mut idevice::afc::file::FileDescriptor) };
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move { fd.close().await });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -558,7 +560,7 @@ pub unsafe extern "C" fn afc_file_close(handle: *mut AfcFileHandle) -> IdeviceEr
 /// * [`length`] - Will be set to the length of the read data
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// All pointers must be valid and non-null
@@ -567,9 +569,9 @@ pub unsafe extern "C" fn afc_file_read(
     handle: *mut AfcFileHandle,
     data: *mut *mut u8,
     length: *mut libc::size_t,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || data.is_null() || length.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let fd = unsafe { &mut *(handle as *mut idevice::afc::file::FileDescriptor) };
@@ -583,9 +585,9 @@ pub unsafe extern "C" fn afc_file_read(
                 *length = boxed.len();
             }
             std::mem::forget(boxed);
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -597,7 +599,7 @@ pub unsafe extern "C" fn afc_file_read(
 /// * [`length`] - Length of data to write
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// All pointers must be valid and non-null
@@ -607,9 +609,9 @@ pub unsafe extern "C" fn afc_file_write(
     handle: *mut AfcFileHandle,
     data: *const u8,
     length: libc::size_t,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || data.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let fd = unsafe { &mut *(handle as *mut idevice::afc::file::FileDescriptor) };
@@ -618,8 +620,8 @@ pub unsafe extern "C" fn afc_file_write(
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move { fd.write(data_slice).await });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -639,7 +641,7 @@ pub enum AfcLinkType {
 /// * [`link_type`] - Type of link to create
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// All pointers must be valid and non-null
@@ -650,21 +652,21 @@ pub unsafe extern "C" fn afc_make_link(
     target: *const libc::c_char,
     source: *const libc::c_char,
     link_type: AfcLinkType,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || target.is_null() || source.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let target_cstr = unsafe { std::ffi::CStr::from_ptr(target) };
     let target = match target_cstr.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let source_cstr = unsafe { std::ffi::CStr::from_ptr(source) };
     let source = match source_cstr.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let link_type = match link_type {
@@ -678,8 +680,8 @@ pub unsafe extern "C" fn afc_make_link(
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -691,7 +693,7 @@ pub unsafe extern "C" fn afc_make_link(
 /// * [`target`] - New path for the file/directory (UTF-8 null-terminated)
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// All pointers must be valid and non-null
@@ -701,21 +703,21 @@ pub unsafe extern "C" fn afc_rename_path(
     client: *mut AfcClientHandle,
     source: *const libc::c_char,
     target: *const libc::c_char,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || source.is_null() || target.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let source_cstr = unsafe { std::ffi::CStr::from_ptr(source) };
     let source = match source_cstr.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let target_cstr = unsafe { std::ffi::CStr::from_ptr(target) };
     let target = match target_cstr.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
@@ -724,8 +726,8 @@ pub unsafe extern "C" fn afc_rename_path(
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 

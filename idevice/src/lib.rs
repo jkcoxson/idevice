@@ -413,187 +413,195 @@ impl Idevice {
 
 /// Comprehensive error type for all device communication failures
 #[derive(Error, Debug)]
+#[repr(i32)]
 #[non_exhaustive]
 pub enum IdeviceError {
     #[error("device socket io failed")]
-    Socket(#[from] io::Error),
+    Socket(#[from] io::Error) = -1,
     #[error("PEM parse failed")]
-    PemParseFailed(#[from] rustls::pki_types::pem::Error),
+    PemParseFailed(#[from] rustls::pki_types::pem::Error) = -2,
     #[error("TLS error")]
-    Rustls(#[from] rustls::Error),
+    Rustls(#[from] rustls::Error) = -3,
     #[error("TLS verifiction build failed")]
-    TlsBuilderFailed(#[from] rustls::server::VerifierBuilderError),
+    TlsBuilderFailed(#[from] rustls::server::VerifierBuilderError) = -4,
     #[error("io on plist")]
-    Plist(#[from] plist::Error),
+    Plist(#[from] plist::Error) = -5,
     #[error("can't convert bytes to utf8")]
-    Utf8(#[from] std::string::FromUtf8Error),
+    Utf8(#[from] std::string::FromUtf8Error) = -6,
     #[error("unexpected response from device")]
-    UnexpectedResponse,
+    UnexpectedResponse = -7,
     #[error("this request was prohibited")]
-    GetProhibited,
+    GetProhibited = -8,
     #[error("no SSL session is active")]
-    SessionInactive,
+    SessionInactive = -9,
     #[error("device does not have pairing file")]
-    InvalidHostID,
+    InvalidHostID = -10,
     #[error("no established connection")]
-    NoEstablishedConnection,
+    NoEstablishedConnection = -11,
     #[error("device went to sleep")]
-    HeartbeatSleepyTime,
+    HeartbeatSleepyTime = -12,
     #[error("heartbeat timeout")]
-    HeartbeatTimeout,
+    HeartbeatTimeout = -13,
     #[error("not found")]
-    NotFound,
+    NotFound = -14,
     #[error("service not found")]
-    ServiceNotFound,
+    ServiceNotFound = -15,
     #[error("CDTunnel packet too short")]
-    CdtunnelPacketTooShort,
+    CdtunnelPacketTooShort = -16,
     #[error("CDTunnel packet invalid magic")]
-    CdtunnelPacketInvalidMagic,
+    CdtunnelPacketInvalidMagic = -17,
     #[error("Proclaimed packet size does not match actual size")]
-    PacketSizeMismatch,
+    PacketSizeMismatch = -18,
 
     #[cfg(feature = "core_device_proxy")]
     #[error("JSON serialization failed")]
-    Json(#[from] serde_json::Error),
+    Json(#[from] serde_json::Error) = -19,
 
     #[error("device not found")]
-    DeviceNotFound,
+    DeviceNotFound = -20,
 
     #[error("device lockded")]
-    DeviceLocked,
+    DeviceLocked = -21,
 
     #[error("device refused connection")]
-    UsbConnectionRefused,
+    UsbConnectionRefused = -22,
     #[error("bad command")]
-    UsbBadCommand,
+    UsbBadCommand = -23,
     #[error("bad device")]
-    UsbBadDevice,
+    UsbBadDevice = -24,
     #[error("usb bad version")]
-    UsbBadVersion,
+    UsbBadVersion = -25,
 
     #[error("bad build manifest")]
-    BadBuildManifest,
+    BadBuildManifest = -26,
     #[error("image not mounted")]
-    ImageNotMounted,
+    ImageNotMounted = -27,
 
     #[cfg(feature = "pair")]
     #[error("pairing trust dialog pending")]
-    PairingDialogResponsePending,
+    PairingDialogResponsePending = -28,
 
     #[cfg(feature = "pair")]
     #[error("user denied pairing trust")]
-    UserDeniedPairing,
+    UserDeniedPairing = -29,
 
     #[cfg(feature = "pair")]
     #[error("device is locked")]
-    PasswordProtected,
+    PasswordProtected = -30,
 
     #[cfg(feature = "misagent")]
     #[error("misagent operation failed")]
-    MisagentFailure,
+    MisagentFailure = -31,
 
     #[cfg(feature = "installation_proxy")]
     #[error("installation proxy operation failed")]
-    InstallationProxyOperationFailed(String),
+    InstallationProxyOperationFailed(String) = -32,
 
     #[cfg(feature = "afc")]
-    #[error("afc error")]
-    Afc(#[from] afc::errors::AfcError),
+    #[error("afc error: {0}")]
+    Afc(#[from] afc::errors::AfcError) = -33,
 
     #[cfg(feature = "afc")]
     #[error("unknown afc opcode")]
-    UnknownAfcOpcode,
+    UnknownAfcOpcode = -34,
 
     #[cfg(feature = "afc")]
     #[error("invalid afc magic")]
-    InvalidAfcMagic,
+    InvalidAfcMagic = -35,
 
     #[cfg(feature = "afc")]
     #[error("missing file attribute")]
-    AfcMissingAttribute,
+    AfcMissingAttribute = -36,
 
     #[cfg(feature = "crashreportcopymobile")]
     #[error("crash report mover sent the wrong response")]
-    CrashReportMoverBadResponse(Vec<u8>),
+    CrashReportMoverBadResponse(Vec<u8>) = -37,
 
     #[cfg(any(feature = "tss", feature = "tunneld"))]
     #[error("http reqwest error")]
-    Reqwest(#[from] reqwest::Error),
+    Reqwest(#[from] reqwest::Error) = -38,
 
     #[error("internal error")]
-    InternalError(String),
+    InternalError(String) = -39,
 
     #[cfg(feature = "xpc")]
     #[error("unknown http frame type")]
-    UnknownFrame(u8),
+    UnknownFrame(u8) = -40,
 
     #[cfg(feature = "xpc")]
     #[error("unknown http setting type")]
-    UnknownHttpSetting(u16),
+    UnknownHttpSetting(u16) = -41,
 
     #[cfg(feature = "xpc")]
     #[error("Unintialized stream ID")]
-    UninitializedStreamId,
+    UninitializedStreamId = -42,
 
     #[cfg(feature = "xpc")]
     #[error("unknown XPC type")]
-    UnknownXpcType(u32),
+    UnknownXpcType(u32) = -43,
 
     #[cfg(feature = "xpc")]
     #[error("malformed XPC message")]
-    MalformedXpc,
+    MalformedXpc = -44,
 
     #[cfg(feature = "xpc")]
     #[error("invalid XPC magic")]
-    InvalidXpcMagic,
+    InvalidXpcMagic = -45,
 
     #[cfg(feature = "xpc")]
     #[error("unexpected XPC version")]
-    UnexpectedXpcVersion,
+    UnexpectedXpcVersion = -46,
 
     #[cfg(feature = "xpc")]
     #[error("invalid C string")]
-    InvalidCString,
+    InvalidCString = -47,
 
     #[cfg(feature = "xpc")]
     #[error("stream reset")]
-    HttpStreamReset,
+    HttpStreamReset = -48,
 
     #[cfg(feature = "xpc")]
     #[error("go away packet received")]
-    HttpGoAway(String),
+    HttpGoAway(String) = -49,
 
     #[cfg(feature = "dvt")]
     #[error("NSKeyedArchive error")]
-    NsKeyedArchiveError(#[from] ns_keyed_archive::ConverterError),
+    NsKeyedArchiveError(#[from] ns_keyed_archive::ConverterError) = -50,
 
     #[cfg(feature = "dvt")]
     #[error("Unknown aux value type")]
-    UnknownAuxValueType(u32),
+    UnknownAuxValueType(u32) = -51,
 
     #[cfg(feature = "dvt")]
     #[error("unknown channel")]
-    UnknownChannel(u32),
+    UnknownChannel(u32) = -52,
 
     #[error("cannot parse string as IpAddr")]
-    AddrParseError(#[from] std::net::AddrParseError),
+    AddrParseError(#[from] std::net::AddrParseError) = -53,
 
     #[cfg(feature = "dvt")]
     #[error("disable memory limit failed")]
-    DisableMemoryLimitFailed,
+    DisableMemoryLimitFailed = -54,
 
     #[error("not enough bytes, expected {1}, got {0}")]
-    NotEnoughBytes(usize, usize),
+    NotEnoughBytes(usize, usize) = -55,
 
     #[error("failed to parse bytes as valid utf8")]
-    Utf8Error,
+    Utf8Error = -56,
 
     #[cfg(feature = "debug_proxy")]
     #[error("invalid argument passed")]
-    InvalidArgument,
+    InvalidArgument = -57,
 
     #[error("unknown error `{0}` returned from device")]
-    UnknownErrorType(String),
+    UnknownErrorType(String) = -59,
+
+    #[error("invalid arguments were passed")]
+    FfiInvalidArg = -60,
+    #[error("invalid string was passed")]
+    FfiInvalidString = -61,
+    #[error("buffer passed is too small - needs {0}, got {1}")]
+    FfiBufferTooSmall(usize, usize) = -62,
 }
 
 impl IdeviceError {
@@ -631,6 +639,115 @@ impl IdeviceError {
                 }
             }
             _ => None,
+        }
+    }
+
+    pub fn code(&self) -> i32 {
+        match self {
+            IdeviceError::Socket(_) => -1,
+            IdeviceError::PemParseFailed(_) => -2,
+            IdeviceError::Rustls(_) => -3,
+            IdeviceError::TlsBuilderFailed(_) => -4,
+            IdeviceError::Plist(_) => -5,
+            IdeviceError::Utf8(_) => -6,
+            IdeviceError::UnexpectedResponse => -7,
+            IdeviceError::GetProhibited => -8,
+            IdeviceError::SessionInactive => -9,
+            IdeviceError::InvalidHostID => -10,
+            IdeviceError::NoEstablishedConnection => -11,
+            IdeviceError::HeartbeatSleepyTime => -12,
+            IdeviceError::HeartbeatTimeout => -13,
+            IdeviceError::NotFound => -14,
+            IdeviceError::ServiceNotFound => -15,
+            IdeviceError::CdtunnelPacketTooShort => -16,
+            IdeviceError::CdtunnelPacketInvalidMagic => -17,
+            IdeviceError::PacketSizeMismatch => -18,
+
+            #[cfg(feature = "core_device_proxy")]
+            IdeviceError::Json(_) => -19,
+
+            IdeviceError::DeviceNotFound => -20,
+            IdeviceError::DeviceLocked => -21,
+            IdeviceError::UsbConnectionRefused => -22,
+            IdeviceError::UsbBadCommand => -23,
+            IdeviceError::UsbBadDevice => -24,
+            IdeviceError::UsbBadVersion => -25,
+            IdeviceError::BadBuildManifest => -26,
+            IdeviceError::ImageNotMounted => -27,
+
+            #[cfg(feature = "pair")]
+            IdeviceError::PairingDialogResponsePending => -28,
+            #[cfg(feature = "pair")]
+            IdeviceError::UserDeniedPairing => -29,
+            #[cfg(feature = "pair")]
+            IdeviceError::PasswordProtected => -30,
+
+            #[cfg(feature = "misagent")]
+            IdeviceError::MisagentFailure => -31,
+
+            #[cfg(feature = "installation_proxy")]
+            IdeviceError::InstallationProxyOperationFailed(_) => -32,
+
+            #[cfg(feature = "afc")]
+            IdeviceError::Afc(_) => -33,
+            #[cfg(feature = "afc")]
+            IdeviceError::UnknownAfcOpcode => -34,
+            #[cfg(feature = "afc")]
+            IdeviceError::InvalidAfcMagic => -35,
+            #[cfg(feature = "afc")]
+            IdeviceError::AfcMissingAttribute => -36,
+
+            #[cfg(feature = "crashreportcopymobile")]
+            IdeviceError::CrashReportMoverBadResponse(_) => -37,
+
+            #[cfg(any(feature = "tss", feature = "tunneld"))]
+            IdeviceError::Reqwest(_) => -38,
+
+            IdeviceError::InternalError(_) => -39,
+
+            #[cfg(feature = "xpc")]
+            IdeviceError::UnknownFrame(_) => -40,
+            #[cfg(feature = "xpc")]
+            IdeviceError::UnknownHttpSetting(_) => -41,
+            #[cfg(feature = "xpc")]
+            IdeviceError::UninitializedStreamId => -42,
+            #[cfg(feature = "xpc")]
+            IdeviceError::UnknownXpcType(_) => -43,
+            #[cfg(feature = "xpc")]
+            IdeviceError::MalformedXpc => -44,
+            #[cfg(feature = "xpc")]
+            IdeviceError::InvalidXpcMagic => -45,
+            #[cfg(feature = "xpc")]
+            IdeviceError::UnexpectedXpcVersion => -46,
+            #[cfg(feature = "xpc")]
+            IdeviceError::InvalidCString => -47,
+            #[cfg(feature = "xpc")]
+            IdeviceError::HttpStreamReset => -48,
+            #[cfg(feature = "xpc")]
+            IdeviceError::HttpGoAway(_) => -49,
+
+            #[cfg(feature = "dvt")]
+            IdeviceError::NsKeyedArchiveError(_) => -50,
+            #[cfg(feature = "dvt")]
+            IdeviceError::UnknownAuxValueType(_) => -51,
+            #[cfg(feature = "dvt")]
+            IdeviceError::UnknownChannel(_) => -52,
+
+            IdeviceError::AddrParseError(_) => -53,
+
+            #[cfg(feature = "dvt")]
+            IdeviceError::DisableMemoryLimitFailed => -54,
+
+            IdeviceError::NotEnoughBytes(_, _) => -55,
+            IdeviceError::Utf8Error => -56,
+
+            #[cfg(feature = "debug_proxy")]
+            IdeviceError::InvalidArgument => -57,
+
+            IdeviceError::UnknownErrorType(_) => -59,
+            IdeviceError::FfiInvalidArg => -60,
+            IdeviceError::FfiInvalidString => -61,
+            IdeviceError::FfiBufferTooSmall(_, _) => -62,
         }
     }
 }

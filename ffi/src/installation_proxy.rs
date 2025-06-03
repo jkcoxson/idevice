@@ -1,13 +1,15 @@
 // Jackson Coxson
 
-use std::ffi::c_void;
+use std::{ffi::c_void, ptr::null_mut};
 
 use idevice::{
     IdeviceError, IdeviceService, installation_proxy::InstallationProxyClient,
     provider::IdeviceProvider,
 };
 
-use crate::{IdeviceErrorCode, IdeviceHandle, RUNTIME, provider::IdeviceProviderHandle, util};
+use crate::{
+    IdeviceFfiError, IdeviceHandle, RUNTIME, ffi_err, provider::IdeviceProviderHandle, util,
+};
 
 pub struct InstallationProxyClientHandle(pub InstallationProxyClient);
 
@@ -18,7 +20,7 @@ pub struct InstallationProxyClientHandle(pub InstallationProxyClient);
 /// * [`client`] - On success, will be set to point to a newly allocated InstallationProxyClient handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `provider` must be a valid pointer to a handle allocated by this library
@@ -27,10 +29,10 @@ pub struct InstallationProxyClientHandle(pub InstallationProxyClient);
 pub unsafe extern "C" fn installation_proxy_connect_tcp(
     provider: *mut IdeviceProviderHandle,
     client: *mut *mut InstallationProxyClientHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
         log::error!("Null pointer provided");
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let res: Result<InstallationProxyClient, IdeviceError> = RUNTIME.block_on(async move {
@@ -42,9 +44,9 @@ pub unsafe extern "C" fn installation_proxy_connect_tcp(
         Ok(r) => {
             let boxed = Box::new(InstallationProxyClientHandle(r));
             unsafe { *client = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -55,7 +57,7 @@ pub unsafe extern "C" fn installation_proxy_connect_tcp(
 /// * [`client`] - On success, will be set to point to a newly allocated InstallationProxyClient handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `socket` must be a valid pointer to a handle allocated by this library. The socket is consumed,
@@ -65,15 +67,15 @@ pub unsafe extern "C" fn installation_proxy_connect_tcp(
 pub unsafe extern "C" fn installation_proxy_new(
     socket: *mut IdeviceHandle,
     client: *mut *mut InstallationProxyClientHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if socket.is_null() || client.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
     let socket = unsafe { Box::from_raw(socket) }.0;
     let r = InstallationProxyClient::new(socket);
     let boxed = Box::new(InstallationProxyClientHandle(r));
     unsafe { *client = Box::into_raw(boxed) };
-    IdeviceErrorCode::IdeviceSuccess
+    null_mut()
 }
 
 /// Gets installed apps on the device
@@ -85,7 +87,7 @@ pub unsafe extern "C" fn installation_proxy_new(
 /// * [`out_result`] - On success, will be set to point to a newly allocated array of PlistRef
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -98,10 +100,10 @@ pub unsafe extern "C" fn installation_proxy_get_apps(
     bundle_identifiers_len: libc::size_t,
     out_result: *mut *mut c_void,
     out_result_len: *mut libc::size_t,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || out_result.is_null() || out_result_len.is_null() {
         log::error!("Invalid arguments: {client:?}, {out_result:?}");
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
     let client = unsafe { &mut *client };
 
@@ -148,9 +150,9 @@ pub unsafe extern "C" fn installation_proxy_get_apps(
                 *out_result = ptr as *mut c_void;
                 *out_result_len = len;
             }
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -180,7 +182,7 @@ pub unsafe extern "C" fn installation_proxy_client_free(
 /// * [`options`] - Optional installation options as a plist dictionary (can be NULL)
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -191,9 +193,9 @@ pub unsafe extern "C" fn installation_proxy_install(
     client: *mut InstallationProxyClientHandle,
     package_path: *const libc::c_char,
     options: *mut c_void,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || package_path.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let package_path = unsafe { std::ffi::CStr::from_ptr(package_path) }
@@ -213,8 +215,8 @@ pub unsafe extern "C" fn installation_proxy_install(
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -228,7 +230,7 @@ pub unsafe extern "C" fn installation_proxy_install(
 /// * [`context`] - User context to pass to callback
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -241,9 +243,9 @@ pub unsafe extern "C" fn installation_proxy_install_with_callback(
     options: *mut c_void,
     callback: extern "C" fn(progress: u64, context: *mut c_void),
     context: *mut c_void,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || package_path.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let package_path = unsafe { std::ffi::CStr::from_ptr(package_path) }
@@ -267,8 +269,8 @@ pub unsafe extern "C" fn installation_proxy_install_with_callback(
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -280,7 +282,7 @@ pub unsafe extern "C" fn installation_proxy_install_with_callback(
 /// * [`options`] - Optional upgrade options as a plist dictionary (can be NULL)
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -291,9 +293,9 @@ pub unsafe extern "C" fn installation_proxy_upgrade(
     client: *mut InstallationProxyClientHandle,
     package_path: *const libc::c_char,
     options: *mut c_void,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || package_path.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let package_path = unsafe { std::ffi::CStr::from_ptr(package_path) }
@@ -313,8 +315,8 @@ pub unsafe extern "C" fn installation_proxy_upgrade(
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -328,7 +330,7 @@ pub unsafe extern "C" fn installation_proxy_upgrade(
 /// * [`context`] - User context to pass to callback
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -341,9 +343,9 @@ pub unsafe extern "C" fn installation_proxy_upgrade_with_callback(
     options: *mut c_void,
     callback: extern "C" fn(progress: u64, context: *mut c_void),
     context: *mut c_void,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || package_path.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let package_path = unsafe { std::ffi::CStr::from_ptr(package_path) }
@@ -367,8 +369,8 @@ pub unsafe extern "C" fn installation_proxy_upgrade_with_callback(
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -380,7 +382,7 @@ pub unsafe extern "C" fn installation_proxy_upgrade_with_callback(
 /// * [`options`] - Optional uninstall options as a plist dictionary (can be NULL)
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -391,9 +393,9 @@ pub unsafe extern "C" fn installation_proxy_uninstall(
     client: *mut InstallationProxyClientHandle,
     bundle_id: *const libc::c_char,
     options: *mut c_void,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || bundle_id.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let bundle_id = unsafe { std::ffi::CStr::from_ptr(bundle_id) }
@@ -413,8 +415,8 @@ pub unsafe extern "C" fn installation_proxy_uninstall(
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -428,7 +430,7 @@ pub unsafe extern "C" fn installation_proxy_uninstall(
 /// * [`context`] - User context to pass to callback
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -441,9 +443,9 @@ pub unsafe extern "C" fn installation_proxy_uninstall_with_callback(
     options: *mut c_void,
     callback: extern "C" fn(progress: u64, context: *mut c_void),
     context: *mut c_void,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || bundle_id.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let bundle_id = unsafe { std::ffi::CStr::from_ptr(bundle_id) }
@@ -467,8 +469,8 @@ pub unsafe extern "C" fn installation_proxy_uninstall_with_callback(
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -482,7 +484,7 @@ pub unsafe extern "C" fn installation_proxy_uninstall_with_callback(
 /// * [`out_result`] - Will be set to true if all capabilities are supported, false otherwise
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -496,9 +498,9 @@ pub unsafe extern "C" fn installation_proxy_check_capabilities_match(
     capabilities_len: libc::size_t,
     options: *mut c_void,
     out_result: *mut bool,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || out_result.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let capabilities = if capabilities.is_null() {
@@ -526,9 +528,9 @@ pub unsafe extern "C" fn installation_proxy_check_capabilities_match(
     match res {
         Ok(result) => {
             unsafe { *out_result = result };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -541,7 +543,7 @@ pub unsafe extern "C" fn installation_proxy_check_capabilities_match(
 /// * [`out_result_len`] - Will be set to the length of the result array
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -554,9 +556,9 @@ pub unsafe extern "C" fn installation_proxy_browse(
     options: *mut c_void,
     out_result: *mut *mut c_void,
     out_result_len: *mut libc::size_t,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || out_result.is_null() || out_result_len.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let options = if options.is_null() {
@@ -583,8 +585,8 @@ pub unsafe extern "C" fn installation_proxy_browse(
                 *out_result = ptr as *mut c_void;
                 *out_result_len = len;
             }
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }

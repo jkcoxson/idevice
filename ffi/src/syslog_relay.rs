@@ -1,10 +1,10 @@
-use std::os::raw::c_char;
+use std::{os::raw::c_char, ptr::null_mut};
 
 use idevice::{
     IdeviceError, IdeviceService, provider::IdeviceProvider, syslog_relay::SyslogRelayClient,
 };
 
-use crate::{IdeviceErrorCode, RUNTIME, provider::IdeviceProviderHandle};
+use crate::{IdeviceFfiError, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
 
 pub struct SyslogRelayClientHandle(pub SyslogRelayClient);
 
@@ -21,10 +21,10 @@ pub struct SyslogRelayClientHandle(pub SyslogRelayClient);
 pub unsafe extern "C" fn syslog_relay_connect_tcp(
     provider: *mut IdeviceProviderHandle,
     client: *mut *mut SyslogRelayClientHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if provider.is_null() {
         log::error!("Null pointer provided");
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let res: Result<SyslogRelayClient, IdeviceError> = RUNTIME.block_on(async move {
@@ -38,11 +38,11 @@ pub unsafe extern "C" fn syslog_relay_connect_tcp(
 
             unsafe { *client = Box::into_raw(boxed) };
 
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
         Err(e) => {
             let _ = unsafe { Box::from_raw(provider) };
-            e.into()
+            ffi_err!(e)
         }
     }
 }
@@ -76,9 +76,9 @@ pub unsafe extern "C" fn syslog_relay_client_free(handle: *mut SyslogRelayClient
 pub unsafe extern "C" fn syslog_relay_next(
     client: *mut SyslogRelayClientHandle,
     log_message: *mut *mut c_char,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || log_message.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.next().await });
@@ -93,14 +93,14 @@ pub unsafe extern "C" fn syslog_relay_next(
             match CString::new(safe_log) {
                 Ok(c_string) => {
                     unsafe { *log_message = c_string.into_raw() };
-                    IdeviceErrorCode::IdeviceSuccess
+                    null_mut()
                 }
                 Err(_) => {
                     log::error!("Failed to convert log message to C string");
-                    IdeviceErrorCode::InvalidString
+                    ffi_err!(IdeviceError::FfiInvalidString)
                 }
             }
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }

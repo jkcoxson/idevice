@@ -33,9 +33,11 @@ int main(int argc, char **argv) {
 
   // Read pairing file
   IdevicePairingFile *pairing = NULL;
-  IdeviceErrorCode err = idevice_pairing_file_read(pairing_file, &pairing);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to read pairing file: %d\n", err);
+  IdeviceFfiError *err = idevice_pairing_file_read(pairing_file, &pairing);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to read pairing file: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     return 1;
   }
 
@@ -43,8 +45,10 @@ int main(int argc, char **argv) {
   IdeviceProviderHandle *tcp_provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing,
                                  "LocationSimCLI", &tcp_provider);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to create TCP provider: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to create TCP provider: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     idevice_pairing_file_free(pairing);
     return 1;
   }
@@ -54,16 +58,20 @@ int main(int argc, char **argv) {
   err = core_device_proxy_connect(tcp_provider, &core_device);
   idevice_provider_free(tcp_provider);
   idevice_pairing_file_free(pairing);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to connect to CoreDeviceProxy: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to connect to CoreDeviceProxy: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     return 1;
   }
 
   // Get server RSD port
   uint16_t rsd_port;
   err = core_device_proxy_get_server_rsd_port(core_device, &rsd_port);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to get server RSD port: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to get server RSD port: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     core_device_proxy_free(core_device);
     return 1;
   }
@@ -72,24 +80,30 @@ int main(int argc, char **argv) {
   AdapterHandle *adapter = NULL;
   err = core_device_proxy_create_tcp_adapter(core_device, &adapter);
   core_device_proxy_free(core_device);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to create TCP adapter: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to create TCP adapter: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     return 1;
   }
 
   // Connect to RSD port
   AdapterStreamHandle *stream = NULL;
   err = adapter_connect(adapter, rsd_port, &stream);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to connect to RSD port: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to connect to RSD port: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     adapter_free(adapter);
     return 1;
   }
 
   RsdHandshakeHandle *handshake = NULL;
   err = rsd_handshake_new(stream, &handshake);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to perform RSD handshake: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to perform RSD handshake: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     adapter_close(stream);
     adapter_free(adapter);
     return 1;
@@ -98,8 +112,10 @@ int main(int argc, char **argv) {
   // Create RemoteServerClient
   RemoteServerHandle *remote_server = NULL;
   err = remote_server_connect_rsd(adapter, handshake, &remote_server);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to create remote server: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to create remote server: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     adapter_free(adapter);
     rsd_handshake_free(handshake);
     return 1;
@@ -108,16 +124,19 @@ int main(int argc, char **argv) {
   // Create LocationSimulationClient
   LocationSimulationHandle *location_sim = NULL;
   err = location_simulation_new(remote_server, &location_sim);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to create location simulation client: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to create location simulation client: [%d] %s",
+            err->code, err->message);
+    idevice_error_free(err);
     remote_server_free(remote_server);
     return 1;
   }
 
   // Set location
   err = location_simulation_set(location_sim, latitude, longitude);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to set location: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to set location: [%d] %s", err->code, err->message);
+    idevice_error_free(err);
   } else {
     printf("Successfully set location to %.6f, %.6f\n", latitude, longitude);
   }
@@ -127,8 +146,10 @@ int main(int argc, char **argv) {
 
   // Clear location
   err = location_simulation_clear(location_sim);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to clear location: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to clear location: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
   } else {
     printf("Successfully cleared simulated location\n");
   }

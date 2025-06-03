@@ -3,11 +3,11 @@
 //! Provides C-compatible bindings for RSD handshake and service discovery on iOS devices.
 
 use std::ffi::{CStr, CString};
-use std::ptr;
+use std::ptr::{self, null_mut};
 
 use idevice::rsd::RsdHandshake;
 
-use crate::{IdeviceErrorCode, RUNTIME, ReadWriteOpaque};
+use crate::{IdeviceFfiError, RUNTIME, ReadWriteOpaque, ffi_err};
 
 /// Opaque handle to an RsdHandshake
 pub struct RsdHandshakeHandle(pub RsdHandshake);
@@ -47,7 +47,7 @@ pub struct CRsdServiceArray {
 /// * [`handle`] - Pointer to store the newly created RsdHandshake handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `socket` must be a valid pointer to a ReadWrite handle allocated by this library. It is
@@ -57,9 +57,9 @@ pub struct CRsdServiceArray {
 pub unsafe extern "C" fn rsd_handshake_new(
     socket: *mut ReadWriteOpaque,
     handle: *mut *mut RsdHandshakeHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if socket.is_null() || handle.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let wrapper = unsafe { &mut *socket };
@@ -67,7 +67,7 @@ pub unsafe extern "C" fn rsd_handshake_new(
     let res = match wrapper.inner.take() {
         Some(mut w) => RUNTIME.block_on(async move { RsdHandshake::new(w.as_mut()).await }),
         None => {
-            return IdeviceErrorCode::InvalidArg;
+            return ffi_err!(IdeviceError::FfiInvalidArg);
         }
     };
 
@@ -75,9 +75,9 @@ pub unsafe extern "C" fn rsd_handshake_new(
         Ok(handshake) => {
             let boxed = Box::new(RsdHandshakeHandle(handshake));
             unsafe { *handle = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -88,7 +88,7 @@ pub unsafe extern "C" fn rsd_handshake_new(
 /// * [`version`] - Pointer to store the protocol version
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
@@ -97,15 +97,15 @@ pub unsafe extern "C" fn rsd_handshake_new(
 pub unsafe extern "C" fn rsd_get_protocol_version(
     handle: *mut RsdHandshakeHandle,
     version: *mut libc::size_t,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || version.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     unsafe {
         *version = (*handle).0.protocol_version;
     }
-    IdeviceErrorCode::IdeviceSuccess
+    null_mut()
 }
 
 /// Gets the UUID from the RSD handshake
@@ -115,7 +115,7 @@ pub unsafe extern "C" fn rsd_get_protocol_version(
 /// * [`uuid`] - Pointer to store the UUID string (caller must free with rsd_free_string)
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
@@ -124,18 +124,18 @@ pub unsafe extern "C" fn rsd_get_protocol_version(
 pub unsafe extern "C" fn rsd_get_uuid(
     handle: *mut RsdHandshakeHandle,
     uuid: *mut *mut libc::c_char,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || uuid.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let uuid_str = &unsafe { &*handle }.0.uuid;
     match CString::new(uuid_str.as_str()) {
         Ok(c_str) => {
             unsafe { *uuid = c_str.into_raw() };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(_) => IdeviceErrorCode::InvalidString,
+        Err(_) => ffi_err!(IdeviceError::FfiInvalidString),
     }
 }
 
@@ -146,7 +146,7 @@ pub unsafe extern "C" fn rsd_get_uuid(
 /// * [`services`] - Pointer to store the services array
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
@@ -156,9 +156,9 @@ pub unsafe extern "C" fn rsd_get_uuid(
 pub unsafe extern "C" fn rsd_get_services(
     handle: *mut RsdHandshakeHandle,
     services: *mut *mut CRsdServiceArray,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || services.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let handshake = unsafe { &*handle };
@@ -201,7 +201,7 @@ pub unsafe extern "C" fn rsd_get_services(
                                 }
                             }
                             // Return early to avoid the move below
-                            return IdeviceErrorCode::InvalidString;
+                            return ffi_err!(IdeviceError::FfiInvalidString);
                         }
                     }
                 }
@@ -234,7 +234,7 @@ pub unsafe extern "C" fn rsd_get_services(
     });
 
     unsafe { *services = Box::into_raw(array) };
-    IdeviceErrorCode::IdeviceSuccess
+    null_mut()
 }
 
 /// Checks if a specific service is available
@@ -245,7 +245,7 @@ pub unsafe extern "C" fn rsd_get_services(
 /// * [`available`] - Pointer to store the availability result
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
@@ -256,20 +256,20 @@ pub unsafe extern "C" fn rsd_service_available(
     handle: *mut RsdHandshakeHandle,
     service_name: *const libc::c_char,
     available: *mut bool,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || service_name.is_null() || available.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let name = match unsafe { CStr::from_ptr(service_name) }.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let handshake = unsafe { &*handle };
     unsafe { *available = handshake.0.services.contains_key(name) };
 
-    IdeviceErrorCode::IdeviceSuccess
+    null_mut()
 }
 
 /// Gets information about a specific service
@@ -280,7 +280,7 @@ pub unsafe extern "C" fn rsd_service_available(
 /// * [`service_info`] - Pointer to store the service information
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
@@ -292,26 +292,26 @@ pub unsafe extern "C" fn rsd_get_service_info(
     handle: *mut RsdHandshakeHandle,
     service_name: *const libc::c_char,
     service_info: *mut *mut CRsdService,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || service_name.is_null() || service_info.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let name = match unsafe { CStr::from_ptr(service_name) }.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let handshake = unsafe { &*handle };
     let service = match handshake.0.services.get(name) {
         Some(s) => s,
-        None => return IdeviceErrorCode::ServiceNotFound,
+        None => return ffi_err!(IdeviceError::ServiceNotFound),
     };
 
     // Convert service to C representation (similar to rsd_get_services logic)
     let c_name = match CString::new(name) {
         Ok(s) => s.into_raw(),
-        Err(_) => return IdeviceErrorCode::InvalidString,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
     };
 
     let c_entitlement = match CString::new(service.entitlement.as_str()) {
@@ -320,7 +320,7 @@ pub unsafe extern "C" fn rsd_get_service_info(
             unsafe {
                 let _ = CString::from_raw(c_name);
             }
-            return IdeviceErrorCode::InvalidString;
+            return ffi_err!(IdeviceError::FfiInvalidString);
         }
     };
 
@@ -343,7 +343,7 @@ pub unsafe extern "C" fn rsd_get_service_info(
                             let _ = CString::from_raw(c_name);
                             let _ = CString::from_raw(c_entitlement);
                         }
-                        return IdeviceErrorCode::InvalidString;
+                        return ffi_err!(IdeviceError::FfiInvalidString);
                     }
                 }
             }
@@ -367,7 +367,7 @@ pub unsafe extern "C" fn rsd_get_service_info(
     });
 
     unsafe { *service_info = Box::into_raw(c_service) };
-    IdeviceErrorCode::IdeviceSuccess
+    null_mut()
 }
 
 /// Frees a string returned by RSD functions

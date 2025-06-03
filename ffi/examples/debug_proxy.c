@@ -27,12 +27,8 @@ int main(int argc, char **argv) {
   const char *device_ip = argv[1];
   const char *pairing_file = argc > 2 ? argv[2] : "pairing.plist";
 
-  /*****************************************************************
-   * CoreDeviceProxy Setup
-   *****************************************************************/
   printf("=== Setting up CoreDeviceProxy ===\n");
 
-  // Create socket address
   struct sockaddr_in addr;
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
@@ -42,99 +38,98 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // Read pairing file
+  IdeviceFfiError *err = NULL;
+
   IdevicePairingFile *pairing = NULL;
-  IdeviceErrorCode err = idevice_pairing_file_read(pairing_file, &pairing);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to read pairing file: %d\n", err);
+  err = idevice_pairing_file_read(pairing_file, &pairing);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to read pairing file: [%d] %s\n", err->code,
+            err->message);
+    idevice_error_free(err);
     return 1;
   }
 
-  // Create TCP provider
   IdeviceProviderHandle *tcp_provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing,
                                  "DebugProxyShell", &tcp_provider);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to create TCP provider: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to create TCP provider: [%d] %s\n", err->code,
+            err->message);
+    idevice_error_free(err);
     idevice_pairing_file_free(pairing);
     return 1;
   }
 
-  // Connect to CoreDeviceProxy
   CoreDeviceProxyHandle *core_device = NULL;
   err = core_device_proxy_connect(tcp_provider, &core_device);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to connect to CoreDeviceProxy: %d\n", err);
-    idevice_provider_free(tcp_provider);
+  idevice_provider_free(tcp_provider);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to connect to CoreDeviceProxy: [%d] %s\n",
+            err->code, err->message);
+    idevice_error_free(err);
     return 1;
   }
-  idevice_provider_free(tcp_provider);
 
-  // Get server RSD port
   uint16_t rsd_port;
   err = core_device_proxy_get_server_rsd_port(core_device, &rsd_port);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to get server RSD port: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to get server RSD port: [%d] %s\n", err->code,
+            err->message);
+    idevice_error_free(err);
     core_device_proxy_free(core_device);
     return 1;
   }
   printf("Server RSD Port: %d\n", rsd_port);
 
-  /*****************************************************************
-   * Create TCP Tunnel Adapter
-   *****************************************************************/
   printf("\n=== Creating TCP Tunnel Adapter ===\n");
 
   AdapterHandle *adapter = NULL;
   err = core_device_proxy_create_tcp_adapter(core_device, &adapter);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to create TCP adapter: %d\n", err);
-    core_device_proxy_free(core_device);
+  core_device_proxy_free(core_device);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to create TCP adapter: [%d] %s\n", err->code,
+            err->message);
+    idevice_error_free(err);
     return 1;
   }
 
-  // Connect to RSD port
   AdapterStreamHandle *stream = NULL;
   err = adapter_connect(adapter, rsd_port, &stream);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to connect to RSD port: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to connect to RSD port: [%d] %s\n", err->code,
+            err->message);
+    idevice_error_free(err);
     adapter_free(adapter);
     return 1;
   }
   printf("Successfully connected to RSD port\n");
 
-  /*****************************************************************
-   * RSD Handshake
-   *****************************************************************/
   printf("\n=== Performing RSD Handshake ===\n");
 
   RsdHandshakeHandle *handshake = NULL;
   err = rsd_handshake_new(stream, &handshake);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to perform RSD handshake: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to perform RSD handshake: [%d] %s\n", err->code,
+            err->message);
+    idevice_error_free(err);
     adapter_close(stream);
     adapter_free(adapter);
     return 1;
   }
 
-  /*****************************************************************
-   * Debug Proxy Setup
-   *****************************************************************/
   printf("\n=== Setting up Debug Proxy ===\n");
 
-  // Create DebugProxyClient
   DebugProxyHandle *debug_proxy = NULL;
   err = debug_proxy_connect_rsd(adapter, handshake, &debug_proxy);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to create debug proxy client: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to create debug proxy client: [%d] %s\n", err->code,
+            err->message);
+    idevice_error_free(err);
     rsd_handshake_free(handshake);
     adapter_free(adapter);
     return 1;
   }
 
-  /*****************************************************************
-   * Interactive Shell
-   *****************************************************************/
   printf("\n=== Starting Interactive Debug Shell ===\n");
   printf("Type GDB debugserver commands or 'quit' to exit\n\n");
 
@@ -149,7 +144,6 @@ int main(int argc, char **argv) {
       break;
     }
 
-    // Remove newline
     command[strcspn(command, "\n")] = '\0';
 
     if (strcmp(command, "quit") == 0) {
@@ -157,14 +151,11 @@ int main(int argc, char **argv) {
       continue;
     }
 
-    // Split command into name and arguments
     char *name = strtok(command, " ");
     char *args = strtok(NULL, "");
 
-    // Create command
     DebugserverCommandHandle *cmd = NULL;
     if (args != NULL && args[0] != '\0') {
-      // Split arguments
       char *argv[16] = {0};
       int argc = 0;
       char *token = strtok(args, " ");
@@ -183,13 +174,13 @@ int main(int argc, char **argv) {
       continue;
     }
 
-    // Send command
     char *response = NULL;
     err = debug_proxy_send_command(debug_proxy, cmd, &response);
     debugserver_command_free(cmd);
 
-    if (err != IdeviceSuccess) {
-      fprintf(stderr, "Command failed with error: %d\n", err);
+    if (err != NULL) {
+      fprintf(stderr, "Command failed: [%d] %s\n", err->code, err->message);
+      idevice_error_free(err);
       continue;
     }
 
@@ -200,10 +191,12 @@ int main(int argc, char **argv) {
       printf("(no response)\n");
     }
 
-    // Read any additional responses
     while (true) {
       err = debug_proxy_read_response(debug_proxy, &response);
-      if (err != IdeviceSuccess || response == NULL) {
+      if (err != NULL || response == NULL) {
+        if (err != NULL) {
+          idevice_error_free(err);
+        }
         break;
       }
       printf("%s\n", response);
@@ -211,9 +204,6 @@ int main(int argc, char **argv) {
     }
   }
 
-  /*****************************************************************
-   * Cleanup
-   *****************************************************************/
   debug_proxy_free(debug_proxy);
   rsd_handshake_free(handshake);
   adapter_free(adapter);

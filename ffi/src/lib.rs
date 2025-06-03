@@ -46,7 +46,10 @@ pub use pairing_file::*;
 
 use idevice::{Idevice, IdeviceSocket, ReadWrite};
 use once_cell::sync::Lazy;
-use std::ffi::{CStr, CString, c_char};
+use std::{
+    ffi::{CStr, CString, c_char},
+    ptr::null_mut,
+};
 use tokio::runtime::{self, Runtime};
 
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
@@ -80,7 +83,7 @@ struct sockaddr;
 /// * [`idevice`] - On success, will be set to point to a newly allocated Idevice handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `label` must be a valid null-terminated C string
@@ -90,9 +93,9 @@ pub unsafe extern "C" fn idevice_new(
     socket: *mut IdeviceSocketHandle,
     label: *const c_char,
     idevice: *mut *mut IdeviceHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if socket.is_null() || label.is_null() || idevice.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     // Get socket ownership
@@ -101,7 +104,7 @@ pub unsafe extern "C" fn idevice_new(
     // Convert C string to Rust string
     let c_str = match unsafe { CStr::from_ptr(label).to_str() } {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidString,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
     };
 
     // Create new Idevice instance
@@ -109,7 +112,7 @@ pub unsafe extern "C" fn idevice_new(
     let boxed = Box::new(IdeviceHandle(dev));
     unsafe { *idevice = Box::into_raw(boxed) };
 
-    IdeviceErrorCode::IdeviceSuccess
+    null_mut()
 }
 
 /// Creates a new Idevice connection
@@ -121,7 +124,7 @@ pub unsafe extern "C" fn idevice_new(
 /// * [`idevice`] - On success, will be set to point to a newly allocated Idevice handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `addr` must be a valid sockaddr
@@ -133,21 +136,21 @@ pub unsafe extern "C" fn idevice_new_tcp_socket(
     addr_len: libc::socklen_t,
     label: *const c_char,
     idevice: *mut *mut IdeviceHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if addr.is_null() {
         log::error!("socket addr null pointer");
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     // Convert C string to Rust string
     let label = match unsafe { CStr::from_ptr(label).to_str() } {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let addr = match util::c_socket_to_rust(addr, addr_len) {
         Ok(a) => a,
-        Err(e) => return e,
+        Err(e) => return ffi_err!(e),
     };
 
     let device: Result<idevice::Idevice, idevice::IdeviceError> = RUNTIME.block_on(async move {
@@ -161,9 +164,9 @@ pub unsafe extern "C" fn idevice_new_tcp_socket(
         Ok(dev) => {
             let boxed = Box::new(IdeviceHandle(dev));
             unsafe { *idevice = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -174,7 +177,7 @@ pub unsafe extern "C" fn idevice_new_tcp_socket(
 /// * [`device_type`] - On success, will be set to point to a newly allocated string containing the device type
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `idevice` must be a valid, non-null pointer to an Idevice handle
@@ -183,9 +186,9 @@ pub unsafe extern "C" fn idevice_new_tcp_socket(
 pub unsafe extern "C" fn idevice_get_type(
     idevice: *mut IdeviceHandle,
     device_type: *mut *mut c_char,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if idevice.is_null() || device_type.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     // Get the Idevice reference
@@ -198,11 +201,11 @@ pub unsafe extern "C" fn idevice_get_type(
         Ok(type_str) => match CString::new(type_str) {
             Ok(c_string) => {
                 unsafe { *device_type = c_string.into_raw() };
-                IdeviceErrorCode::IdeviceSuccess
+                null_mut()
             }
-            Err(_) => IdeviceErrorCode::InvalidString,
+            Err(_) => ffi_err!(IdeviceError::FfiInvalidString),
         },
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -212,14 +215,14 @@ pub unsafe extern "C" fn idevice_get_type(
 /// * [`idevice`] - The Idevice handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `idevice` must be a valid, non-null pointer to an Idevice handle
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn idevice_rsd_checkin(idevice: *mut IdeviceHandle) -> IdeviceErrorCode {
+pub unsafe extern "C" fn idevice_rsd_checkin(idevice: *mut IdeviceHandle) -> *mut IdeviceFfiError {
     if idevice.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     // Get the Idevice reference
@@ -229,8 +232,8 @@ pub unsafe extern "C" fn idevice_rsd_checkin(idevice: *mut IdeviceHandle) -> Ide
     let result = RUNTIME.block_on(async { dev.rsd_checkin().await });
 
     match result {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -241,7 +244,7 @@ pub unsafe extern "C" fn idevice_rsd_checkin(idevice: *mut IdeviceHandle) -> Ide
 /// * [`pairing_file`] - The pairing file to use for TLS
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `idevice` must be a valid, non-null pointer to an Idevice handle
@@ -250,9 +253,9 @@ pub unsafe extern "C" fn idevice_rsd_checkin(idevice: *mut IdeviceHandle) -> Ide
 pub unsafe extern "C" fn idevice_start_session(
     idevice: *mut IdeviceHandle,
     pairing_file: *const IdevicePairingFile,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if idevice.is_null() || pairing_file.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     // Get the Idevice reference
@@ -265,8 +268,8 @@ pub unsafe extern "C" fn idevice_start_session(
     let result = RUNTIME.block_on(async { dev.start_session(pf).await });
 
     match result {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 

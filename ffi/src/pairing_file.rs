@@ -1,9 +1,12 @@
 // Jackson Coxson
 
 use idevice::pairing_file::PairingFile;
-use std::ffi::{CStr, c_char};
+use std::{
+    ffi::{CStr, c_char},
+    ptr::null_mut,
+};
 
-use crate::IdeviceErrorCode;
+use crate::{IdeviceFfiError, ffi_err};
 
 /// Opaque C-compatible handle to a PairingFile
 pub struct IdevicePairingFile(pub PairingFile);
@@ -15,7 +18,7 @@ pub struct IdevicePairingFile(pub PairingFile);
 /// * [`pairing_file`] - On success, will be set to point to a newly allocated pairing file instance
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `path` must be a valid null-terminated C string
@@ -24,15 +27,15 @@ pub struct IdevicePairingFile(pub PairingFile);
 pub unsafe extern "C" fn idevice_pairing_file_read(
     path: *const c_char,
     pairing_file: *mut *mut IdevicePairingFile,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if path.is_null() || pairing_file.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     // Convert C string to Rust path
     let c_str = match unsafe { CStr::from_ptr(path) }.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     // Read the pairing file
@@ -42,9 +45,9 @@ pub unsafe extern "C" fn idevice_pairing_file_read(
             unsafe {
                 *pairing_file = Box::into_raw(boxed);
             }
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -56,7 +59,7 @@ pub unsafe extern "C" fn idevice_pairing_file_read(
 /// * [`pairing_file`] - On success, will be set to point to a newly allocated pairing file instance
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `data` must be a valid pointer to a buffer of at least `size` bytes
@@ -66,9 +69,9 @@ pub unsafe extern "C" fn idevice_pairing_file_from_bytes(
     data: *const u8,
     size: usize,
     pairing_file: *mut *mut IdevicePairingFile,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if data.is_null() || pairing_file.is_null() || size == 0 {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     // Convert to Rust slice
@@ -79,9 +82,9 @@ pub unsafe extern "C" fn idevice_pairing_file_from_bytes(
         Ok(pf) => {
             let boxed = Box::new(IdevicePairingFile(pf));
             unsafe { *pairing_file = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -93,7 +96,7 @@ pub unsafe extern "C" fn idevice_pairing_file_from_bytes(
 /// * [`size`] - On success, will be set to the size of the allocated buffer
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `pairing_file` must be a valid, non-null pointer to a pairing file instance
@@ -104,9 +107,9 @@ pub unsafe extern "C" fn idevice_pairing_file_serialize(
     pairing_file: *const IdevicePairingFile,
     data: *mut *mut u8,
     size: *mut usize,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if pairing_file.is_null() || data.is_null() || size.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     // Get the pairing file
@@ -119,9 +122,9 @@ pub unsafe extern "C" fn idevice_pairing_file_serialize(
             let buffer_ptr = Box::into_raw(buffer.into_boxed_slice()) as *mut u8;
             unsafe { *data = buffer_ptr };
             unsafe { *size = buffer_size };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 

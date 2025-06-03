@@ -1,13 +1,15 @@
 // Jackson Coxson
 
-use std::ffi::c_void;
+use std::{ffi::c_void, ptr::null_mut};
 
 use idevice::{
     IdeviceError, IdeviceService, mobile_image_mounter::ImageMounter, provider::IdeviceProvider,
 };
 use plist::Value;
 
-use crate::{IdeviceErrorCode, IdeviceHandle, RUNTIME, provider::IdeviceProviderHandle, util};
+use crate::{
+    IdeviceFfiError, IdeviceHandle, RUNTIME, ffi_err, provider::IdeviceProviderHandle, util,
+};
 
 pub struct ImageMounterHandle(pub ImageMounter);
 
@@ -18,7 +20,7 @@ pub struct ImageMounterHandle(pub ImageMounter);
 /// * [`client`] - On success, will be set to point to a newly allocated ImageMounter handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `provider` must be a valid pointer to a handle allocated by this library
@@ -27,10 +29,10 @@ pub struct ImageMounterHandle(pub ImageMounter);
 pub unsafe extern "C" fn image_mounter_connect(
     provider: *mut IdeviceProviderHandle,
     client: *mut *mut ImageMounterHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
         log::error!("Null pointer provided");
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let res: Result<ImageMounter, IdeviceError> = RUNTIME.block_on(async move {
@@ -42,11 +44,11 @@ pub unsafe extern "C" fn image_mounter_connect(
         Ok(r) => {
             let boxed = Box::new(ImageMounterHandle(r));
             unsafe { *client = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
         Err(e) => {
             let _ = unsafe { Box::from_raw(provider) };
-            e.into()
+            ffi_err!(e)
         }
     }
 }
@@ -58,7 +60,7 @@ pub unsafe extern "C" fn image_mounter_connect(
 /// * [`client`] - On success, will be set to point to a newly allocated ImageMounter handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `socket` must be a valid pointer to a handle allocated by this library
@@ -67,15 +69,15 @@ pub unsafe extern "C" fn image_mounter_connect(
 pub unsafe extern "C" fn image_mounter_new(
     socket: *mut IdeviceHandle,
     client: *mut *mut ImageMounterHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if socket.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
     let socket = unsafe { Box::from_raw(socket) }.0;
     let r = ImageMounter::new(socket);
     let boxed = Box::new(ImageMounterHandle(r));
     unsafe { *client = Box::into_raw(boxed) };
-    IdeviceErrorCode::IdeviceSuccess
+    null_mut()
 }
 
 /// Frees an ImageMounter handle
@@ -102,7 +104,7 @@ pub unsafe extern "C" fn image_mounter_free(handle: *mut ImageMounterHandle) {
 /// * [`devices_len`] - Will be set to the number of devices copied
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -112,7 +114,7 @@ pub unsafe extern "C" fn image_mounter_copy_devices(
     client: *mut ImageMounterHandle,
     devices: *mut *mut c_void,
     devices_len: *mut libc::size_t,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     let res: Result<Vec<Value>, IdeviceError> = RUNTIME.block_on(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.copy_devices().await
@@ -132,9 +134,9 @@ pub unsafe extern "C" fn image_mounter_copy_devices(
                 *devices = ptr as *mut c_void;
                 *devices_len = len;
             }
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -147,7 +149,7 @@ pub unsafe extern "C" fn image_mounter_copy_devices(
 /// * [`signature_len`] - Will be set to the length of the signature data
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -159,15 +161,15 @@ pub unsafe extern "C" fn image_mounter_lookup_image(
     image_type: *const libc::c_char,
     signature: *mut *mut u8,
     signature_len: *mut libc::size_t,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if image_type.is_null() || signature.is_null() || signature_len.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let image_type_cstr = unsafe { std::ffi::CStr::from_ptr(image_type) };
     let image_type = match image_type_cstr.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let res: Result<Vec<u8>, IdeviceError> = RUNTIME.block_on(async move {
@@ -183,9 +185,9 @@ pub unsafe extern "C" fn image_mounter_lookup_image(
                 *signature_len = boxed.len();
             }
             std::mem::forget(boxed);
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -200,7 +202,7 @@ pub unsafe extern "C" fn image_mounter_lookup_image(
 /// * [`signature_len`] - Length of the signature data
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// All pointers must be valid and non-null
@@ -213,15 +215,15 @@ pub unsafe extern "C" fn image_mounter_upload_image(
     image_len: libc::size_t,
     signature: *const u8,
     signature_len: libc::size_t,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if image_type.is_null() || image.is_null() || signature.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let image_type_cstr = unsafe { std::ffi::CStr::from_ptr(image_type) };
     let image_type = match image_type_cstr.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let image_slice = unsafe { std::slice::from_raw_parts(image, image_len) };
@@ -235,8 +237,8 @@ pub unsafe extern "C" fn image_mounter_upload_image(
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -252,7 +254,7 @@ pub unsafe extern "C" fn image_mounter_upload_image(
 /// * [`info_plist`] - Pointer to info plist (optional)
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// All pointers must be valid (except optional ones which can be null)
@@ -266,15 +268,15 @@ pub unsafe extern "C" fn image_mounter_mount_image(
     trust_cache: *const u8,
     trust_cache_len: libc::size_t,
     info_plist: *const c_void,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if image_type.is_null() || signature.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let image_type_cstr = unsafe { std::ffi::CStr::from_ptr(image_type) };
     let image_type = match image_type_cstr.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let signature_slice = unsafe { std::slice::from_raw_parts(signature, signature_len) };
@@ -307,8 +309,8 @@ pub unsafe extern "C" fn image_mounter_mount_image(
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -319,7 +321,7 @@ pub unsafe extern "C" fn image_mounter_mount_image(
 /// * [`mount_path`] - The path where the image is mounted
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -328,15 +330,15 @@ pub unsafe extern "C" fn image_mounter_mount_image(
 pub unsafe extern "C" fn image_mounter_unmount_image(
     client: *mut ImageMounterHandle,
     mount_path: *const libc::c_char,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if mount_path.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let mount_path_cstr = unsafe { std::ffi::CStr::from_ptr(mount_path) };
     let mount_path = match mount_path_cstr.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
@@ -345,8 +347,8 @@ pub unsafe extern "C" fn image_mounter_unmount_image(
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -357,7 +359,7 @@ pub unsafe extern "C" fn image_mounter_unmount_image(
 /// * [`status`] - Will be set to the developer mode status (1 = enabled, 0 = disabled)
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -366,9 +368,9 @@ pub unsafe extern "C" fn image_mounter_unmount_image(
 pub unsafe extern "C" fn image_mounter_query_developer_mode_status(
     client: *mut ImageMounterHandle,
     status: *mut libc::c_int,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if status.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let res: Result<bool, IdeviceError> = RUNTIME.block_on(async move {
@@ -379,9 +381,9 @@ pub unsafe extern "C" fn image_mounter_query_developer_mode_status(
     match res {
         Ok(s) => {
             unsafe { *status = if s { 1 } else { 0 } };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -395,7 +397,7 @@ pub unsafe extern "C" fn image_mounter_query_developer_mode_status(
 /// * [`signature_len`] - Length of the signature data
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// All pointers must be valid and non-null
@@ -406,9 +408,9 @@ pub unsafe extern "C" fn image_mounter_mount_developer(
     image_len: libc::size_t,
     signature: *const u8,
     signature_len: libc::size_t,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if image.is_null() || signature.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let image_slice = unsafe { std::slice::from_raw_parts(image, image_len) };
@@ -422,8 +424,8 @@ pub unsafe extern "C" fn image_mounter_mount_developer(
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -438,7 +440,7 @@ pub unsafe extern "C" fn image_mounter_mount_developer(
 /// * [`manifest_len`] - Will be set to the length of the manifest data
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// All pointers must be valid and non-null
@@ -451,15 +453,15 @@ pub unsafe extern "C" fn image_mounter_query_personalization_manifest(
     signature_len: libc::size_t,
     manifest: *mut *mut u8,
     manifest_len: *mut libc::size_t,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if image_type.is_null() || signature.is_null() || manifest.is_null() || manifest_len.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let image_type_cstr = unsafe { std::ffi::CStr::from_ptr(image_type) };
     let image_type = match image_type_cstr.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let signature_slice = unsafe { std::slice::from_raw_parts(signature, signature_len) };
@@ -479,9 +481,9 @@ pub unsafe extern "C" fn image_mounter_query_personalization_manifest(
                 *manifest_len = boxed.len();
             }
             std::mem::forget(boxed);
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -494,7 +496,7 @@ pub unsafe extern "C" fn image_mounter_query_personalization_manifest(
 /// * [`nonce_len`] - Will be set to the length of the nonce data
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client`, `nonce`, and `nonce_len` must be valid pointers
@@ -505,16 +507,16 @@ pub unsafe extern "C" fn image_mounter_query_nonce(
     personalized_image_type: *const libc::c_char,
     nonce: *mut *mut u8,
     nonce_len: *mut libc::size_t,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if nonce.is_null() || nonce_len.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let image_type = if !personalized_image_type.is_null() {
         let image_type_cstr = unsafe { std::ffi::CStr::from_ptr(personalized_image_type) };
         match image_type_cstr.to_str() {
             Ok(s) => Some(s.to_string()),
-            Err(_) => return IdeviceErrorCode::InvalidArg,
+            Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
         }
     } else {
         None
@@ -533,9 +535,9 @@ pub unsafe extern "C" fn image_mounter_query_nonce(
                 *nonce_len = boxed.len();
             }
             std::mem::forget(boxed);
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -547,7 +549,7 @@ pub unsafe extern "C" fn image_mounter_query_nonce(
 /// * [`identifiers`] - Will be set to point to the identifiers plist on success
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` and `identifiers` must be valid pointers
@@ -557,16 +559,16 @@ pub unsafe extern "C" fn image_mounter_query_personalization_identifiers(
     client: *mut ImageMounterHandle,
     image_type: *const libc::c_char,
     identifiers: *mut *mut c_void,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if identifiers.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let image_type = if !image_type.is_null() {
         let image_type_cstr = unsafe { std::ffi::CStr::from_ptr(image_type) };
         match image_type_cstr.to_str() {
             Ok(s) => Some(s.to_string()),
-            Err(_) => return IdeviceErrorCode::InvalidArg,
+            Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
         }
     } else {
         None
@@ -583,9 +585,9 @@ pub unsafe extern "C" fn image_mounter_query_personalization_identifiers(
         Ok(id) => {
             let plist = util::plist_to_libplist(&plist::Value::Dictionary(id));
             unsafe { *identifiers = plist };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -595,22 +597,22 @@ pub unsafe extern "C" fn image_mounter_query_personalization_identifiers(
 /// * [`client`] - A valid ImageMounter handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn image_mounter_roll_personalization_nonce(
     client: *mut ImageMounterHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.roll_personalization_nonce().await
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -620,22 +622,22 @@ pub unsafe extern "C" fn image_mounter_roll_personalization_nonce(
 /// * [`client`] - A valid ImageMounter handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn image_mounter_roll_cryptex_nonce(
     client: *mut ImageMounterHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.roll_cryptex_nonce().await
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -654,7 +656,7 @@ pub unsafe extern "C" fn image_mounter_roll_cryptex_nonce(
 /// * [`unique_chip_id`] - The device's unique chip ID
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// All pointers must be valid (except optional ones which can be null)
@@ -671,9 +673,9 @@ pub unsafe extern "C" fn image_mounter_mount_personalized(
     build_manifest_len: libc::size_t,
     info_plist: *const c_void,
     unique_chip_id: u64,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if provider.is_null() || image.is_null() || trust_cache.is_null() || build_manifest.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let image_slice = unsafe { std::slice::from_raw_parts(image, image_len) };
@@ -707,8 +709,8 @@ pub unsafe extern "C" fn image_mounter_mount_personalized(
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -729,7 +731,7 @@ pub unsafe extern "C" fn image_mounter_mount_personalized(
 /// * [`context`] - User context to pass to callback
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// All pointers must be valid (except optional ones which can be null)
@@ -748,9 +750,9 @@ pub unsafe extern "C" fn image_mounter_mount_personalized_with_callback(
     unique_chip_id: u64,
     callback: extern "C" fn(progress: libc::size_t, total: libc::size_t, context: *mut c_void),
     context: *mut c_void,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if provider.is_null() || image.is_null() || trust_cache.is_null() || build_manifest.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let image_slice = unsafe { std::slice::from_raw_parts(image, image_len) };
@@ -791,7 +793,7 @@ pub unsafe extern "C" fn image_mounter_mount_personalized_with_callback(
     });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }

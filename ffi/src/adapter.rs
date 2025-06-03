@@ -1,11 +1,12 @@
 // Jackson Coxson
 
 use std::ffi::{CStr, c_char};
+use std::ptr::null_mut;
 
 use idevice::tcp::stream::AdapterStream;
 
 use crate::core_device_proxy::AdapterHandle;
-use crate::{IdeviceErrorCode, RUNTIME, ReadWriteOpaque};
+use crate::{IdeviceFfiError, RUNTIME, ReadWriteOpaque, ffi_err};
 
 pub struct AdapterStreamHandle<'a>(pub AdapterStream<'a>);
 
@@ -17,7 +18,7 @@ pub struct AdapterStreamHandle<'a>(pub AdapterStream<'a>);
 /// * [`stream_handle`] - A pointer to allocate the new stream to
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// Null on success, an IdeviceFfiError otherwise
 ///
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library.
@@ -28,9 +29,9 @@ pub unsafe extern "C" fn adapter_connect(
     adapter_handle: *mut AdapterHandle,
     port: u16,
     stream_handle: *mut *mut ReadWriteOpaque,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if adapter_handle.is_null() || stream_handle.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let adapter = unsafe { &mut (*adapter_handle).0 };
@@ -42,11 +43,11 @@ pub unsafe extern "C" fn adapter_connect(
                 inner: Some(Box::new(r)),
             });
             unsafe { *stream_handle = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
         Err(e) => {
             log::error!("Adapter connect failed: {}", e);
-            IdeviceErrorCode::AdapterIOFailed
+            ffi_err!(e)
         }
     }
 }
@@ -58,7 +59,7 @@ pub unsafe extern "C" fn adapter_connect(
 /// * [`path`] - The path to save the PCAP file (null-terminated string)
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// Null on success, an IdeviceFfiError otherwise
 ///
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
@@ -67,25 +68,25 @@ pub unsafe extern "C" fn adapter_connect(
 pub unsafe extern "C" fn adapter_pcap(
     handle: *mut AdapterHandle,
     path: *const c_char,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || path.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let adapter = unsafe { &mut (*handle).0 };
     let c_str = unsafe { CStr::from_ptr(path) };
     let path_str = match c_str.to_str() {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
     };
 
     let res = RUNTIME.block_on(async move { adapter.pcap(path_str).await });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
+        Ok(_) => null_mut(),
         Err(e) => {
             log::error!("Adapter pcap failed: {}", e);
-            IdeviceErrorCode::AdapterIOFailed
+            ffi_err!(e)
         }
     }
 }
@@ -96,24 +97,24 @@ pub unsafe extern "C" fn adapter_pcap(
 /// * [`handle`] - The adapter stream handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// Null on success, an IdeviceFfiError otherwise
 ///
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn adapter_close(handle: *mut AdapterStreamHandle) -> IdeviceErrorCode {
+pub unsafe extern "C" fn adapter_close(handle: *mut AdapterStreamHandle) -> *mut IdeviceFfiError {
     if handle.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let adapter = unsafe { &mut (*handle).0 };
     let res = RUNTIME.block_on(async move { adapter.close().await });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
+        Ok(_) => null_mut(),
         Err(e) => {
             log::error!("Adapter close failed: {}", e);
-            IdeviceErrorCode::AdapterIOFailed
+            ffi_err!(e)
         }
     }
 }
@@ -126,7 +127,7 @@ pub unsafe extern "C" fn adapter_close(handle: *mut AdapterStreamHandle) -> Idev
 /// * [`length`] - The length of the data
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// Null on success, an IdeviceFfiError otherwise
 ///
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
@@ -136,9 +137,9 @@ pub unsafe extern "C" fn adapter_send(
     handle: *mut AdapterStreamHandle,
     data: *const u8,
     length: usize,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || data.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let adapter = unsafe { &mut (*handle).0 };
@@ -147,10 +148,10 @@ pub unsafe extern "C" fn adapter_send(
     let res = RUNTIME.block_on(async move { adapter.psh(data_slice).await });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
+        Ok(_) => null_mut(),
         Err(e) => {
             log::error!("Adapter send failed: {}", e);
-            IdeviceErrorCode::AdapterIOFailed
+            ffi_err!(e)
         }
     }
 }
@@ -164,7 +165,7 @@ pub unsafe extern "C" fn adapter_send(
 /// * [`max_length`] - Maximum number of bytes that can be stored in `data`
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// Null on success, an IdeviceFfiError otherwise
 ///
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
@@ -176,9 +177,9 @@ pub unsafe extern "C" fn adapter_recv(
     data: *mut u8,
     length: *mut usize,
     max_length: usize,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || data.is_null() || length.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let adapter = unsafe { &mut (*handle).0 };
@@ -188,7 +189,7 @@ pub unsafe extern "C" fn adapter_recv(
         Ok(received_data) => {
             let received_len = received_data.len();
             if received_len > max_length {
-                return IdeviceErrorCode::BufferTooSmall;
+                return ffi_err!(IdeviceError::FfiBufferTooSmall(received_len, max_length));
             }
 
             unsafe {
@@ -196,11 +197,11 @@ pub unsafe extern "C" fn adapter_recv(
                 *length = received_len;
             }
 
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
         Err(e) => {
             log::error!("Adapter recv failed: {}", e);
-            IdeviceErrorCode::AdapterIOFailed
+            ffi_err!(e)
         }
     }
 }

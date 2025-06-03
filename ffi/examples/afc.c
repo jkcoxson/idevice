@@ -161,10 +161,12 @@ int main(int argc, char **argv) {
 
   // Read pairing file
   IdevicePairingFile *pairing_file = NULL;
-  IdeviceErrorCode err =
+  IdeviceFfiError *err =
       idevice_pairing_file_read(pairing_file_path, &pairing_file);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to read pairing file: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to read pairing file: [%d] %s\n", err->code,
+            err->message);
+    idevice_error_free(err);
     return 1;
   }
 
@@ -172,8 +174,10 @@ int main(int argc, char **argv) {
   IdeviceProviderHandle *provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing_file,
                                  "ImageMounterTest", &provider);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to create TCP provider: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to create TCP provider: [%d] %s\n", err->code,
+            err->message);
+    idevice_error_free(err);
     idevice_pairing_file_free(pairing_file);
     return 1;
   }
@@ -181,8 +185,10 @@ int main(int argc, char **argv) {
   // Connect to AFC service
   AfcClientHandle *client = NULL;
   err = afc_client_connect(provider, &client);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to connect to AFC service: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to connect to AFC service: [%d] %s\n", err->code,
+            err->message);
+    idevice_error_free(err);
     idevice_provider_free(provider);
     return 1;
   }
@@ -190,6 +196,7 @@ int main(int argc, char **argv) {
 
   // Process command
   int success = 1;
+
   if (strcmp(command, "list") == 0) {
     if (argc < 3) {
       printf("Error: Missing path argument\n");
@@ -200,14 +207,16 @@ int main(int argc, char **argv) {
       size_t count = 0;
 
       err = afc_list_directory(client, path, &entries, &count);
-      if (err == IdeviceSuccess) {
+      if (err == NULL) {
         printf("Contents of %s:\n", path);
         for (size_t i = 0; i < count; i++) {
           printf("- %s\n", entries[i]);
         }
         free_directory_listing(entries, count);
       } else {
-        fprintf(stderr, "Failed to list directory: %d\n", err);
+        fprintf(stderr, "Failed to list directory: [%d] %s\n", err->code,
+                err->message);
+        idevice_error_free(err);
         success = 0;
       }
     }
@@ -218,10 +227,12 @@ int main(int argc, char **argv) {
     } else {
       char *path = argv[2];
       err = afc_make_directory(client, path);
-      if (err == IdeviceSuccess) {
+      if (err == NULL) {
         printf("Directory created successfully\n");
       } else {
-        fprintf(stderr, "Failed to create directory: %d\n", err);
+        fprintf(stderr, "Failed to create directory: [%d] %s\n", err->code,
+                err->message);
+        idevice_error_free(err);
         success = 0;
       }
     }
@@ -235,14 +246,16 @@ int main(int argc, char **argv) {
 
       AfcFileHandle *file = NULL;
       err = afc_file_open(client, src_path, AfcRdOnly, &file);
-      if (err != IdeviceSuccess) {
-        fprintf(stderr, "Failed to open file: %d\n", err);
+      if (err != NULL) {
+        fprintf(stderr, "Failed to open file: [%d] %s\n", err->code,
+                err->message);
+        idevice_error_free(err);
         success = 0;
       } else {
         uint8_t *data = NULL;
         size_t length = 0;
         err = afc_file_read(file, &data, &length);
-        if (err == IdeviceSuccess) {
+        if (err == NULL) {
           if (write_file(dest_path, data, length)) {
             printf("File downloaded successfully\n");
           } else {
@@ -250,7 +263,9 @@ int main(int argc, char **argv) {
           }
           free(data);
         } else {
-          fprintf(stderr, "Failed to read file: %d\n", err);
+          fprintf(stderr, "Failed to read file: [%d] %s\n", err->code,
+                  err->message);
+          idevice_error_free(err);
           success = 0;
         }
         afc_file_close(file);
@@ -271,15 +286,19 @@ int main(int argc, char **argv) {
       } else {
         AfcFileHandle *file = NULL;
         err = afc_file_open(client, dest_path, AfcWrOnly, &file);
-        if (err != IdeviceSuccess) {
-          fprintf(stderr, "Failed to open file: %d\n", err);
+        if (err != NULL) {
+          fprintf(stderr, "Failed to open file: [%d] %s\n", err->code,
+                  err->message);
+          idevice_error_free(err);
           success = 0;
         } else {
           err = afc_file_write(file, data, length);
-          if (err == IdeviceSuccess) {
+          if (err == NULL) {
             printf("File uploaded successfully\n");
           } else {
-            fprintf(stderr, "Failed to write file: %d\n", err);
+            fprintf(stderr, "Failed to write file: [%d] %s\n", err->code,
+                    err->message);
+            idevice_error_free(err);
             success = 0;
           }
           afc_file_close(file);
@@ -294,10 +313,12 @@ int main(int argc, char **argv) {
     } else {
       char *path = argv[2];
       err = afc_remove_path(client, path);
-      if (err == IdeviceSuccess) {
+      if (err == NULL) {
         printf("Path removed successfully\n");
       } else {
-        fprintf(stderr, "Failed to remove path: %d\n", err);
+        fprintf(stderr, "Failed to remove path: [%d] %s\n", err->code,
+                err->message);
+        idevice_error_free(err);
         success = 0;
       }
     }
@@ -308,10 +329,12 @@ int main(int argc, char **argv) {
     } else {
       char *path = argv[2];
       err = afc_remove_path_and_contents(client, path);
-      if (err == IdeviceSuccess) {
+      if (err == NULL) {
         printf("Path and contents removed successfully\n");
       } else {
-        fprintf(stderr, "Failed to remove path and contents: %d\n", err);
+        fprintf(stderr, "Failed to remove path and contents: [%d] %s\n",
+                err->code, err->message);
+        idevice_error_free(err);
         success = 0;
       }
     }
@@ -323,22 +346,26 @@ int main(int argc, char **argv) {
       char *path = argv[2];
       AfcFileInfo info = {0};
       err = afc_get_file_info(client, path, &info);
-      if (err == IdeviceSuccess) {
+      if (err == NULL) {
         print_file_info(&info);
         afc_file_info_free(&info);
       } else {
-        fprintf(stderr, "Failed to get file info: %d\n", err);
+        fprintf(stderr, "Failed to get file info: [%d] %s\n", err->code,
+                err->message);
+        idevice_error_free(err);
         success = 0;
       }
     }
   } else if (strcmp(command, "device_info") == 0) {
     AfcDeviceInfo info = {0};
     err = afc_get_device_info(client, &info);
-    if (err == IdeviceSuccess) {
+    if (err == NULL) {
       print_device_info(&info);
       afc_device_info_free(&info);
     } else {
-      fprintf(stderr, "Failed to get device info: %d\n", err);
+      fprintf(stderr, "Failed to get device info: [%d] %s\n", err->code,
+              err->message);
+      idevice_error_free(err);
       success = 0;
     }
   } else {
@@ -349,6 +376,5 @@ int main(int argc, char **argv) {
 
   // Cleanup
   afc_client_free(client);
-
   return success ? 0 : 1;
 }

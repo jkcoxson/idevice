@@ -100,10 +100,12 @@ int main(int argc, char **argv) {
 
   // Read pairing file
   IdevicePairingFile *pairing_file = NULL;
-  IdeviceErrorCode err =
+  IdeviceFfiError *err =
       idevice_pairing_file_read(pairing_file_path, &pairing_file);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to read pairing file: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to read pairing file: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     return 1;
   }
 
@@ -111,18 +113,22 @@ int main(int argc, char **argv) {
   IdeviceProviderHandle *provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing_file,
                                  "IPAInstaller", &provider);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to create TCP provider: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to create TCP provider: [%d] %s", err->code,
+            err->message);
     idevice_pairing_file_free(pairing_file);
+    idevice_error_free(err);
     return 1;
   }
 
   // Connect to AFC service
   AfcClientHandle *afc_client = NULL;
   err = afc_client_connect(provider, &afc_client);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to connect to AFC service: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to connect to AFC service: [%d] %s", err->code,
+            err->message);
     idevice_provider_free(provider);
+    idevice_error_free(err);
     return 1;
   }
 
@@ -150,10 +156,12 @@ int main(int argc, char **argv) {
 
   AfcFileHandle *file = NULL;
   err = afc_file_open(afc_client, dest_path, AfcWrOnly, &file);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to open destination file: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to open destination file: [%d] %s", err->code,
+            err->message);
     free(data);
     afc_client_free(afc_client);
+    idevice_error_free(err);
     return 1;
   }
 
@@ -161,9 +169,10 @@ int main(int argc, char **argv) {
   free(data);
   afc_file_close(file);
 
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to write file: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to write file: [%d] %s", err->code, err->message);
     afc_client_free(afc_client);
+    idevice_error_free(err);
     return 1;
   }
   printf("Upload completed successfully\n");
@@ -171,17 +180,20 @@ int main(int argc, char **argv) {
   // Connect to installation proxy
   InstallationProxyClientHandle *instproxy_client = NULL;
   err = installation_proxy_connect_tcp(provider, &instproxy_client);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to connect to installation proxy: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to connect to installation proxy: [%d] %s",
+            err->code, err->message);
     afc_client_free(afc_client);
+    idevice_error_free(err);
     return 1;
   }
 
   // Install the uploaded IPA
   printf("Installing %s...\n", dest_path);
   err = installation_proxy_install(instproxy_client, dest_path, NULL);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to install IPA: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to install IPA: [%d] %s", err->code, err->message);
+    idevice_error_free(err);
   } else {
     printf("Installation completed successfully\n");
   }
@@ -191,5 +203,5 @@ int main(int argc, char **argv) {
   afc_client_free(afc_client);
   idevice_provider_free(provider);
 
-  return err == IdeviceSuccess ? 0 : 1;
+  return err == NULL ? 0 : 1;
 }

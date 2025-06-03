@@ -6,21 +6,20 @@ use std::{
     os::raw::c_void,
 };
 
+use idevice::IdeviceError;
 use libc::{sockaddr_in, sockaddr_in6};
 use plist::Value;
-
-use crate::IdeviceErrorCode;
 
 pub(crate) fn c_socket_to_rust(
     addr: *const libc::sockaddr,
     addr_len: libc::socklen_t,
-) -> Result<SocketAddr, IdeviceErrorCode> {
+) -> Result<SocketAddr, IdeviceError> {
     Ok(unsafe {
         match (*addr).sa_family as c_int {
             libc::AF_INET => {
                 if (addr_len as usize) < std::mem::size_of::<sockaddr_in>() {
                     log::error!("Invalid sockaddr_in size");
-                    return Err(IdeviceErrorCode::InvalidArg);
+                    return Err(IdeviceError::FfiInvalidArg);
                 }
                 let addr_in = *(addr as *const sockaddr_in);
                 let ip = std::net::Ipv4Addr::from(u32::from_be(addr_in.sin_addr.s_addr));
@@ -40,18 +39,18 @@ pub(crate) fn c_socket_to_rust(
                     ))
                 } else {
                     log::error!("Invalid sockaddr_in6 size");
-                    return Err(IdeviceErrorCode::InvalidArg);
+                    return Err(IdeviceError::FfiInvalidArg);
                 }
             }
             _ => {
                 log::error!("Unsupported socket address family: {}", (*addr).sa_family);
-                return Err(IdeviceErrorCode::InvalidArg);
+                return Err(IdeviceError::FfiInvalidArg);
             }
         }
     })
 }
 
-pub(crate) fn c_addr_to_rust(addr: *const libc::sockaddr) -> Result<IpAddr, IdeviceErrorCode> {
+pub(crate) fn c_addr_to_rust(addr: *const libc::sockaddr) -> Result<IpAddr, IdeviceError> {
     unsafe {
         // Check the address family
         match (*addr).sa_family as c_int {
@@ -72,7 +71,7 @@ pub(crate) fn c_addr_to_rust(addr: *const libc::sockaddr) -> Result<IpAddr, Idev
             }
             _ => {
                 log::error!("Unsupported socket address family: {}", (*addr).sa_family);
-                Err(IdeviceErrorCode::InvalidArg)
+                Err(IdeviceError::FfiInvalidArg)
             }
         }
     }

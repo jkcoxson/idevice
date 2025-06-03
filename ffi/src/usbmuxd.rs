@@ -1,8 +1,11 @@
 // Jackson Coxson
 
-use std::ffi::{CStr, c_char};
+use std::{
+    ffi::{CStr, c_char},
+    ptr::null_mut,
+};
 
-use crate::{IdeviceErrorCode, RUNTIME, util::c_socket_to_rust};
+use crate::{IdeviceFfiError, RUNTIME, ffi_err, util::c_socket_to_rust};
 use idevice::{
     IdeviceError,
     usbmuxd::{UsbmuxdAddr, UsbmuxdConnection},
@@ -20,7 +23,7 @@ pub struct UsbmuxdAddrHandle(pub UsbmuxdAddr);
 /// * [`usbmuxd_connection`] - On success, will be set to point to a newly allocated UsbmuxdConnection handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `addr` must be a valid sockaddr
@@ -31,10 +34,10 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_tcp_connection(
     addr_len: libc::socklen_t,
     tag: u32,
     usbmuxd_connection: *mut *mut UsbmuxdConnectionHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     let addr = match c_socket_to_rust(addr, addr_len) {
         Ok(a) => a,
-        Err(e) => return e,
+        Err(e) => return ffi_err!(e),
     };
 
     let res: Result<UsbmuxdConnection, IdeviceError> = RUNTIME.block_on(async move {
@@ -46,9 +49,9 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_tcp_connection(
         Ok(r) => {
             let boxed = Box::new(UsbmuxdConnectionHandle(r));
             unsafe { *usbmuxd_connection = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -60,7 +63,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_tcp_connection(
 /// * [`usbmuxd_connection`] - On success, will be set to point to a newly allocated UsbmuxdConnection handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `addr` must be a valid CStr
@@ -71,10 +74,10 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_unix_socket_connection(
     addr: *const c_char,
     tag: u32,
     usbmuxd_connection: *mut *mut UsbmuxdConnectionHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     let addr = match unsafe { CStr::from_ptr(addr).to_str() } {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let res: Result<UsbmuxdConnection, IdeviceError> = RUNTIME.block_on(async move {
@@ -86,9 +89,9 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_unix_socket_connection(
         Ok(r) => {
             let boxed = Box::new(UsbmuxdConnectionHandle(r));
             unsafe { *usbmuxd_connection = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -100,7 +103,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_unix_socket_connection(
 /// * [`usbmuxd_connection`] - On success, will be set to point to a newly allocated UsbmuxdConnection handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `addr` must be a valid CStr
@@ -108,12 +111,12 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_unix_socket_connection(
 pub unsafe extern "C" fn idevice_usbmuxd_new_default_connection(
     tag: u32,
     usbmuxd_connection: *mut *mut UsbmuxdConnectionHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     let addr = match UsbmuxdAddr::from_env_var() {
         Ok(a) => a,
         Err(e) => {
             log::error!("Invalid address set: {e:?}");
-            return IdeviceErrorCode::InvalidArg;
+            return ffi_err!(IdeviceError::FfiInvalidArg);
         }
     };
 
@@ -124,9 +127,9 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_default_connection(
         Ok(r) => {
             let boxed = Box::new(UsbmuxdConnectionHandle(r));
             unsafe { *usbmuxd_connection = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -155,7 +158,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_connection_free(
 /// * [`usbmuxd_addr`] - On success, will be set to point to a newly allocated UsbmuxdAddr handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `addr` must be a valid sockaddr
@@ -165,17 +168,17 @@ pub unsafe extern "C" fn idevice_usbmuxd_tcp_addr_new(
     addr: *const libc::sockaddr,
     addr_len: libc::socklen_t,
     usbmuxd_addr: *mut *mut UsbmuxdAddrHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     let addr = match c_socket_to_rust(addr, addr_len) {
         Ok(a) => a,
-        Err(e) => return e,
+        Err(e) => return ffi_err!(e),
     };
 
     let u = UsbmuxdAddr::TcpSocket(addr);
 
     let boxed = Box::new(UsbmuxdAddrHandle(u));
     unsafe { *usbmuxd_addr = Box::into_raw(boxed) };
-    IdeviceErrorCode::IdeviceSuccess
+    null_mut()
 }
 
 /// Creates a new UsbmuxdAddr struct with a unix socket
@@ -185,7 +188,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_tcp_addr_new(
 /// * [`usbmuxd_addr`] - On success, will be set to point to a newly allocated UsbmuxdAddr handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `addr` must be a valid CStr
@@ -195,17 +198,17 @@ pub unsafe extern "C" fn idevice_usbmuxd_tcp_addr_new(
 pub unsafe extern "C" fn idevice_usbmuxd_unix_addr_new(
     addr: *const c_char,
     usbmuxd_addr: *mut *mut UsbmuxdAddrHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     let addr = match unsafe { CStr::from_ptr(addr).to_str() } {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidArg,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
     let u = UsbmuxdAddr::UnixSocket(addr.to_string());
 
     let boxed = Box::new(UsbmuxdAddrHandle(u));
     unsafe { *usbmuxd_addr = Box::into_raw(boxed) };
-    IdeviceErrorCode::IdeviceSuccess
+    null_mut()
 }
 
 /// Frees a UsbmuxdAddr handle

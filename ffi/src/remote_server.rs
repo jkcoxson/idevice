@@ -1,8 +1,10 @@
 // Jackson Coxson
 
+use std::ptr::null_mut;
+
 use crate::core_device_proxy::AdapterHandle;
 use crate::rsd::RsdHandshakeHandle;
-use crate::{IdeviceErrorCode, RUNTIME, ReadWriteOpaque};
+use crate::{IdeviceFfiError, RUNTIME, ReadWriteOpaque, ffi_err};
 use idevice::dvt::remote_server::RemoteServerClient;
 use idevice::tcp::stream::AdapterStream;
 use idevice::{IdeviceError, ReadWrite, RsdService};
@@ -17,7 +19,7 @@ pub struct RemoteServerHandle(pub RemoteServerClient<Box<dyn ReadWrite>>);
 /// * [`handle`] - Pointer to store the newly created RemoteServerClient handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `socket` must be a valid pointer to a handle allocated by this library. It is consumed and may
@@ -27,9 +29,9 @@ pub struct RemoteServerHandle(pub RemoteServerClient<Box<dyn ReadWrite>>);
 pub unsafe extern "C" fn remote_server_new(
     socket: *mut ReadWriteOpaque,
     handle: *mut *mut RemoteServerHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if socket.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let wrapper = unsafe { &mut *socket };
@@ -41,16 +43,16 @@ pub unsafe extern "C" fn remote_server_new(
                 client.read_message(0).await?;
                 Ok(client)
             }),
-            None => return IdeviceErrorCode::InvalidArg,
+            None => return ffi_err!(IdeviceError::FfiInvalidArg),
         };
 
     match res {
         Ok(client) => {
             let boxed = Box::new(RemoteServerHandle(client));
             unsafe { *handle = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -61,7 +63,7 @@ pub unsafe extern "C" fn remote_server_new(
 /// * [`handshake`] - An RSD handshake from the same provider
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `provider` must be a valid pointer to a handle allocated by this library
@@ -71,9 +73,9 @@ pub unsafe extern "C" fn remote_server_connect_rsd(
     provider: *mut AdapterHandle,
     handshake: *mut RsdHandshakeHandle,
     handle: *mut *mut RemoteServerHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if provider.is_null() || handshake.is_null() || handshake.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
     let res: Result<RemoteServerClient<AdapterStream>, IdeviceError> =
         RUNTIME.block_on(async move {
@@ -90,9 +92,9 @@ pub unsafe extern "C" fn remote_server_connect_rsd(
                 d.into_inner(),
             ))));
             unsafe { *handle = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 

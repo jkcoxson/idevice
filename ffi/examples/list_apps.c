@@ -19,10 +19,12 @@ int main() {
 
   // Read pairing file (replace with your pairing file path)
   IdevicePairingFile *pairing_file = NULL;
-  IdeviceErrorCode err =
+  IdeviceFfiError *err =
       idevice_pairing_file_read("pairing_file.plist", &pairing_file);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to read pairing file: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to read pairing file: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     return 1;
   }
 
@@ -30,18 +32,22 @@ int main() {
   IdeviceProviderHandle *provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing_file,
                                  "ExampleProvider", &provider);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to create TCP provider: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to create TCP provider: [%d] %s", err->code,
+            err->message);
     idevice_pairing_file_free(pairing_file);
+    idevice_error_free(err);
     return 1;
   }
 
   // Connect to installation proxy
   InstallationProxyClientHandle *client = NULL;
   err = installation_proxy_connect_tcp(provider, &client);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to connect to installation proxy: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to connect to installation proxy: [%d] %s",
+            err->code, err->message);
     idevice_provider_free(provider);
+    idevice_error_free(err);
     return 1;
   }
 
@@ -53,9 +59,10 @@ int main() {
                                     NULL, // bundle_identifiers filter
                                     0,    // bundle_identifiers length
                                     &apps, &apps_len);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to get apps: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to get apps: [%d] %s", err->code, err->message);
     installation_proxy_client_free(client);
+    idevice_error_free(err);
     idevice_provider_free(provider);
     return 1;
   }

@@ -1,8 +1,10 @@
 // Jackson Coxson
 
+use std::ptr::null_mut;
+
 use idevice::{ReadWrite, dvt::location_simulation::LocationSimulationClient};
 
-use crate::{IdeviceErrorCode, RUNTIME, remote_server::RemoteServerHandle};
+use crate::{IdeviceFfiError, RUNTIME, ffi_err, remote_server::RemoteServerHandle};
 
 /// Opaque handle to a ProcessControlClient
 pub struct LocationSimulationHandle<'a>(pub LocationSimulationClient<'a, Box<dyn ReadWrite>>);
@@ -14,7 +16,7 @@ pub struct LocationSimulationHandle<'a>(pub LocationSimulationClient<'a, Box<dyn
 /// * [`handle`] - Pointer to store the newly created ProcessControlClient handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `server` must be a valid pointer to a handle allocated by this library
@@ -23,9 +25,9 @@ pub struct LocationSimulationHandle<'a>(pub LocationSimulationClient<'a, Box<dyn
 pub unsafe extern "C" fn location_simulation_new(
     server: *mut RemoteServerHandle,
     handle: *mut *mut LocationSimulationHandle<'static>,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if server.is_null() || handle.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let server = unsafe { &mut (*server).0 };
@@ -35,9 +37,9 @@ pub unsafe extern "C" fn location_simulation_new(
         Ok(client) => {
             let boxed = Box::new(LocationSimulationHandle(client));
             unsafe { *handle = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -61,24 +63,24 @@ pub unsafe extern "C" fn location_simulation_free(handle: *mut LocationSimulatio
 /// * [`handle`] - The LocationSimulation handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// All pointers must be valid or NULL where appropriate
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn location_simulation_clear(
     handle: *mut LocationSimulationHandle<'static>,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let client = unsafe { &mut (*handle).0 };
     let res = RUNTIME.block_on(async move { client.clear().await });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -90,7 +92,7 @@ pub unsafe extern "C" fn location_simulation_clear(
 /// * [`longitude`] - The longitude to set
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// All pointers must be valid or NULL where appropriate
@@ -99,16 +101,16 @@ pub unsafe extern "C" fn location_simulation_set(
     handle: *mut LocationSimulationHandle<'static>,
     latitude: f64,
     longitude: f64,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let client = unsafe { &mut (*handle).0 };
     let res = RUNTIME.block_on(async move { client.set(latitude, longitude).await });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }

@@ -1,13 +1,16 @@
 // Jackson Coxson
 
-use std::ffi::{CString, c_char};
+use std::{
+    ffi::{CString, c_char},
+    ptr::null_mut,
+};
 
 use idevice::{
     IdeviceError, IdeviceService, core_device_proxy::CoreDeviceProxy, provider::IdeviceProvider,
     tcp::adapter::Adapter,
 };
 
-use crate::{IdeviceErrorCode, IdeviceHandle, RUNTIME, provider::IdeviceProviderHandle};
+use crate::{IdeviceFfiError, IdeviceHandle, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
 
 pub struct CoreDeviceProxyHandle(pub CoreDeviceProxy);
 pub struct AdapterHandle(pub Adapter);
@@ -19,7 +22,7 @@ pub struct AdapterHandle(pub Adapter);
 /// * [`client`] - On success, will be set to point to a newly allocated CoreDeviceProxy handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `provider` must be a valid pointer to a handle allocated by this library
@@ -28,10 +31,10 @@ pub struct AdapterHandle(pub Adapter);
 pub unsafe extern "C" fn core_device_proxy_connect(
     provider: *mut IdeviceProviderHandle,
     client: *mut *mut CoreDeviceProxyHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
         log::error!("Null pointer provided");
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let res: Result<CoreDeviceProxy, IdeviceError> = RUNTIME.block_on(async move {
@@ -45,9 +48,9 @@ pub unsafe extern "C" fn core_device_proxy_connect(
         Ok(r) => {
             let boxed = Box::new(CoreDeviceProxyHandle(r));
             unsafe { *client = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -58,7 +61,7 @@ pub unsafe extern "C" fn core_device_proxy_connect(
 /// * [`client`] - On success, will be set to point to a newly allocated CoreDeviceProxy handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `socket` must be a valid pointer to a handle allocated by this library. It is consumed and
@@ -68,9 +71,9 @@ pub unsafe extern "C" fn core_device_proxy_connect(
 pub unsafe extern "C" fn core_device_proxy_new(
     socket: *mut IdeviceHandle,
     client: *mut *mut CoreDeviceProxyHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if socket.is_null() || client.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
     let socket = unsafe { Box::from_raw(socket) }.0;
     let r: Result<CoreDeviceProxy, IdeviceError> =
@@ -79,9 +82,9 @@ pub unsafe extern "C" fn core_device_proxy_new(
         Ok(r) => {
             let boxed = Box::new(CoreDeviceProxyHandle(r));
             unsafe { *client = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -93,7 +96,7 @@ pub unsafe extern "C" fn core_device_proxy_new(
 /// * [`length`] - The length of the data
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
@@ -103,9 +106,9 @@ pub unsafe extern "C" fn core_device_proxy_send(
     handle: *mut CoreDeviceProxyHandle,
     data: *const u8,
     length: usize,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || data.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let proxy = unsafe { &mut (*handle).0 };
@@ -114,8 +117,8 @@ pub unsafe extern "C" fn core_device_proxy_send(
     let res = RUNTIME.block_on(async move { proxy.send(data_slice).await });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -128,7 +131,7 @@ pub unsafe extern "C" fn core_device_proxy_send(
 /// * [`max_length`] - Maximum number of bytes that can be stored in `data`
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
@@ -140,9 +143,9 @@ pub unsafe extern "C" fn core_device_proxy_recv(
     data: *mut u8,
     length: *mut usize,
     max_length: usize,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || data.is_null() || length.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let proxy = unsafe { &mut (*handle).0 };
@@ -153,7 +156,7 @@ pub unsafe extern "C" fn core_device_proxy_recv(
         Ok(received_data) => {
             let received_len = received_data.len();
             if received_len > max_length {
-                return IdeviceErrorCode::BufferTooSmall;
+                return ffi_err!(IdeviceError::FfiBufferTooSmall(received_len, max_length));
             }
 
             unsafe {
@@ -161,9 +164,9 @@ pub unsafe extern "C" fn core_device_proxy_recv(
                 *length = received_len;
             }
 
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -176,7 +179,7 @@ pub unsafe extern "C" fn core_device_proxy_recv(
 /// * [`netmask`] - Pointer to store the netmask string
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
@@ -188,10 +191,10 @@ pub unsafe extern "C" fn core_device_proxy_get_client_parameters(
     mtu: *mut u16,
     address: *mut *mut c_char,
     netmask: *mut *mut c_char,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() {
         log::error!("Passed null handle");
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let proxy = unsafe { &(*handle).0 };
@@ -204,12 +207,12 @@ pub unsafe extern "C" fn core_device_proxy_get_client_parameters(
     // Allocate both strings, but handle partial failure
     let address_cstring = match CString::new(params.address.clone()) {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidString,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
     };
 
     let netmask_cstring = match CString::new(params.netmask.clone()) {
         Ok(s) => s,
-        Err(_) => return IdeviceErrorCode::InvalidString,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
     };
 
     // Only assign to output pointers after both succeed
@@ -218,7 +221,7 @@ pub unsafe extern "C" fn core_device_proxy_get_client_parameters(
         *netmask = netmask_cstring.into_raw();
     }
 
-    IdeviceErrorCode::IdeviceSuccess
+    null_mut()
 }
 
 /// Gets the server address from the handshake
@@ -228,7 +231,7 @@ pub unsafe extern "C" fn core_device_proxy_get_client_parameters(
 /// * [`address`] - Pointer to store the server address string
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
@@ -237,9 +240,9 @@ pub unsafe extern "C" fn core_device_proxy_get_client_parameters(
 pub unsafe extern "C" fn core_device_proxy_get_server_address(
     handle: *mut CoreDeviceProxyHandle,
     address: *mut *mut c_char,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let proxy = unsafe { &(*handle).0 };
@@ -247,11 +250,11 @@ pub unsafe extern "C" fn core_device_proxy_get_server_address(
     unsafe {
         *address = match CString::new(proxy.handshake.server_address.clone()) {
             Ok(s) => s.into_raw(),
-            Err(_) => return IdeviceErrorCode::InvalidString,
+            Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
         };
     }
 
-    IdeviceErrorCode::IdeviceSuccess
+    null_mut()
 }
 
 /// Gets the server RSD port from the handshake
@@ -261,7 +264,7 @@ pub unsafe extern "C" fn core_device_proxy_get_server_address(
 /// * [`port`] - Pointer to store the port number
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
@@ -270,9 +273,9 @@ pub unsafe extern "C" fn core_device_proxy_get_server_address(
 pub unsafe extern "C" fn core_device_proxy_get_server_rsd_port(
     handle: *mut CoreDeviceProxyHandle,
     port: *mut u16,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || port.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let proxy = unsafe { &(*handle).0 };
@@ -280,7 +283,7 @@ pub unsafe extern "C" fn core_device_proxy_get_server_rsd_port(
         *port = proxy.handshake.server_rsd_port;
     }
 
-    IdeviceErrorCode::IdeviceSuccess
+    null_mut()
 }
 
 /// Creates a software TCP tunnel adapter
@@ -290,7 +293,7 @@ pub unsafe extern "C" fn core_device_proxy_get_server_rsd_port(
 /// * [`adapter`] - Pointer to store the newly created adapter handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library, and never used again
@@ -299,9 +302,9 @@ pub unsafe extern "C" fn core_device_proxy_get_server_rsd_port(
 pub unsafe extern "C" fn core_device_proxy_create_tcp_adapter(
     handle: *mut CoreDeviceProxyHandle,
     adapter: *mut *mut AdapterHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || adapter.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let proxy = unsafe { Box::from_raw(handle) };
@@ -311,9 +314,9 @@ pub unsafe extern "C" fn core_device_proxy_create_tcp_adapter(
         Ok(adapter_obj) => {
             let boxed = Box::new(AdapterHandle(adapter_obj));
             unsafe { *adapter = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 

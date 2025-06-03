@@ -21,10 +21,12 @@ int main() {
 
   // Read pairing file (replace with your pairing file path)
   IdevicePairingFile *pairing_file = NULL;
-  IdeviceErrorCode err =
+  IdeviceFfiError *err =
       idevice_pairing_file_read("pairing_file.plist", &pairing_file);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to read pairing file: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to read pairing file: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     return 1;
   }
 
@@ -32,8 +34,10 @@ int main() {
   IdeviceProviderHandle *provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing_file,
                                  "LockdowndTest", &provider);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to create TCP provider: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to create TCP provider: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     idevice_pairing_file_free(pairing_file);
     return 1;
   }
@@ -41,8 +45,10 @@ int main() {
   // Connect to lockdownd
   LockdowndClientHandle *client = NULL;
   err = lockdownd_connect(provider, &client);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to connect to lockdownd: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to connect to lockdownd: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     idevice_provider_free(provider);
     return 1;
   }
@@ -50,15 +56,19 @@ int main() {
   // Read pairing file (replace with your pairing file path)
   IdevicePairingFile *pairing_file_2 = NULL;
   err = idevice_pairing_file_read("pairing_file.plist", &pairing_file_2);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to read pairing file: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to read pairing file: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     return 1;
   }
 
   // Start session
   err = lockdownd_start_session(client, pairing_file_2);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to start session: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to start session: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     lockdownd_client_free(client);
     idevice_provider_free(provider);
     return 1;
@@ -67,8 +77,10 @@ int main() {
   // Get device name
   plist_t name_plist = NULL;
   err = lockdownd_get_value(client, "DeviceName", NULL, &name_plist);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to get device name: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to get device name: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
   } else {
     char *name = NULL;
     plist_get_string_val(name_plist, &name);
@@ -80,8 +92,10 @@ int main() {
   // Get product version
   plist_t version_plist = NULL;
   err = lockdownd_get_value(client, "ProductVersion", NULL, &version_plist);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to get product version: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to get product version: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
   } else {
     char *version = NULL;
     plist_get_string_val(version_plist, &version);
@@ -95,8 +109,10 @@ int main() {
   err =
       lockdownd_get_value(client, "DeveloperModeStatus",
                           "com.apple.security.mac.amfi", &developer_mode_plist);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to get product version: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to get product version: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
   } else {
     uint8_t enabled = 0;
     plist_get_bool_val(developer_mode_plist, &enabled);
@@ -107,8 +123,10 @@ int main() {
   // Get all values
   plist_t all_values = NULL;
   err = lockdownd_get_all_values(client, &all_values);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to get all values: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to get all values: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
   } else {
     printf("\nAll device values:\n");
     // Iterate through dictionary (simplified example)
@@ -150,8 +168,10 @@ int main() {
   bool ssl = false;
   err = lockdownd_start_service(client, "com.apple.mobile.heartbeat", &port,
                                 &ssl);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to start heartbeat service: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to start heartbeat service: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
   } else {
     printf("\nStarted heartbeat service on port %d (SSL: %s)\n", port,
            ssl ? "true" : "false");

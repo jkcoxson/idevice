@@ -1,8 +1,10 @@
 // Jackson Coxson
 
+use std::ptr::null_mut;
+
 use idevice::{IdeviceError, IdeviceService, amfi::AmfiClient, provider::IdeviceProvider};
 
-use crate::{IdeviceErrorCode, IdeviceHandle, RUNTIME, provider::IdeviceProviderHandle};
+use crate::{IdeviceFfiError, IdeviceHandle, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
 
 pub struct AmfiClientHandle(pub AmfiClient);
 
@@ -13,7 +15,7 @@ pub struct AmfiClientHandle(pub AmfiClient);
 /// * [`client`] - On success, will be set to point to a newly allocated AmfiClient handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `provider` must be a valid pointer to a handle allocated by this library
@@ -22,10 +24,10 @@ pub struct AmfiClientHandle(pub AmfiClient);
 pub unsafe extern "C" fn amfi_connect(
     provider: *mut IdeviceProviderHandle,
     client: *mut *mut AmfiClientHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
         log::error!("Null pointer provided");
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let res: Result<AmfiClient, IdeviceError> = RUNTIME.block_on(async move {
@@ -39,9 +41,9 @@ pub unsafe extern "C" fn amfi_connect(
         Ok(r) => {
             let boxed = Box::new(AmfiClientHandle(r));
             unsafe { *client = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -52,7 +54,7 @@ pub unsafe extern "C" fn amfi_connect(
 /// * [`client`] - On success, will be set to point to a newly allocated AmfiClient handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `socket` must be a valid pointer to a handle allocated by this library. It is consumed, and
@@ -62,16 +64,16 @@ pub unsafe extern "C" fn amfi_connect(
 pub unsafe extern "C" fn amfi_new(
     socket: *mut IdeviceHandle,
     client: *mut *mut AmfiClientHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if socket.is_null() || client.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let socket = unsafe { Box::from_raw(socket) }.0;
     let r = AmfiClient::new(socket);
     let boxed = Box::new(AmfiClientHandle(r));
     unsafe { *client = Box::into_raw(boxed) };
-    IdeviceErrorCode::IdeviceSuccess
+    null_mut()
 }
 
 /// Shows the option in the settings UI
@@ -80,16 +82,16 @@ pub unsafe extern "C" fn amfi_new(
 /// * `client` - A valid AmfiClient handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn amfi_reveal_developer_mode_option_in_ui(
     client: *mut AmfiClientHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
@@ -97,8 +99,8 @@ pub unsafe extern "C" fn amfi_reveal_developer_mode_option_in_ui(
         client_ref.reveal_developer_mode_option_in_ui().await
     });
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -108,16 +110,16 @@ pub unsafe extern "C" fn amfi_reveal_developer_mode_option_in_ui(
 /// * `client` - A valid AmfiClient handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn amfi_enable_developer_mode(
     client: *mut AmfiClientHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
@@ -125,8 +127,8 @@ pub unsafe extern "C" fn amfi_enable_developer_mode(
         client_ref.enable_developer_mode().await
     });
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -136,16 +138,16 @@ pub unsafe extern "C" fn amfi_enable_developer_mode(
 /// * `client` - A valid AmfiClient handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn amfi_accept_developer_mode(
     client: *mut AmfiClientHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
@@ -153,8 +155,8 @@ pub unsafe extern "C" fn amfi_accept_developer_mode(
         client_ref.accept_developer_mode().await
     });
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 

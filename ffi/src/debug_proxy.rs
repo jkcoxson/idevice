@@ -2,7 +2,7 @@
 
 use std::ffi::{CStr, CString, c_char};
 use std::os::raw::c_int;
-use std::ptr;
+use std::ptr::{self, null_mut};
 
 use idevice::debug_proxy::{DebugProxyClient, DebugserverCommand};
 use idevice::tcp::stream::AdapterStream;
@@ -10,7 +10,7 @@ use idevice::{IdeviceError, ReadWrite, RsdService};
 
 use crate::core_device_proxy::AdapterHandle;
 use crate::rsd::RsdHandshakeHandle;
-use crate::{IdeviceErrorCode, RUNTIME};
+use crate::{IdeviceFfiError, RUNTIME, ffi_err};
 
 /// Opaque handle to a DebugProxyClient
 pub struct DebugProxyHandle(pub DebugProxyClient<Box<dyn ReadWrite>>);
@@ -122,7 +122,7 @@ pub unsafe extern "C" fn debugserver_command_free(command: *mut DebugserverComma
 /// * [`handshake`] - An RSD handshake from the same provider
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `provider` must be a valid pointer to a handle allocated by this library
@@ -132,9 +132,9 @@ pub unsafe extern "C" fn debug_proxy_connect_rsd(
     provider: *mut AdapterHandle,
     handshake: *mut RsdHandshakeHandle,
     handle: *mut *mut DebugProxyHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if provider.is_null() || handshake.is_null() || handshake.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
     let res: Result<DebugProxyClient<AdapterStream>, IdeviceError> = RUNTIME.block_on(async move {
         let provider_ref = unsafe { &mut (*provider).0 };
@@ -150,9 +150,9 @@ pub unsafe extern "C" fn debug_proxy_connect_rsd(
                 d.into_inner(),
             ))));
             unsafe { *handle = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -163,7 +163,7 @@ pub unsafe extern "C" fn debug_proxy_connect_rsd(
 /// * [`handle`] - Pointer to store the newly created DebugProxyClient handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `socket` must be a valid pointer to a handle allocated by this library
@@ -172,9 +172,9 @@ pub unsafe extern "C" fn debug_proxy_connect_rsd(
 pub unsafe extern "C" fn debug_proxy_new(
     socket: *mut Box<dyn ReadWrite>,
     handle: *mut *mut DebugProxyHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if socket.is_null() || handle.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let socket = unsafe { Box::from_raw(socket) };
@@ -182,7 +182,7 @@ pub unsafe extern "C" fn debug_proxy_new(
     let new_handle = DebugProxyHandle(client);
 
     unsafe { *handle = Box::into_raw(Box::new(new_handle)) };
-    IdeviceErrorCode::IdeviceSuccess
+    null_mut()
 }
 
 /// Frees a DebugProxyClient handle
@@ -207,7 +207,7 @@ pub unsafe extern "C" fn debug_proxy_free(handle: *mut DebugProxyHandle) {
 /// * [`response`] - Pointer to store the response (caller must free)
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` and `command` must be valid pointers
@@ -217,9 +217,9 @@ pub unsafe extern "C" fn debug_proxy_send_command(
     handle: *mut DebugProxyHandle,
     command: *mut DebugserverCommandHandle,
     response: *mut *mut c_char,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || command.is_null() || response.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let client = unsafe { &mut (*handle).0 };
@@ -247,16 +247,16 @@ pub unsafe extern "C" fn debug_proxy_send_command(
         Ok(Some(r)) => {
             let cstr = match CString::new(r) {
                 Ok(c) => c,
-                Err(_) => return IdeviceErrorCode::InvalidString,
+                Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
             };
             unsafe { *response = cstr.into_raw() };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
         Ok(None) => {
             unsafe { *response = ptr::null_mut() };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -267,7 +267,7 @@ pub unsafe extern "C" fn debug_proxy_send_command(
 /// * [`response`] - Pointer to store the response (caller must free)
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer
@@ -276,9 +276,9 @@ pub unsafe extern "C" fn debug_proxy_send_command(
 pub unsafe extern "C" fn debug_proxy_read_response(
     handle: *mut DebugProxyHandle,
     response: *mut *mut c_char,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || response.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let client = unsafe { &mut (*handle).0 };
@@ -288,16 +288,16 @@ pub unsafe extern "C" fn debug_proxy_read_response(
         Ok(Some(r)) => {
             let cstr = match CString::new(r) {
                 Ok(c) => c,
-                Err(_) => return IdeviceErrorCode::InvalidString,
+                Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
             };
             unsafe { *response = cstr.into_raw() };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
         Ok(None) => {
             unsafe { *response = ptr::null_mut() };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -309,7 +309,7 @@ pub unsafe extern "C" fn debug_proxy_read_response(
 /// * [`len`] - Length of the data
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer
@@ -319,9 +319,9 @@ pub unsafe extern "C" fn debug_proxy_send_raw(
     handle: *mut DebugProxyHandle,
     data: *const u8,
     len: usize,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || data.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let client = unsafe { &mut (*handle).0 };
@@ -329,8 +329,8 @@ pub unsafe extern "C" fn debug_proxy_send_raw(
     let res = RUNTIME.block_on(async move { client.send_raw(data_slice).await });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -342,7 +342,7 @@ pub unsafe extern "C" fn debug_proxy_send_raw(
 /// * [`response`] - Pointer to store the response (caller must free)
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer
@@ -352,9 +352,9 @@ pub unsafe extern "C" fn debug_proxy_read(
     handle: *mut DebugProxyHandle,
     len: usize,
     response: *mut *mut c_char,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || response.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let client = unsafe { &mut (*handle).0 };
@@ -364,12 +364,12 @@ pub unsafe extern "C" fn debug_proxy_read(
         Ok(r) => {
             let cstr = match CString::new(r) {
                 Ok(c) => c,
-                Err(_) => return IdeviceErrorCode::InvalidString,
+                Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
             };
             unsafe { *response = cstr.into_raw() };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -382,7 +382,7 @@ pub unsafe extern "C" fn debug_proxy_read(
 /// * [`response`] - Pointer to store the response (caller must free)
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer
@@ -394,9 +394,9 @@ pub unsafe extern "C" fn debug_proxy_set_argv(
     argv: *const *const c_char,
     argv_count: usize,
     response: *mut *mut c_char,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if handle.is_null() || response.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let client = unsafe { &mut (*handle).0 };
@@ -422,12 +422,12 @@ pub unsafe extern "C" fn debug_proxy_set_argv(
         Ok(r) => {
             let cstr = match CString::new(r) {
                 Ok(c) => c,
-                Err(_) => return IdeviceErrorCode::InvalidString,
+                Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
             };
             unsafe { *response = cstr.into_raw() };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -437,22 +437,24 @@ pub unsafe extern "C" fn debug_proxy_set_argv(
 /// * [`handle`] - The DebugProxyClient handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn debug_proxy_send_ack(handle: *mut DebugProxyHandle) -> IdeviceErrorCode {
+pub unsafe extern "C" fn debug_proxy_send_ack(
+    handle: *mut DebugProxyHandle,
+) -> *mut IdeviceFfiError {
     if handle.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let client = unsafe { &mut (*handle).0 };
     let res = RUNTIME.block_on(async move { client.send_ack().await });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -462,22 +464,24 @@ pub unsafe extern "C" fn debug_proxy_send_ack(handle: *mut DebugProxyHandle) -> 
 /// * [`handle`] - The DebugProxyClient handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `handle` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn debug_proxy_send_nack(handle: *mut DebugProxyHandle) -> IdeviceErrorCode {
+pub unsafe extern "C" fn debug_proxy_send_nack(
+    handle: *mut DebugProxyHandle,
+) -> *mut IdeviceFfiError {
     if handle.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let client = unsafe { &mut (*handle).0 };
     let res = RUNTIME.block_on(async move { client.send_noack().await });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 

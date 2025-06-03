@@ -2,9 +2,11 @@
 //!
 //! Provides C-compatible bindings for interacting with the misagent service on iOS devices.
 
+use std::ptr::null_mut;
+
 use idevice::{IdeviceError, IdeviceService, misagent::MisagentClient, provider::IdeviceProvider};
 
-use crate::{IdeviceErrorCode, RUNTIME, provider::IdeviceProviderHandle};
+use crate::{IdeviceFfiError, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
 
 pub struct MisagentClientHandle(pub MisagentClient);
 
@@ -15,7 +17,7 @@ pub struct MisagentClientHandle(pub MisagentClient);
 /// * [`client`] - On success, will be set to point to a newly allocated MisagentClient handle
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `provider` must be a valid pointer to a handle allocated by this library
@@ -24,10 +26,10 @@ pub struct MisagentClientHandle(pub MisagentClient);
 pub unsafe extern "C" fn misagent_connect(
     provider: *mut IdeviceProviderHandle,
     client: *mut *mut MisagentClientHandle,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
         log::error!("Null pointer provided");
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let res: Result<MisagentClient, IdeviceError> = RUNTIME.block_on(async move {
@@ -39,9 +41,9 @@ pub unsafe extern "C" fn misagent_connect(
         Ok(r) => {
             let boxed = Box::new(MisagentClientHandle(r));
             unsafe { *client = Box::into_raw(boxed) };
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -53,7 +55,7 @@ pub unsafe extern "C" fn misagent_connect(
 /// * [`profile_len`] - Length of the profile data
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -63,9 +65,9 @@ pub unsafe extern "C" fn misagent_install(
     client: *mut MisagentClientHandle,
     profile_data: *const u8,
     profile_len: libc::size_t,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || profile_data.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let profile = unsafe { std::slice::from_raw_parts(profile_data, profile_len) }.to_vec();
@@ -73,8 +75,8 @@ pub unsafe extern "C" fn misagent_install(
     let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.install(profile).await });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -85,7 +87,7 @@ pub unsafe extern "C" fn misagent_install(
 /// * [`profile_id`] - The UUID of the profile to remove (C string)
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -94,9 +96,9 @@ pub unsafe extern "C" fn misagent_install(
 pub unsafe extern "C" fn misagent_remove(
     client: *mut MisagentClientHandle,
     profile_id: *const libc::c_char,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null() || profile_id.is_null() {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let id = unsafe { std::ffi::CStr::from_ptr(profile_id) }
@@ -106,8 +108,8 @@ pub unsafe extern "C" fn misagent_remove(
     let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.remove(&id).await });
 
     match res {
-        Ok(_) => IdeviceErrorCode::IdeviceSuccess,
-        Err(e) => e.into(),
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -119,7 +121,7 @@ pub unsafe extern "C" fn misagent_remove(
 /// * [`out_profiles_len`] - On success, will be set to the number of profiles
 ///
 /// # Returns
-/// An error code indicating success or failure
+/// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
 /// `client` must be a valid pointer to a handle allocated by this library
@@ -131,13 +133,13 @@ pub unsafe extern "C" fn misagent_copy_all(
     out_profiles: *mut *mut *mut u8,
     out_profiles_len: *mut *mut libc::size_t,
     out_count: *mut libc::size_t,
-) -> IdeviceErrorCode {
+) -> *mut IdeviceFfiError {
     if client.is_null()
         || out_profiles.is_null()
         || out_profiles_len.is_null()
         || out_count.is_null()
     {
-        return IdeviceErrorCode::InvalidArg;
+        return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let res: Result<Vec<Vec<u8>>, IdeviceError> =
@@ -167,9 +169,9 @@ pub unsafe extern "C" fn misagent_copy_all(
                 *out_count = count;
             }
 
-            IdeviceErrorCode::IdeviceSuccess
+            null_mut()
         }
-        Err(e) => e.into(),
+        Err(e) => ffi_err!(e),
     }
 }
 

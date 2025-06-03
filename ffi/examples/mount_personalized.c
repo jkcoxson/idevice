@@ -88,10 +88,12 @@ int main(int argc, char **argv) {
 
   // Read pairing file
   IdevicePairingFile *pairing_file = NULL;
-  IdeviceErrorCode err =
+  IdeviceFfiError *err =
       idevice_pairing_file_read(pairing_file_path, &pairing_file);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to read pairing file: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to read pairing file: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     free(image);
     free(trustcache);
     free(build_manifest);
@@ -102,8 +104,10 @@ int main(int argc, char **argv) {
   IdeviceProviderHandle *provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing_file,
                                  "ImageMounterTest", &provider);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to create TCP provider: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to create TCP provider: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     idevice_pairing_file_free(pairing_file);
     free(image);
     free(trustcache);
@@ -114,8 +118,10 @@ int main(int argc, char **argv) {
   // Read pairing file
   IdevicePairingFile *pairing_file_2 = NULL;
   err = idevice_pairing_file_read(pairing_file_path, &pairing_file_2);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to read pairing file: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to read pairing file: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     free(image);
     free(trustcache);
     free(build_manifest);
@@ -125,8 +131,10 @@ int main(int argc, char **argv) {
   // Connect to lockdownd
   LockdowndClientHandle *lockdown_client = NULL;
   err = lockdownd_connect(provider, &lockdown_client);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to connect to lockdownd: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to connect to lockdownd: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     idevice_provider_free(provider);
     free(image);
     free(trustcache);
@@ -136,8 +144,10 @@ int main(int argc, char **argv) {
 
   // Start session
   err = lockdownd_start_session(lockdown_client, pairing_file_2);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to start session: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to start session: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     lockdownd_client_free(lockdown_client);
     idevice_provider_free(provider);
     idevice_pairing_file_free(pairing_file_2);
@@ -152,8 +162,10 @@ int main(int argc, char **argv) {
   plist_t unique_chip_id_plist = NULL;
   err = lockdownd_get_value(lockdown_client, "UniqueChipID", NULL,
                             &unique_chip_id_plist);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to get UniqueChipID: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to get UniqueChipID: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     lockdownd_client_free(lockdown_client);
     idevice_provider_free(provider);
     free(image);
@@ -169,8 +181,10 @@ int main(int argc, char **argv) {
   // Connect to image mounter
   ImageMounterHandle *mounter_client = NULL;
   err = image_mounter_connect(provider, &mounter_client);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to connect to image mounter: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to connect to image mounter: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     lockdownd_client_free(lockdown_client);
     idevice_provider_free(provider);
     free(image);
@@ -186,8 +200,10 @@ int main(int argc, char **argv) {
       NULL, // info_plist
       unique_chip_id, progress_callback, NULL);
 
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to mount personalized image: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to mount personalized image: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
   } else {
     printf("Successfully mounted personalized image!\n");
   }
@@ -200,5 +216,5 @@ int main(int argc, char **argv) {
   free(trustcache);
   free(build_manifest);
 
-  return err == IdeviceSuccess ? 0 : 1;
+  return err == NULL ? 0 : 1;
 }

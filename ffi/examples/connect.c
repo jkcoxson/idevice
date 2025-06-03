@@ -18,11 +18,13 @@ int main() {
   IdeviceHandle *idevice = NULL;
 
   // Call the Rust function to connect
-  IdeviceErrorCode err = idevice_new_tcp_socket(
+  IdeviceFfiError *err = idevice_new_tcp_socket(
       (struct sockaddr *)&addr, sizeof(addr), "TestDevice", &idevice);
 
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to connect to device: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to connect to device: [%d] %s\n", err->code,
+            err->message);
+    idevice_error_free(err);
     return 1;
   }
 
@@ -32,8 +34,11 @@ int main() {
   char *device_type = NULL;
   err = idevice_get_type(idevice, &device_type);
 
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to get device type: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to get device type: [%d] %s\n", err->code,
+            err->message);
+    idevice_error_free(err);
+    idevice_free(idevice);
     return 1;
   }
 

@@ -104,10 +104,12 @@ int main(int argc, char **argv) {
 
   // Read pairing file
   IdevicePairingFile *pairing_file = NULL;
-  IdeviceErrorCode err =
+  IdeviceFfiError *err =
       idevice_pairing_file_read(pairing_file_path, &pairing_file);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to read pairing file: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to read pairing file: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     return 1;
   }
 
@@ -115,8 +117,10 @@ int main(int argc, char **argv) {
   IdeviceProviderHandle *provider = NULL;
   err = idevice_tcp_provider_new((struct sockaddr *)&addr, pairing_file,
                                  "ImageMounterTest", &provider);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to create TCP provider: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to create TCP provider: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     idevice_pairing_file_free(pairing_file);
     return 1;
   }
@@ -124,8 +128,10 @@ int main(int argc, char **argv) {
   // Connect to image mounter
   ImageMounterHandle *client = NULL;
   err = image_mounter_connect(provider, &client);
-  if (err != IdeviceSuccess) {
-    fprintf(stderr, "Failed to connect to image mounter: %d\n", err);
+  if (err != NULL) {
+    fprintf(stderr, "Failed to connect to image mounter: [%d] %s", err->code,
+            err->message);
+    idevice_error_free(err);
     idevice_provider_free(provider);
     return 1;
   }
@@ -137,7 +143,7 @@ int main(int argc, char **argv) {
     void *devices = NULL;
     size_t devices_len = 0;
     err = image_mounter_copy_devices(client, &devices, &devices_len);
-    if (err == IdeviceSuccess) {
+    if (err == NULL) {
       plist_t *device_list = (plist_t *)devices;
       printf("Mounted devices:\n");
       for (size_t i = 0; i < devices_len; i++) {
@@ -150,7 +156,9 @@ int main(int argc, char **argv) {
         plist_free(device);
       }
     } else {
-      fprintf(stderr, "Failed to get device list: %d\n", err);
+      fprintf(stderr, "Failed to get device list: [%d] %s", err->code,
+              err->message);
+      idevice_error_free(err);
       success = 0;
     }
   } else if (strcmp(command, "lookup") == 0) {
@@ -164,7 +172,7 @@ int main(int argc, char **argv) {
 
       err = image_mounter_lookup_image(client, image_type, &signature,
                                        &signature_len);
-      if (err == IdeviceSuccess) {
+      if (err == NULL) {
         printf("Signature for %s (%zu bytes):\n", image_type, signature_len);
         for (size_t i = 0; i < signature_len; i++) {
           printf("%02x", signature[i]);
@@ -172,7 +180,9 @@ int main(int argc, char **argv) {
         printf("\n");
         free(signature);
       } else {
-        fprintf(stderr, "Failed to lookup image: %d\n", err);
+        fprintf(stderr, "Failed to lookup image: [%d] %s", err->code,
+                err->message);
+        idevice_error_free(err);
         success = 0;
       }
     }
@@ -199,10 +209,12 @@ int main(int argc, char **argv) {
         err = image_mounter_upload_image(client, image_type, image_data,
                                          image_len, signature_data,
                                          signature_len);
-        if (err == IdeviceSuccess) {
+        if (err == NULL) {
           printf("Image uploaded successfully\n");
         } else {
-          fprintf(stderr, "Failed to upload image: %d\n", err);
+          fprintf(stderr, "Failed to upload image: [%d] %s", err->code,
+                  err->message);
+          idevice_error_free(err);
           success = 0;
         }
 
@@ -236,10 +248,12 @@ int main(int argc, char **argv) {
               client, image_type, signature_data, signature_len,
               trust_cache_data, trust_cache_len,
               NULL); // No info plist in this example
-          if (err == IdeviceSuccess) {
+          if (err == NULL) {
             printf("Image mounted successfully\n");
           } else {
-            fprintf(stderr, "Failed to mount image: %d\n", err);
+            fprintf(stderr, "Failed to mount image: [%d] %s", err->code,
+                    err->message);
+            idevice_error_free(err);
             success = 0;
           }
 
@@ -256,20 +270,24 @@ int main(int argc, char **argv) {
     } else {
       char *mount_path = argv[2];
       err = image_mounter_unmount_image(client, mount_path);
-      if (err == IdeviceSuccess) {
+      if (err == NULL) {
         printf("Image unmounted successfully\n");
       } else {
-        fprintf(stderr, "Failed to unmount image: %d\n", err);
+        fprintf(stderr, "Failed to unmount image: [%d] %s", err->code,
+                err->message);
+        idevice_error_free(err);
         success = 0;
       }
     }
   } else if (strcmp(command, "dev-status") == 0) {
     int status = 0;
     err = image_mounter_query_developer_mode_status(client, &status);
-    if (err == IdeviceSuccess) {
+    if (err == NULL) {
       printf("Developer mode status: %s\n", status ? "enabled" : "disabled");
     } else {
-      fprintf(stderr, "Failed to query developer mode status: %d\n", err);
+      fprintf(stderr, "Failed to query developer mode status: [%d] %s",
+              err->code, err->message);
+      idevice_error_free(err);
       success = 0;
     }
   } else if (strcmp(command, "mount-dev") == 0) {
@@ -293,10 +311,12 @@ int main(int argc, char **argv) {
       } else {
         err = image_mounter_mount_developer(client, image_data, image_len,
                                             signature_data, signature_len);
-        if (err == IdeviceSuccess) {
+        if (err == NULL) {
           printf("Developer image mounted successfully\n");
         } else {
-          fprintf(stderr, "Failed to mount developer image: %d\n", err);
+          fprintf(stderr, "Failed to mount developer image: [%d] %s", err->code,
+                  err->message);
+          idevice_error_free(err);
           success = 0;
         }
 
