@@ -95,6 +95,9 @@ build_plist_ios:
     LDFLAGS="-arch arm64 -isysroot $(xcrun --sdk iphoneos --show-sdk-path)" && \
       make clean && make -j$(sysctl -n hw.ncpu) && make install
 
+    install_name_tool -id @rpath/libplist-2.0.4.dylib {{ios_out}}/lib/libplist-2.0.4.dylib
+
+
 build_plist_sim:
     rm -rf {{sim_out}} build/build-sim
     mkdir -p {{sim_out}}
@@ -110,6 +113,8 @@ build_plist_sim:
     CXXFLAGS="-arch arm64 -isysroot $(xcrun --sdk iphonesimulator --show-sdk-path)" \
     LDFLAGS="-arch arm64 -isysroot $(xcrun --sdk iphonesimulator --show-sdk-path)" && \
       make clean && make -j$(sysctl -n hw.ncpu) && make install
+
+    install_name_tool -id @rpath/libplist-2.0.4.dylib {{sim_out}}/lib/libplist-2.0.4.dylib
 
 build_plist_x86_64_sim:
     rm -rf {{x86_64_sim_out}} build/build-sim
@@ -127,6 +132,8 @@ build_plist_x86_64_sim:
     LDFLAGS="-arch x86_64 -isysroot $(xcrun --sdk iphonesimulator --show-sdk-path)" && \
       make clean && make -j$(sysctl -n hw.ncpu) && make install
 
+    install_name_tool -id @rpath/libplist-2.0.4.dylib {{x86_64_sim_out}}/lib/libplist-2.0.4.dylib
+
 build_plist_mac:
     rm -rf {{mac_out}} build/build-mac
     mkdir -p {{mac_out}}
@@ -143,6 +150,8 @@ build_plist_mac:
     LDFLAGS="-arch arm64 -isysroot $(xcrun --sdk macosx --show-sdk-path)" && \
       make clean && make -j$(sysctl -n hw.ncpu) && make install
 
+    install_name_tool -id @rpath/libplist-2.0.4.dylib {{mac_out}}/lib/libplist-2.0.4.dylib
+
 build_plist_x86_64_mac:
     rm -rf {{x86_64_mac_out}} build/build-mac
     mkdir -p {{x86_64_mac_out}}
@@ -158,3 +167,5 @@ build_plist_x86_64_mac:
     CXXFLAGS="-arch x86_64 -isysroot $(xcrun --sdk macosx --show-sdk-path)" \
     LDFLAGS="-arch x86_64 -isysroot $(xcrun --sdk macosx --show-sdk-path)" && \
       make clean && make -j$(sysctl -n hw.ncpu) && make install
+
+    install_name_tool -id @rpath/libplist-2.0.4.dylib {{x86_64_mac_out}}/lib/libplist-2.0.4.dylib
