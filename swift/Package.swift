@@ -1,6 +1,4 @@
-// Package.swift
-
-// swift-tools-version: 6.1
+// swift-tools-version: 5.3
 import PackageDescription
 
 let package = Package(
@@ -16,7 +14,7 @@ let package = Package(
         ),
         .library(
             name: "plist",
-            targets: ["plist"],
+            targets: ["plist"]
         ),
     ],
     targets: [
