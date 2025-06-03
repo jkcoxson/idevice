@@ -10,3 +10,9 @@ idevice.h
 /ffi/examples/.cache
 .vscode
 build
+*.xcframework
+bundle.zip
+/swift/libs
+/swift/include/*.h
+/swift/.build
+/swift/.swiftpm
