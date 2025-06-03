@@ -51,31 +51,36 @@ x86_64_sim_out := "build/x86_64_sim"
 mac_out := "build/mac"
 x86_64_mac_out := "build/x86_64_mac"
 
-plist_xcframework: build_plist_ios build_plist_sim build_plist_x86_64_sim build_plist_mac build_plist_x86_64_mac merge_archs
+plist_xcframework: plist_clean build_plist_ios build_plist_sim build_plist_x86_64_sim build_plist_mac build_plist_x86_64_mac plist_merge_archs
     rm -rf {{lib_name}}.xcframework
     xcodebuild -create-xcframework \
-        -library {{ios_out}}/lib/libplist-2.0.dylib -headers {{ios_out}}/include \
-        -library build/universal-sim/libplist-2.0.dylib -headers {{sim_out}}/include \
-        -library build/universal-mac/libplist-2.0.dylib -headers {{mac_out}}/include \
+        -library {{ios_out}}/lib/libplist-2.0.4.dylib -headers {{ios_out}}/include \
+        -library build/universal-sim/libplist-2.0.4.dylib -headers {{sim_out}}/include \
+        -library build/universal-mac/libplist-2.0.4.dylib -headers {{mac_out}}/include \
         -output swift/{{lib_name}}.xcframework
 
-merge_archs:
+plist_clean:
+  rm -rf build
+  rm -rf swift/plist.xcframework
+
+plist_merge_archs:
     # Merge simulator dylibs (arm64 + x86_64)
     mkdir -p build/universal-sim
     lipo -create \
-        {{sim_out}}/lib/libplist-2.0.dylib \
-        {{x86_64_sim_out}}/lib/libplist-2.0.dylib \
-        -output build/universal-sim/libplist-2.0.dylib
+        {{sim_out}}/lib/libplist-2.0.4.dylib \
+        {{x86_64_sim_out}}/lib/libplist-2.0.4.dylib \
+        -output build/universal-sim/libplist-2.0.4.dylib
 
     # Merge macOS dylibs (arm64 + x86_64)
     mkdir -p build/universal-mac
     lipo -create \
-        {{mac_out}}/lib/libplist-2.0.dylib \
-        {{x86_64_mac_out}}/lib/libplist-2.0.dylib \
-        -output build/universal-mac/libplist-2.0.dylib
+        {{mac_out}}/lib/libplist-2.0.4.dylib \
+        {{x86_64_mac_out}}/lib/libplist-2.0.4.dylib \
+        -output build/universal-mac/libplist-2.0.4.dylib
 
 build_plist_ios:
     rm -rf {{ios_out}} build/build-ios
+    rm -rf build/ios
     mkdir -p {{ios_out}}
     mkdir -p build/build-ios && cd build/build-ios && \
       ../../ffi/libplist/autogen.sh \
