@@ -81,7 +81,6 @@ impl TSSRequest {
             .header("Cache-Control", "no-cache")
             .header("Content-type", "text/xml; charset=\"utf-8\"")
             .header("User-Agent", "InetURL/1.0")
-            .header("Expect", "")
             .body(plist_to_xml_bytes(&self.inner))
             .send()
             .await?
@@ -192,4 +191,3 @@ pub fn apply_restore_request_rules(
         }
     }
 }
-
