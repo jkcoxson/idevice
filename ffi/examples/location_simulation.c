@@ -57,7 +57,6 @@ int main(int argc, char **argv) {
   CoreDeviceProxyHandle *core_device = NULL;
   err = core_device_proxy_connect(tcp_provider, &core_device);
   idevice_provider_free(tcp_provider);
-  idevice_pairing_file_free(pairing);
   if (err != NULL) {
     fprintf(stderr, "Failed to connect to CoreDeviceProxy: [%d] %s", err->code,
             err->message);
@@ -79,7 +78,6 @@ int main(int argc, char **argv) {
   // Create TCP adapter and connect to RSD port
   AdapterHandle *adapter = NULL;
   err = core_device_proxy_create_tcp_adapter(core_device, &adapter);
-  core_device_proxy_free(core_device);
   if (err != NULL) {
     fprintf(stderr, "Failed to create TCP adapter: [%d] %s", err->code,
             err->message);

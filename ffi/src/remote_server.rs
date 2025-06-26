@@ -83,7 +83,11 @@ pub unsafe extern "C" fn remote_server_connect_rsd(
             let handshake_ref = unsafe { &mut (*handshake).0 };
 
             // Connect using the reference
-            RemoteServerClient::connect_rsd(provider_ref, handshake_ref).await
+            let mut rs_client =
+                RemoteServerClient::connect_rsd(provider_ref, handshake_ref).await?;
+            // TODO: remove this when we can read from the remote server, or rethink the Rust API
+            rs_client.read_message(0).await?;
+            Ok(rs_client)
         });
 
     match res {
