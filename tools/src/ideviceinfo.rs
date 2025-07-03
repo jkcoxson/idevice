@@ -82,5 +82,5 @@ async fn main() {
             .await
     );
     println!("{:?}", lockdown_client.idevice.get_type().await.unwrap());
-    println!("{:#?}", lockdown_client.get_all_values().await);
+    println!("{:#?}", lockdown_client.get_all_values(None).await);
 }

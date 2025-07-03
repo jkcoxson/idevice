@@ -127,13 +127,18 @@ impl LockdownClient {
     ///     println!("{}: {:?}", key, value);
     /// }
     /// ```
-    pub async fn get_all_values(&mut self) -> Result<plist::Dictionary, IdeviceError> {
-        let req = LockdownRequest {
-            label: self.idevice.label.clone(),
-            key: None,
-            request: "GetValue".to_string(),
-        };
-        let message = plist::to_value(&req)?;
+    pub async fn get_all_values(
+        &mut self,
+        domain: Option<String>,
+    ) -> Result<plist::Dictionary, IdeviceError> {
+        let mut request = plist::Dictionary::new();
+        request.insert("Label".into(), self.idevice.label.clone().into());
+        request.insert("Request".into(), "GetValue".into());
+        if let Some(domain) = domain {
+            request.insert("Domain".into(), domain.into());
+        }
+
+        let message = plist::to_value(&request)?;
         self.idevice.send_plist(message).await?;
         let message: plist::Dictionary = self.idevice.read_plist().await?;
         match message.get("Value") {

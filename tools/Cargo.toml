@@ -81,6 +81,10 @@ path = "src/syslog_relay.rs"
 name = "os_trace_relay"
 path = "src/os_trace_relay.rs"
 
+[[bin]]
+name = "lockdown"
+path = "src/lockdown.rs"
+
 [dependencies]
 idevice = { path = "../idevice", features = ["full"] }
 tokio = { version = "1.43", features = ["io-util", "macros", "time", "full"] }
