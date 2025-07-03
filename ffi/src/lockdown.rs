@@ -227,15 +227,26 @@ pub unsafe extern "C" fn lockdownd_get_value(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lockdownd_get_all_values(
     client: *mut LockdowndClientHandle,
+    domain: *const libc::c_char,
     out_plist: *mut *mut c_void,
 ) -> *mut IdeviceFfiError {
     if out_plist.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
+    let domain = if domain.is_null() {
+        None
+    } else {
+        Some(
+            unsafe { std::ffi::CStr::from_ptr(domain) }
+                .to_string_lossy()
+                .into_owned(),
+        )
+    };
+
     let res: Result<plist::Dictionary, IdeviceError> = RUNTIME.block_on(async move {
         let client_ref = unsafe { &mut (*client).0 };
-        client_ref.get_all_values().await
+        client_ref.get_all_values(domain).await
     });
 
     match res {
