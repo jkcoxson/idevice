@@ -111,4 +111,44 @@ impl AmfiClient {
             Err(IdeviceError::UnexpectedResponse)
         }
     }
+
+    /// Gets the developer mode status
+    pub async fn get_developer_mode_status(&mut self) -> Result<bool, IdeviceError> {
+        let mut request = Dictionary::new();
+        request.insert("action".into(), 3.into());
+        self.idevice
+            .send_plist(plist::Value::Dictionary(request))
+            .await?;
+
+        let res = self.idevice.read_plist().await?;
+        match res.get("success").and_then(|x| x.as_boolean()) {
+            Some(true) => (),
+            _ => return Err(IdeviceError::UnexpectedResponse),
+        }
+
+        match res.get("status").and_then(|x| x.as_boolean()) {
+            Some(b) => Ok(b),
+            _ => Err(IdeviceError::UnexpectedResponse),
+        }
+    }
+
+    /// Gets the developer mode status
+    pub async fn get_sep_device_state(&mut self) -> Result<bool, IdeviceError> {
+        let mut request = Dictionary::new();
+        request.insert("action".into(), 4.into());
+        self.idevice
+            .send_plist(plist::Value::Dictionary(request))
+            .await?;
+
+        let res = self.idevice.read_plist().await?;
+        match res.get("success").and_then(|x| x.as_boolean()) {
+            Some(true) => (),
+            _ => return Err(IdeviceError::UnexpectedResponse),
+        }
+
+        match res.get("status").and_then(|x| x.as_boolean()) {
+            Some(b) => Ok(b),
+            _ => Err(IdeviceError::UnexpectedResponse),
+        }
+    }
 }
