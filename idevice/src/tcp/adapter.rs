@@ -78,6 +78,7 @@ struct ConnectionState {
     read_buffer: Vec<u8>,
     write_buffer: Vec<u8>,
     status: ConnectionStatus,
+    peer_seq: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -97,6 +98,7 @@ impl ConnectionState {
             read_buffer: Vec::new(),
             write_buffer: Vec::new(),
             status: ConnectionStatus::WaitingForSyn,
+            peer_seq: 0,
         }
     }
 }
@@ -516,37 +518,46 @@ impl Adapter {
     }
 
     async fn process_tcp_packet(&mut self) -> Result<(), std::io::Error> {
-        let ip_packet = self.read_ip_packet().await?;
-        let res = TcpPacket::parse(&ip_packet)?;
-        let mut ack_me = None;
-        if let Some(state) = self.states.get_mut(&res.destination_port) {
-            state.ack = res.sequence_number
-                + if res.payload.is_empty() {
-                    1
-                } else {
-                    res.payload.len() as u32
-                };
-            if res.flags.psh || !res.payload.is_empty() {
-                ack_me = Some(res.destination_port);
-                state.read_buffer.extend(res.payload)
-            }
-            if res.flags.rst {
-                state.status = ConnectionStatus::Error(ErrorKind::ConnectionReset);
-            }
-            if res.flags.fin {
-                ack_me = Some(res.destination_port);
-                state.status = ConnectionStatus::Error(ErrorKind::ConnectionReset);
-            }
-            if res.flags.syn && res.flags.ack {
-                ack_me = Some(res.destination_port);
-                state.seq = state.seq.wrapping_add(1);
-                state.status = ConnectionStatus::Connected;
-            }
-        }
+        loop {
+            let ip_packet = self.read_ip_packet().await?;
+            let res = TcpPacket::parse(&ip_packet)?;
+            let mut ack_me = None;
+            if let Some(state) = self.states.get_mut(&res.destination_port) {
+                if state.peer_seq > res.sequence_number {
+                    // ignore retransmission
+                    continue;
+                }
 
-        // we have to ack outside of the mutable state borrow
-        if let Some(a) = ack_me {
-            self.ack(a).await?;
+                state.peer_seq = res.sequence_number + res.payload.len() as u32;
+                state.ack = res.sequence_number
+                    + if res.payload.is_empty() && state.status != ConnectionStatus::Connected {
+                        1
+                    } else {
+                        res.payload.len() as u32
+                    };
+                if res.flags.psh || !res.payload.is_empty() {
+                    ack_me = Some(res.destination_port);
+                    state.read_buffer.extend(res.payload);
+                }
+                if res.flags.rst {
+                    state.status = ConnectionStatus::Error(ErrorKind::ConnectionReset);
+                }
+                if res.flags.fin {
+                    ack_me = Some(res.destination_port);
+                    state.status = ConnectionStatus::Error(ErrorKind::ConnectionReset);
+                }
+                if res.flags.syn && res.flags.ack {
+                    ack_me = Some(res.destination_port);
+                    state.seq = state.seq.wrapping_add(1);
+                    state.status = ConnectionStatus::Connected;
+                }
+            }
+
+            // we have to ack outside of the mutable state borrow
+            if let Some(a) = ack_me {
+                self.ack(a).await?;
+            }
+            break;
         }
         Ok(())
     }

@@ -156,6 +156,9 @@ impl<R: ReadWrite> DebugProxyClient<R> {
             }
             buffer.push(received_char[0]);
         }
+        // swallow checksum
+        let mut checksum_chars = [0u8; 2];
+        self.socket.read_exact(&mut checksum_chars).await?;
 
         if !self.noack_mode {
             self.send_ack().await?;
