@@ -78,7 +78,7 @@ struct ConnectionState {
     read_buffer: Vec<u8>,
     write_buffer: Vec<u8>,
     status: ConnectionStatus,
-    peer_seq: u32
+    peer_seq: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -98,7 +98,7 @@ impl ConnectionState {
             read_buffer: Vec::new(),
             write_buffer: Vec::new(),
             status: ConnectionStatus::WaitingForSyn,
-            peer_seq: 0
+            peer_seq: 0,
         }
     }
 }
@@ -517,7 +517,7 @@ impl Adapter {
         })
     }
 
-    async fn process_tcp_packet(&mut self) -> Result<(), std::io::Error> {        
+    async fn process_tcp_packet(&mut self) -> Result<(), std::io::Error> {
         loop {
             let ip_packet = self.read_ip_packet().await?;
             let res = TcpPacket::parse(&ip_packet)?;
@@ -527,7 +527,7 @@ impl Adapter {
                     // ignore retransmission
                     continue;
                 }
-                
+
                 state.peer_seq = res.sequence_number + res.payload.len() as u32;
                 state.ack = res.sequence_number
                     + if res.payload.is_empty() {
