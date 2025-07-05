@@ -530,7 +530,7 @@ impl Adapter {
 
                 state.peer_seq = res.sequence_number + res.payload.len() as u32;
                 state.ack = res.sequence_number
-                    + if res.payload.is_empty() {
+                    + if res.payload.is_empty() && state.status != ConnectionStatus::Connected {
                         1
                     } else {
                         res.payload.len() as u32
