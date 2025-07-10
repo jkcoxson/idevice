@@ -39,7 +39,11 @@ async fn main() {
         .subcommand(Command::new("enable").about("Enables developer mode"))
         .subcommand(Command::new("accept").about("Shows the accept dialogue for developer mode"))
         .subcommand(Command::new("status").about("Gets the developer mode status"))
-        .subcommand(Command::new("state").about("Gets the device SEP state"))
+        .subcommand(
+            Command::new("trust")
+                .about("Trusts an app signer")
+                .arg(Arg::new("uuid").required(true)),
+        )
         .get_matches();
 
     if matches.get_flag("about") {
@@ -85,9 +89,16 @@ async fn main() {
             .await
             .expect("Failed to get status");
         println!("Enabled: {status}");
-    } else if matches.subcommand_matches("state").is_some() {
+    } else if let Some(matches) = matches.subcommand_matches("state") {
+        let uuid: &String = match matches.get_one("uuid") {
+            Some(u) => u,
+            None => {
+                eprintln!("No UUID passed. Invalid usage, pass -h for help");
+                return;
+            }
+        };
         let status = amfi_client
-            .get_sep_device_state()
+            .trust_app_signer(uuid)
             .await
             .expect("Failed to get state");
         println!("Enabled: {status}");
