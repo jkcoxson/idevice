@@ -9,7 +9,7 @@ use std::{
 use idevice::{
     pairing_file::PairingFile,
     provider::{IdeviceProvider, TcpProvider},
-    usbmuxd::{UsbmuxdAddr, UsbmuxdConnection},
+    usbmuxd::{Connection, UsbmuxdAddr, UsbmuxdConnection, UsbmuxdDevice},
 };
 
 pub async fn get_provider(
@@ -77,10 +77,21 @@ pub async fn get_provider(
                 return Err(format!("Unable to get devices from usbmuxd: {e:?}"));
             }
         };
+        let usb_devs: Vec<&UsbmuxdDevice> = devs
+            .iter()
+            .filter(|x| x.connection_type == Connection::Usb)
+            .collect();
+
         if devs.is_empty() {
             return Err("No devices connected!".to_string());
         }
-        Box::new(devs[0].to_provider(UsbmuxdAddr::from_env_var().unwrap(), label))
+
+        let chosen_dev = if !usb_devs.is_empty() {
+            usb_devs[0]
+        } else {
+            &devs[0]
+        };
+        Box::new(chosen_dev.to_provider(UsbmuxdAddr::from_env_var().unwrap(), label))
     };
     Ok(provider)
 }
