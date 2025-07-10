@@ -21,7 +21,7 @@ pub struct InstallationProxyClient {
 
 impl IdeviceService for InstallationProxyClient {
     /// Returns the installation proxy service name as registered with lockdownd
-    fn service_name() -> &'static str {
+    fn service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.mobile.installation_proxy")
     }
 

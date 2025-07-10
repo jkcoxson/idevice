@@ -22,7 +22,7 @@ pub struct LockdownClient {
 
 impl IdeviceService for LockdownClient {
     /// Returns the lockdown service name as registered with the device
-    fn service_name() -> &'static str {
+    fn service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.mobile.lockdown")
     }
 

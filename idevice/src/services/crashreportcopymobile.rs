@@ -22,7 +22,7 @@ pub struct CrashReportCopyMobileClient {
 
 impl IdeviceService for CrashReportCopyMobileClient {
     /// Returns the name of the CrashReportCopyMobile service.
-    fn service_name() -> &'static str {
+    fn service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.crashreportcopymobile")
     }
 

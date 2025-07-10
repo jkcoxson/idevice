@@ -29,7 +29,7 @@ pub struct ImageMounter {
 
 impl IdeviceService for ImageMounter {
     /// Returns the image mounter service name as registered with lockdownd
-    fn service_name() -> &'static str {
+    fn service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.mobile.mobile_image_mounter")
     }
 

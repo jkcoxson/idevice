@@ -12,7 +12,7 @@ pub struct AmfiClient {
 
 impl IdeviceService for AmfiClient {
     /// Returns the amfi service name as registered with lockdownd
-    fn service_name() -> &'static str {
+    fn service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.amfi.lockdown")
     }
 

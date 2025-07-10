@@ -93,7 +93,7 @@ pub struct CoreDeviceProxy {
 
 impl IdeviceService for CoreDeviceProxy {
     /// Returns the name of the service used for launching the CoreDeviceProxy.
-    fn service_name() -> &'static str {
+    fn service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.internal.devicecompute.CoreDeviceProxy")
     }
 

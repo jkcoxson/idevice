@@ -54,7 +54,7 @@ impl<T: AsyncRead + AsyncWrite + Unpin + Send + Sync + std::fmt::Debug> ReadWrit
 /// device connection protocol.
 pub trait IdeviceService: Sized {
     /// Returns the service name as advertised by the device
-    fn service_name() -> &'static str;
+    fn service_name() -> std::borrow::Cow<'static, str>;
 
     /// Establishes a connection to this service
     ///

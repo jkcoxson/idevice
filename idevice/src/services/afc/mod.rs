@@ -61,7 +61,7 @@ pub struct DeviceInfo {
 }
 
 impl IdeviceService for AfcClient {
-    fn service_name() -> &'static str {
+    fn service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.afc")
     }
 

@@ -19,7 +19,7 @@ pub struct HeartbeatClient {
 
 impl IdeviceService for HeartbeatClient {
     /// Returns the heartbeat service name as registered with lockdownd
-    fn service_name() -> &'static str {
+    fn service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.mobile.heartbeat")
     }
 

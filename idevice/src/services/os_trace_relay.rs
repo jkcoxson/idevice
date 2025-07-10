@@ -17,7 +17,7 @@ pub struct OsTraceRelayClient {
 
 impl IdeviceService for OsTraceRelayClient {
     /// Returns the OsTraceRelay service name as registered with lockdownd
-    fn service_name() -> &'static str {
+    fn service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.os_trace_relay")
     }
 

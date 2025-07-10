@@ -21,7 +21,7 @@ pub struct HouseArrestClient {
 
 impl IdeviceService for HouseArrestClient {
     /// Returns the name of the HouseArrest service as registered with lockdownd
-    fn service_name() -> &'static str {
+    fn service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.mobile.house_arrest")
     }
 

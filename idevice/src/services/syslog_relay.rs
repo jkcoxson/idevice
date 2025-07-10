@@ -10,7 +10,7 @@ pub struct SyslogRelayClient {
 
 impl IdeviceService for SyslogRelayClient {
     /// Returns the SyslogRelay service name as registered with lockdownd
-    fn service_name() -> &'static str {
+    fn service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.syslog_relay")
     }
 

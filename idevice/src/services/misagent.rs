@@ -21,7 +21,7 @@ pub struct MisagentClient {
 
 impl IdeviceService for MisagentClient {
     /// Returns the misagent service name as registered with lockdownd
-    fn service_name() -> &'static str {
+    fn service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.misagent")
     }
 
