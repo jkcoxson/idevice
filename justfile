@@ -28,7 +28,7 @@ xcframework: apple-build
 apple-build: # requires a Mac
   # iOS device build
   BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$(xcrun --sdk iphoneos --show-sdk-path)" \
-    cargo build --release --target aarch64-apple-ios --feature obfuscate
+    cargo build --release --target aarch64-apple-ios --features obfuscate
 
   # iOS Simulator (arm64)
   BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$(xcrun --sdk iphonesimulator --show-sdk-path)" \
