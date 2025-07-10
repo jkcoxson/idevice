@@ -132,10 +132,17 @@ impl AmfiClient {
         }
     }
 
-    /// Gets the developer mode status
-    pub async fn get_sep_device_state(&mut self) -> Result<bool, IdeviceError> {
+    /// Trusts an app signer
+    pub async fn trust_app_signer(
+        &mut self,
+        uuid: impl Into<String>,
+    ) -> Result<bool, IdeviceError> {
         let mut request = Dictionary::new();
         request.insert("action".into(), 4.into());
+        request.insert(
+            "input_profile_uuid".into(),
+            plist::Value::String(uuid.into()),
+        );
         self.idevice
             .send_plist(plist::Value::Dictionary(request))
             .await?;
