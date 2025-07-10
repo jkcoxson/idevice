@@ -6,7 +6,7 @@
 
 use plist::{Dictionary, Value};
 
-use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
 
 use super::afc::AfcClient;
 
@@ -22,7 +22,7 @@ pub struct HouseArrestClient {
 impl IdeviceService for HouseArrestClient {
     /// Returns the name of the HouseArrest service as registered with lockdownd
     fn service_name() -> &'static str {
-        "com.apple.mobile.house_arrest"
+        obf!("com.apple.mobile.house_arrest")
     }
 
     /// Establishes a connection to the HouseArrest service

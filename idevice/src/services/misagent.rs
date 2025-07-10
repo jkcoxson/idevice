@@ -6,7 +6,7 @@
 use log::warn;
 use plist::Dictionary;
 
-use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
 
 /// Client for interacting with the iOS misagent service
 ///
@@ -22,7 +22,7 @@ pub struct MisagentClient {
 impl IdeviceService for MisagentClient {
     /// Returns the misagent service name as registered with lockdownd
     fn service_name() -> &'static str {
-        "com.apple.misagent"
+        obf!("com.apple.misagent")
     }
 
     /// Establishes a connection to the misagent service
@@ -219,4 +219,3 @@ impl MisagentClient {
         }
     }
 }
-

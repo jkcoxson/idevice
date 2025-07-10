@@ -3,7 +3,7 @@
 //! Provides functionality for interacting with the SpringBoard services on iOS devices,
 //! which manages home screen and app icon related operations.
 
-use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
 
 /// Client for interacting with the iOS SpringBoard services
 ///
@@ -17,7 +17,7 @@ pub struct SpringBoardServicesClient {
 impl IdeviceService for SpringBoardServicesClient {
     /// Returns the SpringBoard services name as registered with lockdownd
     fn service_name() -> &'static str {
-        "com.apple.springboardservices"
+        obf!("com.apple.springboardservices")
     }
 
     /// Establishes a connection to the SpringBoard services
@@ -104,4 +104,3 @@ impl SpringBoardServicesClient {
         }
     }
 }
-

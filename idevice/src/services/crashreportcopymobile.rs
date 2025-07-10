@@ -9,7 +9,7 @@
 
 use log::{debug, warn};
 
-use crate::{afc::AfcClient, lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
+use crate::{afc::AfcClient, lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
 
 /// Client for managing crash logs on an iOS device.
 ///
@@ -23,7 +23,7 @@ pub struct CrashReportCopyMobileClient {
 impl IdeviceService for CrashReportCopyMobileClient {
     /// Returns the name of the CrashReportCopyMobile service.
     fn service_name() -> &'static str {
-        "com.apple.crashreportcopymobile"
+        obf!("com.apple.crashreportcopymobile")
     }
 
     /// Connects to the CrashReportCopyMobile service on the device.

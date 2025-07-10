@@ -48,6 +48,8 @@ x509-cert = { version = "0.2", optional = true, features = [
   "pem",
 ], default-features = false }
 
+obfstr = { version = "0.4", optional = true }
+
 [dev-dependencies]
 tokio = { version = "1.43", features = ["full"] }
 tun-rs = { version = "2.0.8", features = ["async_tokio"] }
@@ -68,6 +70,7 @@ misagent = []
 mobile_image_mounter = ["dep:sha2"]
 location_simulation = []
 pair = ["chrono/default", "tokio/time", "dep:sha2", "dep:rsa", "dep:x509-cert"]
+obfuscate = ["dep:obfstr"]
 rsd = ["xpc"]
 syslog_relay = ["dep:bytes"]
 tcp = ["tokio/net"]

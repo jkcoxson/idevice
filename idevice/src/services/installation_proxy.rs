@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use log::warn;
 use plist::Dictionary;
 
-use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
 
 /// Client for interacting with the iOS installation proxy service
 ///
@@ -22,7 +22,7 @@ pub struct InstallationProxyClient {
 impl IdeviceService for InstallationProxyClient {
     /// Returns the installation proxy service name as registered with lockdownd
     fn service_name() -> &'static str {
-        "com.apple.mobile.installation_proxy"
+        obf!("com.apple.mobile.installation_proxy")
     }
 
     /// Establishes a connection to the installation proxy service

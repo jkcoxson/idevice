@@ -126,3 +126,17 @@ fn print_plist(p: &Value, indentation: usize) -> String {
         _ => "Unknown".to_string(),
     }
 }
+
+#[macro_export]
+macro_rules! obf {
+    ($lit:literal) => {{
+        #[cfg(feature = "obfuscate")]
+        {
+            obfstr::xref!($lit)
+        }
+        #[cfg(not(feature = "obfuscate"))]
+        {
+            $lit
+        }
+    }};
+}

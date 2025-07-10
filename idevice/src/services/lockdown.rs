@@ -7,7 +7,7 @@ use log::error;
 use plist::Value;
 use serde::{Deserialize, Serialize};
 
-use crate::{pairing_file, Idevice, IdeviceError, IdeviceService};
+use crate::{obf, pairing_file, Idevice, IdeviceError, IdeviceService};
 
 /// Client for interacting with the iOS lockdown service
 ///
@@ -23,7 +23,7 @@ pub struct LockdownClient {
 impl IdeviceService for LockdownClient {
     /// Returns the lockdown service name as registered with the device
     fn service_name() -> &'static str {
-        "com.apple.mobile.lockdown"
+        obf!("com.apple.mobile.lockdown")
     }
 
     /// Establishes a connection to the lockdown service

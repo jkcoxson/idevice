@@ -9,7 +9,7 @@
 
 use log::debug;
 
-use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
 use sha2::{Digest, Sha384};
 
 #[cfg(feature = "tss")]
@@ -30,7 +30,7 @@ pub struct ImageMounter {
 impl IdeviceService for ImageMounter {
     /// Returns the image mounter service name as registered with lockdownd
     fn service_name() -> &'static str {
-        "com.apple.mobile.mobile_image_mounter"
+        obf!("com.apple.mobile.mobile_image_mounter")
     }
 
     /// Establishes a connection to the image mounter service

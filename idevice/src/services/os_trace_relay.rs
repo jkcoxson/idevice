@@ -7,7 +7,7 @@ use chrono::{DateTime, NaiveDateTime};
 use plist::Dictionary;
 use tokio::io::AsyncWriteExt;
 
-use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
 
 /// Client for interacting with the iOS device OsTraceRelay service
 pub struct OsTraceRelayClient {
@@ -18,7 +18,7 @@ pub struct OsTraceRelayClient {
 impl IdeviceService for OsTraceRelayClient {
     /// Returns the OsTraceRelay service name as registered with lockdownd
     fn service_name() -> &'static str {
-        "com.apple.os_trace_relay"
+        obf!("com.apple.os_trace_relay")
     }
 
     /// Establishes a connection to the OsTraceRelay service

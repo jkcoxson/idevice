@@ -3,7 +3,7 @@
 //! iOS automatically closes service connections if there is no heartbeat client connected and
 //! responding.
 
-use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
 
 /// Client for interacting with the iOS device heartbeat service
 ///
@@ -20,7 +20,7 @@ pub struct HeartbeatClient {
 impl IdeviceService for HeartbeatClient {
     /// Returns the heartbeat service name as registered with lockdownd
     fn service_name() -> &'static str {
-        "com.apple.mobile.heartbeat"
+        obf!("com.apple.mobile.heartbeat")
     }
 
     /// Establishes a connection to the heartbeat service

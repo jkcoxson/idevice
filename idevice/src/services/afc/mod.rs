@@ -11,7 +11,7 @@ use log::warn;
 use opcode::{AfcFopenMode, AfcOpcode};
 use packet::{AfcPacket, AfcPacketHeader};
 
-use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
 
 pub mod errors;
 pub mod file;
@@ -62,7 +62,7 @@ pub struct DeviceInfo {
 
 impl IdeviceService for AfcClient {
     fn service_name() -> &'static str {
-        "com.apple.afc"
+        obf!("com.apple.afc")
     }
 
     /// Connects to the AFC service on the device

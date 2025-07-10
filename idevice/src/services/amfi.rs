@@ -2,7 +2,7 @@
 
 use plist::Dictionary;
 
-use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
 
 /// Client for interacting with the AMFI service on the device
 pub struct AmfiClient {
@@ -13,7 +13,7 @@ pub struct AmfiClient {
 impl IdeviceService for AmfiClient {
     /// Returns the amfi service name as registered with lockdownd
     fn service_name() -> &'static str {
-        "com.apple.amfi.lockdown"
+        obf!("com.apple.amfi.lockdown")
     }
 
     /// Establishes a connection to the amfi service

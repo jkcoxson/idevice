@@ -1,6 +1,6 @@
 //! iOS Device SyslogRelay Service Abstraction
 
-use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
 
 /// Client for interacting with the iOS device SyslogRelay service
 pub struct SyslogRelayClient {
@@ -11,7 +11,7 @@ pub struct SyslogRelayClient {
 impl IdeviceService for SyslogRelayClient {
     /// Returns the SyslogRelay service name as registered with lockdownd
     fn service_name() -> &'static str {
-        "com.apple.syslog_relay"
+        obf!("com.apple.syslog_relay")
     }
 
     /// Establishes a connection to the SyslogRelay service

@@ -13,7 +13,7 @@
 //! # Features
 //! - `tunnel_tcp_stack`: Enables software TCP/IP tunnel creation using a virtual adapter. See the tcp moduel.
 
-use crate::{lockdown::LockdownClient, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
 
 use byteorder::{BigEndian, WriteBytesExt};
 use serde::{Deserialize, Serialize};
@@ -94,7 +94,7 @@ pub struct CoreDeviceProxy {
 impl IdeviceService for CoreDeviceProxy {
     /// Returns the name of the service used for launching the CoreDeviceProxy.
     fn service_name() -> &'static str {
-        "com.apple.internal.devicecompute.CoreDeviceProxy"
+        obf!("com.apple.internal.devicecompute.CoreDeviceProxy")
     }
 
     /// Connects to the CoreDeviceProxy service
