@@ -130,11 +130,11 @@ fn print_plist(p: &Value, indentation: usize) -> String {
 #[macro_export]
 macro_rules! obf {
     ($lit:literal) => {{
-        #[cfg(feature = "obfuscate")] 
+        #[cfg(feature = "obfuscate")]
         {
             std::borrow::Cow::Owned(obfstr::obfstr!($lit).to_string())
         }
-        #[cfg(not(feature = "obfuscate"))] 
+        #[cfg(not(feature = "obfuscate"))]
         {
             std::borrow::Cow::Borrowed($lit)
         }
