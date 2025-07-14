@@ -136,7 +136,7 @@ macro_rules! obf {
         }
         #[cfg(not(feature = "obfuscate"))]
         {
-            $lit
+            std::borrow::Cow::Borrowed($lit)
         }
     }};
 }
