@@ -41,10 +41,8 @@ use crate::{
         message::AuxValue,
         remote_server::{Channel, RemoteServerClient},
     },
-    IdeviceError, ReadWrite,
+    obf, IdeviceError, ReadWrite,
 };
-
-const IDENTIFIER: &str = "com.apple.instruments.server.services.LocationSimulation";
 
 /// A client for the location simulation service
 pub struct LocationSimulationClient<'a, R: ReadWrite> {
@@ -61,7 +59,11 @@ impl<'a, R: ReadWrite> LocationSimulationClient<'a, R> {
     /// # Returns
     /// The client on success, IdeviceError on failure
     pub async fn new(client: &'a mut RemoteServerClient<R>) -> Result<Self, IdeviceError> {
-        let channel = client.make_channel(IDENTIFIER).await?; // Drop `&mut client` before continuing
+        let channel = client
+            .make_channel(obf!(
+                "com.apple.instruments.server.services.LocationSimulation"
+            ))
+            .await?; // Drop `&mut client` before continuing
 
         Ok(Self { channel })
     }

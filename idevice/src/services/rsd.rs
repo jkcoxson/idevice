@@ -164,7 +164,7 @@ impl RsdHandshake {
         S: ReadWrite,
     {
         let service_name = T::rsd_service_name();
-        let service = match self.services.get(service_name) {
+        let service = match self.services.get(&service_name.to_string()) {
             Some(s) => s,
             None => {
                 return Err(IdeviceError::ServiceNotFound);

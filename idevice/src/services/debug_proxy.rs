@@ -8,11 +8,11 @@ use log::debug;
 use std::fmt::Write;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::{IdeviceError, ReadWrite, RsdService};
+use crate::{obf, IdeviceError, ReadWrite, RsdService};
 
 impl<R: ReadWrite> RsdService for DebugProxyClient<R> {
-    fn rsd_service_name() -> &'static str {
-        "com.apple.internal.dt.remote.debugproxy"
+    fn rsd_service_name() -> std::borrow::Cow<'static, str> {
+        obf!("com.apple.internal.dt.remote.debugproxy")
     }
 
     async fn from_stream(stream: R) -> Result<Self, IdeviceError> {

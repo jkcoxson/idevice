@@ -67,7 +67,7 @@ pub trait IdeviceService: Sized {
 
 #[cfg(feature = "rsd")]
 pub trait RsdService: Sized {
-    fn rsd_service_name() -> &'static str;
+    fn rsd_service_name() -> std::borrow::Cow<'static, str>;
     fn from_stream(
         stream: Self::Stream,
     ) -> impl std::future::Future<Output = Result<Self, IdeviceError>> + Send;

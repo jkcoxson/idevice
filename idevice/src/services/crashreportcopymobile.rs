@@ -162,7 +162,9 @@ pub async fn flush_reports(
         .start_session(&provider.get_pairing_file().await?)
         .await?;
 
-    let (port, ssl) = lockdown.start_service("com.apple.crashreportmover").await?;
+    let (port, ssl) = lockdown
+        .start_service(obf!("com.apple.crashreportmover"))
+        .await?;
 
     let mut idevice = provider.connect(port).await?;
     if ssl {

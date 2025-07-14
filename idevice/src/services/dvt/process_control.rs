@@ -37,11 +37,9 @@
 use log::warn;
 use plist::{Dictionary, Value};
 
-use crate::{dvt::message::AuxValue, IdeviceError, ReadWrite};
+use crate::{dvt::message::AuxValue, obf, IdeviceError, ReadWrite};
 
 use super::remote_server::{Channel, RemoteServerClient};
-
-const IDENTIFIER: &str = "com.apple.instruments.server.services.processcontrol";
 
 /// Client for process control operations on iOS devices
 ///
@@ -65,7 +63,9 @@ impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
     /// # Errors
     /// * Propagates errors from channel creation
     pub async fn new(client: &'a mut RemoteServerClient<R>) -> Result<Self, IdeviceError> {
-        let channel = client.make_channel(IDENTIFIER).await?; // Drop `&mut client` before continuing
+        let channel = client
+            .make_channel(obf!("com.apple.instruments.server.services.processcontrol"))
+            .await?; // Drop `&mut client` before continuing
 
         Ok(Self { channel })
     }
