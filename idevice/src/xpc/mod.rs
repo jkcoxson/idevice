@@ -29,11 +29,11 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
         })
     }
 
-    pub async fn do_handshake(&mut self) -> Result<plist::Value, IdeviceError> {
+    pub async fn do_handshake(&mut self) -> Result<(), IdeviceError> {
         self.h2_client
             .set_settings(
                 vec![
-                    Setting::MaxConcurrentStreams(10),
+                    Setting::MaxConcurrentStreams(100),
                     Setting::InitialWindowSize(1048576),
                 ],
                 0,
@@ -50,9 +50,6 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
         ))
         .await?;
 
-        self.recv_root().await?;
-        self.recv_root().await?;
-
         debug!("Sending weird flags");
         self.send_root(XPCMessage::new(Some(XPCFlag::Custom(0x201)), None, None))
             .await?;
@@ -66,29 +63,7 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
         ))
         .await?;
 
-        let mut total_msg = Vec::new();
-        loop {
-            // We receive from the root channel for this message
-            total_msg.extend(self.h2_client.read(ROOT_CHANNEL).await?);
-            let msg = match XPCMessage::decode(&total_msg) {
-                Ok(m) => m,
-                Err(IdeviceError::PacketSizeMismatch) => {
-                    continue;
-                }
-                Err(e) => {
-                    return Err(e);
-                }
-            };
-
-            match msg.message {
-                Some(msg) => {
-                    return Ok(msg.to_plist());
-                }
-                None => {
-                    return Err(IdeviceError::UnexpectedResponse);
-                }
-            };
-        }
+        Ok(())
     }
 
     pub async fn recv(&mut self) -> Result<plist::Value, IdeviceError> {
@@ -103,15 +78,51 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
         }
     }
 
-    pub async fn recv_root(&mut self) -> Result<Option<plist::Value>, IdeviceError> {
-        let msg = self.h2_client.read(ROOT_CHANNEL).await?;
-        let msg = XPCMessage::decode(&msg)?;
+    pub async fn recv_root(&mut self) -> Result<plist::Value, IdeviceError> {
+        let mut msg_buffer = Vec::new();
+        loop {
+            msg_buffer.extend(self.h2_client.read(ROOT_CHANNEL).await?);
+            let msg = match XPCMessage::decode(&msg_buffer) {
+                Ok(m) => m,
+                Err(IdeviceError::PacketSizeMismatch) => continue,
+                Err(e) => break Err(e),
+            };
 
-        if let Some(msg) = msg.message {
-            Ok(Some(msg.to_plist()))
-        } else {
-            Ok(None)
+            match msg.message {
+                Some(msg) => {
+                    if let Some(d) = msg.as_dictionary() {
+                        if d.is_empty() {
+                            msg_buffer.clear();
+                            continue;
+                        }
+                    }
+                    break Ok(msg.to_plist());
+                }
+                None => {
+                    // don't care didn't ask
+                    msg_buffer.clear();
+                    continue;
+                }
+            }
         }
+    }
+
+    pub async fn send_object(
+        &mut self,
+        msg: plist::Value,
+        expect_reply: bool,
+    ) -> Result<(), IdeviceError> {
+        let msg: XPCObject = msg.into();
+
+        let mut flag = XPCFlag::DataFlag | XPCFlag::AlwaysSet;
+        if expect_reply {
+            flag |= XPCFlag::WantingReply;
+        }
+
+        let msg = XPCMessage::new(Some(flag), Some(msg), Some(self.root_id));
+        self.send_root(msg).await?;
+
+        Ok(())
     }
 
     async fn send_root(&mut self, msg: XPCMessage) -> Result<(), IdeviceError> {
