@@ -163,23 +163,27 @@ impl XPCObject {
             }
             XPCObject::Dictionary(dict) => {
                 buf.extend_from_slice(&(XPCType::Dictionary as u32).to_le_bytes());
-                buf.extend_from_slice(&0_u32.to_le_bytes()); // represents l, no idea what this is.
-                buf.extend_from_slice(&(dict.len() as u32).to_le_bytes());
+                let mut content_buf = Vec::new();
+                content_buf.extend_from_slice(&(dict.len() as u32).to_le_bytes());
                 for (k, v) in dict {
                     let padding = Self::calculate_padding(k.len() + 1);
-                    buf.extend_from_slice(k.as_bytes());
-                    buf.push(0);
-                    buf.extend_from_slice(&[0].repeat(padding));
-                    v.encode_object(buf)?;
+                    content_buf.extend_from_slice(k.as_bytes());
+                    content_buf.push(0);
+                    content_buf.extend_from_slice(&[0].repeat(padding));
+                    v.encode_object(&mut content_buf)?;
                 }
+                buf.extend_from_slice(&(content_buf.len() as u32).to_le_bytes());
+                buf.extend_from_slice(&content_buf);
             }
             XPCObject::Array(items) => {
                 buf.extend_from_slice(&(XPCType::Array as u32).to_le_bytes());
-                buf.extend_from_slice(&0_u32.to_le_bytes()); // represents l, no idea what this is.
-                buf.extend_from_slice(&(items.len() as u32).to_le_bytes());
+                let mut content_buf = Vec::new();
+                content_buf.extend_from_slice(&(items.len() as u32).to_le_bytes());
                 for item in items {
-                    item.encode_object(buf)?;
+                    item.encode_object(&mut content_buf)?;
                 }
+                buf.extend_from_slice(&(content_buf.len() as u32).to_le_bytes());
+                buf.extend_from_slice(&content_buf);
             }
 
             XPCObject::Int64(num) => {
