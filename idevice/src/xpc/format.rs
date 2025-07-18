@@ -390,7 +390,6 @@ impl From<Dictionary> for XPCObject {
     }
 }
 
-#[derive(Debug)]
 pub struct XPCMessage {
     pub flags: u32,
     pub message: Option<XPCObject>,
@@ -467,5 +466,39 @@ impl XPCMessage {
             }
         }
         Ok(out)
+    }
+}
+
+impl std::fmt::Debug for XPCMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut parts = Vec::new();
+
+        if self.flags & 0x00000001 != 0 {
+            parts.push("AlwaysSet".to_string());
+        }
+        if self.flags & 0x00000100 != 0 {
+            parts.push("DataFlag".to_string());
+        }
+        if self.flags & 0x00010000 != 0 {
+            parts.push("WantingReply".to_string());
+        }
+        if self.flags & 0x00400000 != 0 {
+            parts.push("InitHandshake".to_string());
+        }
+
+        // Check for any unknown bits (not covered by known flags)
+        let known_mask = 0x00000001 | 0x00000100 | 0x00010000 | 0x00400000;
+        let custom_bits = self.flags & !known_mask;
+        if custom_bits != 0 {
+            parts.push(format!("Custom(0x{:08X})", custom_bits));
+        }
+
+        write!(
+            f,
+            "XPCMessage {{ flags: [{}], message_id: {:?}, message: {:?} }}",
+            parts.join(" | "),
+            self.message_id,
+            self.message
+        )
     }
 }
