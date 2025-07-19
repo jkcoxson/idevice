@@ -71,6 +71,7 @@ mobile_image_mounter = ["dep:sha2"]
 location_simulation = []
 pair = ["chrono/default", "tokio/time", "dep:sha2", "dep:rsa", "dep:x509-cert"]
 obfuscate = ["dep:obfstr"]
+restore_service = []
 rsd = ["xpc"]
 syslog_relay = ["dep:bytes"]
 tcp = ["tokio/net"]
@@ -89,19 +90,20 @@ full = [
   "heartbeat",
   "house_arrest",
   "installation_proxy",
+  "location_simulation",
   "misagent",
   "mobile_image_mounter",
   "pair",
-  "usbmuxd",
-  "xpc",
-  "location_simulation",
+  "restore_service",
   "rsd",
+  "springboardservices",
+  "syslog_relay",
   "tcp",
   "tunnel_tcp_stack",
   "tss",
   "tunneld",
-  "springboardservices",
-  "syslog_relay",
+  "usbmuxd",
+  "xpc",
 ]
 
 [package.metadata.docs.rs]

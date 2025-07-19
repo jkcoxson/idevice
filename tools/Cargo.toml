@@ -85,6 +85,10 @@ path = "src/os_trace_relay.rs"
 name = "lockdown"
 path = "src/lockdown.rs"
 
+[[bin]]
+name = "restore_service"
+path = "src/restore_service.rs"
+
 [dependencies]
 idevice = { path = "../idevice", features = ["full"] }
 tokio = { version = "1.43", features = ["io-util", "macros", "time", "full"] }
