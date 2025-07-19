@@ -3,7 +3,7 @@
 use log::warn;
 use serde::Deserialize;
 
-use crate::{obf, IdeviceError, ReadWrite, RsdService};
+use crate::{obf, pretty_print_plist, IdeviceError, ReadWrite, RsdService};
 
 use super::CoreDeviceServiceClient;
 
@@ -25,7 +25,7 @@ pub struct AppServiceClient<R: ReadWrite> {
     inner: CoreDeviceServiceClient<R>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct AppListEntry {
     #[serde(rename = "isRemovable")]
     pub is_removable: bool,
@@ -46,6 +46,23 @@ pub struct AppListEntry {
     #[serde(rename = "isAppClip")]
     pub is_app_clip: bool,
     pub version: Option<String>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct LaunchResponse {
+    #[serde(rename = "processIdentifierVersion")]
+    pub process_identifier_version: u32,
+    #[serde(rename = "processIdentifier")]
+    pub pid: u32,
+    #[serde(rename = "executableURL")]
+    pub executable_url: ExecutableUrl,
+    #[serde(rename = "auditToken")]
+    pub audit_token: Vec<u32>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct ExecutableUrl {
+    pub relative: String,
 }
 
 impl<R: ReadWrite> AppServiceClient<R> {
@@ -95,5 +112,58 @@ impl<R: ReadWrite> AppServiceClient<R> {
         }
 
         Ok(desd)
+    }
+
+    pub async fn launch_application(
+        &mut self,
+        bundle_id: impl Into<String>,
+        arguments: &[&str],
+        kill_existing: bool,
+        start_suspended: bool,
+        environment: Option<plist::Dictionary>,
+        platform_options: Option<plist::Dictionary>,
+    ) -> Result<LaunchResponse, IdeviceError> {
+        let bundle_id = bundle_id.into();
+
+        let req = crate::plist!({
+            "applicationSpecifier": {
+                "bundleIdentifier": {
+                    "_0": bundle_id
+                }
+            },
+            "options": {
+                "arguments": arguments, // Now this will work directly
+                "environmentVariables": environment.unwrap_or_default(),
+                "standardIOUsesPseudoterminals": true,
+                "startStopped": start_suspended,
+                "terminateExisting": kill_existing,
+                "user": {
+                    "shortName": "mobile"
+                },
+                "platformSpecificOptions": plist::Value::Data(crate::util::plist_to_xml_bytes(&platform_options.unwrap_or_default())),
+            },
+            "standardIOIdentifiers": {}
+        })
+        .into_dictionary()
+        .unwrap();
+
+        let res = self
+            .inner
+            .invoke("com.apple.coredevice.feature.launchapplication", Some(req))
+            .await?;
+
+        let res = match res
+            .as_dictionary()
+            .and_then(|r| r.get("processToken"))
+            .and_then(|x| plist::from_value(x).ok())
+        {
+            Some(r) => r,
+            None => {
+                warn!("CoreDevice res did not contain parsable processToken");
+                return Err(IdeviceError::UnexpectedResponse);
+            }
+        };
+
+        Ok(res)
     }
 }

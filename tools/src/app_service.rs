@@ -48,6 +48,15 @@ async fn main() {
                 .action(clap::ArgAction::SetTrue),
         )
         .subcommand(Command::new("list").about("Lists the images mounted on the device"))
+        .subcommand(
+            Command::new("launch")
+                .about("Launch the app on the device")
+                .arg(
+                    Arg::new("bundle_id")
+                        .required(true)
+                        .help("The bundle ID to launch"),
+                ),
+        )
         .get_matches();
 
     if matches.get_flag("about") {
@@ -97,6 +106,21 @@ async fn main() {
             .await
             .expect("Failed to get apps");
         println!("{apps:#?}");
+    } else if let Some(matches) = matches.subcommand_matches("launch") {
+        let bundle_id: &String = match matches.get_one("bundle_id") {
+            Some(b) => b,
+            None => {
+                eprintln!("No bundle ID passed");
+                return;
+            }
+        };
+
+        let res = asc
+            .launch_application(bundle_id, &[], false, false, None, None)
+            .await
+            .expect("no launch");
+
+        println!("{res:#?}");
     } else {
         eprintln!("Invalid usage, pass -h for help");
     }
