@@ -62,6 +62,8 @@ pub enum XPCType {
     Int64 = 0x00003000,
     UInt64 = 0x00004000,
 
+    Date = 0x00007000,
+
     String = 0x00009000,
     Data = 0x00008000,
     Uuid = 0x0000a000,
@@ -77,6 +79,7 @@ impl TryFrom<u32> for XPCType {
             0x0000e000 => Ok(Self::Array),
             0x00003000 => Ok(Self::Int64),
             0x00004000 => Ok(Self::UInt64),
+            0x00007000 => Ok(Self::Date),
             0x00009000 => Ok(Self::String),
             0x00008000 => Ok(Self::Data),
             0x0000a000 => Ok(Self::Uuid),
@@ -95,6 +98,8 @@ pub enum XPCObject {
 
     Int64(i64),
     UInt64(u64),
+
+    Date(std::time::SystemTime),
 
     String(String),
     Data(Vec<u8>),
@@ -133,6 +138,7 @@ impl XPCObject {
             Self::Uuid(uuid) => plist::Value::String(uuid.to_string()),
             Self::UInt64(v) => plist::Value::Integer({ *v }.into()),
             Self::Int64(v) => plist::Value::Integer({ *v }.into()),
+            Self::Date(d) => plist::Value::Date(plist::Date::from(*d)),
             Self::String(v) => plist::Value::String(v.clone()),
             Self::Data(v) => plist::Value::Data(v.clone()),
             Self::Array(v) => plist::Value::Array(v.iter().map(|item| item.to_plist()).collect()),
@@ -193,6 +199,16 @@ impl XPCObject {
             XPCObject::UInt64(num) => {
                 buf.extend_from_slice(&(XPCType::UInt64 as u32).to_le_bytes());
                 buf.extend_from_slice(&num.to_le_bytes());
+            }
+            XPCObject::Date(date) => {
+                buf.extend_from_slice(&(XPCType::Date as u32).to_le_bytes());
+                buf.extend_from_slice(
+                    &(date
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos() as u64)
+                        .to_le_bytes(),
+                );
             }
             XPCObject::String(item) => {
                 let l = item.len() + 1;
@@ -293,6 +309,16 @@ impl XPCObject {
                 cursor.read_exact(&mut buf)?;
                 Ok(XPCObject::UInt64(u64::from_le_bytes(buf)))
             }
+
+            XPCType::Date => {
+                let mut buf: [u8; 8] = Default::default();
+                cursor.read_exact(&mut buf)?;
+                Ok(XPCObject::Date(
+                    std::time::UNIX_EPOCH
+                        + std::time::Duration::from_nanos(u64::from_le_bytes(buf)),
+                ))
+            }
+
             XPCType::String => {
                 // 'l' includes utf8 '\0' character.
                 cursor.read_exact(&mut buf_32)?;
