@@ -3,7 +3,7 @@
 use log::warn;
 use serde::Deserialize;
 
-use crate::{obf, pretty_print_plist, IdeviceError, ReadWrite, RsdService};
+use crate::{obf, IdeviceError, ReadWrite, RsdService};
 
 use super::CoreDeviceServiceClient;
 
@@ -346,7 +346,6 @@ impl<R: ReadWrite> AppServiceClient<R> {
         };
 
         let res = ns_keyed_archive::decode::from_bytes(&res)?;
-        println!("{}", pretty_print_plist(&res));
         match plist::from_value(&res) {
             Ok(r) => Ok(r),
             Err(e) => {

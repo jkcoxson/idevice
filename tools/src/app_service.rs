@@ -124,7 +124,6 @@ async fn main() {
 
     // Make the connection to RemoteXPC
     let mut handshake = RsdHandshake::new(stream).await.unwrap();
-    println!("{:?}", handshake.services);
 
     let mut asc = AppServiceClient::connect_rsd(&mut adapter, &mut handshake)
         .await
