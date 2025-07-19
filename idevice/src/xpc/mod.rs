@@ -8,8 +8,8 @@ use crate::{IdeviceError, ReadWrite};
 mod format;
 mod http2;
 
-pub use format::XPCMessage;
-use format::{XPCFlag, XPCObject};
+use format::XPCFlag;
+pub use format::{Dictionary, XPCMessage, XPCObject};
 
 const ROOT_CHANNEL: u32 = 1;
 const REPLY_CHANNEL: u32 = 3;
@@ -67,21 +67,17 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
     }
 
     pub async fn recv(&mut self) -> Result<plist::Value, IdeviceError> {
-        loop {
-            let msg = self.h2_client.read(REPLY_CHANNEL).await?;
-
-            let msg = XPCMessage::decode(&msg)?;
-            if let Some(msg) = msg.message {
-                return Ok(msg.to_plist());
-            }
-            self.reply_id += 1;
-        }
+        self.recv_from_channel(REPLY_CHANNEL).await
     }
 
     pub async fn recv_root(&mut self) -> Result<plist::Value, IdeviceError> {
+        self.recv_from_channel(ROOT_CHANNEL).await
+    }
+
+    async fn recv_from_channel(&mut self, channel: u32) -> Result<plist::Value, IdeviceError> {
         let mut msg_buffer = Vec::new();
         loop {
-            msg_buffer.extend(self.h2_client.read(ROOT_CHANNEL).await?);
+            msg_buffer.extend(self.h2_client.read(channel).await?);
             let msg = match XPCMessage::decode(&msg_buffer) {
                 Ok(m) => m,
                 Err(IdeviceError::PacketSizeMismatch) => continue,
@@ -109,7 +105,7 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
 
     pub async fn send_object(
         &mut self,
-        msg: plist::Value,
+        msg: impl Into<XPCObject>,
         expect_reply: bool,
     ) -> Result<(), IdeviceError> {
         let msg: XPCObject = msg.into();
