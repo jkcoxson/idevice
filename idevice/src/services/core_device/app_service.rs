@@ -65,6 +65,14 @@ pub struct ExecutableUrl {
     pub relative: String,
 }
 
+#[derive(Deserialize, Clone, Debug)]
+pub struct ProcessToken {
+    #[serde(rename = "processIdentifier")]
+    pub pid: u32,
+    #[serde(rename = "executableURL")]
+    pub executable_url: Option<ExecutableUrl>,
+}
+
 impl<R: ReadWrite> AppServiceClient<R> {
     pub async fn new(stream: R) -> Result<Self, IdeviceError> {
         Ok(Self {
@@ -156,6 +164,29 @@ impl<R: ReadWrite> AppServiceClient<R> {
             .as_dictionary()
             .and_then(|r| r.get("processToken"))
             .and_then(|x| plist::from_value(x).ok())
+        {
+            Some(r) => r,
+            None => {
+                warn!("CoreDevice res did not contain parsable processToken");
+                return Err(IdeviceError::UnexpectedResponse);
+            }
+        };
+
+        Ok(res)
+    }
+
+    pub async fn list_processes(&mut self) -> Result<Vec<ProcessToken>, IdeviceError> {
+        let res = self
+            .inner
+            .invoke("com.apple.coredevice.feature.listprocesses", None)
+            .await?;
+
+        println!("{}", pretty_print_plist(&res));
+
+        let res = match res
+            .as_dictionary()
+            .and_then(|x| x.get("processTokens"))
+            .and_then(|x| plist::from_value(x).unwrap())
         {
             Some(r) => r,
             None => {

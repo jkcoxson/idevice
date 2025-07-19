@@ -57,6 +57,7 @@ async fn main() {
                         .help("The bundle ID to launch"),
                 ),
         )
+        .subcommand(Command::new("processes").about("List the processes running"))
         .get_matches();
 
     if matches.get_flag("about") {
@@ -121,6 +122,9 @@ async fn main() {
             .expect("no launch");
 
         println!("{res:#?}");
+    } else if matches.subcommand_matches("processes").is_some() {
+        let p = asc.list_processes().await.expect("no processes?");
+        println!("{p:#?}");
     } else {
         eprintln!("Invalid usage, pass -h for help");
     }
