@@ -158,7 +158,7 @@ impl XPCObject {
         match self {
             XPCObject::Bool(val) => {
                 buf.extend_from_slice(&(XPCType::Bool as u32).to_le_bytes());
-                buf.push(if *val { 0 } else { 1 });
+                buf.push(if *val { 1 } else { 0 });
                 buf.extend_from_slice(&[0].repeat(3));
             }
             XPCObject::Dictionary(dict) => {
