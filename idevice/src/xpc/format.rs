@@ -61,6 +61,7 @@ pub enum XPCType {
 
     Int64 = 0x00003000,
     UInt64 = 0x00004000,
+    Double = 0x00005000,
 
     Date = 0x00007000,
 
@@ -78,6 +79,7 @@ impl TryFrom<u32> for XPCType {
             0x0000f000 => Ok(Self::Dictionary),
             0x0000e000 => Ok(Self::Array),
             0x00003000 => Ok(Self::Int64),
+            0x00005000 => Ok(Self::Double),
             0x00004000 => Ok(Self::UInt64),
             0x00007000 => Ok(Self::Date),
             0x00009000 => Ok(Self::String),
@@ -96,6 +98,7 @@ pub enum XPCObject {
     Dictionary(Dictionary),
     Array(Vec<XPCObject>),
 
+    Double(f64),
     Int64(i64),
     UInt64(u64),
 
@@ -122,7 +125,7 @@ impl From<plist::Value> for XPCObject {
             plist::Value::Boolean(v) => XPCObject::Bool(v),
             plist::Value::Data(v) => XPCObject::Data(v),
             plist::Value::Date(_) => todo!(),
-            plist::Value::Real(_) => todo!(),
+            plist::Value::Real(f) => XPCObject::Double(f),
             plist::Value::Integer(v) => XPCObject::Int64(v.as_signed().unwrap()),
             plist::Value::String(v) => XPCObject::String(v),
             plist::Value::Uid(_) => todo!(),
@@ -136,6 +139,7 @@ impl XPCObject {
         match self {
             Self::Bool(v) => plist::Value::Boolean(*v),
             Self::Uuid(uuid) => plist::Value::String(uuid.to_string()),
+            Self::Double(f) => plist::Value::Real(*f),
             Self::UInt64(v) => plist::Value::Integer({ *v }.into()),
             Self::Int64(v) => plist::Value::Integer({ *v }.into()),
             Self::Date(d) => plist::Value::Date(plist::Date::from(*d)),
@@ -192,6 +196,10 @@ impl XPCObject {
                 buf.extend_from_slice(&content_buf);
             }
 
+            XPCObject::Double(f) => {
+                buf.extend_from_slice(&(XPCType::Double as u32).to_le_bytes());
+                buf.extend_from_slice(&f.to_le_bytes());
+            }
             XPCObject::Int64(num) => {
                 buf.extend_from_slice(&(XPCType::Int64 as u32).to_le_bytes());
                 buf.extend_from_slice(&num.to_le_bytes());
@@ -298,6 +306,11 @@ impl XPCObject {
                     ret.push(Self::decode_object(cursor)?);
                 }
                 Ok(XPCObject::Array(ret))
+            }
+            XPCType::Double => {
+                let mut buf: [u8; 8] = Default::default();
+                cursor.read_exact(&mut buf)?;
+                Ok(XPCObject::Double(f64::from_le_bytes(buf)))
             }
             XPCType::Int64 => {
                 let mut buf: [u8; 8] = Default::default();
