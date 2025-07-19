@@ -111,6 +111,13 @@ impl<R: ReadWrite> Http2Client<R> {
                         data_frame.stream_id,
                         data_frame.payload.len()
                     );
+
+                    if data_frame.stream_id % 2 == 0 {
+                        self.window_update(data_frame.payload.len() as u32, 0)
+                            .await?;
+                        self.window_update(data_frame.payload.len() as u32, data_frame.stream_id)
+                            .await?;
+                    }
                     if data_frame.stream_id == stream_id {
                         return Ok(data_frame.payload);
                     } else {
