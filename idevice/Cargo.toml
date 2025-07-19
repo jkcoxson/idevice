@@ -58,6 +58,7 @@ bytes = "1.10.1"
 [features]
 afc = ["dep:chrono"]
 amfi = []
+core_device = ["xpc", "dep:uuid"]
 core_device_proxy = ["dep:serde_json", "dep:json", "dep:byteorder"]
 crashreportcopymobile = ["afc"]
 debug_proxy = []
@@ -83,6 +84,7 @@ xpc = ["dep:indexmap", "dep:uuid"]
 full = [
   "afc",
   "amfi",
+  "core_device",
   "core_device_proxy",
   "crashreportcopymobile",
   "debug_proxy",

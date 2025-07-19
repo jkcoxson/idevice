@@ -82,6 +82,10 @@ name = "os_trace_relay"
 path = "src/os_trace_relay.rs"
 
 [[bin]]
+name = "app_service"
+path = "src/app_service.rs"
+
+[[bin]]
 name = "lockdown"
 path = "src/lockdown.rs"
 
