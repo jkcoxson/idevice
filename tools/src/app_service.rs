@@ -58,6 +58,35 @@ async fn main() {
                 ),
         )
         .subcommand(Command::new("processes").about("List the processes running"))
+        .subcommand(
+            Command::new("uninstall").about("Uninstall an app").arg(
+                Arg::new("bundle_id")
+                    .required(true)
+                    .help("The bundle ID to uninstall"),
+            ),
+        )
+        .subcommand(
+            Command::new("signal")
+                .about("Send a signal to an app")
+                .arg(Arg::new("pid").required(true).help("PID to send to"))
+                .arg(Arg::new("signal").required(true).help("Signal to send")),
+        )
+        .subcommand(
+            Command::new("icon")
+                .about("Send a signal to an app")
+                .arg(
+                    Arg::new("bundle_id")
+                        .required(true)
+                        .help("The bundle ID to fetch"),
+                )
+                .arg(
+                    Arg::new("path")
+                        .required(true)
+                        .help("The path to save the icon to"),
+                )
+                .arg(Arg::new("hw").required(false).help("The height and width"))
+                .arg(Arg::new("scale").required(false).help("The scale")),
+        )
         .get_matches();
 
     if matches.get_flag("about") {
@@ -125,6 +154,66 @@ async fn main() {
     } else if matches.subcommand_matches("processes").is_some() {
         let p = asc.list_processes().await.expect("no processes?");
         println!("{p:#?}");
+    } else if let Some(matches) = matches.subcommand_matches("uninstall") {
+        let bundle_id: &String = match matches.get_one("bundle_id") {
+            Some(b) => b,
+            None => {
+                eprintln!("No bundle ID passed");
+                return;
+            }
+        };
+
+        asc.uninstall_app(bundle_id).await.expect("no launch")
+    } else if let Some(matches) = matches.subcommand_matches("signal") {
+        let pid: u32 = match matches.get_one::<String>("pid") {
+            Some(b) => b.parse().expect("failed to parse PID as u32"),
+            None => {
+                eprintln!("No bundle PID passed");
+                return;
+            }
+        };
+        let signal: u32 = match matches.get_one::<String>("signal") {
+            Some(b) => b.parse().expect("failed to parse signal as u32"),
+            None => {
+                eprintln!("No bundle signal passed");
+                return;
+            }
+        };
+
+        let res = asc.send_signal(pid, signal).await.expect("no signal");
+        println!("{res:#?}");
+    } else if let Some(matches) = matches.subcommand_matches("icon") {
+        let bundle_id: &String = match matches.get_one("bundle_id") {
+            Some(b) => b,
+            None => {
+                eprintln!("No bundle ID passed");
+                return;
+            }
+        };
+        let save_path: &String = match matches.get_one("path") {
+            Some(b) => b,
+            None => {
+                eprintln!("No bundle ID passed");
+                return;
+            }
+        };
+        let hw: f32 = match matches.get_one::<String>("hw") {
+            Some(b) => b.parse().expect("failed to parse PID as f32"),
+            None => 1.0,
+        };
+        let scale: f32 = match matches.get_one::<String>("scale") {
+            Some(b) => b.parse().expect("failed to parse signal as f32"),
+            None => 1.0,
+        };
+
+        let res = asc
+            .fetch_app_icon(bundle_id, hw, hw, scale, true)
+            .await
+            .expect("no signal");
+        println!("{res:?}");
+        tokio::fs::write(save_path, res.data)
+            .await
+            .expect("failed to save");
     } else {
         eprintln!("Invalid usage, pass -h for help");
     }

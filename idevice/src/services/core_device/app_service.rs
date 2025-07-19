@@ -73,6 +73,63 @@ pub struct ProcessToken {
     pub executable_url: Option<ExecutableUrl>,
 }
 
+#[derive(Deserialize, Clone, Debug)]
+pub struct SignalResponse {
+    pub process: ProcessToken,
+    #[serde(rename = "deviceTimestamp")]
+    pub device_timestamp: plist::Date,
+    pub signal: u32,
+}
+
+/// Icon data is in a proprietary format.
+///
+/// ```
+/// 0000: 06 00 00 00 40 06 00 00 00 00 00 00 01 00 00 00 - header
+/// 0010: 00 00 a0 41 00 00 a0 41 00 00 00 00 00 00 00 00 - width x height as float
+/// 0020: 00 00 a0 41 00 00 a0 41 00 00 00 00 00 00 00 00 - wdith x height (again?)
+/// 0030: 00 00 00 00 03 08 08 09 2a 68 6f 7d 44 a9 b7 d0 - start of image data
+/// <snip>
+/// ```
+///
+/// The data can be parsed like so in Python
+///
+/// ```python
+/// from PIL import Image
+///
+/// width, height = 20, 20 (from the float sizes)
+/// with open("icon.raw", "rb") as f:
+///     f.seek(0x30)
+///     raw = f.read(width * height * 4)
+///
+/// img = Image.frombytes("RGBA", (width, height), raw)
+/// img.save("icon.png")
+/// ```
+#[derive(Deserialize, Clone, Debug)]
+pub struct IconData {
+    pub data: plist::Data,
+    #[serde(rename = "iconSize.height")]
+    pub icon_height: f64,
+    #[serde(rename = "iconSize.width")]
+    pub icon_width: f64,
+    #[serde(rename = "minimumSize.height")]
+    pub minimum_height: f64,
+    #[serde(rename = "minimumSize.width")]
+    pub minimum_width: f64,
+    #[serde(rename = "$classes")]
+    pub classes: Vec<String>,
+    #[serde(rename = "validationToken")]
+    pub validation_token: plist::Data,
+    pub uuid: IconUuid,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct IconUuid {
+    #[serde(rename = "NS.uuidbytes")]
+    pub bytes: plist::Data,
+    #[serde(rename = "$classes")]
+    pub classes: Vec<String>,
+}
+
 impl<R: ReadWrite> AppServiceClient<R> {
     pub async fn new(stream: R) -> Result<Self, IdeviceError> {
         Ok(Self {
@@ -181,12 +238,10 @@ impl<R: ReadWrite> AppServiceClient<R> {
             .invoke("com.apple.coredevice.feature.listprocesses", None)
             .await?;
 
-        println!("{}", pretty_print_plist(&res));
-
         let res = match res
             .as_dictionary()
             .and_then(|x| x.get("processTokens"))
-            .and_then(|x| plist::from_value(x).unwrap())
+            .and_then(|x| plist::from_value(x).ok())
         {
             Some(r) => r,
             None => {
@@ -196,5 +251,108 @@ impl<R: ReadWrite> AppServiceClient<R> {
         };
 
         Ok(res)
+    }
+
+    /// Gives no response on failure or success
+    pub async fn uninstall_app(
+        &mut self,
+        bundle_id: impl Into<String>,
+    ) -> Result<(), IdeviceError> {
+        let bundle_id = bundle_id.into();
+        self.inner
+            .invoke(
+                "com.apple.coredevice.feature.uninstallapp",
+                Some(
+                    crate::plist!({"bundleIdentifier": bundle_id})
+                        .into_dictionary()
+                        .unwrap(),
+                ),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn send_signal(
+        &mut self,
+        pid: u32,
+        signal: u32,
+    ) -> Result<SignalResponse, IdeviceError> {
+        let res = self
+            .inner
+            .invoke(
+                "com.apple.coredevice.feature.sendsignaltoprocess",
+                Some(
+                    crate::plist!({
+                        "process": { "processIdentifier": pid as i64},
+                        "signal": signal as i64,
+                    })
+                    .into_dictionary()
+                    .unwrap(),
+                ),
+            )
+            .await?;
+
+        let res = match plist::from_value(&res) {
+            Ok(r) => r,
+            Err(e) => {
+                warn!("Could not parse signal response: {e:?}");
+                return Err(IdeviceError::UnexpectedResponse);
+            }
+        };
+
+        Ok(res)
+    }
+
+    pub async fn fetch_app_icon(
+        &mut self,
+        bundle_id: impl Into<String>,
+        width: f32,
+        height: f32,
+        scale: f32,
+        allow_placeholder: bool,
+    ) -> Result<IconData, IdeviceError> {
+        let bundle_id = bundle_id.into();
+        let res = self
+            .inner
+            .invoke(
+                "com.apple.coredevice.feature.fetchappicons",
+                Some(
+                    crate::plist!({
+                        "width": width,
+                        "height": height,
+                        "scale": scale,
+                        "allowPlaceholder": allow_placeholder,
+                        "bundleIdentifier": bundle_id
+                    })
+                    .into_dictionary()
+                    .unwrap(),
+                ),
+            )
+            .await?;
+
+        let res = match res
+            .as_dictionary()
+            .and_then(|x| x.get("appIconContainer"))
+            .and_then(|x| x.as_dictionary())
+            .and_then(|x| x.get("iconImage"))
+            .and_then(|x| x.as_data())
+        {
+            Some(r) => r.to_vec(),
+            None => {
+                warn!("Did not receive appIconContainer/iconImage data");
+                return Err(IdeviceError::UnexpectedResponse);
+            }
+        };
+
+        let res = ns_keyed_archive::decode::from_bytes(&res)?;
+        println!("{}", pretty_print_plist(&res));
+        match plist::from_value(&res) {
+            Ok(r) => Ok(r),
+            Err(e) => {
+                warn!("Failed to deserialize ns keyed archive: {e:?}");
+                Err(IdeviceError::UnexpectedResponse)
+            }
+        }
     }
 }
