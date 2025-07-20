@@ -23,7 +23,7 @@ impl<R: ReadWrite> RsdService for RestoreServiceClient<R> {
     type Stream = R;
 }
 
-impl<R: ReadWrite> RestoreServiceClient<R> {
+impl<'a, R: ReadWrite + 'a> RestoreServiceClient<R> {
     /// Creates a new Restore Service client a socket connection,
     /// and connects to the RemoteXPC service.
     ///
@@ -33,6 +33,12 @@ impl<R: ReadWrite> RestoreServiceClient<R> {
         let mut stream = RemoteXpcClient::new(stream).await?;
         stream.do_handshake().await?;
         Ok(Self { stream })
+    }
+
+    pub fn box_inner(self) -> RestoreServiceClient<Box<dyn ReadWrite + 'a>> {
+        RestoreServiceClient {
+            stream: self.stream.box_inner(),
+        }
     }
 
     /// Enter recovery

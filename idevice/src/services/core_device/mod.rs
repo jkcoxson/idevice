@@ -9,7 +9,7 @@ use crate::{
 };
 
 mod app_service;
-pub use app_service::{AppListEntry, AppServiceClient};
+pub use app_service::*;
 
 const CORE_SERVICE_VERSION: &str = "443.18";
 
@@ -17,11 +17,17 @@ pub struct CoreDeviceServiceClient<R: ReadWrite> {
     inner: RemoteXpcClient<R>,
 }
 
-impl<R: ReadWrite> CoreDeviceServiceClient<R> {
+impl<'a, R: ReadWrite + 'a> CoreDeviceServiceClient<R> {
     pub async fn new(inner: R) -> Result<Self, IdeviceError> {
         let mut client = RemoteXpcClient::new(inner).await?;
         client.do_handshake().await?;
         Ok(Self { inner: client })
+    }
+
+    pub fn box_inner(self) -> CoreDeviceServiceClient<Box<dyn ReadWrite + 'a>> {
+        CoreDeviceServiceClient {
+            inner: self.inner.box_inner(),
+        }
     }
 
     pub async fn invoke(

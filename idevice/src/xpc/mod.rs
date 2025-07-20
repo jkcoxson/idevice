@@ -20,13 +20,21 @@ pub struct RemoteXpcClient<R: ReadWrite> {
     reply_id: u64,
 }
 
-impl<R: ReadWrite> RemoteXpcClient<R> {
+impl<'a, R: ReadWrite + 'a> RemoteXpcClient<R> {
     pub async fn new(socket: R) -> Result<Self, IdeviceError> {
         Ok(Self {
             h2_client: http2::Http2Client::new(socket).await?,
             root_id: 1,
             reply_id: 1,
         })
+    }
+
+    pub fn box_inner(self) -> RemoteXpcClient<Box<dyn ReadWrite + 'a>> {
+        RemoteXpcClient {
+            h2_client: self.h2_client.box_inner(),
+            root_id: self.root_id,
+            reply_id: self.reply_id,
+        }
     }
 
     pub async fn do_handshake(&mut self) -> Result<(), IdeviceError> {

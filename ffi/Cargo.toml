@@ -17,6 +17,7 @@ plist_plus = { version = "0.2.6", features = ["dynamic"] }
 [features]
 afc = ["idevice/afc"]
 amfi = ["idevice/amfi"]
+core_device = ["idevice/core_device"]
 core_device_proxy = ["idevice/core_device_proxy"]
 crashreportcopymobile = ["idevice/crashreportcopymobile"]
 debug_proxy = ["idevice/debug_proxy"]
@@ -41,6 +42,7 @@ xpc = ["idevice/xpc"]
 full = [
   "afc",
   "amfi",
+  "core_device",
   "core_device_proxy",
   "crashreportcopymobile",
   "debug_proxy",

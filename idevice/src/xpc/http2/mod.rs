@@ -17,7 +17,7 @@ pub struct Http2Client<R: ReadWrite> {
     cache: HashMap<u32, VecDeque<Vec<u8>>>,
 }
 
-impl<R: ReadWrite> Http2Client<R> {
+impl<'a, R: ReadWrite + 'a> Http2Client<R> {
     /// Writes the magic and inits the caches
     pub async fn new(mut inner: R) -> Result<Self, IdeviceError> {
         inner.write_all(HTTP2_MAGIC).await?;
@@ -26,6 +26,13 @@ impl<R: ReadWrite> Http2Client<R> {
             inner,
             cache: HashMap::new(),
         })
+    }
+
+    pub fn box_inner(self) -> Http2Client<Box<dyn ReadWrite + 'a>> {
+        Http2Client {
+            inner: Box::new(self.inner),
+            cache: self.cache,
+        }
     }
 
     pub async fn set_settings(

@@ -130,11 +130,17 @@ pub struct IconUuid {
     pub classes: Vec<String>,
 }
 
-impl<R: ReadWrite> AppServiceClient<R> {
+impl<'a, R: ReadWrite + 'a> AppServiceClient<R> {
     pub async fn new(stream: R) -> Result<Self, IdeviceError> {
         Ok(Self {
             inner: CoreDeviceServiceClient::new(stream).await?,
         })
+    }
+
+    pub fn box_inner(self) -> AppServiceClient<Box<dyn ReadWrite + 'a>> {
+        AppServiceClient {
+            inner: self.inner.box_inner(),
+        }
     }
 
     pub async fn list_apps(
