@@ -47,6 +47,10 @@ x509-cert = { version = "0.2", optional = true, features = [
   "builder",
   "pem",
 ], default-features = false }
+x25519-dalek = { version = "2", optional = true }
+ed25519-dalek = { version = "2", features = ["rand_core"], optional = true }
+hkdf = { version = "0.12", optional = true }
+chacha20poly1305 = { version = "0.10", optional = true }
 
 obfstr = { version = "0.4", optional = true }
 
@@ -73,6 +77,14 @@ location_simulation = []
 pair = ["chrono/default", "tokio/time", "dep:sha2", "dep:rsa", "dep:x509-cert"]
 obfuscate = ["dep:obfstr"]
 restore_service = []
+remote_pairing = [
+  "dep:json",
+  "dep:x25519-dalek",
+  "dep:ed25519-dalek",
+  "dep:hkdf",
+  "dep:chacha20poly1305",
+  "dep:uuid",
+]
 rsd = ["xpc"]
 syslog_relay = ["dep:bytes"]
 tcp = ["tokio/net"]
@@ -97,6 +109,10 @@ full = [
   "mobile_image_mounter",
   "pair",
   "restore_service",
+  "usbmuxd",
+  "xpc",
+  "location_simulation",
+  "remote_pairing",
   "rsd",
   "springboardservices",
   "syslog_relay",

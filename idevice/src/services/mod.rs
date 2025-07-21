@@ -25,6 +25,8 @@ pub mod misagent;
 pub mod mobile_image_mounter;
 #[cfg(feature = "syslog_relay")]
 pub mod os_trace_relay;
+#[cfg(feature = "remote_pairing")]
+pub mod remote_pairing;
 #[cfg(feature = "restore_service")]
 pub mod restore_service;
 #[cfg(feature = "rsd")]

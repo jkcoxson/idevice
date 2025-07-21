@@ -598,6 +598,25 @@ pub enum IdeviceError {
     #[error("unknown error `{0}` returned from device")]
     UnknownErrorType(String) = -59,
 
+    #[cfg(feature = "remote_pairing")]
+    #[error("could not parse as JSON")]
+    JsonParseFailed(#[from] json::Error) = -63,
+
+    #[cfg(feature = "remote_pairing")]
+    #[error("unknown TLV type: {0}")]
+    UnknownTlv(u8) = -64,
+
+    #[cfg(feature = "remote_pairing")]
+    #[error("malformed TLV")]
+    MalformedTlv = -65,
+
+    #[error("failed to decode base64 string")]
+    Base64Decode(#[from] base64::DecodeError) = -66,
+
+    #[cfg(feature = "remote_pairing")]
+    #[error("pair verify failed")]
+    PairVerifyFailed = -67,
+
     #[error("invalid arguments were passed")]
     FfiInvalidArg = -60,
     #[error("invalid string was passed")]
@@ -750,6 +769,16 @@ impl IdeviceError {
             IdeviceError::FfiInvalidArg => -60,
             IdeviceError::FfiInvalidString => -61,
             IdeviceError::FfiBufferTooSmall(_, _) => -62,
+
+            #[cfg(feature = "remote_pairing")]
+            IdeviceError::JsonParseFailed(_) => -63,
+            #[cfg(feature = "remote_pairing")]
+            IdeviceError::UnknownTlv(_) => -64,
+            #[cfg(feature = "remote_pairing")]
+            IdeviceError::MalformedTlv => -65,
+            IdeviceError::Base64Decode(_) => -66,
+            #[cfg(feature = "remote_pairing")]
+            IdeviceError::PairVerifyFailed => -67,
         }
     }
 }
