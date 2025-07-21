@@ -113,10 +113,6 @@ async fn main() {
     let rsd_port = proxy.handshake.server_rsd_port;
 
     let mut adapter = proxy.create_software_tunnel().expect("no software tunnel");
-    adapter
-        .pcap("/Users/jacksoncoxson/Desktop/rs_xpc.pcap")
-        .await
-        .unwrap();
 
     let stream = AdapterStream::connect(&mut adapter, rsd_port)
         .await
