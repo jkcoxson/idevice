@@ -91,7 +91,7 @@ pub unsafe extern "C" fn adapter_pcap(
     }
 }
 
-/// Closes the adapter connection
+/// Closes the adapter stream connection
 ///
 /// # Arguments
 /// * [`handle`] - The adapter stream handle
@@ -119,10 +119,10 @@ pub unsafe extern "C" fn adapter_close(handle: *mut AdapterStreamHandle) -> *mut
     }
 }
 
-/// Sends data through the adapter
+/// Sends data through the adapter stream
 ///
 /// # Arguments
-/// * [`handle`] - The adapter handle
+/// * [`handle`] - The adapter stream handle
 /// * [`data`] - The data to send
 /// * [`length`] - The length of the data
 ///
@@ -156,10 +156,10 @@ pub unsafe extern "C" fn adapter_send(
     }
 }
 
-/// Receives data from the adapter
+/// Receives data from the adapter stream
 ///
 /// # Arguments
-/// * [`handle`] - The adapter handle
+/// * [`handle`] - The adapter stream handle
 /// * [`data`] - Pointer to a buffer where the received data will be stored
 /// * [`length`] - Pointer to store the actual length of received data
 /// * [`max_length`] - Maximum number of bytes that can be stored in `data`
