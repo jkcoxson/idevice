@@ -1,18 +1,22 @@
 // Jackson Coxson
 
 use std::{
-    ffi::{CStr, c_char},
+    ffi::{CStr, CString, c_char},
     ptr::null_mut,
 };
 
-use crate::{IdeviceFfiError, RUNTIME, ffi_err, util::c_socket_to_rust};
+use crate::{
+    IdeviceFfiError, IdeviceHandle, IdevicePairingFile, RUNTIME, ffi_err, util::c_socket_to_rust,
+};
 use idevice::{
     IdeviceError,
-    usbmuxd::{UsbmuxdAddr, UsbmuxdConnection},
+    usbmuxd::{UsbmuxdAddr, UsbmuxdConnection, UsbmuxdDevice},
 };
+use log::error;
 
 pub struct UsbmuxdConnectionHandle(pub UsbmuxdConnection);
 pub struct UsbmuxdAddrHandle(pub UsbmuxdAddr);
+pub struct UsbmuxdDeviceHandle(pub UsbmuxdDevice);
 
 /// Connects to a usbmuxd instance over TCP
 ///
@@ -108,6 +112,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_unix_socket_connection(
 /// # Safety
 /// `addr` must be a valid CStr
 /// `usbmuxd_connection` must be a valid, non-null pointer to a location where the handle will be stored
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn idevice_usbmuxd_new_default_connection(
     tag: u32,
     usbmuxd_connection: *mut *mut UsbmuxdConnectionHandle,
@@ -129,6 +134,203 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_default_connection(
             unsafe { *usbmuxd_connection = Box::into_raw(boxed) };
             null_mut()
         }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Gets a list of connected devices from usbmuxd.
+///
+/// The returned list must be freed with `idevice_usbmuxd_device_list_free`.
+///
+/// # Arguments
+/// * `usbmuxd_conn` - A valid connection to usbmuxd.
+/// * `devices` - A pointer to a C-style array of `UsbmuxdDeviceHandle` pointers. On success, this will be filled.
+/// * `count` - A pointer to an integer. On success, this will be filled with the number of devices found.
+///
+/// # Returns
+/// An `IdeviceFfiError` on error, `null` on success.
+///
+/// # Safety
+/// * `usbmuxd_conn` must be a valid pointer.
+/// * `devices` and `count` must be valid, non-null pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_usbmuxd_get_devices(
+    usbmuxd_conn: *mut UsbmuxdConnectionHandle,
+    devices: *mut *mut *mut UsbmuxdDeviceHandle,
+    count: *mut libc::c_int,
+) -> *mut IdeviceFfiError {
+    if usbmuxd_conn.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let conn = unsafe { &mut (*usbmuxd_conn).0 };
+
+    let res = RUNTIME.block_on(async { conn.get_devices().await });
+
+    match res {
+        Ok(device_vec) => {
+            unsafe {
+                *count = device_vec.len() as libc::c_int;
+            }
+            let mut c_arr = Vec::with_capacity(device_vec.len());
+            for device in device_vec {
+                let handle = Box::new(UsbmuxdDeviceHandle(device));
+                c_arr.push(Box::into_raw(handle));
+            }
+            let mut c_arr = c_arr.into_boxed_slice();
+            unsafe {
+                *devices = c_arr.as_mut_ptr();
+            }
+            std::mem::forget(c_arr); // Prevent deallocation of the slice's buffer
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Connects to a service on a given device.
+///
+/// This function consumes the `UsbmuxdConnectionHandle`. The handle will be invalid after this call
+/// and must not be used again. The caller is NOT responsible for freeing it.
+/// A new `IdeviceHandle` is returned on success, which must be freed by the caller.
+///
+/// # Arguments
+/// * `usbmuxd_connection` - The connection to use. It will be consumed.
+/// * `device_id` - The ID of the device to connect to.
+/// * `port` - The TCP port on the device to connect to.
+/// * `idevice` - On success, points to the new device connection handle.
+///
+/// # Returns
+/// An `IdeviceFfiError` on error, `null` on success.
+///
+/// # Safety
+/// * `usbmuxd_connection` must be a valid pointer allocated by this library and never used again.
+///   The value is consumed.
+/// * `idevice` must be a valid, non-null pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_usbmuxd_connect_to_device(
+    usbmuxd_connection: *mut UsbmuxdConnectionHandle,
+    device_id: u32,
+    port: u16,
+    label: *const c_char,
+    idevice: *mut *mut IdeviceHandle,
+) -> *mut IdeviceFfiError {
+    if usbmuxd_connection.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    // Take ownership of the connection handle
+    let conn = unsafe {
+        let conn = std::ptr::read(&(*usbmuxd_connection).0); // move the inner connection
+        drop(Box::from_raw(usbmuxd_connection)); // free the wrapper
+        conn
+    };
+
+    let label = unsafe {
+        match CStr::from_ptr(label).to_str() {
+            Ok(s) => s,
+            Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
+        }
+    };
+
+    let res = RUNTIME.block_on(async move { conn.connect_to_device(device_id, port, label).await });
+
+    match res {
+        Ok(device_conn) => {
+            let boxed = Box::new(IdeviceHandle(device_conn));
+            unsafe {
+                *idevice = Box::into_raw(boxed);
+            }
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Reads the pairing record for a given device UDID.
+///
+/// The returned `PairingFileHandle` must be freed with `idevice_pair_record_free`.
+///
+/// # Arguments
+/// * `usbmuxd_conn` - A valid connection to usbmuxd.
+/// * `udid` - The UDID of the device.
+/// * `pair_record` - On success, points to the new pairing file handle.
+///
+/// # Returns
+/// An `IdeviceFfiError` on error, `null` on success.
+///
+/// # Safety
+/// * `usbmuxd_conn` must be a valid pointer.
+/// * `udid` must be a valid, null-terminated C string.
+/// * `pair_record` must be a valid, non-null pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_usbmuxd_get_pair_record(
+    usbmuxd_conn: *mut UsbmuxdConnectionHandle,
+    udid: *const c_char,
+    pair_record: *mut *mut IdevicePairingFile,
+) -> *mut IdeviceFfiError {
+    if usbmuxd_conn.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let conn = unsafe { &mut (*usbmuxd_conn).0 };
+
+    let udid_str = unsafe {
+        match CStr::from_ptr(udid).to_str() {
+            Ok(s) => s,
+            Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
+        }
+    };
+
+    let res = RUNTIME.block_on(async { conn.get_pair_record(udid_str).await });
+
+    match res {
+        Ok(pf) => {
+            let boxed = Box::new(IdevicePairingFile(pf));
+            unsafe {
+                *pair_record = Box::into_raw(boxed);
+            }
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Reads the BUID (Boot-Unique ID) from usbmuxd.
+///
+/// The returned string must be freed with `idevice_string_free`.
+///
+/// # Arguments
+/// * `usbmuxd_conn` - A valid connection to usbmuxd.
+/// * `buid` - On success, points to a newly allocated, null-terminated C string.
+///
+/// # Returns
+/// An `IdeviceFfiError` on error, `null` on success.
+///
+/// # Safety
+/// * `usbmuxd_conn` must be a valid pointer.
+/// * `buid` must be a valid, non-null pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_usbmuxd_get_buid(
+    usbmuxd_conn: *mut UsbmuxdConnectionHandle,
+    buid: *mut *mut c_char,
+) -> *mut IdeviceFfiError {
+    if usbmuxd_conn.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let conn = unsafe { &mut (*usbmuxd_conn).0 };
+
+    let res = RUNTIME.block_on(async { conn.get_buid().await });
+
+    match res {
+        Ok(buid_str) => match CString::new(buid_str) {
+            Ok(c_str) => {
+                unsafe { *buid = c_str.into_raw() };
+                null_mut()
+            }
+            Err(e) => {
+                error!("Unable to convert BUID string to CString: {e:?}. Null interior byte.");
+                ffi_err!(IdeviceError::UnexpectedResponse)
+            }
+        },
         Err(e) => ffi_err!(e),
     }
 }
@@ -224,4 +426,109 @@ pub unsafe extern "C" fn idevice_usbmuxd_addr_free(usbmuxd_addr: *mut UsbmuxdAdd
     if !usbmuxd_addr.is_null() {
         let _ = unsafe { Box::from_raw(usbmuxd_addr) };
     }
+}
+
+/// Frees a list of devices returned by `idevice_usbmuxd_get_devices`.
+///
+/// # Arguments
+/// * `devices` - The array of device handles to free.
+/// * `count` - The number of elements in the array.
+///
+/// # Safety
+/// `devices` must be a valid pointer to an array of `count` device handles
+/// allocated by this library, or NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_usbmuxd_device_list_free(
+    devices: *mut *mut UsbmuxdDeviceHandle,
+    count: libc::c_int,
+) {
+    if devices.is_null() {
+        return;
+    }
+    let slice = unsafe { std::slice::from_raw_parts_mut(devices, count as usize) };
+    for &mut ptr in slice {
+        if !ptr.is_null() {
+            let _ = unsafe { Box::from_raw(ptr) };
+        }
+    }
+}
+
+/// Frees a usbmuxd device
+///
+/// # Arguments
+/// * `device` - The device handle to free.
+///
+/// # Safety
+/// `device` must be a valid pointer to the device handle
+/// allocated by this library, or NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_usbmuxd_device_free(device: *mut UsbmuxdDeviceHandle) {
+    if device.is_null() {
+        return;
+    }
+    let _ = unsafe { Box::from_raw(device) };
+}
+
+/// Gets the UDID from a device handle.
+/// The returned string must be freed by the caller using `idevice_string_free`.
+///
+/// # Safety
+/// `device` must be a valid pointer to a `UsbmuxdDeviceHandle`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_usbmuxd_device_get_udid(
+    device: *const UsbmuxdDeviceHandle,
+) -> *mut c_char {
+    if device.is_null() {
+        return null_mut();
+    }
+    let device = unsafe { &(*device).0 };
+    match CString::new(device.udid.as_str()) {
+        Ok(s) => s.into_raw(),
+        Err(_) => null_mut(),
+    }
+}
+
+/// Gets the device ID from a device handle.
+///
+/// # Safety
+/// `device` must be a valid pointer to a `UsbmuxdDeviceHandle`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_usbmuxd_device_get_device_id(
+    device: *const UsbmuxdDeviceHandle,
+) -> u32 {
+    if device.is_null() {
+        return 0;
+    }
+    unsafe { (*device).0.device_id }
+}
+
+#[repr(C)]
+enum UsbmuxdConnectionType {
+    Usb = 1,
+    Network = 2,
+    Unknown = 3,
+}
+
+/// Gets the connection type (UsbmuxdConnectionType) from a device handle.
+///
+/// # Returns
+/// The enum value of the connection type, or 0 for null device handles
+///
+/// # Safety
+/// `device` must be a valid pointer to a `UsbmuxdDeviceHandle`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_usbmuxd_device_get_connection_type(
+    device: *const UsbmuxdDeviceHandle,
+) -> u8 {
+    if device.is_null() {
+        return 0;
+    }
+    let ct = unsafe { &(*device).0.connection_type };
+
+    let ct = match ct {
+        idevice::usbmuxd::Connection::Usb => UsbmuxdConnectionType::Usb,
+        idevice::usbmuxd::Connection::Network(_) => UsbmuxdConnectionType::Network,
+        idevice::usbmuxd::Connection::Unknown(_) => UsbmuxdConnectionType::Unknown,
+    };
+    ct as u8
 }
