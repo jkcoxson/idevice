@@ -1,12 +1,9 @@
 // Jackson Coxson
 
-use std::io::Write;
-
 use clap::{Arg, Command};
 use idevice::{
-    core_device::AppServiceClient, core_device_proxy::CoreDeviceProxy,
-    debug_proxy::DebugProxyClient, rsd::RsdHandshake, tcp::stream::AdapterStream, IdeviceService,
-    RsdService,
+    core_device::AppServiceClient, core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake,
+    tcp::stream::AdapterStream, IdeviceService, RsdService,
 };
 
 mod common;
