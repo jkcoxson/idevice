@@ -12,6 +12,8 @@ set(EXAMPLES_DIR ${CMAKE_SOURCE_DIR}/../examples)
 # Find all C example files
 file(GLOB EXAMPLE_SOURCES ${EXAMPLES_DIR}/*.c)
 
+find_package(PkgConfig REQUIRED)
+
 # Create an executable for each example file
 foreach(EXAMPLE_FILE ${EXAMPLE_SOURCES})
     # Extract the filename without the path
@@ -25,6 +27,11 @@ foreach(EXAMPLE_FILE ${EXAMPLE_SOURCES})
 
     # Link the static Rust library
     target_link_libraries(${EXAMPLE_NAME} PRIVATE ${STATIC_LIB})
+
+    if(UNIX AND NOT APPLE)
+      target_link_libraries(${EXAMPLE_NAME} PRIVATE m)
+    endif()
+
 
     # libplist
 
