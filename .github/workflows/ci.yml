@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  macos:
+    name: macOS Build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install just
+        run: |
+          curl -sL https://just.systems/install.sh | bash -s -- --to ~/.cargo/bin
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: macos-cargo-${{ hashFiles('**/Cargo.lock', 'justfile') }}
+          restore-keys: macos-cargo-
+
+      - name: Build all Apple targets and examples/tools
+        run: |
+          just macos-ci-check
+
+      - name: Upload static libraries
+        uses: actions/upload-artifact@v4
+        with:
+          name: libidevice-macos-a
+          path: |
+            target/*apple*/release/libidevice_ffi.a
+
+      - name: Upload headers
+        uses: actions/upload-artifact@v4
+        with:
+          name: idevice-headers
+          path: ffi/idevice.h
+
+      - name: Upload macOS+iOS XCFramework
+        uses: actions/upload-artifact@v4
+        with:
+          name: idevice-xcframework
+          path: swift/bundle.zip
+
+      - name: Upload C examples/tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: idevice-c-examples-macos
+          path: cpp/examples/build-c/*
+
+      - name: Upload C++ examples/tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: idevice-cpp-examples-macos
+          path: cpp/examples/build-cpp/*
+
+  linux:
+    name: Linux Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake
+
+      - name: Install just
+        run: |
+          curl -sL https://just.systems/install.sh | bash -s -- --to ~/.cargo/bin
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: linux-cargo-${{ hashFiles('**/Cargo.lock', 'justfile') }}
+          restore-keys: linux-cargo-
+
+      - name: Build Rust and examples/tools
+        run: |
+          just ci-check
+
+      - name: Upload static library
+        uses: actions/upload-artifact@v4
+        with:
+          name: libidevice-linux-a
+          path: target/release/libidevice_ffi.a
+
+      - name: Upload headers
+        uses: actions/upload-artifact@v4
+        with:
+          name: idevice-headers
+          path: ffi/idevice.h
+
+      - name: Upload C examples/tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: idevice-c-examples-linux
+          path: cpp/examples/build-c/*
+
+      - name: Upload C++ examples/tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: idevice-cpp-examples-linux
+          path: cpp/examples/build-cpp/*
+
+  windows:
+    name: Windows Build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install just
+        run: |
+          iwr https://just.systems/install.ps1 -UseBasicParsing | iex
+          echo "$env:USERPROFILE\.cargo\bin" | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\cargo\registry
+            ~\AppData\Local\cargo\git
+            target
+          key: windows-cargo-${{ hashFiles('**/Cargo.lock', 'justfile') }}
+          restore-keys: windows-cargo-
+
+      - name: Build Rust and examples/tools
+        run: |
+          just ci-check
+
+      - name: Upload static library
+        uses: actions/upload-artifact@v4
+        with:
+          name: libidevice-windows-a
+          path: target\release\idevice_ffi.lib
+
+      - name: Upload headers
+        uses: actions/upload-artifact@v4
+        with:
+          name: idevice-headers
+          path: ffi\idevice.h
+
+      - name: Upload C examples/tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: idevice-c-examples-windows
+          path: cpp\examples\build-c\*
+
+      - name: Upload C++ examples/tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: idevice-cpp-examples-windows
+          path: cpp\examples\build-cpp\*
