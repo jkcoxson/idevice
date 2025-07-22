@@ -3,6 +3,30 @@ check-features:
   cargo hack check --feature-powerset --no-dev-deps
   cd ..
 
+ci-check: build-ffi-native build-tools-native build-cpp build-c
+  cargo clippy --all-targets --all-features -- -D warnings
+macos-ci-check: ci-check xcframework
+
+[working-directory: 'ffi']
+build-ffi-native:
+  cargo build --release
+
+[working-directory: 'tools']
+build-tools-native:
+  cargo build --release
+
+create-example-build-folder:
+  mkdir -p cpp/examples/build
+  mkdir -p ffi/examples/build
+
+[working-directory: 'cpp/examples/build']
+build-cpp: build-ffi-native create-example-build-folder
+  cmake .. && make
+
+[working-directory: 'ffi/examples/build']
+build-c: build-ffi-native create-example-build-folder
+  cmake .. && make
+
 xcframework: apple-build
   rm -rf swift/IDevice.xcframework
   rm -rf swift/libs
