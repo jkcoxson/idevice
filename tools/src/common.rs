@@ -55,7 +55,7 @@ pub async fn get_provider(
         Box::new(TcpProvider {
             addr: host,
             pairing_file,
-            label: "ideviceinfo-jkcoxson".to_string(),
+            label: label.to_string(),
         })
     } else {
         let mut usbmuxd = if let Ok(var) = std::env::var("USBMUXD_SOCKET_ADDRESS") {
