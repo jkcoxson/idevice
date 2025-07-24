@@ -3,8 +3,9 @@
 //! Provides functionality for interacting with the misagent service on iOS devices,
 //! which manages provisioning profiles and certificates.
 
-use log::warn;
+use log::{debug, warn};
 use plist::Dictionary;
+use std::io::BufWriter;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService, ReadWrite, RsdService};
@@ -127,22 +128,34 @@ impl<R: ReadWrite> MisagentRsdClient<R> {
 
     /// Send a plist message and read response
     async fn send_plist_request(&mut self, req: plist::Value) -> Result<plist::Dictionary, IdeviceError> {
-        // Serialize the plist to binary format
-        let mut buf = Vec::new();
-        plist::to_writer_binary(&mut buf, &req)?;
+        
+        debug!("Sending plist: {}", crate::pretty_print_plist(&req));
+        
+        // Serialize the plist to XML format (like lockdown implementation)
+        let buf = Vec::new();
+        let mut writer = BufWriter::new(buf);
+        req.to_writer_xml(&mut writer)?;
+        let message = writer.into_inner().unwrap();
+        let message = String::from_utf8(message)?;
+        
+        debug!("Sending plist request with {} bytes", message.len());
         
         // Write the length header (4 bytes, big-endian)
-        let len = buf.len() as u32;
+        let len = message.len() as u32;
         self.socket.write_all(&len.to_be_bytes()).await?;
         
-        // Write the plist data
-        self.socket.write_all(&buf).await?;
+        // Write the XML plist data
+        self.socket.write_all(message.as_bytes()).await?;
         self.socket.flush().await?;
 
-        // Read the response length header
+        debug!("Request sent, waiting for response...");
+
+        // Read the response length header 
         let mut len_buf = [0u8; 4];
         self.socket.read_exact(&mut len_buf).await?;
         let response_len = u32::from_be_bytes(len_buf) as usize;
+
+        debug!("Response length: {} bytes", response_len);
 
         // Read the response data  
         let mut response_buf = vec![0u8; response_len];
@@ -150,13 +163,15 @@ impl<R: ReadWrite> MisagentRsdClient<R> {
 
         // Parse the response plist
         let response: plist::Value = plist::from_bytes(&response_buf)?;
+        debug!("Received plist: {}", crate::pretty_print_plist(&response));
+        
         match response {
             plist::Value::Dictionary(dict) => Ok(dict),
             _ => Err(IdeviceError::UnexpectedResponse),
         }
     }
 
-    /// Installs a provisioning profile on the device
+    /// Installs a provisioning profile on the device using RSD protocol
     ///
     /// # Arguments
     /// * `profile` - The provisioning profile data to install
@@ -169,12 +184,6 @@ impl<R: ReadWrite> MisagentRsdClient<R> {
     /// - Communication fails
     /// - The profile is invalid
     /// - Installation is not permitted
-    ///
-    /// # Example
-    /// ```rust
-    /// let profile_data = std::fs::read("profile.mobileprovision")?;
-    /// client.install(profile_data).await?;
-    /// ```
     pub async fn install(&mut self, profile: Vec<u8>) -> Result<(), IdeviceError> {
         let mut req = Dictionary::new();
         req.insert("MessageType".into(), "Install".into());
@@ -185,19 +194,20 @@ impl<R: ReadWrite> MisagentRsdClient<R> {
 
         match res.remove("Status") {
             Some(plist::Value::Integer(status)) => {
-                if let Some(status) = status.as_unsigned() {
-                    if status == 1 {
+                if let Some(status) = status.as_signed() {
+                    // RSD misagent returns Status: 0 for success (unlike lockdown which uses 1)
+                    if status == 0 {
                         Ok(())
                     } else {
                         Err(IdeviceError::MisagentFailure)
                     }
                 } else {
-                    warn!("Misagent return status wasn't unsigned");
+                    warn!("RSD Misagent return status wasn't signed integer");
                     Err(IdeviceError::UnexpectedResponse)
                 }
             }
             _ => {
-                warn!("Did not get integer status response");
+                warn!("Did not get integer status response from RSD misagent");
                 Err(IdeviceError::UnexpectedResponse)
             }
         }
