@@ -3,7 +3,7 @@
 
 use clap::{Arg, Command};
 use idevice::{
-    core_device_proxy::CoreDeviceProxy, tcp::stream::AdapterStream, xpc::RemoteXpcClient,
+    core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake, tcp::stream::AdapterStream,
     IdeviceService,
 };
 
@@ -66,13 +66,12 @@ async fn main() {
     let rsd_port = proxy.handshake.server_rsd_port;
 
     let mut adapter = proxy.create_software_tunnel().expect("no software tunnel");
-    adapter.pcap("new_xpc.pcap").await.unwrap();
-    let conn = AdapterStream::connect(&mut adapter, rsd_port)
+
+    let stream = AdapterStream::connect(&mut adapter, rsd_port)
         .await
         .expect("no RSD connect");
 
     // Make the connection to RemoteXPC
-    let mut client = RemoteXpcClient::new(Box::new(conn)).await.unwrap();
-
-    println!("{:#?}", client.do_handshake().await);
+    let handshake = RsdHandshake::new(stream).await.unwrap();
+    println!("{:#?}", handshake.services);
 }
