@@ -1,6 +1,7 @@
 // Jackson Coxson
 
 use std::path::PathBuf;
+use std::time::Instant;
 
 use clap::{value_parser, Arg, Command};
 use idevice::{
@@ -10,6 +11,50 @@ use idevice::{
 };
 
 mod common;
+
+/// Maximum chunk size for reading/writing files (64KB - same as AFC MAX_TRANSFER)
+const CHUNK_SIZE: usize = 64 * 1024;
+
+/// Upload a file with progress tracking
+async fn upload_with_progress(
+    file_path: &std::path::Path,
+    dest_file: &mut idevice::afc::file::FileDescriptor<'_>,
+    total_bytes: u64,
+) {
+    use std::io::Read;
+    
+    let mut src_file = std::fs::File::open(file_path).expect("Failed to open source file");
+    let mut buffer = vec![0u8; CHUNK_SIZE];
+    let mut bytes_sent = 0u64;
+    let start_time = Instant::now();
+    
+    loop {
+        let bytes_read = src_file.read(&mut buffer).expect("Failed to read from source file");
+        if bytes_read == 0 {
+            break; // End of file
+        }
+        
+        // Write the chunk
+        dest_file.write(&buffer[..bytes_read]).await.expect("Failed to write chunk");
+        bytes_sent += bytes_read as u64;
+        
+        // Calculate progress and speed
+        let elapsed = start_time.elapsed();
+        let speed = if elapsed.as_secs() > 0 {
+            bytes_sent / elapsed.as_secs()
+        } else {
+            0
+        };
+        
+        // Display progress
+        let percentage = (bytes_sent as f64 / total_bytes as f64) * 100.0;
+        print!("\rProgress: {}/{} bytes ({:.1}%) - Speed: {} bytes/sec", 
+               bytes_sent, total_bytes, percentage, speed);
+        std::io::Write::flush(&mut std::io::stdout()).unwrap();
+    }
+    
+    println!("\nUpload completed successfully!");
+}
 
 #[tokio::main]
 async fn main() {
@@ -68,14 +113,20 @@ async fn main() {
         )
         .subcommand(
             Command::new("upload")
-                .about("Creates a directory")
+                .about("Uploads a file")
                 .arg(
                     Arg::new("file")
                         .required(true)
                         .index(1)
                         .value_parser(value_parser!(PathBuf)),
                 )
-                .arg(Arg::new("path").required(true).index(2)),
+                .arg(Arg::new("path").required(true).index(2))
+                .arg(
+                    Arg::new("progress")
+                        .long("progress")
+                        .help("Show progress during upload")
+                        .action(clap::ArgAction::SetTrue),
+                ),
         )
         .subcommand(
             Command::new("mkdir")
@@ -159,16 +210,27 @@ async fn main() {
             .await
             .expect("Failed to write to file");
     } else if let Some(matches) = matches.subcommand_matches("upload") {
-        let file = matches.get_one::<PathBuf>("file").expect("No path passed");
-        let path = matches.get_one::<String>("path").expect("No path passed");
+        let file_path = matches.get_one::<PathBuf>("file").expect("No path passed");
+        let dest_path = matches.get_one::<String>("path").expect("No path passed");
+        let show_progress = matches.get_flag("progress");
 
-        let bytes = tokio::fs::read(file).await.expect("Failed to read file");
-        let mut file = afc_client
-            .open(path, AfcFopenMode::WrOnly)
+        // Get file size
+        let file_metadata = std::fs::metadata(file_path).expect("Failed to get file metadata");
+        let total_bytes = file_metadata.len();
+        
+        let mut dest_file = afc_client
+            .open(dest_path, AfcFopenMode::WrOnly)
             .await
-            .expect("Failed to open");
+            .expect("Failed to open destination file");
 
-        file.write(&bytes).await.expect("Failed to upload bytes");
+        if show_progress {
+            // Upload with progress tracking
+            upload_with_progress(file_path, &mut dest_file, total_bytes).await;
+        } else {
+            // Original simple upload
+            let bytes = tokio::fs::read(file_path).await.expect("Failed to read file");
+            dest_file.write(&bytes).await.expect("Failed to upload bytes");
+        }
     } else if let Some(matches) = matches.subcommand_matches("remove") {
         let path = matches.get_one::<String>("path").expect("No path passed");
         afc_client.remove(path).await.expect("Failed to remove");
