@@ -208,7 +208,7 @@ async fn main() {
                     unique_chip_id,
                     async |((n, d), _)| {
                         let percent = (n as f64 / d as f64) * 100.0;
-                        print!("\rProgress: {:.2}%", percent);
+                        print!("\rProgress: {percent:.2}%");
                         std::io::stdout().flush().unwrap(); // Make sure it prints immediately
                         if n == d {
                             println!();

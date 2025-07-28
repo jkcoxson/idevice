@@ -37,7 +37,11 @@ async fn main() {
                 .help("Show about information")
                 .action(clap::ArgAction::SetTrue),
         )
-        .subcommand(Command::new("list").about("Lists the items in the directory"))
+        .subcommand(
+            Command::new("list")
+                .about("Lists the items in the directory")
+                .arg(Arg::new("dir").required(false).index(1)),
+        )
         .subcommand(Command::new("flush").about("Flushes reports to the directory"))
         .subcommand(
             Command::new("pull")

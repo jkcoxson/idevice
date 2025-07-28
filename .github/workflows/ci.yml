@@ -122,8 +122,8 @@ jobs:
 
       - name: Install just
         run: |
-          iwr https://just.systems/install.ps1 -UseBasicParsing | iex
-          echo "$env:USERPROFILE\.cargo\bin" | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
+          iex "& {$(irm get.scoop.sh)} -RunAsAdmin"
+          scoop install just
 
       - name: Cache Cargo
         uses: actions/cache@v4
