@@ -417,10 +417,22 @@ impl InstallationProxyClient {
                 ));
             }
 
+            // Extract status information for logging (but don't change callback signature)
+            let mut status_text = "Installing".to_string();
+            if let Some(current_operation) = res.get("CurrentOperation").and_then(|x| x.as_string()) {
+                status_text = current_operation.to_string();
+            } else if let Some(status_description) = res.get("StatusDescription").and_then(|x| x.as_string()) {
+                status_text = status_description.to_string();
+            } else if let Some(phase) = res.get("Phase").and_then(|x| x.as_string()) {
+                status_text = phase.to_string();
+            }
+
             if let Some(c) = res
                 .remove("PercentComplete")
                 .and_then(|x| x.as_unsigned_integer())
             {
+                // Print status information to stdout for the tool to capture
+                println!("Installing on device: {} ({:.1}%)", status_text, c as f64);
                 callback((c, state.clone())).await;
             }
 

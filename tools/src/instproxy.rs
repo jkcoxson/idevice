@@ -93,17 +93,15 @@ async fn main() {
             .install_with_callback(
                 path,
                 None,
-                async |(percentage, _)| {
-                    print!("\rInstalling on device: Installing ({:.1}%)", percentage as f64);
-                    use std::io::Write;
-                    std::io::stdout().flush().unwrap();
+                async |_| {
+                    // Status information is now printed by the library itself
                 },
                 (),
             )
             .await
             .expect("Failed to install");
         
-        println!("\nInstallation completed successfully!");
+        println!("Installation completed successfully!");
     } else {
         eprintln!("Invalid usage, pass -h for help");
     }
