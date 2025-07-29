@@ -94,12 +94,16 @@ async fn main() {
                 path,
                 None,
                 async |(percentage, _)| {
-                    println!("Installing: {percentage}");
+                    print!("\rInstalling on device: Installing ({:.1}%)", percentage as f64);
+                    use std::io::Write;
+                    std::io::stdout().flush().unwrap();
                 },
                 (),
             )
             .await
-            .expect("Failed to install")
+            .expect("Failed to install");
+        
+        println!("\nInstallation completed successfully!");
     } else {
         eprintln!("Invalid usage, pass -h for help");
     }

@@ -40,16 +40,42 @@ async fn upload_with_progress(
         
         // Calculate progress and speed
         let elapsed = start_time.elapsed();
-        let speed = if elapsed.as_secs() > 0 {
+        let speed_bytes_per_sec = if elapsed.as_secs() > 0 {
             bytes_sent / elapsed.as_secs()
         } else {
             0
         };
         
+        // Format speed with appropriate units
+        let speed_formatted = if speed_bytes_per_sec >= 1024 * 1024 {
+            format!("{:.1} MB/s", speed_bytes_per_sec as f64 / (1024.0 * 1024.0))
+        } else if speed_bytes_per_sec >= 1024 {
+            format!("{:.1} KB/s", speed_bytes_per_sec as f64 / 1024.0)
+        } else {
+            format!("{} B/s", speed_bytes_per_sec)
+        };
+        
+        // Format bytes with appropriate units
+        let bytes_sent_formatted = if bytes_sent >= 1024 * 1024 {
+            format!("{:.1} MB", bytes_sent as f64 / (1024.0 * 1024.0))
+        } else if bytes_sent >= 1024 {
+            format!("{:.1} KB", bytes_sent as f64 / 1024.0)
+        } else {
+            format!("{} B", bytes_sent)
+        };
+        
+        let total_bytes_formatted = if total_bytes >= 1024 * 1024 {
+            format!("{:.1} MB", total_bytes as f64 / (1024.0 * 1024.0))
+        } else if total_bytes >= 1024 {
+            format!("{:.1} KB", total_bytes as f64 / 1024.0)
+        } else {
+            format!("{} B", total_bytes)
+        };
+        
         // Display progress
         let percentage = (bytes_sent as f64 / total_bytes as f64) * 100.0;
-        print!("\rProgress: {}/{} bytes ({:.1}%) - Speed: {} bytes/sec", 
-               bytes_sent, total_bytes, percentage, speed);
+        print!("\rTransferring to device: {}/{} ({:.1}%) - {}", 
+               bytes_sent_formatted, total_bytes_formatted, percentage, speed_formatted);
         std::io::Write::flush(&mut std::io::stdout()).unwrap();
     }
     
