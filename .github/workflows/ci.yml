@@ -17,6 +17,10 @@ jobs:
           curl -sL https://just.systems/install.sh | bash -s -- --to ~/.cargo/bin
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
+      - name: Install libplist
+        run: |
+          brew install libplist
+
       - name: Cache Cargo
         uses: actions/cache@v4
         with:
