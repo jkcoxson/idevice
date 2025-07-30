@@ -10,6 +10,8 @@ pub mod core_device_proxy;
 pub mod crashreportcopymobile;
 #[cfg(feature = "debug_proxy")]
 pub mod debug_proxy;
+#[cfg(feature = "diagnostics_relay")]
+pub mod diagnostics_relay;
 #[cfg(feature = "dvt")]
 pub mod dvt;
 #[cfg(feature = "heartbeat")]

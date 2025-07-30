@@ -93,6 +93,10 @@ path = "src/lockdown.rs"
 name = "restore_service"
 path = "src/restore_service.rs"
 
+[[bin]]
+name = "ioreg"
+path = "src/ioreg.rs"
+
 [dependencies]
 idevice = { path = "../idevice", features = ["full"] }
 tokio = { version = "1.43", features = ["io-util", "macros", "time", "full"] }
