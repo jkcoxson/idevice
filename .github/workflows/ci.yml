@@ -14,8 +14,7 @@ jobs:
 
       - name: Install just
         run: |
-          curl -sL https://just.systems/install.sh | bash -s -- --to ~/.cargo/bin
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          brew install just
 
       - name: Install libplist
         run: |
