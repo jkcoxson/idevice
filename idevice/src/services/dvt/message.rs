@@ -501,15 +501,15 @@ impl Message {
 impl std::fmt::Debug for AuxValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AuxValue::String(s) => write!(f, "String({:?})", s),
+            AuxValue::String(s) => write!(f, "String({s:?})"),
             AuxValue::Array(arr) => write!(
                 f,
                 "Array(len={}, first_bytes={:?})",
                 arr.len(),
                 &arr[..arr.len().min(10)]
             ), // Show only first 10 bytes
-            AuxValue::U32(n) => write!(f, "U32({})", n),
-            AuxValue::I64(n) => write!(f, "I64({})", n),
+            AuxValue::U32(n) => write!(f, "U32({n})"),
+            AuxValue::I64(n) => write!(f, "I64({n})"),
         }
     }
 }

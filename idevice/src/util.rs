@@ -103,25 +103,25 @@ fn print_plist(p: &Value, indentation: usize) -> String {
                 .collect();
             format!("{{\n{}\n{}}}", items.join(",\n"), indent)
         }
-        Value::Boolean(b) => format!("{}", b),
+        Value::Boolean(b) => format!("{b}"),
         Value::Data(vec) => {
             let len = vec.len();
             let preview: String = vec
                 .iter()
                 .take(20)
-                .map(|b| format!("{:02X}", b))
+                .map(|b| format!("{b:02X}"))
                 .collect::<Vec<String>>()
                 .join(" ");
             if len > 20 {
-                format!("Data({}... Len: {})", preview, len)
+                format!("Data({preview}... Len: {len})")
             } else {
-                format!("Data({} Len: {})", preview, len)
+                format!("Data({preview} Len: {len})")
             }
         }
         Value::Date(date) => format!("Date({})", date.to_xml_format()),
-        Value::Real(f) => format!("{}", f),
-        Value::Integer(i) => format!("{}", i),
-        Value::String(s) => format!("\"{}\"", s),
+        Value::Real(f) => format!("{f}"),
+        Value::Integer(i) => format!("{i}"),
+        Value::String(s) => format!("\"{s}\""),
         Value::Uid(_uid) => "Uid(?)".to_string(),
         _ => "Unknown".to_string(),
     }

@@ -33,6 +33,8 @@ jobs:
 
       - name: Build all Apple targets and examples/tools
         run: |
+          export HOMEBREW_PREFIX=$(brew --prefix)
+          export CXXFLAGS="-I$HOMEBREW_PREFIX/include"
           just macos-ci-check
 
       - name: Upload static libraries

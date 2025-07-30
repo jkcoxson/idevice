@@ -529,7 +529,7 @@ impl std::fmt::Debug for XPCMessage {
         let known_mask = 0x00000001 | 0x00000100 | 0x00010000 | 0x00400000;
         let custom_bits = self.flags & !known_mask;
         if custom_bits != 0 {
-            parts.push(format!("Custom(0x{:08X})", custom_bits));
+            parts.push(format!("Custom(0x{custom_bits:08X})"));
         }
 
         write!(
