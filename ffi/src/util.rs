@@ -3,12 +3,10 @@
 use std::{
     ffi::c_int,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    os::raw::c_void,
 };
 
 use idevice::IdeviceError;
 use libc::{sockaddr_in, sockaddr_in6};
-use plist::Value;
 
 pub(crate) fn c_socket_to_rust(
     addr: *const libc::sockaddr,
@@ -75,24 +73,4 @@ pub(crate) fn c_addr_to_rust(addr: *const libc::sockaddr) -> Result<IpAddr, Idev
             }
         }
     }
-}
-
-pub(crate) fn plist_to_libplist(v: &Value) -> *mut libc::c_void {
-    let buf = Vec::new();
-    let mut writer = std::io::BufWriter::new(buf);
-    plist::to_writer_xml(&mut writer, v).unwrap();
-    let buf = String::from_utf8(writer.into_inner().unwrap()).unwrap();
-    let p = plist_plus::Plist::from_xml(buf).unwrap();
-    let ptr = p.get_pointer();
-    p.false_drop();
-    ptr
-}
-
-pub(crate) fn libplist_to_plist(v: *mut c_void) -> Value {
-    let v: plist_plus::Plist = v.into();
-    let v_string = v.to_string();
-    v.false_drop();
-
-    let reader = std::io::Cursor::new(v_string.as_bytes());
-    plist::from_reader(reader).unwrap()
 }

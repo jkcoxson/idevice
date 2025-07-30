@@ -6,10 +6,9 @@ use idevice::{
     IdeviceError, IdeviceService, mobile_image_mounter::ImageMounter, provider::IdeviceProvider,
 };
 use plist::Value;
+use plist_ffi::{PlistWrapper, plist_t};
 
-use crate::{
-    IdeviceFfiError, IdeviceHandle, RUNTIME, ffi_err, provider::IdeviceProviderHandle, util,
-};
+use crate::{IdeviceFfiError, IdeviceHandle, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
 
 pub struct ImageMounterHandle(pub ImageMounter);
 
@@ -112,7 +111,7 @@ pub unsafe extern "C" fn image_mounter_free(handle: *mut ImageMounterHandle) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn image_mounter_copy_devices(
     client: *mut ImageMounterHandle,
-    devices: *mut *mut c_void,
+    devices: *mut *mut plist_t,
     devices_len: *mut libc::size_t,
 ) -> *mut IdeviceFfiError {
     let res: Result<Vec<Value>, IdeviceError> = RUNTIME.block_on(async move {
@@ -124,14 +123,14 @@ pub unsafe extern "C" fn image_mounter_copy_devices(
         Ok(devices_list) => {
             let devices_list = devices_list
                 .into_iter()
-                .map(|x| util::plist_to_libplist(&x))
-                .collect::<Vec<*mut std::ffi::c_void>>();
+                .map(|x| plist_ffi::PlistWrapper::new_node(x).into_ptr())
+                .collect::<Vec<plist_t>>();
             let len = devices_list.len();
             let boxed_slice = devices_list.into_boxed_slice();
             let ptr = Box::leak(boxed_slice).as_mut_ptr();
 
             unsafe {
-                *devices = ptr as *mut c_void;
+                *devices = ptr as *mut plist_t;
                 *devices_len = len;
             }
             null_mut()
@@ -558,7 +557,7 @@ pub unsafe extern "C" fn image_mounter_query_nonce(
 pub unsafe extern "C" fn image_mounter_query_personalization_identifiers(
     client: *mut ImageMounterHandle,
     image_type: *const libc::c_char,
-    identifiers: *mut *mut c_void,
+    identifiers: *mut plist_t,
 ) -> *mut IdeviceFfiError {
     if identifiers.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
@@ -583,7 +582,7 @@ pub unsafe extern "C" fn image_mounter_query_personalization_identifiers(
 
     match res {
         Ok(id) => {
-            let plist = util::plist_to_libplist(&plist::Value::Dictionary(id));
+            let plist = PlistWrapper::new_node(Value::Dictionary(id)).into_ptr();
             unsafe { *identifiers = plist };
             null_mut()
         }

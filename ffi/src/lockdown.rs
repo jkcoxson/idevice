@@ -1,8 +1,9 @@
 // Jackson Coxson
 
-use std::{ffi::c_void, ptr::null_mut};
+use std::ptr::null_mut;
 
 use idevice::{IdeviceError, IdeviceService, lockdown::LockdownClient, provider::IdeviceProvider};
+use plist_ffi::{PlistWrapper, plist_t};
 
 use crate::{
     IdeviceFfiError, IdeviceHandle, IdevicePairingFile, RUNTIME, ffi_err,
@@ -176,7 +177,7 @@ pub unsafe extern "C" fn lockdownd_get_value(
     client: *mut LockdowndClientHandle,
     key: *const libc::c_char,
     domain: *const libc::c_char,
-    out_plist: *mut *mut c_void,
+    out_plist: *mut plist_t,
 ) -> *mut IdeviceFfiError {
     if key.is_null() || out_plist.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
@@ -204,7 +205,7 @@ pub unsafe extern "C" fn lockdownd_get_value(
     match res {
         Ok(value) => {
             unsafe {
-                *out_plist = crate::util::plist_to_libplist(&value);
+                *out_plist = plist_ffi::PlistWrapper::new_node(value).into_ptr();
             }
             null_mut()
         }
@@ -228,7 +229,7 @@ pub unsafe extern "C" fn lockdownd_get_value(
 pub unsafe extern "C" fn lockdownd_get_all_values(
     client: *mut LockdowndClientHandle,
     domain: *const libc::c_char,
-    out_plist: *mut *mut c_void,
+    out_plist: *mut plist_t,
 ) -> *mut IdeviceFfiError {
     if out_plist.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
@@ -252,7 +253,7 @@ pub unsafe extern "C" fn lockdownd_get_all_values(
     match res {
         Ok(dict) => {
             unsafe {
-                *out_plist = crate::util::plist_to_libplist(&plist::Value::Dictionary(dict));
+                *out_plist = PlistWrapper::new_node(plist::Value::Dictionary(dict)).into_ptr();
             }
             null_mut()
         }

@@ -12,7 +12,7 @@ once_cell = "1.21.1"
 tokio = { version = "1.44.1", features = ["full"] }
 libc = "0.2.171"
 plist = "1.7.1"
-plist_plus = { version = "0.2.6", features = ["dynamic"] }
+plist_ffi = "0.1.3"
 
 [features]
 afc = ["idevice/afc"]
@@ -67,7 +67,7 @@ full = [
 default = ["full"]
 
 [build-dependencies]
-cbindgen = "0.28.0"
+cbindgen = "0.29.0"
 
 [lib]
 crate-type = ["staticlib"]
