@@ -18,9 +18,7 @@ jobs:
 
       - name: Install libplist
         run: |
-          brew install libplist && \
-          mkdir -p /usr/local/include/plist && \
-          wget -O /usr/local/include/plist/plist.h https://raw.githubusercontent.com/libimobiledevice/libplist/refs/heads/master/include/plist/plist.h
+          brew install libplist
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -75,9 +73,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y build-essential cmake libplist && \
-          mkdir -p /usr/local/include/plist && \
-          wget -O /usr/local/include/plist/plist.h https://raw.githubusercontent.com/libimobiledevice/libplist/refs/heads/master/include/plist/plist.h
+          sudo apt-get update && sudo apt-get install -y build-essential cmake libplist
 
       - name: Install just
         run: |
