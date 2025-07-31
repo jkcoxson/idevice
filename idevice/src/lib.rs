@@ -390,7 +390,8 @@ impl Idevice {
         pairing_file: &pairing_file::PairingFile,
     ) -> Result<(), IdeviceError> {
         if CryptoProvider::get_default().is_none() {
-            let crypto_provider = {
+            // rust-analyzer will choke on this block, don't worry about it
+            let crypto_provider: CryptoProvider = {
                 #[cfg(all(feature = "ring", not(feature = "aws-lc")))]
                 {
                     debug!("Using ring crypto backend");
@@ -405,7 +406,7 @@ impl Idevice {
 
                 #[cfg(not(any(feature = "ring", feature = "aws-lc")))]
                 {
-                    panic!(
+                    compile_error!(
                         "No crypto backend was selected! Specify an idevice feature for a crypto backend"
                     );
                 }
