@@ -5,7 +5,7 @@ edition = "2024"
 
 
 [dependencies]
-idevice = { path = "../idevice" }
+idevice = { path = "../idevice", default-features = false }
 log = "0.4.26"
 simplelog = "0.12.2"
 once_cell = "1.21.1"
@@ -15,6 +15,10 @@ plist = "1.7.1"
 plist_ffi = "0.1.3"
 
 [features]
+aws-lc = ["idevice/aws-lc"]
+ring = ["idevice/ring"]
+
+
 afc = ["idevice/afc"]
 amfi = ["idevice/amfi"]
 core_device = ["idevice/core_device"]
@@ -64,7 +68,7 @@ full = [
   "springboardservices",
   "syslog_relay",
 ]
-default = ["full"]
+default = ["full", "aws-lc"]
 
 [build-dependencies]
 cbindgen = "0.29.0"

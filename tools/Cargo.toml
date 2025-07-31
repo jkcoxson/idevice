@@ -94,7 +94,7 @@ name = "restore_service"
 path = "src/restore_service.rs"
 
 [dependencies]
-idevice = { path = "../idevice", features = ["full"] }
+idevice = { path = "../idevice", features = ["full"], default-features = false }
 tokio = { version = "1.43", features = ["full"] }
 log = { version = "0.4" }
 env_logger = { version = "0.11" }
@@ -105,3 +105,8 @@ clap = { version = "4.5" }
 plist = { version = "1.7" }
 ns-keyed-archive = "0.1.2"
 uuid = "1.16"
+
+[features]
+default = ["aws-lc"]
+aws-lc = ["idevice/aws-lc"]
+ring = ["idevice/ring"]

@@ -390,15 +390,34 @@ impl Idevice {
         pairing_file: &pairing_file::PairingFile,
     ) -> Result<(), IdeviceError> {
         if CryptoProvider::get_default().is_none() {
-            let crypto_provider = if cfg!(feature = "ring") {
-                debug!("Using ring crypto backend");
-                rustls::crypto::ring::default_provider()
-            } else if cfg!(feature = "aws-lc") {
-                debug!("Using aws-lc crypto backend");
-                rustls::crypto::aws_lc_rs::default_provider()
-            } else {
-                panic!("No crypto provider compiled in! Use one of the features for idevice to specify a provider");
+            let crypto_provider = {
+                #[cfg(all(feature = "ring", not(feature = "aws-lc")))]
+                {
+                    debug!("Using ring crypto backend");
+                    rustls::crypto::ring::default_provider()
+                }
+
+                #[cfg(all(feature = "aws-lc", not(feature = "ring")))]
+                {
+                    debug!("Using aws-lc crypto backend");
+                    rustls::crypto::aws_lc_rs::default_provider()
+                }
+
+                #[cfg(not(any(feature = "ring", feature = "aws-lc")))]
+                {
+                    panic!(
+                        "No crypto backend was selected! Specify an idevice feature for a crypto backend"
+                    );
+                }
+
+                #[cfg(all(feature = "ring", feature = "aws-lc"))]
+                {
+                    compile_error!(
+                        "Cannot enable both `ring` and `aws-lc` features at the same time"
+                    );
+                }
             };
+
             if let Err(e) = CryptoProvider::install_default(crypto_provider) {
                 // For whatever reason, getting the default provider will return None on iOS at
                 // random. Installing the default provider a second time will return an error, so
