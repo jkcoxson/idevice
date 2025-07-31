@@ -12,7 +12,7 @@ keywords = ["lockdownd", "ios"]
 
 [dependencies]
 tokio = { version = "1.43", features = ["io-util"] }
-tokio-rustls = "0.26"
+tokio-rustls = { version = "0.26", default-features = false }
 rustls = { version = "0.23", default-features = false }
 
 plist = { version = "1.7" }
@@ -35,7 +35,6 @@ bytes = { version = "1.10", optional = true }
 
 reqwest = { version = "0.12", features = [
   "json",
-  "rustls-tls",
 ], optional = true, default-features = false }
 rand = { version = "0.9", optional = true }
 futures = { version = "0.3", optional = true }
@@ -57,8 +56,8 @@ bytes = "1.10.1"
 
 [features]
 default = ["aws-lc"]
-aws-lc = ["rustls/aws-lc-rs"]
-ring = ["rustls/ring"]
+aws-lc = ["rustls/aws-lc-rs", "tokio-rustls/aws-lc-rs"]
+ring = ["rustls/ring", "tokio-rustls/ring"]
 
 afc = ["dep:chrono"]
 amfi = []
