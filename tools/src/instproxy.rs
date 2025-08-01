@@ -96,13 +96,15 @@ async fn main() {
             .install_with_callback(
                 path,
                 None,
-                async |(percentage, _)| {
-                    println!("Installing: {percentage}");
+                async |_| {
+                    // Status information is now printed by the library itself
                 },
                 (),
             )
             .await
-            .expect("Failed to install")
+            .expect("Failed to install");
+        
+        println!("Installation completed successfully!");
     } else {
         eprintln!("Invalid usage, pass -h for help");
     }
