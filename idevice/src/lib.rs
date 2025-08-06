@@ -116,6 +116,10 @@ impl Idevice {
         }
     }
 
+    pub fn get_socket(self) -> Option<Box<dyn ReadWrite>> {
+        self.socket
+    }
+
     /// Queries the device type
     ///
     /// Sends a QueryType request and parses the response
