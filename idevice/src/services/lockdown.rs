@@ -86,16 +86,16 @@ impl LockdownClient {
     /// ```
     pub async fn get_value(
         &mut self,
-        key: impl Into<String>,
-        domain: Option<String>,
+        key: Option<&str>,
+        domain: Option<&str>,
     ) -> Result<Value, IdeviceError> {
-        let key = key.into();
-
         let mut request = plist::Dictionary::new();
         request.insert("Label".into(), self.idevice.label.clone().into());
         request.insert("Request".into(), "GetValue".into());
-        request.insert("Key".into(), key.into());
 
+        if let Some(key) = key {
+            request.insert("Key".into(), key.into());
+        }
         if let Some(domain) = domain {
             request.insert("Domain".into(), domain.into());
         }
@@ -106,43 +106,6 @@ impl LockdownClient {
         let message: plist::Dictionary = self.idevice.read_plist().await?;
         match message.get("Value") {
             Some(m) => Ok(m.to_owned()),
-            None => Err(IdeviceError::UnexpectedResponse),
-        }
-    }
-
-    /// Retrieves all available values from the device
-    ///
-    /// # Returns
-    /// A dictionary containing all device values
-    ///
-    /// # Errors
-    /// Returns `IdeviceError` if:
-    /// - Communication fails
-    /// - The response is malformed
-    ///
-    /// # Example
-    /// ```rust
-    /// let all_values = client.get_all_values().await?;
-    /// for (key, value) in all_values {
-    ///     println!("{}: {:?}", key, value);
-    /// }
-    /// ```
-    pub async fn get_all_values(
-        &mut self,
-        domain: Option<String>,
-    ) -> Result<plist::Dictionary, IdeviceError> {
-        let mut request = plist::Dictionary::new();
-        request.insert("Label".into(), self.idevice.label.clone().into());
-        request.insert("Request".into(), "GetValue".into());
-        if let Some(domain) = domain {
-            request.insert("Domain".into(), domain.into());
-        }
-
-        let message = plist::to_value(&request)?;
-        self.idevice.send_plist(message).await?;
-        let message: plist::Dictionary = self.idevice.read_plist().await?;
-        match message.get("Value") {
-            Some(m) => Ok(plist::from_value(m)?),
             None => Err(IdeviceError::UnexpectedResponse),
         }
     }
@@ -167,7 +130,7 @@ impl LockdownClient {
         &mut self,
         key: impl Into<String>,
         value: Value,
-        domain: Option<String>,
+        domain: Option<&str>,
     ) -> Result<(), IdeviceError> {
         let key = key.into();
 
@@ -321,7 +284,7 @@ impl LockdownClient {
         let host_id = host_id.into();
         let system_buid = system_buid.into();
 
-        let pub_key = self.get_value("DevicePublicKey", None).await?;
+        let pub_key = self.get_value(Some("DevicePublicKey"), None).await?;
         let pub_key = match pub_key.as_data().map(|x| x.to_vec()) {
             Some(p) => p,
             None => {
@@ -330,7 +293,7 @@ impl LockdownClient {
             }
         };
 
-        let wifi_mac = self.get_value("WiFiAddress", None).await?;
+        let wifi_mac = self.get_value(Some("WiFiAddress"), None).await?;
         let wifi_mac = match wifi_mac.as_string() {
             Some(w) => w,
             None => {

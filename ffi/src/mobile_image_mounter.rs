@@ -514,7 +514,7 @@ pub unsafe extern "C" fn image_mounter_query_nonce(
     let image_type = if !personalized_image_type.is_null() {
         let image_type_cstr = unsafe { std::ffi::CStr::from_ptr(personalized_image_type) };
         match image_type_cstr.to_str() {
-            Ok(s) => Some(s.to_string()),
+            Ok(s) => Some(s),
             Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
         }
     } else {
@@ -566,7 +566,7 @@ pub unsafe extern "C" fn image_mounter_query_personalization_identifiers(
     let image_type = if !image_type.is_null() {
         let image_type_cstr = unsafe { std::ffi::CStr::from_ptr(image_type) };
         match image_type_cstr.to_str() {
-            Ok(s) => Some(s.to_string()),
+            Ok(s) => Some(s),
             Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
         }
     } else {

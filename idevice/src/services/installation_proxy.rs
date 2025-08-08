@@ -98,10 +98,10 @@ impl InstallationProxyClient {
     /// ```
     pub async fn get_apps(
         &mut self,
-        application_type: Option<String>,
+        application_type: Option<&str>,
         bundle_identifiers: Option<Vec<String>>,
     ) -> Result<HashMap<String, plist::Value>, IdeviceError> {
-        let application_type = application_type.unwrap_or("Any".to_string());
+        let application_type = application_type.unwrap_or("Any");
         let mut options = plist::Dictionary::new();
         if let Some(ids) = bundle_identifiers {
             let ids = ids

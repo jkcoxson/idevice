@@ -113,7 +113,7 @@ impl ImageMounter {
     /// Returns `IdeviceError::NotFound` if image doesn't exist
     pub async fn lookup_image(
         &mut self,
-        image_type: impl Into<String>,
+        image_type: impl Into<&str>,
     ) -> Result<Vec<u8>, IdeviceError> {
         let image_type = image_type.into();
         let mut req = plist::Dictionary::new();
@@ -370,7 +370,7 @@ impl ImageMounter {
     /// Returns `IdeviceError` if query fails
     pub async fn query_nonce(
         &mut self,
-        personalized_image_type: Option<String>,
+        personalized_image_type: Option<&str>,
     ) -> Result<Vec<u8>, IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("Command".into(), "QueryNonce".into());
@@ -400,7 +400,7 @@ impl ImageMounter {
     /// Returns `IdeviceError` if query fails
     pub async fn query_personalization_identifiers(
         &mut self,
-        image_type: Option<String>,
+        image_type: Option<&str>,
     ) -> Result<plist::Dictionary, IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("Command".into(), "QueryPersonalizationIdentifiers".into());
@@ -626,10 +626,7 @@ impl ImageMounter {
         request.insert("ApECID", unique_chip_id);
         request.insert(
             "ApNonce",
-            plist::Value::Data(
-                self.query_nonce(Some("DeveloperDiskImage".to_string()))
-                    .await?,
-            ),
+            plist::Value::Data(self.query_nonce(Some("DeveloperDiskImage")).await?),
         );
         request.insert("ApProductionMode", true);
         request.insert("ApSecurityDomain", 1);

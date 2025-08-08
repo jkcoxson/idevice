@@ -69,10 +69,7 @@ async fn main() {
         .await
         .expect("Unable to connect to instproxy");
     if matches.subcommand_matches("lookup").is_some() {
-        let apps = instproxy_client
-            .get_apps(Some("User".to_string()), None)
-            .await
-            .unwrap();
+        let apps = instproxy_client.get_apps(Some("User"), None).await.unwrap();
         for app in apps.keys() {
             println!("{app}");
         }

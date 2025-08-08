@@ -109,11 +109,14 @@ pub unsafe extern "C" fn installation_proxy_get_apps(
     let app_type = if application_type.is_null() {
         None
     } else {
-        Some(unsafe {
-            std::ffi::CStr::from_ptr(application_type)
-                .to_string_lossy()
-                .into_owned()
-        })
+        Some(
+            match unsafe { std::ffi::CStr::from_ptr(application_type) }.to_str() {
+                Ok(a) => a,
+                Err(_) => {
+                    return ffi_err!(IdeviceError::InvalidCString);
+                }
+            },
+        )
     };
 
     let bundle_ids = if bundle_identifiers.is_null() {
@@ -125,9 +128,9 @@ pub unsafe extern "C" fn installation_proxy_get_apps(
                 .map(|&s| {
                     unsafe { std::ffi::CStr::from_ptr(s) }
                         .to_string_lossy()
-                        .into_owned()
+                        .to_string()
                 })
-                .collect(),
+                .collect::<Vec<String>>(),
         )
     };
 

@@ -67,7 +67,9 @@ async fn main() {
 
     println!(
         "{:?}",
-        lockdown_client.get_value("ProductVersion", None).await
+        lockdown_client
+            .get_value(Some("ProductVersion"), None)
+            .await
     );
 
     println!(
@@ -82,5 +84,5 @@ async fn main() {
             .await
     );
     println!("{:?}", lockdown_client.idevice.get_type().await.unwrap());
-    println!("{:#?}", lockdown_client.get_all_values(None).await);
+    println!("{:#?}", lockdown_client.get_value(None, None).await);
 }
