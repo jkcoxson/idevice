@@ -63,6 +63,12 @@ pub trait IdeviceService: Sized {
     ///
     /// # Arguments
     /// * `provider` - The device provider that can supply connections
+    ///
+    // From the docs
+    // │ │ ├╴  use of `async fn` in public traits is discouraged as auto trait bounds cannot be specified
+    // │ │ │    you can suppress this lint if you plan to use the trait only in your own code, or do not care about auto traits like `Send` on the `Future`
+    // │ │ │    `#[warn(async_fn_in_trait)]` on by default rustc (async_fn_in_trait) [66, 5]
+    #[allow(async_fn_in_trait)]
     async fn connect(provider: &dyn IdeviceProvider) -> Result<Self, IdeviceError> {
         let mut lockdown = LockdownClient::connect(provider).await?;
         lockdown
@@ -81,6 +87,7 @@ pub trait IdeviceService: Sized {
         Self::from_stream(idevice).await
     }
 
+    #[allow(async_fn_in_trait)]
     async fn from_stream(idevice: Idevice) -> Result<Self, IdeviceError>;
 }
 
