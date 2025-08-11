@@ -26,43 +26,8 @@ impl IdeviceService for CrashReportCopyMobileClient {
         obf!("com.apple.crashreportcopymobile")
     }
 
-    /// Connects to the CrashReportCopyMobile service on the device.
-    ///
-    /// # Arguments
-    /// * `provider` - The provider used to access the device and pairing info.
-    ///
-    /// # Returns
-    /// A connected `CrashReportCopyMobileClient`.
-    ///
-    /// # Errors
-    /// Returns `IdeviceError` if the connection fails at any stage.
-    ///
-    /// # Process
-    /// 1. Connects to the lockdownd service.
-    /// 2. Starts a lockdown session.
-    /// 3. Requests the CrashReportCopyMobile service.
-    /// 4. Establishes a connection to the service.
-    /// 5. Performs SSL handshake if required.
-    async fn connect(
-        provider: &dyn crate::provider::IdeviceProvider,
-    ) -> Result<Self, IdeviceError> {
-        let mut lockdown = LockdownClient::connect(provider).await?;
-        lockdown
-            .start_session(&provider.get_pairing_file().await?)
-            .await?;
-
-        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
-
-        let mut idevice = provider.connect(port).await?;
-        if ssl {
-            idevice
-                .start_session(&provider.get_pairing_file().await?)
-                .await?;
-        }
-
-        Ok(Self {
-            afc_client: AfcClient::new(idevice),
-        })
+    async fn from_stream(idevice: Idevice) -> Result<Self, crate::IdeviceError> {
+        Ok(Self::new(idevice))
     }
 }
 

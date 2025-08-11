@@ -7,7 +7,7 @@ use chrono::{DateTime, NaiveDateTime};
 use plist::Dictionary;
 use tokio::io::AsyncWriteExt;
 
-use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
+use crate::{obf, Idevice, IdeviceError, IdeviceService};
 
 /// Client for interacting with the iOS device OsTraceRelay service
 pub struct OsTraceRelayClient {
@@ -21,40 +21,7 @@ impl IdeviceService for OsTraceRelayClient {
         obf!("com.apple.os_trace_relay")
     }
 
-    /// Establishes a connection to the OsTraceRelay service
-    ///
-    /// # Arguments
-    /// * `provider` - Device connection provider
-    ///
-    /// # Returns
-    /// A connected `OsTraceRelayClient` instance
-    ///
-    /// # Errors
-    /// Returns `IdeviceError` if any step of the connection process fails
-    ///
-    /// # Process
-    /// 1. Connects to lockdownd service
-    /// 2. Starts a lockdown session
-    /// 3. Requests the OsTraceRelay service port
-    /// 4. Establishes connection to the OsTraceRelay port
-    /// 5. Optionally starts TLS if required by service
-    async fn connect(
-        provider: &dyn crate::provider::IdeviceProvider,
-    ) -> Result<Self, IdeviceError> {
-        let mut lockdown = LockdownClient::connect(provider).await?;
-        lockdown
-            .start_session(&provider.get_pairing_file().await?)
-            .await?;
-
-        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
-
-        let mut idevice = provider.connect(port).await?;
-        if ssl {
-            idevice
-                .start_session(&provider.get_pairing_file().await?)
-                .await?;
-        }
-
+    async fn from_stream(idevice: Idevice) -> Result<Self, crate::IdeviceError> {
         Ok(Self { idevice })
     }
 }

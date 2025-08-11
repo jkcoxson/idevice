@@ -3,7 +3,7 @@
 //! Provides functionality for interacting with the SpringBoard services on iOS devices,
 //! which manages home screen and app icon related operations.
 
-use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
+use crate::{obf, Idevice, IdeviceError, IdeviceService};
 
 /// Client for interacting with the iOS SpringBoard services
 ///
@@ -20,41 +20,8 @@ impl IdeviceService for SpringBoardServicesClient {
         obf!("com.apple.springboardservices")
     }
 
-    /// Establishes a connection to the SpringBoard services
-    ///
-    /// # Arguments
-    /// * `provider` - Device connection provider
-    ///
-    /// # Returns
-    /// A connected `SpringBoardServicesClient` instance
-    ///
-    /// # Errors
-    /// Returns `IdeviceError` if any step of the connection process fails
-    ///
-    /// # Process
-    /// 1. Connects to lockdownd service
-    /// 2. Starts a lockdown session
-    /// 3. Requests the SpringBoard services port
-    /// 4. Establishes connection to the service port
-    /// 5. Optionally starts TLS if required by service
-    async fn connect(
-        provider: &dyn crate::provider::IdeviceProvider,
-    ) -> Result<Self, IdeviceError> {
-        let mut lockdown = LockdownClient::connect(provider).await?;
-        lockdown
-            .start_session(&provider.get_pairing_file().await?)
-            .await?;
-
-        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
-
-        let mut idevice = provider.connect(port).await?;
-        if ssl {
-            idevice
-                .start_session(&provider.get_pairing_file().await?)
-                .await?;
-        }
-
-        Ok(Self { idevice })
+    async fn from_stream(idevice: Idevice) -> Result<Self, crate::IdeviceError> {
+        Ok(Self::new(idevice))
     }
 }
 

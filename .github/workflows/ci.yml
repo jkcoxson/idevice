@@ -16,10 +16,6 @@ jobs:
         run: |
           brew install just
 
-      - name: Install libplist
-        run: |
-          brew install libplist
-
       - name: Cache Cargo
         uses: actions/cache@v4
         with:
@@ -73,7 +69,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y build-essential cmake libplist
+          sudo apt-get update && sudo apt-get install -y build-essential cmake
 
       - name: Install just
         run: |

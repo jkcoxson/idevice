@@ -37,6 +37,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub use util::{pretty_print_dictionary, pretty_print_plist};
 
+use crate::services::lockdown::LockdownClient;
+
 /// A trait combining all required characteristics for a device communication socket
 ///
 /// This serves as a convenience trait for any type that can be used as an asynchronous
@@ -61,9 +63,25 @@ pub trait IdeviceService: Sized {
     ///
     /// # Arguments
     /// * `provider` - The device provider that can supply connections
-    fn connect(
-        provider: &dyn IdeviceProvider,
-    ) -> impl std::future::Future<Output = Result<Self, IdeviceError>> + Send;
+    async fn connect(provider: &dyn IdeviceProvider) -> Result<Self, IdeviceError> {
+        let mut lockdown = LockdownClient::connect(provider).await?;
+        lockdown
+            .start_session(&provider.get_pairing_file().await?)
+            .await?;
+
+        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
+
+        let mut idevice = provider.connect(port).await?;
+        if ssl {
+            idevice
+                .start_session(&provider.get_pairing_file().await?)
+                .await?;
+        }
+
+        Self::from_stream(idevice).await
+    }
+
+    async fn from_stream(idevice: Idevice) -> Result<Self, IdeviceError>;
 }
 
 #[cfg(feature = "rsd")]

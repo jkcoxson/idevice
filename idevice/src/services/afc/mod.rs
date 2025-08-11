@@ -11,7 +11,7 @@ use log::warn;
 use opcode::{AfcFopenMode, AfcOpcode};
 use packet::{AfcPacket, AfcPacketHeader};
 
-use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
+use crate::{obf, Idevice, IdeviceError, IdeviceService};
 
 pub mod errors;
 pub mod file;
@@ -65,30 +65,7 @@ impl IdeviceService for AfcClient {
         obf!("com.apple.afc")
     }
 
-    /// Connects to the AFC service on the device
-    ///
-    /// # Arguments
-    /// * `provider` - The iDevice provider to use for the connection
-    ///
-    /// # Returns
-    /// A new `AfcClient` instance on success
-    async fn connect(
-        provider: &dyn crate::provider::IdeviceProvider,
-    ) -> Result<Self, IdeviceError> {
-        let mut lockdown = LockdownClient::connect(provider).await?;
-        lockdown
-            .start_session(&provider.get_pairing_file().await?)
-            .await?;
-
-        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
-
-        let mut idevice = provider.connect(port).await?;
-        if ssl {
-            idevice
-                .start_session(&provider.get_pairing_file().await?)
-                .await?;
-        }
-
+    async fn from_stream(idevice: Idevice) -> Result<Self, IdeviceError> {
         Ok(Self {
             idevice,
             package_number: 0,

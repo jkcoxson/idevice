@@ -42,6 +42,10 @@ impl IdeviceService for LockdownClient {
         let idevice = provider.connect(Self::LOCKDOWND_PORT).await?;
         Ok(Self::new(idevice))
     }
+
+    async fn from_stream(idevice: Idevice) -> Result<Self, crate::IdeviceError> {
+        Ok(Self::new(idevice))
+    }
 }
 
 /// Internal structure for lockdown protocol requests

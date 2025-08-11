@@ -6,7 +6,7 @@
 
 use plist::{Dictionary, Value};
 
-use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
+use crate::{obf, Idevice, IdeviceError, IdeviceService};
 
 use super::afc::AfcClient;
 
@@ -25,41 +25,8 @@ impl IdeviceService for HouseArrestClient {
         obf!("com.apple.mobile.house_arrest")
     }
 
-    /// Establishes a connection to the HouseArrest service
-    ///
-    /// # Arguments
-    /// * `provider` - Device connection provider
-    ///
-    /// # Returns
-    /// A connected `HouseArrestClient` instance
-    ///
-    /// # Errors
-    /// Returns `IdeviceError` if any step of the connection process fails
-    ///
-    /// # Process
-    /// 1. Connect to the lockdownd service
-    /// 2. Start a lockdown session
-    /// 3. Request the HouseArrest service
-    /// 4. Connect to the returned service port
-    /// 5. Start TLS if required by the service
-    async fn connect(
-        provider: &dyn crate::provider::IdeviceProvider,
-    ) -> Result<Self, IdeviceError> {
-        let mut lockdown = LockdownClient::connect(provider).await?;
-        lockdown
-            .start_session(&provider.get_pairing_file().await?)
-            .await?;
-
-        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
-
-        let mut idevice = provider.connect(port).await?;
-        if ssl {
-            idevice
-                .start_session(&provider.get_pairing_file().await?)
-                .await?;
-        }
-
-        Ok(Self { idevice })
+    async fn from_stream(idevice: Idevice) -> Result<Self, crate::IdeviceError> {
+        Ok(Self::new(idevice))
     }
 }
 
