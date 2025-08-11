@@ -105,7 +105,7 @@ impl MisagentClient {
         match res.remove("Status") {
             Some(plist::Value::Integer(status)) => {
                 if let Some(status) = status.as_unsigned() {
-                    if status == 1 {
+                    if status == 0 {
                         Ok(())
                     } else {
                         Err(IdeviceError::MisagentFailure)
@@ -155,7 +155,7 @@ impl MisagentClient {
         match res.remove("Status") {
             Some(plist::Value::Integer(status)) => {
                 if let Some(status) = status.as_unsigned() {
-                    if status == 1 {
+                    if status == 0 {
                         Ok(())
                     } else {
                         Err(IdeviceError::MisagentFailure)
