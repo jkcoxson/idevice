@@ -2,6 +2,8 @@
 pub mod afc;
 #[cfg(feature = "amfi")]
 pub mod amfi;
+#[cfg(feature = "companion_proxy")]
+pub mod companion_proxy;
 #[cfg(feature = "core_device")]
 pub mod core_device;
 #[cfg(feature = "core_device_proxy")]

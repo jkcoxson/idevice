@@ -3,7 +3,7 @@ name = "idevice"
 description = "A Rust library to interact with services on iOS devices."
 authors = ["Jackson Coxson"]
 version = "0.1.37"
-edition = "2021"
+edition = "2024"
 license = "MIT"
 documentation = "https://docs.rs/idevice"
 repository = "https://github.com/jkcoxson/idevice"
@@ -62,6 +62,7 @@ ring = ["rustls/ring", "tokio-rustls/ring"]
 
 afc = ["dep:chrono"]
 amfi = []
+companion_proxy = []
 core_device = ["xpc", "dep:uuid"]
 core_device_proxy = ["dep:serde_json", "dep:json", "dep:byteorder"]
 crashreportcopymobile = ["afc"]
@@ -95,6 +96,7 @@ xpc = ["dep:indexmap", "dep:uuid"]
 full = [
   "afc",
   "amfi",
+  "companion_proxy",
   "core_device",
   "core_device_proxy",
   "crashreportcopymobile",

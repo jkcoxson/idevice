@@ -660,6 +660,10 @@ pub enum IdeviceError {
     FfiInvalidString = -61,
     #[error("buffer passed is too small - needs {0}, got {1}")]
     FfiBufferTooSmall(usize, usize) = -62,
+    #[error("unsupported watch key")]
+    UnsupportedWatchKey = -63,
+    #[error("malformed command")]
+    MalformedCommand = -64,
 }
 
 impl IdeviceError {
@@ -683,6 +687,8 @@ impl IdeviceError {
             "UserDeniedPairing" => Some(Self::UserDeniedPairing),
             #[cfg(feature = "pair")]
             "PasswordProtected" => Some(Self::PasswordProtected),
+            "UnsupportedWatchKey" => Some(Self::UnsupportedWatchKey),
+            "MalformedCommand" => Some(Self::MalformedCommand),
             "InternalError" => {
                 let detailed_error = context
                     .get("DetailedError")
@@ -806,6 +812,8 @@ impl IdeviceError {
             IdeviceError::FfiInvalidArg => -60,
             IdeviceError::FfiInvalidString => -61,
             IdeviceError::FfiBufferTooSmall(_, _) => -62,
+            IdeviceError::UnsupportedWatchKey => -63,
+            IdeviceError::MalformedCommand => -64,
         }
     }
 }
