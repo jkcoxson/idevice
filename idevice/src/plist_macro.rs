@@ -123,6 +123,21 @@ macro_rules! plist_internal {
         $crate::plist_unexpected!($unexpected)
     };
 
+    (@array [$($elems:expr,)*] ? $maybe:expr , $($rest:tt)*) => {
+        if let Some(__v) = $crate::plist_macro::plist_maybe($maybe) {
+            $crate::plist_internal!(@array [$($elems,)* __v,] $($rest)*)
+        } else {
+            $crate::plist_internal!(@array [$($elems,)*] $($rest)*)
+        }
+    };
+    (@array [$($elems:expr,)*] ? $maybe:expr) => {
+        if let Some(__v) = $crate::plist_macro::plist_maybe($maybe) {
+            $crate::plist_internal!(@array [$($elems,)* __v])
+        } else {
+            $crate::plist_internal!(@array [$($elems,)*])
+        }
+    };
+
     //////////////////////////////////////////////////////////////////////////
     // TT muncher for parsing the inside of an object {...}. Each entry is
     // inserted into the given map variable.
@@ -175,6 +190,62 @@ macro_rules! plist_internal {
     // Next value is a map.
     (@object $object:ident ($($key:tt)+) (: {$($map:tt)*} $($rest:tt)*) $copy:tt) => {
         $crate::plist_internal!(@object $object [$($key)+] ($crate::plist_internal!({$($map)*})) $($rest)*);
+    };
+
+    // Optional insert with trailing comma: key?: expr,
+    (@object $object:ident ($($key:tt)+) (:? $value:expr , $($rest:tt)*) $copy:tt) => {
+        if let Some(__v) = $crate::plist_macro::plist_maybe($value) {
+            let _ = $object.insert(($($key)+).into(), __v);
+        }
+        $crate::plist_internal!(@object $object () ($($rest)*) ($($rest)*));
+    };
+
+    // Optional insert, last entry: key?: expr
+    (@object $object:ident ($($key:tt)+) (:? $value:expr) $copy:tt) => {
+        if let Some(__v) = $crate::plist_macro::plist_maybe($value) {
+            let _ = $object.insert(($($key)+).into(), __v);
+        }
+    };
+
+    (@object $object:ident () ( :< $value:expr , $($rest:tt)*) $copy:tt) => {
+        {
+            let __v = $crate::plist_internal!($value);
+            let __dict = $crate::plist_macro::IntoPlistDict::into_plist_dict(__v);
+            for (__k, __val) in __dict {
+                let _ = $object.insert(__k, __val);
+            }
+        }
+        $crate::plist_internal!(@object $object () ($($rest)*) ($($rest)*));
+    };
+
+    // Merge: last entry `:< expr`
+    (@object $object:ident () ( :< $value:expr ) $copy:tt) => {
+        {
+            let __v = $crate::plist_internal!($value);
+            let __dict = $crate::plist_macro::IntoPlistDict::into_plist_dict(__v);
+            for (__k, __val) in __dict {
+                let _ = $object.insert(__k, __val);
+            }
+        }
+    };
+
+    // Optional merge: `:< ? expr,` — only merge if Some(...)
+    (@object $object:ident () ( :< ? $value:expr , $($rest:tt)*) $copy:tt) => {
+        if let Some(__dict) = $crate::plist_macro::maybe_into_dict($value) {
+            for (__k, __val) in __dict {
+                let _ = $object.insert(__k, __val);
+            }
+        }
+        $crate::plist_internal!(@object $object () ($($rest)*) ($($rest)*));
+    };
+
+    // Optional merge: last entry `:< ? expr`
+    (@object $object:ident () ( :< ? $value:expr ) $copy:tt) => {
+        if let Some(__dict) = $crate::plist_macro::maybe_into_dict($value) {
+            for (__k, __val) in __dict {
+                let _ = $object.insert(__k, __val);
+            }
+        }
     };
 
     // Next value is an expression followed by comma.
@@ -315,6 +386,12 @@ impl PlistConvertible for &str {
     }
 }
 
+impl PlistConvertible for i16 {
+    fn to_plist_value(self) -> plist::Value {
+        plist::Value::Integer(self.into())
+    }
+}
+
 impl PlistConvertible for i32 {
     fn to_plist_value(self) -> plist::Value {
         plist::Value::Integer(self.into())
@@ -324,6 +401,12 @@ impl PlistConvertible for i32 {
 impl PlistConvertible for i64 {
     fn to_plist_value(self) -> plist::Value {
         plist::Value::Integer(self.into())
+    }
+}
+
+impl PlistConvertible for u16 {
+    fn to_plist_value(self) -> plist::Value {
+        plist::Value::Integer((self as i64).into())
     }
 }
 
@@ -354,6 +437,27 @@ impl PlistConvertible for f64 {
 impl PlistConvertible for bool {
     fn to_plist_value(self) -> plist::Value {
         plist::Value::Boolean(self)
+    }
+}
+
+impl<'a> PlistConvertible for std::borrow::Cow<'a, str> {
+    fn to_plist_value(self) -> plist::Value {
+        plist::Value::String(self.into_owned())
+    }
+}
+impl PlistConvertible for Vec<u8> {
+    fn to_plist_value(self) -> plist::Value {
+        plist::Value::Data(self)
+    }
+}
+impl PlistConvertible for &[u8] {
+    fn to_plist_value(self) -> plist::Value {
+        plist::Value::Data(self.to_vec())
+    }
+}
+impl PlistConvertible for std::time::SystemTime {
+    fn to_plist_value(self) -> plist::Value {
+        plist::Value::Date(self.into())
     }
 }
 
@@ -423,13 +527,94 @@ where
     }
 }
 
-impl<T: PlistConvertible> PlistConvertible for Option<T> {
-    fn to_plist_value(self) -> plist::Value {
+// Treat plain T as Some(T) and Option<T> as-is.
+pub trait MaybePlist {
+    fn into_option_value(self) -> Option<plist::Value>;
+}
+
+impl<T: PlistConvertible> MaybePlist for T {
+    fn into_option_value(self) -> Option<plist::Value> {
+        Some(self.to_plist_value())
+    }
+}
+
+impl<T: PlistConvertible> MaybePlist for Option<T> {
+    fn into_option_value(self) -> Option<plist::Value> {
+        self.map(|v| v.to_plist_value())
+    }
+}
+
+#[doc(hidden)]
+pub fn plist_maybe<T: MaybePlist>(v: T) -> Option<plist::Value> {
+    v.into_option_value()
+}
+
+// Convert things into a Dictionary we can merge.
+pub trait IntoPlistDict {
+    fn into_plist_dict(self) -> plist::Dictionary;
+}
+
+impl IntoPlistDict for plist::Dictionary {
+    fn into_plist_dict(self) -> plist::Dictionary {
+        self
+    }
+}
+
+impl IntoPlistDict for plist::Value {
+    fn into_plist_dict(self) -> plist::Dictionary {
         match self {
-            Some(value) => value.to_plist_value(),
-            None => plist::Value::String("".to_string()), // or however you want to handle None
+            plist::Value::Dictionary(d) => d,
+            other => panic!("plist :< expects a dictionary, got {other:?}"),
         }
     }
+}
+
+impl<K, V> IntoPlistDict for std::collections::HashMap<K, V>
+where
+    K: Into<String>,
+    V: PlistConvertible,
+{
+    fn into_plist_dict(self) -> plist::Dictionary {
+        let mut d = plist::Dictionary::new();
+        for (k, v) in self {
+            d.insert(k.into(), v.to_plist_value());
+        }
+        d
+    }
+}
+
+impl<K, V> IntoPlistDict for std::collections::BTreeMap<K, V>
+where
+    K: Into<String>,
+    V: PlistConvertible,
+{
+    fn into_plist_dict(self) -> plist::Dictionary {
+        let mut d = plist::Dictionary::new();
+        for (k, v) in self {
+            d.insert(k.into(), v.to_plist_value());
+        }
+        d
+    }
+}
+
+// Optional version: T or Option<T>.
+pub trait MaybeIntoPlistDict {
+    fn into_option_plist_dict(self) -> Option<plist::Dictionary>;
+}
+impl<T: IntoPlistDict> MaybeIntoPlistDict for T {
+    fn into_option_plist_dict(self) -> Option<plist::Dictionary> {
+        Some(self.into_plist_dict())
+    }
+}
+impl<T: IntoPlistDict> MaybeIntoPlistDict for Option<T> {
+    fn into_option_plist_dict(self) -> Option<plist::Dictionary> {
+        self.map(|t| t.into_plist_dict())
+    }
+}
+
+#[doc(hidden)]
+pub fn maybe_into_dict<T: MaybeIntoPlistDict>(v: T) -> Option<plist::Dictionary> {
+    v.into_option_plist_dict()
 }
 
 #[cfg(test)]
@@ -440,7 +625,7 @@ mod tests {
             "name": "test",
             "count": 42,
             "active": true,
-            "items": ["a", "b", "c"]
+            "items": ["a", ?"b", "c"]
         });
 
         if let plist::Value::Dictionary(dict) = value {
@@ -460,11 +645,24 @@ mod tests {
         let name = "dynamic";
         let count = 100;
         let items = vec!["x", "y"];
+        let none: Option<u64> = None;
 
+        let to_merge = plist!({
+            "reee": "cool beans"
+        });
+        let maybe_merge = Some(plist!({
+            "yeppers": "what did I say about yeppers",
+            "replace me": 2,
+        }));
         let value = plist!({
             "name": name,
             "count": count,
-            "items": items
+            "items": items,
+            "omit me":? none,
+            "keep me":? Some(123),
+            "replace me": 1,
+            :< to_merge,
+            :<? maybe_merge
         });
 
         if let plist::Value::Dictionary(dict) = value {
@@ -473,6 +671,25 @@ mod tests {
                 Some(&plist::Value::String("dynamic".to_string()))
             );
             assert_eq!(dict.get("count"), Some(&plist::Value::Integer(100.into())));
+            assert!(dict.get("omit me").is_none());
+            assert_eq!(
+                dict.get("keep me"),
+                Some(&plist::Value::Integer(123.into()))
+            );
+            assert_eq!(
+                dict.get("reee"),
+                Some(&plist::Value::String("cool beans".to_string()))
+            );
+            assert_eq!(
+                dict.get("yeppers"),
+                Some(&plist::Value::String(
+                    "what did I say about yeppers".to_string()
+                ))
+            );
+            assert_eq!(
+                dict.get("replace me"),
+                Some(&plist::Value::Integer(2.into()))
+            );
         } else {
             panic!("Expected dictionary");
         }
