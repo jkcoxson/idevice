@@ -28,13 +28,6 @@ impl<'a, R: ReadWrite + 'a> Http2Client<R> {
         })
     }
 
-    pub fn box_inner(self) -> Http2Client<Box<dyn ReadWrite + 'a>> {
-        Http2Client {
-            inner: Box::new(self.inner),
-            cache: self.cache,
-        }
-    }
-
     pub async fn set_settings(
         &mut self,
         settings: Vec<frame::Setting>,

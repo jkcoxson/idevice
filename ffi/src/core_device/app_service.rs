@@ -5,7 +5,6 @@ use std::os::raw::{c_float, c_int};
 use std::ptr::{self, null_mut};
 
 use idevice::core_device::AppServiceClient;
-use idevice::tcp::stream::AdapterStream;
 use idevice::{IdeviceError, ReadWrite, RsdService};
 
 use crate::core_device_proxy::AdapterHandle;
@@ -91,16 +90,17 @@ pub unsafe extern "C" fn app_service_connect_rsd(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<AppServiceClient<AdapterStream>, IdeviceError> = RUNTIME.block_on(async move {
-        let provider_ref = unsafe { &mut (*provider).0 };
-        let handshake_ref = unsafe { &mut (*handshake).0 };
+    let res: Result<AppServiceClient<Box<dyn ReadWrite>>, IdeviceError> =
+        RUNTIME.block_on(async move {
+            let provider_ref = unsafe { &mut (*provider).0 };
+            let handshake_ref = unsafe { &mut (*handshake).0 };
 
-        AppServiceClient::connect_rsd(provider_ref, handshake_ref).await
-    });
+            AppServiceClient::connect_rsd(provider_ref, handshake_ref).await
+        });
 
     match res {
         Ok(client) => {
-            let boxed = Box::new(AppServiceHandle(client.box_inner()));
+            let boxed = Box::new(AppServiceHandle(client));
             unsafe { *handle = Box::into_raw(boxed) };
             null_mut()
         }

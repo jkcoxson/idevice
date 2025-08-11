@@ -147,6 +147,13 @@ impl Adapter {
         }
     }
 
+    /// Wraps this handle in a new thread.
+    /// Streams from this handle will be thread safe, with data sent through channels.
+    /// The handle supports the trait for RSD provider.
+    pub fn to_async_handle(self) -> super::handle::AdapterHandle {
+        super::handle::AdapterHandle::new(self)
+    }
+
     /// Initiates a TCP connection to the specified port.
     ///
     /// # Arguments
@@ -435,6 +442,19 @@ impl Adapter {
         }
     }
 
+    pub(crate) fn uncache_all(&mut self, host_port: u16) -> Result<Vec<u8>, std::io::Error> {
+        if let Some(state) = self.states.get_mut(&host_port) {
+            let res = state.read_buffer[..].to_vec();
+            state.read_buffer.clear();
+            Ok(res)
+        } else {
+            Err(std::io::Error::new(
+                ErrorKind::NotConnected,
+                "not connected",
+            ))
+        }
+    }
+
     pub(crate) fn cache_read(
         &mut self,
         payload: &[u8],
@@ -517,7 +537,7 @@ impl Adapter {
         })
     }
 
-    async fn process_tcp_packet(&mut self) -> Result<(), std::io::Error> {
+    pub(crate) async fn process_tcp_packet(&mut self) -> Result<(), std::io::Error> {
         loop {
             let ip_packet = self.read_ip_packet().await?;
             let res = TcpPacket::parse(&ip_packet)?;

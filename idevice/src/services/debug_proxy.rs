@@ -10,19 +10,17 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{obf, IdeviceError, ReadWrite, RsdService};
 
-impl<R: ReadWrite> RsdService for DebugProxyClient<R> {
+impl RsdService for DebugProxyClient<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.internal.dt.remote.debugproxy")
     }
 
-    async fn from_stream(stream: R) -> Result<Self, IdeviceError> {
+    async fn from_stream(stream: Box<dyn ReadWrite>) -> Result<Self, IdeviceError> {
         Ok(Self {
             socket: stream,
             noack_mode: false,
         })
     }
-
-    type Stream = R;
 }
 
 /// Client for interacting with the iOS debug proxy service

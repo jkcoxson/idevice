@@ -7,18 +7,16 @@ use crate::{obf, IdeviceError, ReadWrite, RsdService};
 
 use super::CoreDeviceServiceClient;
 
-impl<R: ReadWrite> RsdService for AppServiceClient<R> {
+impl RsdService for AppServiceClient<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.coredevice.appservice")
     }
 
-    async fn from_stream(stream: R) -> Result<Self, IdeviceError> {
+    async fn from_stream(stream: Box<dyn ReadWrite>) -> Result<Self, IdeviceError> {
         Ok(Self {
             inner: CoreDeviceServiceClient::new(stream).await?,
         })
     }
-
-    type Stream = R;
 }
 
 pub struct AppServiceClient<R: ReadWrite> {
@@ -135,12 +133,6 @@ impl<'a, R: ReadWrite + 'a> AppServiceClient<R> {
         Ok(Self {
             inner: CoreDeviceServiceClient::new(stream).await?,
         })
-    }
-
-    pub fn box_inner(self) -> AppServiceClient<Box<dyn ReadWrite + 'a>> {
-        AppServiceClient {
-            inner: self.inner.box_inner(),
-        }
     }
 
     pub async fn list_apps(

@@ -5,7 +5,6 @@ use std::os::raw::c_int;
 use std::ptr::{self, null_mut};
 
 use idevice::debug_proxy::{DebugProxyClient, DebugserverCommand};
-use idevice::tcp::stream::AdapterStream;
 use idevice::{IdeviceError, ReadWrite, RsdService};
 
 use crate::core_device_proxy::AdapterHandle;
@@ -136,13 +135,14 @@ pub unsafe extern "C" fn debug_proxy_connect_rsd(
     if provider.is_null() || handshake.is_null() || handshake.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
-    let res: Result<DebugProxyClient<AdapterStream>, IdeviceError> = RUNTIME.block_on(async move {
-        let provider_ref = unsafe { &mut (*provider).0 };
-        let handshake_ref = unsafe { &mut (*handshake).0 };
+    let res: Result<DebugProxyClient<Box<dyn ReadWrite>>, IdeviceError> =
+        RUNTIME.block_on(async move {
+            let provider_ref = unsafe { &mut (*provider).0 };
+            let handshake_ref = unsafe { &mut (*handshake).0 };
 
-        // Connect using the reference
-        DebugProxyClient::connect_rsd(provider_ref, handshake_ref).await
-    });
+            // Connect using the reference
+            DebugProxyClient::connect_rsd(provider_ref, handshake_ref).await
+        });
 
     match res {
         Ok(d) => {

@@ -6,39 +6,31 @@ use plist::Dictionary;
 use crate::{obf, IdeviceError, ReadWrite, RemoteXpcClient, RsdService};
 
 /// Client for interacting with the Restore Service
-pub struct RestoreServiceClient<R: ReadWrite> {
+pub struct RestoreServiceClient {
     /// The underlying device connection with established Restore Service service
-    pub stream: RemoteXpcClient<R>,
+    pub stream: RemoteXpcClient<Box<dyn ReadWrite>>,
 }
 
-impl<R: ReadWrite> RsdService for RestoreServiceClient<R> {
+impl RsdService for RestoreServiceClient {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.RestoreRemoteServices.restoreserviced")
     }
 
-    async fn from_stream(stream: R) -> Result<Self, IdeviceError> {
+    async fn from_stream(stream: Box<dyn ReadWrite>) -> Result<Self, IdeviceError> {
         Self::new(stream).await
     }
-
-    type Stream = R;
 }
 
-impl<'a, R: ReadWrite + 'a> RestoreServiceClient<R> {
+impl RestoreServiceClient {
     /// Creates a new Restore Service client a socket connection,
     /// and connects to the RemoteXPC service.
     ///
     /// # Arguments
     /// * `idevice` - Pre-established device connection
-    pub async fn new(stream: R) -> Result<Self, IdeviceError> {
+    pub async fn new(stream: Box<dyn ReadWrite>) -> Result<Self, IdeviceError> {
         let mut stream = RemoteXpcClient::new(stream).await?;
         stream.do_handshake().await?;
         Ok(Self { stream })
-    }
-
-    pub fn box_inner(self) -> RestoreServiceClient<Box<dyn ReadWrite + 'a>> {
-        RestoreServiceClient {
-            stream: self.stream.box_inner(),
-        }
     }
 
     /// Enter recovery

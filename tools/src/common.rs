@@ -18,9 +18,7 @@ pub async fn get_provider(
     pairing_file: Option<&String>,
     label: &str,
 ) -> Result<Box<dyn IdeviceProvider>, String> {
-    let provider: Box<dyn IdeviceProvider> = if udid.is_some() {
-        let udid = udid.unwrap();
-
+    let provider: Box<dyn IdeviceProvider> = if let Some(udid) = udid {
         let mut usbmuxd = if let Ok(var) = std::env::var("USBMUXD_SOCKET_ADDRESS") {
             let socket = SocketAddr::from_str(&var).expect("Bad USBMUXD_SOCKET_ADDRESS");
             let socket = tokio::net::TcpStream::connect(socket)

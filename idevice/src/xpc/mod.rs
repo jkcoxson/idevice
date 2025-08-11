@@ -29,14 +29,6 @@ impl<'a, R: ReadWrite + 'a> RemoteXpcClient<R> {
         })
     }
 
-    pub fn box_inner(self) -> RemoteXpcClient<Box<dyn ReadWrite + 'a>> {
-        RemoteXpcClient {
-            h2_client: self.h2_client.box_inner(),
-            root_id: self.root_id,
-            reply_id: self.reply_id,
-        }
-    }
-
     pub async fn do_handshake(&mut self) -> Result<(), IdeviceError> {
         self.h2_client
             .set_settings(

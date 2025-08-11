@@ -1,10 +1,7 @@
 // Jackson Coxson
 
 use clap::{Arg, Command};
-use idevice::{
-    core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake, tcp::stream::AdapterStream,
-    IdeviceService, RsdService,
-};
+use idevice::{core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake, IdeviceService, RsdService};
 
 mod common;
 
@@ -79,10 +76,9 @@ async fn main() {
         .expect("no core proxy");
     let rsd_port = proxy.handshake.server_rsd_port;
 
-    let mut adapter = proxy.create_software_tunnel().expect("no software tunnel");
-    let stream = AdapterStream::connect(&mut adapter, rsd_port)
-        .await
-        .expect("no RSD connect");
+    let adapter = proxy.create_software_tunnel().expect("no software tunnel");
+    let mut adapter = adapter.to_async_handle();
+    let stream = adapter.connect(rsd_port).await.expect("no RSD connect");
 
     // Make the connection to RemoteXPC
     let mut handshake = RsdHandshake::new(stream).await.unwrap();

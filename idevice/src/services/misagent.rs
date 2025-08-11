@@ -6,7 +6,7 @@
 use log::warn;
 use plist::Dictionary;
 
-use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
+use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService, RsdService};
 
 /// Client for interacting with the iOS misagent service
 ///
@@ -17,6 +17,18 @@ use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService
 pub struct MisagentClient {
     /// The underlying device connection with established misagent service
     pub idevice: Idevice,
+}
+
+impl RsdService for MisagentClient {
+    fn rsd_service_name() -> std::borrow::Cow<'static, str> {
+        obf!("com.apple.misagent.shim.remote")
+    }
+
+    async fn from_stream(stream: Box<dyn crate::ReadWrite>) -> Result<Self, IdeviceError> {
+        let mut stream = Idevice::new(stream, "");
+        stream.rsd_checkin().await?;
+        Ok(Self::new(stream))
+    }
 }
 
 impl IdeviceService for MisagentClient {

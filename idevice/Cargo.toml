@@ -14,6 +14,7 @@ keywords = ["lockdownd", "ios"]
 tokio = { version = "1.43", features = ["io-util"] }
 tokio-rustls = { version = "0.26", default-features = false }
 rustls = { version = "0.23", default-features = false }
+crossfire = { version = "2.0", optional = true }              # TODO: update to 2.1 when it comes out
 
 plist = { version = "1.7" }
 serde = { version = "1", features = ["derive"] }
@@ -80,7 +81,13 @@ restore_service = []
 rsd = ["xpc"]
 syslog_relay = ["dep:bytes"]
 tcp = ["tokio/net"]
-tunnel_tcp_stack = ["dep:rand", "dep:futures", "tokio/fs", "tokio/sync"]
+tunnel_tcp_stack = [
+  "dep:rand",
+  "dep:futures",
+  "tokio/fs",
+  "tokio/sync",
+  "dep:crossfire",
+]
 tss = ["dep:uuid", "dep:reqwest"]
 tunneld = ["dep:serde_json", "dep:json", "dep:reqwest"]
 usbmuxd = ["tokio/net"]

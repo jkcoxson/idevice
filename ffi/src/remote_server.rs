@@ -6,7 +6,6 @@ use crate::core_device_proxy::AdapterHandle;
 use crate::rsd::RsdHandshakeHandle;
 use crate::{IdeviceFfiError, RUNTIME, ReadWriteOpaque, ffi_err};
 use idevice::dvt::remote_server::RemoteServerClient;
-use idevice::tcp::stream::AdapterStream;
 use idevice::{IdeviceError, ReadWrite, RsdService};
 
 /// Opaque handle to a RemoteServerClient
@@ -77,7 +76,7 @@ pub unsafe extern "C" fn remote_server_connect_rsd(
     if provider.is_null() || handshake.is_null() || handshake.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
-    let res: Result<RemoteServerClient<AdapterStream>, IdeviceError> =
+    let res: Result<RemoteServerClient<Box<dyn ReadWrite>>, IdeviceError> =
         RUNTIME.block_on(async move {
             let provider_ref = unsafe { &mut (*provider).0 };
             let handshake_ref = unsafe { &mut (*handshake).0 };

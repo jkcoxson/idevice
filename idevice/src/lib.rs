@@ -25,7 +25,7 @@ pub use services::*;
 #[cfg(feature = "xpc")]
 pub use xpc::RemoteXpcClient;
 
-use log::{debug, error, trace};
+use log::{debug, error, trace, warn};
 use provider::{IdeviceProvider, RsdProvider};
 use rustls::{crypto::CryptoProvider, pki_types::ServerName};
 use std::{
@@ -70,20 +70,17 @@ pub trait IdeviceService: Sized {
 pub trait RsdService: Sized {
     fn rsd_service_name() -> std::borrow::Cow<'static, str>;
     fn from_stream(
-        stream: Self::Stream,
+        stream: Box<dyn ReadWrite>,
     ) -> impl std::future::Future<Output = Result<Self, IdeviceError>> + Send;
-    fn connect_rsd<'a, S>(
-        provider: &'a mut impl RsdProvider<'a, Stream = S>,
+    fn connect_rsd(
+        provider: &mut impl RsdProvider,
         handshake: &mut rsd::RsdHandshake,
     ) -> impl std::future::Future<Output = Result<Self, IdeviceError>>
     where
-        Self: crate::RsdService<Stream = S>,
-        S: ReadWrite,
+        Self: crate::RsdService,
     {
         handshake.connect(provider)
     }
-
-    type Stream: ReadWrite;
 }
 
 /// Type alias for boxed device connection sockets
@@ -417,9 +414,12 @@ impl Idevice {
 
                 #[cfg(all(feature = "ring", feature = "aws-lc"))]
                 {
-                    compile_error!(
-                        "Cannot enable both `ring` and `aws-lc` features at the same time"
-                    );
+                    // We can't throw a compile error because it breaks rust-analyzer.
+                    // My sanity while debugging the workspace crates are more important.
+
+                    debug!("Using ring crypto backend, because both were passed");
+                    warn!("Both ring && aws-lc are selected as idevice crypto backends!");
+                    rustls::crypto::ring::default_provider()
                 }
             };
 

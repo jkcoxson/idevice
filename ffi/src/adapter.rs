@@ -35,7 +35,7 @@ pub unsafe extern "C" fn adapter_connect(
     }
 
     let adapter = unsafe { &mut (*adapter_handle).0 };
-    let res = RUNTIME.block_on(async move { AdapterStream::connect(adapter, port).await });
+    let res = RUNTIME.block_on(async move { adapter.connect(port).await });
 
     match res {
         Ok(r) => {

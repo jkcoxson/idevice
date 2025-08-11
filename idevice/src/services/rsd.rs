@@ -156,13 +156,9 @@ impl RsdHandshake {
         })
     }
 
-    pub async fn connect<'a, T, S>(
-        &mut self,
-        provider: &'a mut impl RsdProvider<'a, Stream = S>,
-    ) -> Result<T, IdeviceError>
+    pub async fn connect<T>(&mut self, provider: &mut impl RsdProvider) -> Result<T, IdeviceError>
     where
-        T: crate::RsdService<Stream = S>,
-        S: ReadWrite,
+        T: crate::RsdService,
     {
         let service_name = T::rsd_service_name();
         let service = match self.services.get(&service_name.to_string()) {

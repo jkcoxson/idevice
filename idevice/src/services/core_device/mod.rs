@@ -24,12 +24,6 @@ impl<'a, R: ReadWrite + 'a> CoreDeviceServiceClient<R> {
         Ok(Self { inner: client })
     }
 
-    pub fn box_inner(self) -> CoreDeviceServiceClient<Box<dyn ReadWrite + 'a>> {
-        CoreDeviceServiceClient {
-            inner: self.inner.box_inner(),
-        }
-    }
-
     pub async fn invoke(
         &mut self,
         feature: impl Into<String>,
