@@ -22,11 +22,13 @@ create-example-build-folder:
 
 [working-directory: 'cpp/examples/build']
 build-cpp: build-ffi-native create-example-build-folder
-  cmake .. && make
+  cmake -S .. -B . -DCMAKE_BUILD_TYPE=Release
+  cmake --build . --config Release --parallel
 
 [working-directory: 'ffi/examples/build']
 build-c: build-ffi-native create-example-build-folder
-  cmake .. && make
+  cmake -S .. -B . -DCMAKE_BUILD_TYPE=Release
+  cmake --build . --config Release --parallel
 
 xcframework: apple-build
   rm -rf swift/IDevice.xcframework
