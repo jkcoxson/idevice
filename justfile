@@ -46,8 +46,8 @@ xcframework: apple-build
     -library swift/libs/idevice-macos.a -headers swift/include \
     -output swift/IDevice.xcframework
   
-  zip -r bundle.zip swift/IDevice.xcframework
-  openssl dgst -sha256 bundle.zip
+  zip -r swift/bundle.zip swift/IDevice.xcframework
+  openssl dgst -sha256 swift/bundle.zip
 
 [working-directory: 'ffi']
 apple-build: # requires a Mac
