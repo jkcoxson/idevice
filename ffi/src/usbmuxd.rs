@@ -33,6 +33,7 @@ pub struct UsbmuxdDeviceHandle(pub UsbmuxdDevice);
 /// # Safety
 /// `addr` must be a valid sockaddr
 /// `usbmuxd_connection` must be a valid, non-null pointer to a location where the handle will be stored
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn idevice_usbmuxd_new_tcp_connection(
     addr: *const idevice_sockaddr,
     addr_len: idevice_socklen_t,

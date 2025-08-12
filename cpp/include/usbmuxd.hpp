@@ -191,7 +191,7 @@ class UsbmuxdConnection {
     /// @param err An error that will be populated on failure.
     /// @return A UsbmuxdConnection on success, std::nullopt on failure.
     static std::optional<UsbmuxdConnection>
-    tcp_new(const sockaddr* addr, socklen_t addr_len, uint32_t tag, FfiError& err) {
+    tcp_new(const idevice_sockaddr* addr, idevice_socklen_t addr_len, uint32_t tag, FfiError& err) {
         UsbmuxdConnectionHandle* handle = nullptr;
         IdeviceFfiError* e = idevice_usbmuxd_new_tcp_connection(addr, addr_len, tag, &handle);
         if (e) {
