@@ -59,7 +59,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: idevice-c-examples-macos
-          path: cpp/examples/build/bin/*
+          path: ffi/examples/build/bin/*
 
       - name: Upload C++ examples/tools
         uses: actions/upload-artifact@v4
@@ -150,7 +150,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: idevice-c-examples-linux
-          path: cpp/examples/build/bin/*
+          path: ffi/examples/build/bin/*
 
       - name: Upload C++ examples/tools
         uses: actions/upload-artifact@v4
@@ -218,7 +218,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: idevice-c-examples-windows
-          path: cpp\examples\build\bin\*
+          path: ffi\examples\build\bin\*
 
       - name: Upload C++ examples/tools
         uses: actions/upload-artifact@v4
