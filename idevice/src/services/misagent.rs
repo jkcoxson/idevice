@@ -125,6 +125,10 @@ impl IdeviceService for MisagentClient {
 
         Ok(Self::new(idevice))
     }
+
+    async fn from_stream(idevice: Idevice) -> Result<Self, crate::IdeviceError> {
+        Ok(Self::new(idevice))
+    }
 }
 
 impl MisagentClient {
