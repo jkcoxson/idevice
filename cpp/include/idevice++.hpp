@@ -8,6 +8,14 @@
 #include <optional>
 #include <string>
 
+#if defined(_WIN32) && !defined(__MINGW32__)
+// MSVC doesn't have BSD u_int* types
+using u_int8_t  = std::uint8_t;
+using u_int16_t = std::uint16_t;
+using u_int32_t = std::uint32_t;
+using u_int64_t = std::uint64_t;
+#endif
+
 namespace IdeviceFFI {
 
 class Idevice {

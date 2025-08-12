@@ -8,7 +8,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Set the paths
 set(HEADER_FILE ${CMAKE_SOURCE_DIR}/../../ffi/idevice.h)
-set(STATIC_LIB ${CMAKE_SOURCE_DIR}/../../target/release/libidevice_ffi.a)
+if (MSVC)
+  set(STATIC_LIB ${CMAKE_SOURCE_DIR}/../../target/release/idevice_ffi.lib)
+else()
+  set(STATIC_LIB ${CMAKE_SOURCE_DIR}/../../target/release/libidevice_ffi.a)
+endif()
 set(EXAMPLES_DIR ${CMAKE_SOURCE_DIR}/../examples)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
@@ -17,7 +21,11 @@ set(IDEVICE_FFI_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../../ffi)    # ffi/
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
+if (MSVC)
+  add_compile_options(/W4 /permissive- /EHsc)
+else()
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
 
 # Find all C++ example files
 file(GLOB EXAMPLE_SOURCES ${EXAMPLES_DIR}/*.cpp)
