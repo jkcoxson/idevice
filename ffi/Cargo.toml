@@ -14,6 +14,9 @@ libc = "0.2.171"
 plist = "1.7.1"
 plist_ffi = "0.1.3"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.60", features = ["Win32_Networking_WinSock"] }
+
 [features]
 aws-lc = ["idevice/aws-lc"]
 ring = ["idevice/ring"]

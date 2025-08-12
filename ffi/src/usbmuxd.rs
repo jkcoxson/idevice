@@ -6,7 +6,8 @@ use std::{
 };
 
 use crate::{
-    IdeviceFfiError, IdeviceHandle, IdevicePairingFile, RUNTIME, ffi_err, util::c_socket_to_rust,
+    IdeviceFfiError, IdeviceHandle, IdevicePairingFile, RUNTIME, ffi_err,
+    util::{SockAddr, c_socket_to_rust, idevice_sockaddr, idevice_socklen_t},
 };
 use idevice::{
     IdeviceError,
@@ -32,28 +33,33 @@ pub struct UsbmuxdDeviceHandle(pub UsbmuxdDevice);
 /// # Safety
 /// `addr` must be a valid sockaddr
 /// `usbmuxd_connection` must be a valid, non-null pointer to a location where the handle will be stored
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn idevice_usbmuxd_new_tcp_connection(
-    addr: *const libc::sockaddr,
-    addr_len: libc::socklen_t,
+    addr: *const idevice_sockaddr,
+    addr_len: idevice_socklen_t,
     tag: u32,
-    usbmuxd_connection: *mut *mut UsbmuxdConnectionHandle,
+    out: *mut *mut UsbmuxdConnectionHandle,
 ) -> *mut IdeviceFfiError {
-    let addr = match c_socket_to_rust(addr, addr_len) {
+    if addr.is_null() || out.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    // Reinterpret as the real platform sockaddr for parsing
+    let addr = addr as *const SockAddr;
+
+    let addr = match c_socket_to_rust(addr, addr_len as _) {
         Ok(a) => a,
         Err(e) => return ffi_err!(e),
     };
 
-    let res: Result<UsbmuxdConnection, IdeviceError> = RUNTIME.block_on(async move {
+    let res = RUNTIME.block_on(async move {
         let stream = tokio::net::TcpStream::connect(addr).await?;
-        Ok(UsbmuxdConnection::new(Box::new(stream), tag))
+        Ok::<_, IdeviceError>(UsbmuxdConnection::new(Box::new(stream), tag))
     });
 
     match res {
-        Ok(r) => {
-            let boxed = Box::new(UsbmuxdConnectionHandle(r));
-            unsafe { *usbmuxd_connection = Box::into_raw(boxed) };
-            null_mut()
+        Ok(conn) => {
+            unsafe { *out = Box::into_raw(Box::new(UsbmuxdConnectionHandle(conn))) };
+            std::ptr::null_mut()
         }
         Err(e) => ffi_err!(e),
     }
@@ -367,20 +373,28 @@ pub unsafe extern "C" fn idevice_usbmuxd_connection_free(
 /// `usbmuxd_Addr` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn idevice_usbmuxd_tcp_addr_new(
-    addr: *const libc::sockaddr,
-    addr_len: libc::socklen_t,
+    addr: *const idevice_sockaddr, // <- portable
+    addr_len: idevice_socklen_t,
     usbmuxd_addr: *mut *mut UsbmuxdAddrHandle,
 ) -> *mut IdeviceFfiError {
-    let addr = match c_socket_to_rust(addr, addr_len) {
+    if addr.is_null() || usbmuxd_addr.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    // Reinterpret as the real platform sockaddr for parsing
+    let addr = addr as *const SockAddr;
+
+    let addr = match c_socket_to_rust(addr, addr_len as _) {
         Ok(a) => a,
         Err(e) => return ffi_err!(e),
     };
 
     let u = UsbmuxdAddr::TcpSocket(addr);
-
     let boxed = Box::new(UsbmuxdAddrHandle(u));
-    unsafe { *usbmuxd_addr = Box::into_raw(boxed) };
-    null_mut()
+    unsafe {
+        *usbmuxd_addr = Box::into_raw(boxed);
+    }
+    std::ptr::null_mut()
 }
 
 /// Creates a new UsbmuxdAddr struct with a unix socket

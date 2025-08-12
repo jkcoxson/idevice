@@ -1,9 +1,11 @@
 // Jackson Coxson
 
 use idevice::provider::{IdeviceProvider, TcpProvider, UsbmuxdProvider};
+use std::net::IpAddr;
 use std::os::raw::c_char;
 use std::{ffi::CStr, ptr::null_mut};
 
+use crate::util::{SockAddr, idevice_sockaddr};
 use crate::{IdeviceFfiError, ffi_err, usbmuxd::UsbmuxdAddrHandle, util};
 
 pub struct IdeviceProviderHandle(pub Box<dyn IdeviceProvider>);
@@ -24,33 +26,27 @@ pub struct IdeviceProviderHandle(pub Box<dyn IdeviceProvider>);
 /// `pairing_file` is consumed must never be used again
 /// `label` must be a valid Cstr
 /// `provider` must be a valid, non-null pointer to a location where the handle will be stored
-#[cfg(feature = "tcp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn idevice_tcp_provider_new(
-    ip: *const libc::sockaddr,
+    ip: *const idevice_sockaddr,
     pairing_file: *mut crate::pairing_file::IdevicePairingFile,
     label: *const c_char,
     provider: *mut *mut IdeviceProviderHandle,
 ) -> *mut IdeviceFfiError {
-    if ip.is_null() || label.is_null() || provider.is_null() {
-        return ffi_err!(IdeviceError::FfiInvalidArg);
-    }
-
-    let addr = match util::c_addr_to_rust(ip) {
+    let ip = ip as *const SockAddr;
+    let addr: IpAddr = match util::c_addr_to_rust(ip) {
         Ok(i) => i,
-        Err(e) => {
-            return ffi_err!(e);
-        }
-    };
-    let label = match unsafe { CStr::from_ptr(label) }.to_str() {
-        Ok(l) => l.to_string(),
-        Err(e) => {
-            log::error!("Invalid label string: {e:?}");
-            return ffi_err!(IdeviceError::FfiInvalidString);
-        }
+        Err(e) => return ffi_err!(e),
     };
 
+    let label = match unsafe { CStr::from_ptr(label).to_str() } {
+        Ok(s) => s.to_string(),
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
+    };
+
+    // consume the pairing file on success
     let pairing_file = unsafe { Box::from_raw(pairing_file) };
+
     let t = TcpProvider {
         addr,
         pairing_file: pairing_file.0,
@@ -59,7 +55,7 @@ pub unsafe extern "C" fn idevice_tcp_provider_new(
 
     let boxed = Box::new(IdeviceProviderHandle(Box::new(t)));
     unsafe { *provider = Box::into_raw(boxed) };
-    null_mut()
+    std::ptr::null_mut()
 }
 
 /// Frees an IdeviceProvider handle

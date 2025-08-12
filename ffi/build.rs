@@ -2,16 +2,35 @@
 
 use std::{env, fs::OpenOptions, io::Write};
 
+const HEADER: &str = r#"// Jackson Coxson
+// Bindings to idevice - https://github.com/jkcoxson/idevice
+
+#ifdef _WIN32
+  #ifndef WIN32_LEAN_AND_MEAN
+  #define WIN32_LEAN_AND_MEAN
+  #endif
+  #include <winsock2.h>
+  #include <ws2tcpip.h>
+  typedef int                idevice_socklen_t;
+  typedef struct sockaddr    idevice_sockaddr;
+#else
+  #include <sys/types.h>
+  #include <sys/socket.h>
+  typedef socklen_t          idevice_socklen_t;
+  typedef struct sockaddr    idevice_sockaddr;
+#endif
+"#;
+
 fn main() {
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
     cbindgen::Builder::new()
         .with_crate(crate_dir)
-        .with_header(
-            "// Jackson Coxson\n// Bindings to idevice - https://github.com/jkcoxson/idevice",
-        )
+        .with_header(HEADER)
         .with_language(cbindgen::Language::C)
-        .with_sys_include("sys/socket.h")
+        .with_include_guard("IDEVICE_H")
+        .exclude_item("idevice_socklen_t")
+        .exclude_item("idevice_sockaddr")
         .generate()
         .expect("Unable to generate bindings")
         .write_to_file("idevice.h");
