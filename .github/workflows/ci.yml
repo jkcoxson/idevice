@@ -207,19 +207,13 @@ jobs:
           restore-keys: windows-cargo-
 
       - name: Build Rust and examples/tools
-        run: just ci-check
+        run: just windows-ci-check
 
       - name: Upload static library
         uses: actions/upload-artifact@v4
         with:
           name: libidevice-windows-a
           path: target\release\idevice_ffi.lib
-
-      - name: Upload C examples/tools
-        uses: actions/upload-artifact@v4
-        with:
-          name: idevice-c-examples-windows
-          path: ffi\examples\build\bin\*
 
       - name: Upload C++ examples/tools
         uses: actions/upload-artifact@v4
