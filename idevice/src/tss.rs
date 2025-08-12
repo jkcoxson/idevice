@@ -8,7 +8,7 @@
 use log::{debug, warn};
 use plist::Value;
 
-use crate::{util::plist_to_xml_bytes, IdeviceError};
+use crate::{IdeviceError, util::plist_to_xml_bytes};
 
 /// TSS client version string sent in requests
 const TSS_CLIENT_VERSION_STRING: &str = "libauthinstall-1033.0.2";
@@ -172,15 +172,15 @@ pub fn apply_restore_request_rules(
 
             for (key, value) in actions {
                 // Skip special values (255 typically means "ignore")
-                if let Some(i) = value.as_unsigned_integer() {
-                    if i == 255 {
-                        continue;
-                    }
+                if let Some(i) = value.as_unsigned_integer()
+                    && i == 255
+                {
+                    continue;
                 }
-                if let Some(i) = value.as_signed_integer() {
-                    if i == 255 {
-                        continue;
-                    }
+                if let Some(i) = value.as_signed_integer()
+                    && i == 255
+                {
+                    continue;
                 }
 
                 input.remove(key); // Explicitly remove before inserting

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use log::warn;
 use plist::Dictionary;
 
-use crate::{obf, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 /// Client for interacting with the iOS installation proxy service
 ///
@@ -376,10 +376,10 @@ impl InstallationProxyClient {
                 break;
             }
 
-            if let Some(status) = res.get("Status").and_then(|x| x.as_string()) {
-                if status == "Complete" {
-                    break;
-                }
+            if let Some(status) = res.get("Status").and_then(|x| x.as_string())
+                && status == "Complete"
+            {
+                break;
             }
         }
         Ok(values)
@@ -424,10 +424,10 @@ impl InstallationProxyClient {
                 callback((c, state.clone())).await;
             }
 
-            if let Some(c) = res.remove("Status").and_then(|x| x.into_string()) {
-                if c == "Complete" {
-                    break;
-                }
+            if let Some(c) = res.remove("Status").and_then(|x| x.into_string())
+                && c == "Complete"
+            {
+                break;
             }
         }
         Ok(())

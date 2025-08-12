@@ -4,8 +4,8 @@
 use log::warn;
 
 use crate::{
-    xpc::{self, XPCObject},
     IdeviceError, ReadWrite, RemoteXpcClient,
+    xpc::{self, XPCObject},
 };
 
 mod app_service;
@@ -17,7 +17,7 @@ pub struct CoreDeviceServiceClient<R: ReadWrite> {
     inner: RemoteXpcClient<R>,
 }
 
-impl<'a, R: ReadWrite + 'a> CoreDeviceServiceClient<R> {
+impl<R: ReadWrite> CoreDeviceServiceClient<R> {
     pub async fn new(inner: R) -> Result<Self, IdeviceError> {
         let mut client = RemoteXpcClient::new(inner).await?;
         client.do_handshake().await?;

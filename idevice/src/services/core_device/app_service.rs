@@ -3,7 +3,7 @@
 use log::warn;
 use serde::Deserialize;
 
-use crate::{obf, IdeviceError, ReadWrite, RsdService};
+use crate::{IdeviceError, ReadWrite, RsdService, obf};
 
 use super::CoreDeviceServiceClient;
 
@@ -128,7 +128,7 @@ pub struct IconUuid {
     pub classes: Vec<String>,
 }
 
-impl<'a, R: ReadWrite + 'a> AppServiceClient<R> {
+impl<R: ReadWrite> AppServiceClient<R> {
     pub async fn new(stream: R) -> Result<Self, IdeviceError> {
         Ok(Self {
             inner: CoreDeviceServiceClient::new(stream).await?,

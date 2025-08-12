@@ -11,7 +11,7 @@ use log::warn;
 use opcode::{AfcFopenMode, AfcOpcode};
 use packet::{AfcPacket, AfcPacketHeader};
 
-use crate::{obf, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 pub mod errors;
 pub mod file;
@@ -376,11 +376,11 @@ impl AfcClient {
     ///
     /// # Returns
     /// A `FileDescriptor` struct for the opened file
-    pub async fn open(
-        &mut self,
+    pub async fn open<'f>(
+        &'f mut self,
         path: impl Into<String>,
         mode: AfcFopenMode,
-    ) -> Result<FileDescriptor, IdeviceError> {
+    ) -> Result<FileDescriptor<'f>, IdeviceError> {
         let path = path.into();
         let mut header_payload = (mode as u64).to_le_bytes().to_vec();
         header_payload.extend(path.as_bytes());

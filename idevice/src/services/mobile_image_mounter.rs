@@ -9,7 +9,7 @@
 
 use log::debug;
 
-use crate::{obf, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 use sha2::{Digest, Sha384};
 
 #[cfg(feature = "tss")]
@@ -710,10 +710,9 @@ impl ImageMounter {
                 .and_then(|l| l.as_dictionary())
                 .and_then(|l| l.get("Info"))
                 .and_then(|i| i.as_dictionary())
+                && let Some(plist::Value::Array(rules)) = info.get("RestoreRequestRules")
             {
-                if let Some(plist::Value::Array(rules)) = info.get("RestoreRequestRules") {
-                    crate::tss::apply_restore_request_rules(&mut tss_entry, &parameters, rules);
-                }
+                crate::tss::apply_restore_request_rules(&mut tss_entry, &parameters, rules);
             }
 
             if manifest_item.get("Digest").is_none() {

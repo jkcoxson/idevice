@@ -25,7 +25,7 @@ pub use services::*;
 #[cfg(feature = "xpc")]
 pub use xpc::RemoteXpcClient;
 
-use log::{debug, error, trace, warn};
+use log::{debug, error, trace};
 use provider::{IdeviceProvider, RsdProvider};
 use rustls::{crypto::CryptoProvider, pki_types::ServerName};
 use std::{
@@ -443,7 +443,7 @@ impl Idevice {
                     // My sanity while debugging the workspace crates are more important.
 
                     debug!("Using ring crypto backend, because both were passed");
-                    warn!("Both ring && aws-lc are selected as idevice crypto backends!");
+                    log::warn!("Both ring && aws-lc are selected as idevice crypto backends!");
                     rustls::crypto::ring::default_provider()
                 }
             };

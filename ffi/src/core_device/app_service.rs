@@ -329,10 +329,10 @@ pub unsafe extern "C" fn app_service_launch_app(
     if !argv.is_null() && argc > 0 {
         let argv_slice = unsafe { std::slice::from_raw_parts(argv, argc) };
         for &arg in argv_slice {
-            if !arg.is_null() {
-                if let Ok(arg_str) = unsafe { CStr::from_ptr(arg) }.to_str() {
-                    args.push(arg_str);
-                }
+            if !arg.is_null()
+                && let Ok(arg_str) = unsafe { CStr::from_ptr(arg) }.to_str()
+            {
+                args.push(arg_str);
             }
         }
     }

@@ -17,15 +17,14 @@ const REPLY_CHANNEL: u32 = 3;
 pub struct RemoteXpcClient<R: ReadWrite> {
     h2_client: http2::Http2Client<R>,
     root_id: u64,
-    reply_id: u64,
+    // reply_id: u64 // maybe not used?
 }
 
-impl<'a, R: ReadWrite + 'a> RemoteXpcClient<R> {
+impl<R: ReadWrite> RemoteXpcClient<R> {
     pub async fn new(socket: R) -> Result<Self, IdeviceError> {
         Ok(Self {
             h2_client: http2::Http2Client::new(socket).await?,
             root_id: 1,
-            reply_id: 1,
         })
     }
 
@@ -86,11 +85,11 @@ impl<'a, R: ReadWrite + 'a> RemoteXpcClient<R> {
 
             match msg.message {
                 Some(msg) => {
-                    if let Some(d) = msg.as_dictionary() {
-                        if d.is_empty() {
-                            msg_buffer.clear();
-                            continue;
-                        }
+                    if let Some(d) = msg.as_dictionary()
+                        && d.is_empty()
+                    {
+                        msg_buffer.clear();
+                        continue;
                     }
                     break Ok(msg.to_plist());
                 }
