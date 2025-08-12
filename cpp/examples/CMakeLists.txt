@@ -10,6 +10,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(HEADER_FILE ${CMAKE_SOURCE_DIR}/../../ffi/idevice.h)
 set(STATIC_LIB ${CMAKE_SOURCE_DIR}/../../target/release/libidevice_ffi.a)
 set(EXAMPLES_DIR ${CMAKE_SOURCE_DIR}/../examples)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 set(IDEVICE_CPP_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../include)  # cpp/include
 set(IDEVICE_FFI_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../../ffi)    # ffi/

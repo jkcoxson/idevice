@@ -59,13 +59,51 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: idevice-c-examples-macos
-          path: cpp/examples/build-c/*
+          path: cpp/examples/build/bin/*
 
       - name: Upload C++ examples/tools
         uses: actions/upload-artifact@v4
         with:
           name: idevice-cpp-examples-macos
-          path: cpp/examples/build-cpp/*
+          path: cpp/examples/build/bin/*
+
+      - name: Stage Rust tools (arm64)
+        shell: bash
+        run: |
+          mkdir -p dist/arm64
+          find target/release -maxdepth 1 -type f -exec sh -c '
+            for f in "$@"; do
+              if file "$f" | grep -Eq "Mach-O .* executable|ELF .* executable"; then
+                cp "$f" dist/arm64/
+              fi
+            done
+          ' sh {} +
+
+      - name: Upload Rust tools (arm64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: idevice-tools-macos-arm
+          path: dist/arm64/*
+          if-no-files-found: error
+
+      - name: Stage Rust tools (x64)
+        shell: bash
+        run: |
+          mkdir -p dist/x64
+          find target/x86_64-apple-darwin/release -maxdepth 1 -type f -exec sh -c '
+            for f in "$@"; do
+              if file "$f" | grep -Eq "Mach-O .* executable|ELF .* executable"; then
+                cp "$f" dist/x64/
+              fi
+            done
+          ' sh {} +
+
+      - name: Upload Rust tools (x64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: idevice-tools-macos-intel
+          path: dist/x64/*
+          if-no-files-found: error
 
   linux:
     name: Linux Build
@@ -112,13 +150,32 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: idevice-c-examples-linux
-          path: cpp/examples/build-c/*
+          path: cpp/examples/build/bin/*
 
       - name: Upload C++ examples/tools
         uses: actions/upload-artifact@v4
         with:
           name: idevice-cpp-examples-linux
-          path: cpp/examples/build-cpp/*
+          path: cpp/examples/build/bin/*
+
+      - name: Stage Rust tools (linux)
+        shell: bash
+        run: |
+          mkdir -p dist
+          find target/release -maxdepth 1 -type f -exec sh -c '
+            for f in "$@"; do
+              if file "$f" | grep -Eq "ELF .* executable"; then
+                cp "$f" dist/
+              fi
+            done
+          ' sh {} +
+
+      - name: Upload Rust tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: idevice-tools-linux
+          path: dist/*
+          if-no-files-found: error
 
   windows:
     name: Windows Build
@@ -161,10 +218,23 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: idevice-c-examples-windows
-          path: cpp\examples\build-c\*
+          path: cpp\examples\build\bin\*
 
       - name: Upload C++ examples/tools
         uses: actions/upload-artifact@v4
         with:
           name: idevice-cpp-examples-windows
-          path: cpp\examples\build-cpp\*
+          path: cpp\examples\build\bin\*
+
+      - name: Stage Rust tools (windows)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Get-ChildItem target\release\*.exe -File | Copy-Item -Destination dist
+
+      - name: Upload Rust tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: idevice-tools-windows
+          path: dist\*.exe
+          if-no-files-found: error
