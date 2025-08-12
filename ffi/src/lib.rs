@@ -54,6 +54,9 @@ use std::{
 };
 use tokio::runtime::{self, Runtime};
 
+#[cfg(unix)]
+use crate::util::{idevice_sockaddr, idevice_socklen_t};
+
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
     runtime::Builder::new_multi_thread()
         .enable_io()
@@ -144,6 +147,8 @@ pub unsafe extern "C" fn idevice_new_tcp_socket(
     label: *const c_char,
     idevice: *mut *mut IdeviceHandle,
 ) -> *mut IdeviceFfiError {
+    use crate::util::SockAddr;
+
     if addr.is_null() || label.is_null() || idevice.is_null() {
         log::error!("null pointer(s) to idevice_new_tcp_socket");
         return ffi_err!(IdeviceError::FfiInvalidArg);
