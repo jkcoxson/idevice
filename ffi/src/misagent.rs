@@ -72,7 +72,7 @@ pub unsafe extern "C" fn misagent_install(
 
     let profile = unsafe { std::slice::from_raw_parts(profile_data, profile_len) }.to_vec();
 
-    let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.install(profile).await });
+    let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.install_profile(&profile).await });
 
     match res {
         Ok(_) => null_mut(),
@@ -105,7 +105,7 @@ pub unsafe extern "C" fn misagent_remove(
         .to_string_lossy()
         .into_owned();
 
-    let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.remove(&id).await });
+    let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.remove_profile(&id).await });
 
     match res {
         Ok(_) => null_mut(),
@@ -142,11 +142,18 @@ pub unsafe extern "C" fn misagent_copy_all(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<Vec<Vec<u8>>, IdeviceError> =
-        RUNTIME.block_on(async { unsafe { &mut *client }.0.copy_all().await });
+    let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.list_all_profiles().await });
 
     match res {
-        Ok(profiles) => {
+        Ok(profile_values) => {
+            // Convert plist::Value objects to bytes
+            let mut profiles = Vec::new();
+            for value in profile_values {
+                if let plist::Value::Data(data) = value {
+                    profiles.push(data);
+                }
+            }
+            let profiles = profiles; // Convert to final type
             let count = profiles.len();
             let mut profile_ptrs = Vec::with_capacity(count);
             let mut profile_lens = Vec::with_capacity(count);

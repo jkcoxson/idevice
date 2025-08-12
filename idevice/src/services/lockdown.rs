@@ -312,10 +312,10 @@ impl LockdownClient {
         pair_record.insert("DeviceCertificate".into(), plist::Value::Data(ca.dev_cert));
         pair_record.insert(
             "HostCertificate".into(),
-            plist::Value::Data(ca.host_cert.clone()),
+            plist::Value::Data(ca.host_cert),
         );
         pair_record.insert("HostID".into(), host_id.into());
-        pair_record.insert("RootCertificate".into(), plist::Value::Data(ca.host_cert));
+        pair_record.insert("RootCertificate".into(), plist::Value::Data(ca.root_cert));
         pair_record.insert(
             "RootPrivateKey".into(),
             plist::Value::Data(ca.private_key.clone()),
