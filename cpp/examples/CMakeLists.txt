@@ -56,6 +56,16 @@ foreach(EXAMPLE_FILE ${EXAMPLE_SOURCES})
           "-framework IOKit"
           "-framework CFNetwork"
       )
+    elseif (WIN32)
+      # System libs required by Rust std/tokio/reqwest/ring on Windows
+      target_link_libraries(${EXAMPLE_NAME} PRIVATE
+        ws2_32        # WSAStartup/WSACleanup, closesocket, freeaddrinfo
+        userenv       # GetUserProfileDirectoryW
+        ntdll         # NtReadFile, RtlNtStatusToDosError
+        bcrypt        # ring RNG (BCryptGenRandom)
+        # iphlpapi    # (optional) GetAdaptersAddresses, if you ever see it unresolved
+        # secur32 crypt32 ncrypt # (only if you switch to schannel/native-tls)
+      )
     endif()
 endforeach()
 
