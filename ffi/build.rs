@@ -1,6 +1,6 @@
 // Jackson Coxson
 
-use std::env;
+use std::{env, fs::OpenOptions, io::Write};
 
 fn main() {
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -12,7 +12,6 @@ fn main() {
         )
         .with_language(cbindgen::Language::C)
         .with_sys_include("sys/socket.h")
-        .with_include("plist.h")
         .generate()
         .expect("Unable to generate bindings")
         .write_to_file("idevice.h");
@@ -25,7 +24,8 @@ fn main() {
         .into_body()
         .read_to_string()
         .expect("failed to get string content");
-    std::fs::write("plist.h", h).expect("failed to save to string");
-
-    println!("cargo:rustc-link-arg=-lplist-2.0");
+    let mut f = OpenOptions::new().append(true).open("idevice.h").unwrap();
+    f.write_all(b"\n\n\n").unwrap();
+    f.write_all(&h.into_bytes())
+        .expect("failed to append plist.h");
 }

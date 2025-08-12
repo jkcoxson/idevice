@@ -73,6 +73,10 @@ pub struct ReadWriteOpaque {
 pub struct IdeviceHandle(pub Idevice);
 pub struct IdeviceSocketHandle(IdeviceSocket);
 
+/// Stub to avoid header problems
+#[allow(non_camel_case_types)]
+pub type plist_t = *mut std::ffi::c_void;
+
 // https://github.com/mozilla/cbindgen/issues/539
 #[allow(non_camel_case_types, unused)]
 struct sockaddr;
