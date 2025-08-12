@@ -177,10 +177,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Install Rust (adds cargo/rustc to PATH)
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      # Use Scoop to install just (reuse your existing scoop setup)
       - uses: MinoruSekine/setup-scoop@v4.0.2
         with:
-          buckets: extras
-          apps: doxygen plantuml
+          buckets: main extras
+          apps: just doxygen plantuml
+
+      # (Paranoid) ensure shims and cargo bin are on PATH for subsequent steps
+      - name: Ensure tools on PATH
+        shell: pwsh
+        run: |
+          echo "$env:USERPROFILE\scoop\shims" >> $env:GITHUB_PATH
+          echo "$env:USERPROFILE\.cargo\bin"  >> $env:GITHUB_PATH
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -193,8 +207,7 @@ jobs:
           restore-keys: windows-cargo-
 
       - name: Build Rust and examples/tools
-        run: |
-          just ci-check
+        run: just ci-check
 
       - name: Upload static library
         uses: actions/upload-artifact@v4
