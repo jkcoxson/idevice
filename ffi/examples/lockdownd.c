@@ -1,7 +1,6 @@
 // Jackson Coxson
 
 #include "idevice.h"
-#include "plist.h"
 #include <arpa/inet.h>
 #include <stdint.h>
 #include <stdio.h>
