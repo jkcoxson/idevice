@@ -71,7 +71,10 @@ impl DiagnosticsRelayClient {
 
         let res = res
             .remove("Diagnostics")
+            .and_then(|x| x.into_dictionary())
+            .and_then(|mut x| x.remove("IORegistry"))
             .and_then(|x| x.into_dictionary());
+            
 
         Ok(res)
     }

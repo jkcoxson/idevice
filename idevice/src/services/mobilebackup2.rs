@@ -648,9 +648,9 @@ impl MobileBackup2Client {
 
     /// High-level API: Restore from a local backup directory using DeviceLink file exchange
     ///
-    /// - `backup_root` 应指向备份根目录（包含 `<SourceIdentifier>` 子目录）
-    /// - `source_identifier` 若为空，默认使用当前连接设备的 UDID
-    /// - `options` 使用 `RestoreOptions` 构建器；未提供则使用默认
+    /// - `backup_root` should point to the backup root directory (which contains the `<SourceIdentifier>` subdirectory)
+    /// - If `source_identifier` is None, the current connected device's UDID will be used by default
+    /// - `options` should be constructed using the `RestoreOptions` builder; if not provided, defaults will be used
     pub async fn restore_from_path(
         &mut self,
         backup_root: &Path,
