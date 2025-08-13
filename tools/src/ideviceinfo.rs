@@ -2,7 +2,7 @@
 // idevice Rust implementation of libimobiledevice's ideviceinfo
 
 use clap::{Arg, Command};
-use idevice::{lockdown::LockdownClient, IdeviceService};
+use idevice::{IdeviceService, lockdown::LockdownClient};
 
 mod common;
 
@@ -39,7 +39,9 @@ async fn main() {
         .get_matches();
 
     if matches.get_flag("about") {
-        println!("ideviceinfo - get information from the idevice. Reimplementation of libimobiledevice's binary.");
+        println!(
+            "ideviceinfo - get information from the idevice. Reimplementation of libimobiledevice's binary."
+        );
         println!("Copyright (c) 2025 Jackson Coxson");
         return;
     }

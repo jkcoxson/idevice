@@ -4,8 +4,8 @@ use std::io::Write;
 
 use clap::{Arg, Command};
 use idevice::{
-    core_device_proxy::CoreDeviceProxy, debug_proxy::DebugProxyClient, rsd::RsdHandshake,
-    IdeviceService, RsdService,
+    IdeviceService, RsdService, core_device_proxy::CoreDeviceProxy, debug_proxy::DebugProxyClient,
+    rsd::RsdHandshake,
 };
 
 mod common;

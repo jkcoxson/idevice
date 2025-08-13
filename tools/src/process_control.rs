@@ -1,7 +1,7 @@
 // Jackson Coxson
 
 use clap::{Arg, Command};
-use idevice::{core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake, IdeviceService, RsdService};
+use idevice::{IdeviceService, RsdService, core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake};
 
 mod common;
 

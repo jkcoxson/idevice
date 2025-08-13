@@ -2,8 +2,8 @@
 
 use clap::{Arg, Command};
 use idevice::{
-    core_device::AppServiceClient, core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake,
-    IdeviceService, RsdService,
+    IdeviceService, RsdService, core_device::AppServiceClient, core_device_proxy::CoreDeviceProxy,
+    rsd::RsdHandshake,
 };
 
 mod common;

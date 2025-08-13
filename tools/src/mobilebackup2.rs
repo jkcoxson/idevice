@@ -2,7 +2,10 @@
 // Mobile Backup 2 tool for iOS devices
 
 use clap::{Arg, Command};
-use idevice::{mobilebackup2::{MobileBackup2Client, RestoreOptions}, IdeviceService};
+use idevice::{
+    IdeviceService,
+    mobilebackup2::{MobileBackup2Client, RestoreOptions},
+};
 use plist::Dictionary;
 use std::fs;
 use std::io::{Read, Write};
@@ -44,13 +47,18 @@ async fn main() {
             Command::new("info")
                 .about("Get backup information from a local backup directory")
                 .arg(Arg::new("dir").long("dir").value_name("DIR").required(true))
-                .arg(Arg::new("source").long("source").value_name("SOURCE").help("Source identifier (defaults to current UDID)"))
+                .arg(
+                    Arg::new("source")
+                        .long("source")
+                        .value_name("SOURCE")
+                        .help("Source identifier (defaults to current UDID)"),
+                ),
         )
         .subcommand(
             Command::new("list")
                 .about("List files of the last backup from a local backup directory")
                 .arg(Arg::new("dir").long("dir").value_name("DIR").required(true))
-                .arg(Arg::new("source").long("source").value_name("SOURCE"))
+                .arg(Arg::new("source").long("source").value_name("SOURCE")),
         )
         .subcommand(
             Command::new("backup")
@@ -79,41 +87,81 @@ async fn main() {
             Command::new("restore")
                 .about("Restore from a local backup directory (DeviceLink)")
                 .arg(Arg::new("dir").long("dir").value_name("DIR").required(true))
-                .arg(Arg::new("source").long("source").value_name("SOURCE").help("Source UDID; defaults to current device UDID"))
-                .arg(Arg::new("password").long("password").value_name("PWD").help("Backup password if encrypted"))
-                .arg(Arg::new("no-reboot").long("no-reboot").action(clap::ArgAction::SetTrue))
-                .arg(Arg::new("no-copy").long("no-copy").action(clap::ArgAction::SetTrue))
-                .arg(Arg::new("no-settings").long("no-settings").action(clap::ArgAction::SetTrue))
-                .arg(Arg::new("system").long("system").action(clap::ArgAction::SetTrue))
-                .arg(Arg::new("remove").long("remove").action(clap::ArgAction::SetTrue))
+                .arg(
+                    Arg::new("source")
+                        .long("source")
+                        .value_name("SOURCE")
+                        .help("Source UDID; defaults to current device UDID"),
+                )
+                .arg(
+                    Arg::new("password")
+                        .long("password")
+                        .value_name("PWD")
+                        .help("Backup password if encrypted"),
+                )
+                .arg(
+                    Arg::new("no-reboot")
+                        .long("no-reboot")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("no-copy")
+                        .long("no-copy")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("no-settings")
+                        .long("no-settings")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("system")
+                        .long("system")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("remove")
+                        .long("remove")
+                        .action(clap::ArgAction::SetTrue),
+                ),
         )
         .subcommand(
             Command::new("unback")
                 .about("Unpack a complete backup to device hierarchy")
                 .arg(Arg::new("dir").long("dir").value_name("DIR").required(true))
                 .arg(Arg::new("source").long("source").value_name("SOURCE"))
-                .arg(Arg::new("password").long("password").value_name("PWD"))
+                .arg(Arg::new("password").long("password").value_name("PWD")),
         )
         .subcommand(
             Command::new("extract")
                 .about("Extract a file from a previous backup")
                 .arg(Arg::new("dir").long("dir").value_name("DIR").required(true))
                 .arg(Arg::new("source").long("source").value_name("SOURCE"))
-                .arg(Arg::new("domain").long("domain").value_name("DOMAIN").required(true))
-                .arg(Arg::new("path").long("path").value_name("REL_PATH").required(true))
-                .arg(Arg::new("password").long("password").value_name("PWD"))
+                .arg(
+                    Arg::new("domain")
+                        .long("domain")
+                        .value_name("DOMAIN")
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("path")
+                        .long("path")
+                        .value_name("REL_PATH")
+                        .required(true),
+                )
+                .arg(Arg::new("password").long("password").value_name("PWD")),
         )
         .subcommand(
             Command::new("change-password")
                 .about("Change backup password")
                 .arg(Arg::new("dir").long("dir").value_name("DIR").required(true))
                 .arg(Arg::new("old").long("old").value_name("OLD"))
-                .arg(Arg::new("new").long("new").value_name("NEW"))
+                .arg(Arg::new("new").long("new").value_name("NEW")),
         )
         .subcommand(
             Command::new("erase-device")
                 .about("Erase the device via mobilebackup2")
-                .arg(Arg::new("dir").long("dir").value_name("DIR").required(true))
+                .arg(Arg::new("dir").long("dir").value_name("DIR").required(true)),
         )
         .subcommand(Command::new("freespace").about("Get free space information"))
         .subcommand(Command::new("encryption").about("Check backup encryption status"))
@@ -129,14 +177,14 @@ async fn main() {
     let host = matches.get_one::<String>("host");
     let pairing_file = matches.get_one::<String>("pairing_file");
 
-    let provider = match common::get_provider(udid, host, pairing_file, "mobilebackup2-jkcoxson").await
-    {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("Error creating provider: {e}");
-            return;
-        }
-    };
+    let provider =
+        match common::get_provider(udid, host, pairing_file, "mobilebackup2-jkcoxson").await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Error creating provider: {e}");
+                return;
+            }
+        };
 
     let mut backup_client = match MobileBackup2Client::connect(&*provider).await {
         Ok(client) => client,
@@ -153,7 +201,9 @@ async fn main() {
             match backup_client.info_from_path(Path::new(dir), source).await {
                 Ok(dict) => {
                     println!("Backup Information:");
-                    for (k, v) in dict { println!("  {k}: {v:?}"); }
+                    for (k, v) in dict {
+                        println!("  {k}: {v:?}");
+                    }
                 }
                 Err(e) => eprintln!("Failed to get info: {e}"),
             }
@@ -164,7 +214,9 @@ async fn main() {
             match backup_client.list_from_path(Path::new(dir), source).await {
                 Ok(dict) => {
                     println!("List Response:");
-                    for (k, v) in dict { println!("  {k}: {v:?}"); }
+                    for (k, v) in dict {
+                        println!("  {k}: {v:?}");
+                    }
                 }
                 Err(e) => eprintln!("Failed to list: {e}"),
             }
@@ -172,7 +224,9 @@ async fn main() {
         Some(("backup", sub_matches)) => {
             let target = sub_matches.get_one::<String>("target").map(|s| s.as_str());
             let source = sub_matches.get_one::<String>("source").map(|s| s.as_str());
-            let dir = sub_matches.get_one::<String>("dir").expect("dir is required");
+            let dir = sub_matches
+                .get_one::<String>("dir")
+                .expect("dir is required");
 
             println!("Starting backup operation...");
             let res = backup_client
@@ -190,13 +244,28 @@ async fn main() {
             let dir = sub.get_one::<String>("dir").unwrap();
             let source = sub.get_one::<String>("source").map(|s| s.as_str());
             let mut ropts = RestoreOptions::new();
-            if sub.get_flag("no-reboot") { ropts = ropts.with_reboot(false); }
-            if sub.get_flag("no-copy") { ropts = ropts.with_copy(false); }
-            if sub.get_flag("no-settings") { ropts = ropts.with_preserve_settings(false); }
-            if sub.get_flag("system") { ropts = ropts.with_system_files(true); }
-            if sub.get_flag("remove") { ropts = ropts.with_remove_items_not_restored(true); }
-            if let Some(pw) = sub.get_one::<String>("password") { ropts = ropts.with_password(pw); }
-            match backup_client.restore_from_path(Path::new(dir), source, Some(ropts)).await {
+            if sub.get_flag("no-reboot") {
+                ropts = ropts.with_reboot(false);
+            }
+            if sub.get_flag("no-copy") {
+                ropts = ropts.with_copy(false);
+            }
+            if sub.get_flag("no-settings") {
+                ropts = ropts.with_preserve_settings(false);
+            }
+            if sub.get_flag("system") {
+                ropts = ropts.with_system_files(true);
+            }
+            if sub.get_flag("remove") {
+                ropts = ropts.with_remove_items_not_restored(true);
+            }
+            if let Some(pw) = sub.get_one::<String>("password") {
+                ropts = ropts.with_password(pw);
+            }
+            match backup_client
+                .restore_from_path(Path::new(dir), source, Some(ropts))
+                .await
+            {
                 Ok(_) => println!("Restore flow finished"),
                 Err(e) => eprintln!("Restore failed: {e}"),
             }
@@ -205,7 +274,10 @@ async fn main() {
             let dir = sub.get_one::<String>("dir").unwrap();
             let source = sub.get_one::<String>("source").map(|s| s.as_str());
             let password = sub.get_one::<String>("password").map(|s| s.as_str());
-            match backup_client.unback_from_path(Path::new(dir), password, source).await {
+            match backup_client
+                .unback_from_path(Path::new(dir), password, source)
+                .await
+            {
                 Ok(_) => println!("Unback finished"),
                 Err(e) => eprintln!("Unback failed: {e}"),
             }
@@ -216,7 +288,10 @@ async fn main() {
             let domain = sub.get_one::<String>("domain").unwrap();
             let rel = sub.get_one::<String>("path").unwrap();
             let password = sub.get_one::<String>("password").map(|s| s.as_str());
-            match backup_client.extract_from_path(domain, rel, Path::new(dir), password, source).await {
+            match backup_client
+                .extract_from_path(domain, rel, Path::new(dir), password, source)
+                .await
+            {
                 Ok(_) => println!("Extract finished"),
                 Err(e) => eprintln!("Extract failed: {e}"),
             }
@@ -225,7 +300,10 @@ async fn main() {
             let dir = sub.get_one::<String>("dir").unwrap();
             let old = sub.get_one::<String>("old").map(|s| s.as_str());
             let newv = sub.get_one::<String>("new").map(|s| s.as_str());
-            match backup_client.change_password_from_path(Path::new(dir), old, newv).await {
+            match backup_client
+                .change_password_from_path(Path::new(dir), old, newv)
+                .await
+            {
                 Ok(_) => println!("Change password finished"),
                 Err(e) => eprintln!("Change password failed: {e}"),
             }
@@ -237,23 +315,22 @@ async fn main() {
                 Err(e) => eprintln!("Erase device failed: {e}"),
             }
         }
-        Some(("freespace", _)) => {
-            match backup_client.get_freespace().await {
-                Ok(freespace) => {
-                    let freespace_gb = freespace as f64 / (1024.0 * 1024.0 * 1024.0);
-                    println!("Free space: {freespace} bytes ({freespace_gb:.2} GB)");
-                }
-                Err(e) => eprintln!("Failed to get free space: {e}"),
+        Some(("freespace", _)) => match backup_client.get_freespace().await {
+            Ok(freespace) => {
+                let freespace_gb = freespace as f64 / (1024.0 * 1024.0 * 1024.0);
+                println!("Free space: {freespace} bytes ({freespace_gb:.2} GB)");
             }
-        }
-        Some(("encryption", _)) => {
-            match backup_client.check_backup_encryption().await {
-                Ok(is_encrypted) => {
-                    println!("Backup encryption: {}", if is_encrypted { "Enabled" } else { "Disabled" });
-                }
-                Err(e) => eprintln!("Failed to check backup encryption: {e}"),
+            Err(e) => eprintln!("Failed to get free space: {e}"),
+        },
+        Some(("encryption", _)) => match backup_client.check_backup_encryption().await {
+            Ok(is_encrypted) => {
+                println!(
+                    "Backup encryption: {}",
+                    if is_encrypted { "Enabled" } else { "Disabled" }
+                );
             }
-        }
+            Err(e) => eprintln!("Failed to check backup encryption: {e}"),
+        },
         _ => {
             println!("No subcommand provided. Use --help for available commands.");
         }
@@ -266,8 +343,7 @@ async fn main() {
 }
 
 use idevice::services::mobilebackup2::{
-    DL_CODE_ERROR_LOCAL as CODE_ERROR_LOCAL,
-    DL_CODE_FILE_DATA as CODE_FILE_DATA,
+    DL_CODE_ERROR_LOCAL as CODE_ERROR_LOCAL, DL_CODE_FILE_DATA as CODE_FILE_DATA,
     DL_CODE_SUCCESS as CODE_SUCCESS,
 };
 
@@ -297,26 +373,36 @@ async fn process_dl_loop(
             }
             "DLMessageCreateDirectory" => {
                 let status = create_directory_from_message(&value, host_dir);
-                client
-                    .send_status_response(status, None, None)
-                    .await?;
+                client.send_status_response(status, None, None).await?;
             }
             "DLMessageMoveFiles" | "DLMessageMoveItems" => {
                 let status = move_files_from_message(&value, host_dir);
                 client
-                    .send_status_response(status, None, Some(plist::Value::Dictionary(Dictionary::new())))
+                    .send_status_response(
+                        status,
+                        None,
+                        Some(plist::Value::Dictionary(Dictionary::new())),
+                    )
                     .await?;
             }
             "DLMessageRemoveFiles" | "DLMessageRemoveItems" => {
                 let status = remove_files_from_message(&value, host_dir);
                 client
-                    .send_status_response(status, None, Some(plist::Value::Dictionary(Dictionary::new())))
+                    .send_status_response(
+                        status,
+                        None,
+                        Some(plist::Value::Dictionary(Dictionary::new())),
+                    )
                     .await?;
             }
             "DLMessageCopyItem" => {
                 let status = copy_item_from_message(&value, host_dir);
                 client
-                    .send_status_response(status, None, Some(plist::Value::Dictionary(Dictionary::new())))
+                    .send_status_response(
+                        status,
+                        None,
+                        Some(plist::Value::Dictionary(Dictionary::new())),
+                    )
                     .await?;
             }
             "DLMessageProcessMessage" => {
@@ -353,23 +439,24 @@ async fn handle_download_files(
         && let Some(plist::Value::Array(files)) = arr.get(1)
     {
         for pv in files {
-                if let Some(path) = pv.as_string()
-                    && let Err(e) = send_single_file(client, host_dir, path).await
-                {
-                    eprintln!("Failed to send file {path}: {e}");
+            if let Some(path) = pv.as_string()
+                && let Err(e) = send_single_file(client, host_dir, path).await
+            {
+                eprintln!("Failed to send file {path}: {e}");
                 err_any = true;
             }
         }
     }
     // terminating zero dword
-    client
-        .idevice
-        .send_raw(&0u32.to_be_bytes())
-        .await?;
+    client.idevice.send_raw(&0u32.to_be_bytes()).await?;
     // status response
     if err_any {
         client
-            .send_status_response(-13, Some("Multi status"), Some(plist::Value::Dictionary(Dictionary::new())))
+            .send_status_response(
+                -13,
+                Some("Multi status"),
+                Some(plist::Value::Dictionary(Dictionary::new())),
+            )
             .await
     } else {
         client
@@ -446,7 +533,8 @@ async fn handle_upload_files(
         if let Some(parent) = dst.parent() {
             let _ = fs::create_dir_all(parent);
         }
-        let mut file = std::fs::File::create(&dst).map_err(|e| idevice::IdeviceError::InternalError(e.to_string()))?;
+        let mut file = std::fs::File::create(&dst)
+            .map_err(|e| idevice::IdeviceError::InternalError(e.to_string()))?;
         loop {
             let nlen = read_be_u32(client).await?;
             if nlen == 0 {
@@ -456,7 +544,8 @@ async fn handle_upload_files(
             if code == CODE_FILE_DATA {
                 let size = (nlen - 1) as usize;
                 let data = read_exact(client, size).await?;
-                file.write_all(&data).map_err(|e| idevice::IdeviceError::InternalError(e.to_string()))?;
+                file.write_all(&data)
+                    .map_err(|e| idevice::IdeviceError::InternalError(e.to_string()))?;
             } else {
                 let _ = read_exact(client, (nlen - 1) as usize).await?;
             }
@@ -478,11 +567,17 @@ async fn read_one(client: &mut MobileBackup2Client) -> Result<u8, idevice::Idevi
     Ok(buf[0])
 }
 
-async fn read_exact(client: &mut MobileBackup2Client, size: usize) -> Result<Vec<u8>, idevice::IdeviceError> {
+async fn read_exact(
+    client: &mut MobileBackup2Client,
+    size: usize,
+) -> Result<Vec<u8>, idevice::IdeviceError> {
     client.idevice.read_raw(size).await
 }
 
-async fn read_exact_string(client: &mut MobileBackup2Client, size: usize) -> Result<String, idevice::IdeviceError> {
+async fn read_exact_string(
+    client: &mut MobileBackup2Client,
+    size: usize,
+) -> Result<String, idevice::IdeviceError> {
     let buf = client.idevice.read_raw(size).await?;
     Ok(String::from_utf8_lossy(&buf).to_string())
 }
@@ -532,7 +627,9 @@ fn remove_files_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
             if let Some(p) = it.as_string() {
                 let path = host_dir.join(p);
                 if path.is_dir() {
-                    if fs::remove_dir_all(&path).is_err() { return -1; }
+                    if fs::remove_dir_all(&path).is_err() {
+                        return -1;
+                    }
                 } else if path.exists() && fs::remove_file(&path).is_err() {
                     return -1;
                 }
@@ -546,16 +643,25 @@ fn remove_files_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
 fn copy_item_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
     if let plist::Value::Array(arr) = dl_value
         && arr.len() >= 3
-        && let (Some(plist::Value::String(src)), Some(plist::Value::String(dst))) = (arr.get(1), arr.get(2))
+        && let (Some(plist::Value::String(src)), Some(plist::Value::String(dst))) =
+            (arr.get(1), arr.get(2))
     {
         let from = host_dir.join(src);
         let to = host_dir.join(dst);
-        if let Some(parent) = to.parent() { let _ = fs::create_dir_all(parent); }
+        if let Some(parent) = to.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
         if from.is_dir() {
             // shallow copy: create dir
-            return match fs::create_dir_all(&to) { Ok(_) => 0, Err(_) => -1 };
+            return match fs::create_dir_all(&to) {
+                Ok(_) => 0,
+                Err(_) => -1,
+            };
         } else {
-            return match fs::copy(&from, &to) { Ok(_) => 0, Err(_) => -1 };
+            return match fs::copy(&from, &to) {
+                Ok(_) => 0,
+                Err(_) => -1,
+            };
         }
     }
     -1

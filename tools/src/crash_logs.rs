@@ -2,8 +2,8 @@
 
 use clap::{Arg, Command};
 use idevice::{
-    crashreportcopymobile::{flush_reports, CrashReportCopyMobileClient},
     IdeviceService,
+    crashreportcopymobile::{CrashReportCopyMobileClient, flush_reports},
 };
 
 mod common;

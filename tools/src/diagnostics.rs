@@ -1,8 +1,8 @@
 // Jackson Coxson
 // idevice Rust implementation of libimobiledevice's idevicediagnostics
 
-use clap::{Arg, Command, ArgMatches};
-use idevice::{services::diagnostics_relay::DiagnosticsRelayClient, IdeviceService};
+use clap::{Arg, ArgMatches, Command};
+use idevice::{IdeviceService, services::diagnostics_relay::DiagnosticsRelayClient};
 
 mod common;
 
@@ -43,20 +43,20 @@ async fn main() {
                     Arg::new("plane")
                         .long("plane")
                         .value_name("PLANE")
-                        .help("IORegistry plane to query (e.g., IODeviceTree, IOService)")
+                        .help("IORegistry plane to query (e.g., IODeviceTree, IOService)"),
                 )
                 .arg(
                     Arg::new("name")
                         .long("name")
                         .value_name("NAME")
-                        .help("Entry name to filter by")
+                        .help("Entry name to filter by"),
                 )
                 .arg(
                     Arg::new("class")
                         .long("class")
                         .value_name("CLASS")
-                        .help("Entry class to filter by")
-                )
+                        .help("Entry class to filter by"),
+                ),
         )
         .subcommand(
             Command::new("mobilegestalt")
@@ -67,45 +67,23 @@ async fn main() {
                         .value_name("KEYS")
                         .help("Comma-separated list of keys to query")
                         .value_delimiter(',')
-                        .num_args(1..)
-                )
+                        .num_args(1..),
+                ),
         )
-        .subcommand(
-            Command::new("gasguage")
-                .about("Print gas gauge (battery) information")
-        )
-        .subcommand(
-            Command::new("nand")
-                .about("Print NAND flash information")
-        )
-        .subcommand(
-            Command::new("all")
-                .about("Print all available diagnostics information")
-        )
-        .subcommand(
-            Command::new("wifi")
-                .about("Print WiFi diagnostics information")
-        )
-        .subcommand(
-            Command::new("goodbye")
-                .about("Send Goodbye to diagnostics relay")
-        )
-        .subcommand(
-            Command::new("restart")
-                .about("Restart the device")
-        )
-        .subcommand(
-            Command::new("shutdown")
-                .about("Shutdown the device")
-        )
-        .subcommand(
-            Command::new("sleep")
-                .about("Put the device to sleep")
-        )
+        .subcommand(Command::new("gasguage").about("Print gas gauge (battery) information"))
+        .subcommand(Command::new("nand").about("Print NAND flash information"))
+        .subcommand(Command::new("all").about("Print all available diagnostics information"))
+        .subcommand(Command::new("wifi").about("Print WiFi diagnostics information"))
+        .subcommand(Command::new("goodbye").about("Send Goodbye to diagnostics relay"))
+        .subcommand(Command::new("restart").about("Restart the device"))
+        .subcommand(Command::new("shutdown").about("Shutdown the device"))
+        .subcommand(Command::new("sleep").about("Put the device to sleep"))
         .get_matches();
 
     if matches.get_flag("about") {
-        println!("idevicediagnostics - interact with the diagnostics interface of a device. Reimplementation of libimobiledevice's binary.");
+        println!(
+            "idevicediagnostics - interact with the diagnostics interface of a device. Reimplementation of libimobiledevice's binary."
+        );
         println!("Copyright (c) 2025 Jackson Coxson");
         return;
     }
@@ -187,7 +165,8 @@ async fn handle_ioregistry(client: &mut DiagnosticsRelayClient, matches: &ArgMat
 }
 
 async fn handle_mobilegestalt(client: &mut DiagnosticsRelayClient, matches: &ArgMatches) {
-    let keys = matches.get_many::<String>("keys")
+    let keys = matches
+        .get_many::<String>("keys")
         .map(|values| values.map(|s| s.to_string()).collect::<Vec<_>>());
 
     match client.mobilegestalt(keys).await {

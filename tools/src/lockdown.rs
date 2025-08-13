@@ -1,7 +1,7 @@
 // Jackson Coxson
 
-use clap::{arg, Arg, Command};
-use idevice::{lockdown::LockdownClient, pretty_print_plist, IdeviceService};
+use clap::{Arg, Command, arg};
+use idevice::{IdeviceService, lockdown::LockdownClient, pretty_print_plist};
 use plist::Value;
 
 mod common;
@@ -52,7 +52,9 @@ async fn main() {
         .get_matches();
 
     if matches.get_flag("about") {
-        println!("lockdown - query and manage values on a device. Reimplementation of libimobiledevice's binary.");
+        println!(
+            "lockdown - query and manage values on a device. Reimplementation of libimobiledevice's binary."
+        );
         println!("Copyright (c) 2025 Jackson Coxson");
         return;
     }

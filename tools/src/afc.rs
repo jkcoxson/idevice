@@ -2,11 +2,11 @@
 
 use std::path::PathBuf;
 
-use clap::{value_parser, Arg, Command};
+use clap::{Arg, Command, value_parser};
 use idevice::{
-    afc::{opcode::AfcFopenMode, AfcClient},
-    house_arrest::HouseArrestClient,
     IdeviceService,
+    afc::{AfcClient, opcode::AfcFopenMode},
+    house_arrest::HouseArrestClient,
 };
 
 mod common;

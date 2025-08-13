@@ -3,10 +3,10 @@
 
 use std::{io::Write, path::PathBuf};
 
-use clap::{arg, value_parser, Arg, Command};
+use clap::{Arg, Command, arg, value_parser};
 use idevice::{
-    lockdown::LockdownClient, mobile_image_mounter::ImageMounter, pretty_print_plist,
-    IdeviceService,
+    IdeviceService, lockdown::LockdownClient, mobile_image_mounter::ImageMounter,
+    pretty_print_plist,
 };
 
 mod common;
@@ -67,7 +67,9 @@ async fn main() {
         .get_matches();
 
     if matches.get_flag("about") {
-        println!("mounter - query and manage images mounted on a device. Reimplementation of libimobiledevice's binary.");
+        println!(
+            "mounter - query and manage images mounted on a device. Reimplementation of libimobiledevice's binary."
+        );
         println!("Copyright (c) 2025 Jackson Coxson");
         return;
     }

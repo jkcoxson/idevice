@@ -1,7 +1,7 @@
 // Jackson Coxson
 
 use clap::{Arg, Command};
-use idevice::{syslog_relay::SyslogRelayClient, IdeviceService};
+use idevice::{IdeviceService, syslog_relay::SyslogRelayClient};
 
 mod common;
 

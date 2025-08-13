@@ -1,9 +1,10 @@
 // Jackson Coxson
 
-use clap::{arg, Arg, Command};
+use clap::{Arg, Command, arg};
 use idevice::{
-    companion_proxy::CompanionProxy, core_device_proxy::CoreDeviceProxy, pretty_print_dictionary,
-    pretty_print_plist, rsd::RsdHandshake, IdeviceService, RsdService,
+    IdeviceService, RsdService, companion_proxy::CompanionProxy,
+    core_device_proxy::CoreDeviceProxy, pretty_print_dictionary, pretty_print_plist,
+    rsd::RsdHandshake,
 };
 
 mod common;

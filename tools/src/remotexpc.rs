@@ -3,8 +3,8 @@
 
 use clap::{Arg, Command};
 use idevice::{
-    core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake, tcp::stream::AdapterStream,
-    IdeviceService,
+    IdeviceService, core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake,
+    tcp::stream::AdapterStream,
 };
 
 mod common;

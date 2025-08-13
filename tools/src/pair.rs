@@ -2,9 +2,9 @@
 
 use clap::{Arg, Command};
 use idevice::{
+    IdeviceService,
     lockdown::LockdownClient,
     usbmuxd::{Connection, UsbmuxdAddr, UsbmuxdConnection},
-    IdeviceService,
 };
 
 #[tokio::main]
