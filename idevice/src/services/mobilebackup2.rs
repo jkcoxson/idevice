@@ -715,7 +715,7 @@ impl MobileBackup2Client {
             None => target_udid.ok_or(IdeviceError::InvalidHostID)?,
         };
 
-        // 简单存在性校验：backup_root/source 必须存在
+        // Simple existence check: backup_root/source must exist
         let backup_dir = backup_root.join(source);
         if !backup_dir.exists() {
             return Err(IdeviceError::NotFound);
@@ -730,7 +730,8 @@ impl MobileBackup2Client {
         )
         .await?;
 
-        // 进入 DeviceLink 文件交换循环，根目录传入 backup_root（协议请求包含 source 前缀）
+        // Enter the DeviceLink file exchange loop, and pass the root directory to backup_root
+        // (the protocol request contains the source prefix)
         let _ = self.process_restore_dl_loop(backup_root).await?;
         Ok(())
     }
