@@ -514,9 +514,9 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
 name = "crossfire"
-version = "2.0.16"
+version = "2.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3881655583172e9ff313a26f910f262271e331c4af54e22ebd395f8d97da3629"
+checksum = "0c37375aaa516cedc4a8a8bdb62ece50bc96555aac0233ca33d965d826d7f261"
 dependencies = [
  "crossbeam",
  "enum_dispatch",
@@ -1131,6 +1131,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
+ "sha1",
  "sha2",
  "thiserror 2.0.12",
  "tokio",
@@ -1983,9 +1984,9 @@ dependencies = [
 
 [[package]]
 name = "route_manager"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f3a4eae9e0cc97729d29d7d0936dd30170c80625cca122a56856fd23d619159"
+checksum = "d3e6f9a7f63393a2666a8e8982c369872c12ccfeb7f1eaf2a1aaec7e11a6a4ca"
 dependencies = [
  "bindgen 0.72.0",
  "flume",
@@ -2010,6 +2011,7 @@ dependencies = [
  "pkcs1",
  "pkcs8",
  "rand_core 0.6.4",
+ "sha1",
  "sha2",
  "signature",
  "spki",
@@ -2617,9 +2619,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tun-rs"
-version = "2.5.3"
+version = "2.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36e061d3f14bea7007179e5912e20a6bf4857ab9f3676b2ed55dafccba38410f"
+checksum = "c8d64ec316a65ed7d79f4389c9c7d8b51f115dc027b077aa94693ef0fb70df4d"
 dependencies = [
  "bindgen 0.72.0",
  "blocking",

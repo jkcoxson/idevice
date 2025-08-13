@@ -2,33 +2,57 @@
 //!
 //! Provides functionality for interacting with the misagent service on iOS devices,
 //! which manages provisioning profiles and certificates.
+//!
+//! Based on libimobiledevice implementation from SideStore
 
-use log::warn;
-use plist::Dictionary;
+use log::{debug, warn};
+use plist::{Dictionary, Value};
 
-use crate::{obf, Idevice, IdeviceError, IdeviceService, RsdService};
+use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
+
+/// Error codes returned by misagent service
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MisagentError {
+    Success = 0,
+    InvalidArgument = -1,
+    PlistError = -2,
+    ConnectionFailed = -3,
+    RequestFailed = -4,
+    UnknownError = -256,
+}
+
+impl From<IdeviceError> for MisagentError {
+    fn from(err: IdeviceError) -> Self {
+        match err {
+            IdeviceError::Plist(_) => MisagentError::PlistError,
+            IdeviceError::Socket(_) => MisagentError::ConnectionFailed,
+            _ => MisagentError::UnknownError,
+        }
+    }
+}
+
+impl From<MisagentError> for IdeviceError {
+    fn from(err: MisagentError) -> Self {
+        match err {
+            MisagentError::Success => IdeviceError::UnexpectedResponse, // Shouldn't happen
+            MisagentError::InvalidArgument => IdeviceError::FfiInvalidArg,
+            MisagentError::PlistError => IdeviceError::UnexpectedResponse,
+            MisagentError::ConnectionFailed => IdeviceError::NoEstablishedConnection,
+            MisagentError::RequestFailed => IdeviceError::MisagentFailure,
+            MisagentError::UnknownError => IdeviceError::MisagentFailure,
+        }
+    }
+}
 
 /// Client for interacting with the iOS misagent service
 ///
-/// The misagent service handles:
-/// - Installation of provisioning profiles
-/// - Removal of provisioning profiles
-/// - Querying installed profiles
+/// Handles provisioning profile installation, listing, and removal operations.
+/// Uses traditional lockdown service connection (not RSD) for maximum compatibility.
 pub struct MisagentClient {
     /// The underlying device connection with established misagent service
     pub idevice: Idevice,
-}
-
-impl RsdService for MisagentClient {
-    fn rsd_service_name() -> std::borrow::Cow<'static, str> {
-        obf!("com.apple.misagent.shim.remote")
-    }
-
-    async fn from_stream(stream: Box<dyn crate::ReadWrite>) -> Result<Self, IdeviceError> {
-        let mut stream = Idevice::new(stream, "");
-        stream.rsd_checkin().await?;
-        Ok(Self::new(stream))
-    }
+    /// Last error code from the service
+    pub last_error: i32,
 }
 
 impl IdeviceService for MisagentClient {
@@ -37,165 +61,257 @@ impl IdeviceService for MisagentClient {
         obf!("com.apple.misagent")
     }
 
+    /// Establishes a connection to the misagent service
+    ///
+    /// # Arguments
+    /// * `provider` - Device connection provider
+    ///
+    /// # Returns
+    /// A connected `MisagentClient` instance
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if any step of the connection process fails
+    ///
+    /// # Process
+    /// For USB connections:
+    /// 1. Connects to lockdownd service
+    /// 2. Starts a lockdown session
+    /// 3. Requests the misagent service port
+    /// 4. Establishes connection to the service port
+    /// 5. Optionally starts TLS if required by service
+    ///
+    /// For network connections (TCP):
+    /// 1. Connects to lockdownd service
+    /// 2. Starts a lockdown session
+    /// 3. Performs RSD check-in to get proper entitlements
+    /// 4. Requests the misagent service port
+    /// 5. Establishes connection to the service port
+    /// 6. Starts TLS session
+    async fn connect(
+        provider: &dyn crate::provider::IdeviceProvider,
+    ) -> Result<Self, IdeviceError> {
+        // Check if this is a network connection by examining the provider label
+        // Network connections typically have IP addresses in their labels
+        let provider_label = provider.label();
+        let is_network_connection = provider_label.contains('.') && 
+            provider_label.chars().any(|c| c.is_ascii_digit());
+        
+        debug!("Connecting to misagent service (network: {})", is_network_connection);
+        
+        let mut lockdown = LockdownClient::connect(provider).await?;
+        lockdown
+            .start_session(&provider.get_pairing_file().await?)
+            .await?;
+            
+        // For network connections, perform RSD check-in to get proper entitlements
+        if is_network_connection {
+            debug!("Network connection detected - performing RSD check-in for entitlements");
+            
+            // Perform RSD check-in on the lockdown connection
+            lockdown.idevice.rsd_checkin().await?;
+            debug!("RSD check-in completed successfully");
+        }
+        
+        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
+        debug!("Got misagent service port: {}, SSL: {}", port, ssl);
+
+        let mut idevice = provider.connect(port).await?;
+        if ssl {
+            debug!("Starting TLS session for misagent");
+            idevice
+                .start_session(&provider.get_pairing_file().await?)
+                .await?;
+        }
+
+        Ok(Self::new(idevice))
+    }
+
     async fn from_stream(idevice: Idevice) -> Result<Self, crate::IdeviceError> {
         Ok(Self::new(idevice))
     }
 }
 
 impl MisagentClient {
-    /// Creates a new misagent client from an existing device connection
+    /// Creates a new misagent client from an established device connection
     ///
     /// # Arguments
     /// * `idevice` - Pre-established device connection
     pub fn new(idevice: Idevice) -> Self {
-        Self { idevice }
+        Self {
+            idevice,
+            last_error: 0,
+        }
+    }
+
+    /// Checks the response from misagent to determine if the operation was successful
+    fn check_result(&mut self, response: &Dictionary) -> Result<(), MisagentError> {
+        // Look for Status field in response
+        if let Some(status_value) = response.get("Status") {
+            if let Some(status) = status_value.as_signed_integer() {
+                self.last_error = status as i32;
+                if status == 0 {
+                    return Ok(());
+                } else {
+                    warn!("misagent operation failed with status: {}", status);
+                    return Err(MisagentError::RequestFailed);
+                }
+            }
+        }
+        
+        warn!("misagent response missing or invalid Status field");
+        Err(MisagentError::PlistError)
+    }
+
+    /// Send a plist request and receive response
+    async fn send_request(&mut self, request: Dictionary) -> Result<Dictionary, MisagentError> {
+        // Convert to plist Value
+        let plist_value = Value::Dictionary(request);
+        
+        debug!("Sending misagent request: {:#?}", plist_value);
+        
+        // Send the plist
+        self.idevice.send_plist(plist_value).await
+            .map_err(|e| {
+                warn!("Failed to send misagent request: {:?}", e);
+                MisagentError::from(e)
+            })?;
+        
+        // Receive the response
+        let response = self.idevice.read_plist().await
+            .map_err(|e| {
+                warn!("Failed to read misagent response: {:?}", e);
+                MisagentError::from(e)
+            })?;
+        
+        debug!("Received misagent response: {:#?}", response);
+        
+        // Response is already a dictionary
+        Ok(response)
     }
 
     /// Installs a provisioning profile on the device
     ///
     /// # Arguments
-    /// * `profile` - The provisioning profile data to install
+    /// * `profile_data` - The provisioning profile data as bytes
     ///
     /// # Returns
-    /// `Ok(())` on successful installation
+    /// `Ok(())` on successful installation, error otherwise
     ///
     /// # Errors
-    /// Returns `IdeviceError` if:
-    /// - Communication fails
-    /// - The profile is invalid
-    /// - Installation is not permitted
-    ///
-    /// # Example
-    /// ```rust
-    /// let profile_data = std::fs::read("profile.mobileprovision")?;
-    /// client.install(profile_data).await?;
-    /// ```
-    pub async fn install(&mut self, profile: Vec<u8>) -> Result<(), IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("MessageType".into(), "Install".into());
-        req.insert("Profile".into(), plist::Value::Data(profile));
-        req.insert("ProfileType".into(), "Provisioning".into());
-
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
-
-        let mut res = self.idevice.read_plist().await?;
-
-        match res.remove("Status") {
-            Some(plist::Value::Integer(status)) => {
-                if let Some(status) = status.as_unsigned() {
-                    if status == 0 {
-                        Ok(())
-                    } else {
-                        Err(IdeviceError::MisagentFailure)
-                    }
-                } else {
-                    warn!("Misagent return status wasn't unsigned");
-                    Err(IdeviceError::UnexpectedResponse)
-                }
-            }
-            _ => {
-                warn!("Did not get integer status response");
-                Err(IdeviceError::UnexpectedResponse)
-            }
-        }
+    /// Returns `MisagentError` if installation fails
+    pub async fn install_profile(&mut self, profile_data: &[u8]) -> Result<(), MisagentError> {
+        debug!("Installing provisioning profile ({} bytes)", profile_data.len());
+        
+        let mut request = Dictionary::new();
+        request.insert("MessageType".to_string(), Value::String("Install".to_string()));
+        request.insert("ProfileType".to_string(), Value::String("Provisioning".to_string()));
+        request.insert("Profile".to_string(), Value::Data(profile_data.to_vec()));
+        
+        let response = self.send_request(request).await?;
+        self.check_result(&response)?;
+        
+        debug!("Provisioning profile installed successfully");
+        Ok(())
     }
 
     /// Removes a provisioning profile from the device
     ///
     /// # Arguments
-    /// * `id` - The UUID of the profile to remove
+    /// * `profile_id` - The UUID of the profile to remove
     ///
     /// # Returns
-    /// `Ok(())` on successful removal
+    /// `Ok(())` on successful removal, error otherwise
     ///
     /// # Errors
-    /// Returns `IdeviceError` if:
-    /// - Communication fails
-    /// - The profile doesn't exist
-    /// - Removal is not permitted
+    /// Returns `MisagentError` if removal fails
+    pub async fn remove_profile(&mut self, profile_id: &str) -> Result<(), MisagentError> {
+        debug!("Removing provisioning profile: {}", profile_id);
+        
+        let mut request = Dictionary::new();
+        request.insert("MessageType".to_string(), Value::String("Remove".to_string()));
+        request.insert("ProfileType".to_string(), Value::String("Provisioning".to_string()));
+        request.insert("ProfileID".to_string(), Value::String(profile_id.to_string()));
+        
+        let response = self.send_request(request).await?;
+        self.check_result(&response)?;
+        
+        debug!("Provisioning profile removed successfully");
+        Ok(())
+    }
+
+    /// Lists all installed provisioning profiles
     ///
-    /// # Example
-    /// ```rust
-    /// client.remove("asdf").await?;
-    /// ```
-    pub async fn remove(&mut self, id: &str) -> Result<(), IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("MessageType".into(), "Remove".into());
-        req.insert("ProfileID".into(), id.into());
-        req.insert("ProfileType".into(), "Provisioning".into());
-
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
-
-        let mut res = self.idevice.read_plist().await?;
-
-        match res.remove("Status") {
-            Some(plist::Value::Integer(status)) => {
-                if let Some(status) = status.as_unsigned() {
-                    if status == 0 {
-                        Ok(())
-                    } else {
-                        Err(IdeviceError::MisagentFailure)
-                    }
-                } else {
-                    warn!("Misagent return status wasn't unsigned");
-                    Err(IdeviceError::UnexpectedResponse)
-                }
+    /// # Returns
+    /// A vector of profile data on success, error otherwise
+    ///
+    /// # Errors
+    /// Returns `MisagentError` if listing fails
+    pub async fn list_profiles(&mut self) -> Result<Vec<Value>, MisagentError> {
+        debug!("Listing installed provisioning profiles");
+        
+        let mut request = Dictionary::new();
+        request.insert("MessageType".to_string(), Value::String("Copy".to_string()));
+        request.insert("ProfileType".to_string(), Value::String("Provisioning".to_string()));
+        
+        let response = self.send_request(request).await?;
+        self.check_result(&response)?;
+        
+        // Extract payload containing profiles
+        match response.get("Payload") {
+            Some(Value::Array(profiles)) => {
+                debug!("Found {} provisioning profiles", profiles.len());
+                Ok(profiles.clone())
             }
-            _ => {
-                warn!("Did not get integer status response");
-                Err(IdeviceError::UnexpectedResponse)
+            Some(_) => {
+                warn!("Payload is not an array");
+                Err(MisagentError::PlistError)
+            }
+            None => {
+                debug!("No profiles found");
+                Ok(Vec::new())
             }
         }
     }
 
-    /// Retrieves all provisioning profiles from the device
+    /// Lists all installed provisioning profiles (including system profiles)
     ///
     /// # Returns
-    /// A vector containing raw profile data for each installed profile
+    /// A vector of profile data on success, error otherwise
     ///
     /// # Errors
-    /// Returns `IdeviceError` if:
-    /// - Communication fails
-    /// - The response is malformed
-    ///
-    /// # Example
-    /// ```rust
-    /// let profiles = client.copy_all().await?;
-    /// for profile in profiles {
-    ///     println!("Profile size: {} bytes", profile.len());
-    /// }
-    /// ```
-    pub async fn copy_all(&mut self) -> Result<Vec<Vec<u8>>, IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("MessageType".into(), "CopyAll".into());
-        req.insert("ProfileType".into(), "Provisioning".into());
-
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
-
-        let mut res = self.idevice.read_plist().await?;
-        match res.remove("Payload") {
-            Some(plist::Value::Array(a)) => {
-                let mut res = Vec::new();
-                for profile in a {
-                    if let Some(profile) = profile.as_data() {
-                        res.push(profile.to_vec());
-                    } else {
-                        warn!("Misagent CopyAll did not return data plists");
-                        return Err(IdeviceError::UnexpectedResponse);
-                    }
-                }
-                Ok(res)
+    /// Returns `MisagentError` if listing fails
+    pub async fn list_all_profiles(&mut self) -> Result<Vec<Value>, MisagentError> {
+        debug!("Listing all provisioning profiles (including system)");
+        
+        let mut request = Dictionary::new();
+        request.insert("MessageType".to_string(), Value::String("CopyAll".to_string()));
+        request.insert("ProfileType".to_string(), Value::String("Provisioning".to_string()));
+        
+        let response = self.send_request(request).await?;
+        self.check_result(&response)?;
+        
+        // Extract payload containing profiles
+        match response.get("Payload") {
+            Some(Value::Array(profiles)) => {
+                debug!("Found {} total provisioning profiles", profiles.len());
+                Ok(profiles.clone())
             }
-            _ => {
-                warn!("Did not get a payload of provisioning profiles as an array");
-                Err(IdeviceError::UnexpectedResponse)
+            Some(_) => {
+                warn!("Payload is not an array");
+                Err(MisagentError::PlistError)
+            }
+            None => {
+                debug!("No profiles found");
+                Ok(Vec::new())
             }
         }
+    }
+
+    /// Gets the last error code from the service
+    ///
+    /// # Returns
+    /// The last error code returned by the misagent service
+    pub fn get_last_error(&self) -> i32 {
+        self.last_error
     }
 }
