@@ -180,12 +180,10 @@ async fn main() {
                 .await;
             if let Err(e) = res {
                 eprintln!("Failed to send backup request: {e}");
+            } else if let Err(e) = process_dl_loop(&mut backup_client, Path::new(dir)).await {
+                eprintln!("Backup failed during DL loop: {e}");
             } else {
-                if let Err(e) = process_dl_loop(&mut backup_client, Path::new(dir)).await {
-                    eprintln!("Backup failed during DL loop: {e}");
-                } else {
-                    println!("Backup flow finished");
-                }
+                println!("Backup flow finished");
             }
         }
         Some(("restore", sub)) => {
@@ -267,10 +265,11 @@ async fn main() {
     }
 }
 
-const CODE_SUCCESS: u8 = 0x00;
-const CODE_ERROR_LOCAL: u8 = 0x06;
-const CODE_ERROR_REMOTE: u8 = 0x0b;
-const CODE_FILE_DATA: u8 = 0x0c;
+use idevice::services::mobilebackup2::{
+    DL_CODE_ERROR_LOCAL as CODE_ERROR_LOCAL,
+    DL_CODE_FILE_DATA as CODE_FILE_DATA,
+    DL_CODE_SUCCESS as CODE_SUCCESS,
+};
 
 async fn process_dl_loop(
     client: &mut MobileBackup2Client,
@@ -322,10 +321,10 @@ async fn process_dl_loop(
             }
             "DLMessageProcessMessage" => {
                 // Final status/content: return inner dict
-                if let plist::Value::Array(arr) = value {
-                    if let Some(plist::Value::Dictionary(dict)) = arr.get(1) {
-                        return Ok(Some(dict.clone()));
-                    }
+                if let plist::Value::Array(arr) = value
+                    && let Some(plist::Value::Dictionary(dict)) = arr.get(1)
+                {
+                    return Ok(Some(dict.clone()));
                 }
                 return Ok(None);
             }
@@ -349,17 +348,16 @@ async fn handle_download_files(
 ) -> Result<(), idevice::IdeviceError> {
     // dl_value is an array: ["DLMessageDownloadFiles", [paths...], progress?]
     let mut err_any = false;
-    if let plist::Value::Array(arr) = dl_value {
-        if arr.len() >= 2 {
-            if let Some(plist::Value::Array(files)) = arr.get(1) {
-                for pv in files {
-                    if let Some(path) = pv.as_string() {
-                        if let Err(e) = send_single_file(client, host_dir, path).await {
-                            eprintln!("Failed to send file {}: {}", path, e);
-                            err_any = true;
-                        }
-                    }
-                }
+    if let plist::Value::Array(arr) = dl_value
+        && arr.len() >= 2
+        && let Some(plist::Value::Array(files)) = arr.get(1)
+    {
+        for pv in files {
+            if let Some(path) = pv.as_string()
+                && let Err(e) = send_single_file(client, host_dir, path).await
+            {
+                eprintln!("Failed to send file {}: {}", path, e);
+                err_any = true;
             }
         }
     }
@@ -386,7 +384,7 @@ async fn send_single_file(
     rel_path: &str,
 ) -> Result<(), idevice::IdeviceError> {
     let full = host_dir.join(rel_path);
-    let mut path_bytes = rel_path.as_bytes().to_vec();
+    let path_bytes = rel_path.as_bytes().to_vec();
     let nlen = (path_bytes.len() as u32).to_be_bytes();
     client.idevice.send_raw(&nlen).await?;
     client.idevice.send_raw(&path_bytes).await?;
@@ -459,8 +457,6 @@ async fn handle_upload_files(
                 let size = (nlen - 1) as usize;
                 let data = read_exact(client, size).await?;
                 file.write_all(&data).map_err(|e| idevice::IdeviceError::InternalError(e.to_string()))?;
-            } else if code == CODE_ERROR_REMOTE {
-                let _ = read_exact(client, (nlen - 1) as usize).await?;
             } else {
                 let _ = read_exact(client, (nlen - 1) as usize).await?;
             }
@@ -492,92 +488,74 @@ async fn read_exact_string(client: &mut MobileBackup2Client, size: usize) -> Res
 }
 
 fn create_directory_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
-    if let plist::Value::Array(arr) = dl_value {
-        if arr.len() >= 2 {
-            if let Some(plist::Value::String(dir)) = arr.get(1) {
-                let path = host_dir.join(dir);
-                return match fs::create_dir_all(&path) {
-                    Ok(_) => 0,
-                    Err(_) => -1,
-                };
-            }
-        }
+    if let plist::Value::Array(arr) = dl_value
+        && arr.len() >= 2
+        && let Some(plist::Value::String(dir)) = arr.get(1)
+    {
+        let path = host_dir.join(dir);
+        return match fs::create_dir_all(&path) {
+            Ok(_) => 0,
+            Err(_) => -1,
+        };
     }
     -1
 }
 
 fn move_files_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
-    if let plist::Value::Array(arr) = dl_value {
-        if arr.len() >= 2 {
-            if let Some(plist::Value::Dictionary(map)) = arr.get(1) {
-                for (from, to_v) in map.iter() {
-                    if let Some(to) = to_v.as_string() {
-                        let old = host_dir.join(from);
-                        let newp = host_dir.join(to);
-                        if let Some(parent) = newp.parent() {
-                            let _ = fs::create_dir_all(parent);
-                        }
-                        if fs::rename(&old, &newp).is_err() {
-                            return -1;
-                        }
-                    }
+    if let plist::Value::Array(arr) = dl_value
+        && arr.len() >= 2
+        && let Some(plist::Value::Dictionary(map)) = arr.get(1)
+    {
+        for (from, to_v) in map.iter() {
+            if let Some(to) = to_v.as_string() {
+                let old = host_dir.join(from);
+                let newp = host_dir.join(to);
+                if let Some(parent) = newp.parent() {
+                    let _ = fs::create_dir_all(parent);
                 }
-                return 0;
+                if fs::rename(&old, &newp).is_err() {
+                    return -1;
+                }
             }
         }
+        return 0;
     }
     -1
 }
 
 fn remove_files_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
-    if let plist::Value::Array(arr) = dl_value {
-        if arr.len() >= 2 {
-            if let Some(plist::Value::Array(items)) = arr.get(1) {
-                for it in items {
-                    if let Some(p) = it.as_string() {
-                        let path = host_dir.join(p);
-                        if path.is_dir() {
-                            if fs::remove_dir_all(&path).is_err() {
-                                return -1;
-                            }
-                        } else if path.exists() {
-                            if fs::remove_file(&path).is_err() {
-                                return -1;
-                            }
-                        }
-                    }
+    if let plist::Value::Array(arr) = dl_value
+        && arr.len() >= 2
+        && let Some(plist::Value::Array(items)) = arr.get(1)
+    {
+        for it in items {
+            if let Some(p) = it.as_string() {
+                let path = host_dir.join(p);
+                if path.is_dir() {
+                    if fs::remove_dir_all(&path).is_err() { return -1; }
+                } else if path.exists() && fs::remove_file(&path).is_err() {
+                    return -1;
                 }
-                return 0;
             }
         }
+        return 0;
     }
     -1
 }
 
 fn copy_item_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
-    if let plist::Value::Array(arr) = dl_value {
-        if arr.len() >= 3 {
-            if let (Some(plist::Value::String(src)), Some(plist::Value::String(dst))) =
-                (arr.get(1), arr.get(2))
-            {
-                let from = host_dir.join(src);
-                let to = host_dir.join(dst);
-                if let Some(parent) = to.parent() {
-                    let _ = fs::create_dir_all(parent);
-                }
-                if from.is_dir() {
-                    // shallow copy: create dir
-                    return match fs::create_dir_all(&to) {
-                        Ok(_) => 0,
-                        Err(_) => -1,
-                    };
-                } else {
-                    return match fs::copy(&from, &to) {
-                        Ok(_) => 0,
-                        Err(_) => -1,
-                    };
-                }
-            }
+    if let plist::Value::Array(arr) = dl_value
+        && arr.len() >= 3
+        && let (Some(plist::Value::String(src)), Some(plist::Value::String(dst))) = (arr.get(1), arr.get(2))
+    {
+        let from = host_dir.join(src);
+        let to = host_dir.join(dst);
+        if let Some(parent) = to.parent() { let _ = fs::create_dir_all(parent); }
+        if from.is_dir() {
+            // shallow copy: create dir
+            return match fs::create_dir_all(&to) { Ok(_) => 0, Err(_) => -1 };
+        } else {
+            return match fs::copy(&from, &to) { Ok(_) => 0, Err(_) => -1 };
         }
     }
     -1
