@@ -75,6 +75,7 @@ installation_proxy = []
 springboardservices = []
 misagent = []
 mobile_image_mounter = ["dep:sha2"]
+mobilebackup2 = []
 location_simulation = []
 pair = ["chrono/default", "tokio/time", "dep:sha2", "dep:rsa", "dep:x509-cert"]
 obfuscate = ["dep:obfstr"]
@@ -109,6 +110,7 @@ full = [
   "location_simulation",
   "misagent",
   "mobile_image_mounter",
+  "mobilebackup2",
   "pair",
   "restore_service",
   "rsd",

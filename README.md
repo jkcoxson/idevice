@@ -28,20 +28,22 @@ To keep dependency bloat and compile time down, everything is contained in featu
 | `core_device_proxy`    | Start a secure tunnel to access protected services. |
 | `crashreportcopymobile`| Copy crash reports.|
 | `debug_proxy`          | Send GDB commands to the device.|
+| `diagnostics_relay`    | Access device diagnostics information (IORegistry, MobileGestalt, battery, NAND, device control).|
 | `dvt`                  | Access Apple developer tools (e.g. Instruments).|
 | `heartbeat`            | Maintain a heartbeat connection.|
 | `house_arrest` | Manage files in app containers |
 | `installation_proxy`   | Manage app installation and uninstallation.|
 | `springboardservices`  | Control SpringBoard (e.g. UI interactions). Partial support.|
 | `misagent`             | Manage provisioning profiles on the device.|
+| `mobilebackup2`        | Manage backups.|
 | `mobile_image_mounter` | Manage DDI images.|
 | `location_simulation`  | Simulate GPS locations on the device.|
 | `pair`                 | Pair the device.|
 | `syslog_relay` | Relay system logs from the device |
 | `tcp`                  | Connect to devices over TCP.|
 | `tunnel_tcp_stack`     | Naive in-process TCP stack for `core_device_proxy`.|
-| `tss`                  | Make requests to Apple’s TSS servers. Partial support.|
-| `tunneld`              | Interface with [pymobiledevice3](https://github.com/doronz88/pymobiledevice3)’s tunneld. |
+| `tss`                  | Make requests to Apple's TSS servers. Partial support.|
+| `tunneld`              | Interface with [pymobiledevice3](https://github.com/doronz88/pymobiledevice3)'s tunneld. |
 | `usbmuxd`              | Connect using the usbmuxd daemon.|
 | `xpc`                  | Access protected services via XPC over RSD. |
 

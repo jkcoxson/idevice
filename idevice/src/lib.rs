@@ -74,6 +74,11 @@ pub trait IdeviceService: Sized {
         lockdown
             .start_session(&provider.get_pairing_file().await?)
             .await?;
+        // Best-effort fetch UDID for downstream defaults (e.g., MobileBackup2 Target/Source identifiers)
+        let udid_value = match lockdown.get_value(Some("UniqueDeviceID"), None).await {
+            Ok(v) => v.as_string().map(|s| s.to_string()),
+            Err(_) => None,
+        };
 
         let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
 
@@ -82,6 +87,10 @@ pub trait IdeviceService: Sized {
             idevice
                 .start_session(&provider.get_pairing_file().await?)
                 .await?;
+        }
+
+        if let Some(udid) = udid_value {
+            idevice.set_udid(udid);
         }
 
         Self::from_stream(idevice).await
@@ -123,6 +132,8 @@ pub struct Idevice {
     socket: Option<Box<dyn ReadWrite>>,
     /// Unique label identifying this connection
     label: String,
+    /// Cached device UDID for convenience in higher-level protocols
+    udid: Option<String>,
 }
 
 impl Idevice {
@@ -135,11 +146,22 @@ impl Idevice {
         Self {
             socket: Some(socket),
             label: label.into(),
+            udid: None,
         }
     }
 
     pub fn get_socket(self) -> Option<Box<dyn ReadWrite>> {
         self.socket
+    }
+
+    /// Sets cached UDID
+    pub fn set_udid(&mut self, udid: impl Into<String>) {
+        self.udid = Some(udid.into());
+    }
+
+    /// Returns cached UDID if available
+    pub fn udid(&self) -> Option<&str> {
+        self.udid.as_deref()
     }
 
     /// Queries the device type
