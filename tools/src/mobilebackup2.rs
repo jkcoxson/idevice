@@ -153,7 +153,7 @@ async fn main() {
             match backup_client.info_from_path(Path::new(dir), source).await {
                 Ok(dict) => {
                     println!("Backup Information:");
-                    for (k, v) in dict { println!("  {}: {:?}", k, v); }
+                    for (k, v) in dict { println!("  {k}: {v:?}"); }
                 }
                 Err(e) => eprintln!("Failed to get info: {e}"),
             }
@@ -164,7 +164,7 @@ async fn main() {
             match backup_client.list_from_path(Path::new(dir), source).await {
                 Ok(dict) => {
                     println!("List Response:");
-                    for (k, v) in dict { println!("  {}: {:?}", k, v); }
+                    for (k, v) in dict { println!("  {k}: {v:?}"); }
                 }
                 Err(e) => eprintln!("Failed to list: {e}"),
             }
@@ -241,7 +241,7 @@ async fn main() {
             match backup_client.get_freespace().await {
                 Ok(freespace) => {
                     let freespace_gb = freespace as f64 / (1024.0 * 1024.0 * 1024.0);
-                    println!("Free space: {} bytes ({:.2} GB)", freespace, freespace_gb);
+                    println!("Free space: {freespace} bytes ({freespace_gb:.2} GB)");
                 }
                 Err(e) => eprintln!("Failed to get free space: {e}"),
             }
@@ -332,7 +332,7 @@ async fn process_dl_loop(
                 return Ok(None);
             }
             other => {
-                eprintln!("Unsupported DL message: {}", other);
+                eprintln!("Unsupported DL message: {other}");
                 client
                     .send_status_response(-1, Some("Operation not supported"), None)
                     .await?;
@@ -353,10 +353,10 @@ async fn handle_download_files(
         && let Some(plist::Value::Array(files)) = arr.get(1)
     {
         for pv in files {
-            if let Some(path) = pv.as_string()
-                && let Err(e) = send_single_file(client, host_dir, path).await
-            {
-                eprintln!("Failed to send file {}: {}", path, e);
+                if let Some(path) = pv.as_string()
+                    && let Err(e) = send_single_file(client, host_dir, path).await
+                {
+                    eprintln!("Failed to send file {path}: {e}");
                 err_any = true;
             }
         }
