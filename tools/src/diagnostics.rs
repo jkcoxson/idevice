@@ -175,7 +175,7 @@ async fn handle_ioregistry(client: &mut DiagnosticsRelayClient, matches: &ArgMat
 
     match client.ioregistry(plane, name, class).await {
         Ok(Some(data)) => {
-            println!("{:#?}", data);
+            println!("{data:#?}");
         }
         Ok(None) => {
             println!("No IORegistry data returned");
@@ -192,7 +192,7 @@ async fn handle_mobilegestalt(client: &mut DiagnosticsRelayClient, matches: &Arg
 
     match client.mobilegestalt(keys).await {
         Ok(Some(data)) => {
-            println!("{:#?}", data);
+            println!("{data:#?}");
         }
         Ok(None) => {
             println!("No MobileGestalt data returned");
@@ -206,7 +206,7 @@ async fn handle_mobilegestalt(client: &mut DiagnosticsRelayClient, matches: &Arg
 async fn handle_gasguage(client: &mut DiagnosticsRelayClient) {
     match client.gasguage().await {
         Ok(Some(data)) => {
-            println!("{:#?}", data);
+            println!("{data:#?}");
         }
         Ok(None) => {
             println!("No gas gauge data returned");
@@ -220,7 +220,7 @@ async fn handle_gasguage(client: &mut DiagnosticsRelayClient) {
 async fn handle_nand(client: &mut DiagnosticsRelayClient) {
     match client.nand().await {
         Ok(Some(data)) => {
-            println!("{:#?}", data);
+            println!("{data:#?}");
         }
         Ok(None) => {
             println!("No NAND data returned");
@@ -234,7 +234,7 @@ async fn handle_nand(client: &mut DiagnosticsRelayClient) {
 async fn handle_all(client: &mut DiagnosticsRelayClient) {
     match client.all().await {
         Ok(Some(data)) => {
-            println!("{:#?}", data);
+            println!("{data:#?}");
         }
         Ok(None) => {
             println!("No diagnostics data returned");
@@ -248,7 +248,7 @@ async fn handle_all(client: &mut DiagnosticsRelayClient) {
 async fn handle_wifi(client: &mut DiagnosticsRelayClient) {
     match client.wifi().await {
         Ok(Some(data)) => {
-            println!("{:#?}", data);
+            println!("{data:#?}");
         }
         Ok(None) => {
             println!("No WiFi diagnostics returned");
