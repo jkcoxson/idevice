@@ -101,6 +101,10 @@ path = "src/companion_proxy.rs"
 name = "diagnostics"
 path = "src/diagnostics.rs"
 
+[[bin]]
+name = "mobilebackup2"
+path = "src/mobilebackup2.rs"
+
 [dependencies]
 idevice = { path = "../idevice", features = ["full"], default-features = false }
 tokio = { version = "1.43", features = ["full"] }
