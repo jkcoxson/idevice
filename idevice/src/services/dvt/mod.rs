@@ -1,6 +1,6 @@
 // Jackson Coxson
 
-use crate::{obf, IdeviceError, ReadWrite, RsdService};
+use crate::{IdeviceError, ReadWrite, RsdService, obf};
 
 #[cfg(feature = "location_simulation")]
 pub mod location_simulation;

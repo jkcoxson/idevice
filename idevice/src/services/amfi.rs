@@ -2,7 +2,7 @@
 
 use plist::Dictionary;
 
-use crate::{obf, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 /// Client for interacting with the AMFI service on the device
 pub struct AmfiClient {

@@ -6,8 +6,8 @@
 
 use std::{collections::HashMap, path::PathBuf, sync::Mutex, task::Poll};
 
-use crossfire::{mpsc, spsc, stream::AsyncStream, AsyncRx, MTx, Tx};
-use futures::{stream::FuturesUnordered, StreamExt};
+use crossfire::{AsyncRx, MTx, Tx, mpsc, spsc, stream::AsyncStream};
+use futures::{StreamExt, stream::FuturesUnordered};
 use log::trace;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -309,7 +309,7 @@ impl AsyncWrite for StreamHandle {
                     return Poll::Ready(Err(std::io::Error::new(
                         std::io::ErrorKind::BrokenPipe,
                         "channel closed",
-                    )))
+                    )));
                 }
                 None => break, // nothing pending
             }

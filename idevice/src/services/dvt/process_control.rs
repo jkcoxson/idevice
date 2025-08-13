@@ -37,7 +37,7 @@
 use log::warn;
 use plist::{Dictionary, Value};
 
-use crate::{dvt::message::AuxValue, obf, IdeviceError, ReadWrite};
+use crate::{IdeviceError, ReadWrite, dvt::message::AuxValue, obf};
 
 use super::remote_server::{Channel, RemoteServerClient};
 

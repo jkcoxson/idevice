@@ -1,6 +1,6 @@
 //! iOS Device SyslogRelay Service Abstraction
 
-use crate::{obf, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 /// Client for interacting with the iOS device SyslogRelay service
 pub struct SyslogRelayClient {

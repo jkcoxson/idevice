@@ -13,7 +13,7 @@
 //! # Features
 //! - `tunnel_tcp_stack`: Enables software TCP/IP tunnel creation using a virtual adapter. See the tcp moduel.
 
-use crate::{obf, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 use byteorder::{BigEndian, WriteBytesExt};
 use serde::{Deserialize, Serialize};

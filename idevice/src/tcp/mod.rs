@@ -8,7 +8,7 @@ use std::{
 use log::debug;
 use tokio::io::AsyncWriteExt;
 
-use crate::{provider::RsdProvider, ReadWrite};
+use crate::{ReadWrite, provider::RsdProvider};
 
 pub mod adapter;
 pub mod handle;

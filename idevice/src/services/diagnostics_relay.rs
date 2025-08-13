@@ -1,6 +1,6 @@
 //! Diagnostics Relay
 
-use crate::{obf, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 /// Client for interacting with the Diagnostics Relay
 pub struct DiagnosticsRelayClient {
@@ -74,7 +74,6 @@ impl DiagnosticsRelayClient {
             .and_then(|x| x.into_dictionary())
             .and_then(|mut x| x.remove("IORegistry"))
             .and_then(|x| x.into_dictionary());
-            
 
         Ok(res)
     }
@@ -92,7 +91,7 @@ impl DiagnosticsRelayClient {
     ) -> Result<Option<plist::Dictionary>, IdeviceError> {
         let mut req = plist::Dictionary::new();
         req.insert("Request".into(), "MobileGestalt".into());
-        
+
         if let Some(keys) = keys {
             let keys_array: Vec<plist::Value> = keys.into_iter().map(|k| k.into()).collect();
             req.insert("MobileGestaltKeys".into(), plist::Value::Array(keys_array));
@@ -110,9 +109,7 @@ impl DiagnosticsRelayClient {
             }
         }
 
-        let res = res
-            .remove("Diagnostics")
-            .and_then(|x| x.into_dictionary());
+        let res = res.remove("Diagnostics").and_then(|x| x.into_dictionary());
 
         Ok(res)
     }
@@ -137,9 +134,7 @@ impl DiagnosticsRelayClient {
             }
         }
 
-        let res = res
-            .remove("Diagnostics")
-            .and_then(|x| x.into_dictionary());
+        let res = res.remove("Diagnostics").and_then(|x| x.into_dictionary());
 
         Ok(res)
     }
@@ -164,9 +159,7 @@ impl DiagnosticsRelayClient {
             }
         }
 
-        let res = res
-            .remove("Diagnostics")
-            .and_then(|x| x.into_dictionary());
+        let res = res.remove("Diagnostics").and_then(|x| x.into_dictionary());
 
         Ok(res)
     }
@@ -191,9 +184,7 @@ impl DiagnosticsRelayClient {
             }
         }
 
-        let res = res
-            .remove("Diagnostics")
-            .and_then(|x| x.into_dictionary());
+        let res = res.remove("Diagnostics").and_then(|x| x.into_dictionary());
 
         Ok(res)
     }
@@ -272,9 +263,7 @@ impl DiagnosticsRelayClient {
             }
         }
 
-        let res = res
-            .remove("Diagnostics")
-            .and_then(|x| x.into_dictionary());
+        let res = res.remove("Diagnostics").and_then(|x| x.into_dictionary());
 
         Ok(res)
     }

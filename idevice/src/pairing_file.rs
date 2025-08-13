@@ -7,7 +7,7 @@ use std::path::Path;
 
 use log::warn;
 use plist::Data;
-use rustls::pki_types::{pem::PemObject, CertificateDer};
+use rustls::pki_types::{CertificateDer, pem::PemObject};
 use serde::{Deserialize, Serialize};
 
 /// Represents a complete iOS device pairing record

@@ -7,7 +7,7 @@ use log::error;
 use plist::Value;
 use serde::{Deserialize, Serialize};
 
-use crate::{obf, pairing_file, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, obf, pairing_file};
 
 /// Client for interacting with the iOS lockdown service
 ///

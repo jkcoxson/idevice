@@ -3,7 +3,7 @@
 use log::warn;
 use plist::Dictionary;
 
-use crate::{obf, IdeviceError, ReadWrite, RemoteXpcClient, RsdService};
+use crate::{IdeviceError, ReadWrite, RemoteXpcClient, RsdService, obf};
 
 /// Client for interacting with the Restore Service
 pub struct RestoreServiceClient {

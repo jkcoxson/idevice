@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use log::warn;
 use serde::Deserialize;
 
-use crate::{provider::RsdProvider, IdeviceError, ReadWrite, RemoteXpcClient};
+use crate::{IdeviceError, ReadWrite, RemoteXpcClient, provider::RsdProvider};
 
 /// Describes an available XPC service
 #[derive(Debug, Clone, Deserialize)]

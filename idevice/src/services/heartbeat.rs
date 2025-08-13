@@ -3,7 +3,7 @@
 //! iOS automatically closes service connections if there is no heartbeat client connected and
 //! responding.
 
-use crate::{obf, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 /// Client for interacting with the iOS device heartbeat service
 ///

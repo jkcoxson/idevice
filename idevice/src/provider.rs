@@ -8,7 +8,7 @@ use std::{future::Future, pin::Pin};
 #[cfg(feature = "tcp")]
 use tokio::net::TcpStream;
 
-use crate::{pairing_file::PairingFile, Idevice, IdeviceError, ReadWrite};
+use crate::{Idevice, IdeviceError, ReadWrite, pairing_file::PairingFile};
 
 #[cfg(feature = "usbmuxd")]
 use crate::usbmuxd::UsbmuxdAddr;

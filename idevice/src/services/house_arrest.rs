@@ -6,7 +6,7 @@
 
 use plist::{Dictionary, Value};
 
-use crate::{obf, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 use super::afc::AfcClient;
 

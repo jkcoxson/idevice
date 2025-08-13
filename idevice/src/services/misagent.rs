@@ -6,7 +6,7 @@
 use log::warn;
 use plist::Dictionary;
 
-use crate::{obf, Idevice, IdeviceError, IdeviceService, RsdService};
+use crate::{Idevice, IdeviceError, IdeviceService, RsdService, obf};
 
 /// Client for interacting with the iOS misagent service
 ///

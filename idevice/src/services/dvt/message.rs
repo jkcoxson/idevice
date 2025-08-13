@@ -278,9 +278,9 @@ impl Aux {
         let mut res = Vec::new();
         let buffer_size = 496_u32;
         res.extend_from_slice(&buffer_size.to_le_bytes()); // TODO: find what
-                                                           // this means and how to actually serialize it
-                                                           // go-ios just uses 496
-                                                           // pymobiledevice3 doesn't seem to parse the header at all
+        // this means and how to actually serialize it
+        // go-ios just uses 496
+        // pymobiledevice3 doesn't seem to parse the header at all
         res.extend_from_slice(&0_u32.to_le_bytes());
         res.extend_from_slice(&(values_payload.len() as u32).to_le_bytes());
         res.extend_from_slice(&0_u32.to_le_bytes());

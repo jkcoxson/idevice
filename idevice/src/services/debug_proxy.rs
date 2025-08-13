@@ -8,7 +8,7 @@ use log::debug;
 use std::fmt::Write;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::{obf, IdeviceError, ReadWrite, RsdService};
+use crate::{IdeviceError, ReadWrite, RsdService, obf};
 
 impl RsdService for DebugProxyClient<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {

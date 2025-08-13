@@ -15,7 +15,7 @@ use log::{debug, warn};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{
-    pairing_file::PairingFile, provider::UsbmuxdProvider, Idevice, IdeviceError, ReadWrite,
+    Idevice, IdeviceError, ReadWrite, pairing_file::PairingFile, provider::UsbmuxdProvider,
 };
 
 mod des;

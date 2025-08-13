@@ -7,7 +7,7 @@ use chrono::{DateTime, NaiveDateTime};
 use plist::Dictionary;
 use tokio::io::AsyncWriteExt;
 
-use crate::{obf, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 /// Client for interacting with the iOS device OsTraceRelay service
 pub struct OsTraceRelayClient {

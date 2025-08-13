@@ -206,7 +206,7 @@ impl Adapter {
                         break;
                     }
                     ConnectionStatus::Error(e) => {
-                        return Err(std::io::Error::new(e, "failed to connect"))
+                        return Err(std::io::Error::new(e, "failed to connect"));
                     }
                     ConnectionStatus::WaitingForSyn => {
                         continue;
@@ -236,7 +236,7 @@ impl Adapter {
         file.write_all(&0_i32.to_le_bytes()).await?; // timezone
         file.write_all(&0_u32.to_le_bytes()).await?; // accuracy
         file.write_all(&(u16::MAX as u32).to_le_bytes()).await?; // snaplen
-                                                                 // https://www.tcpdump.org/linktypes.html
+        // https://www.tcpdump.org/linktypes.html
         file.write_all(&101_u32.to_le_bytes()).await?; // link type
 
         self.pcap = Some(Arc::new(Mutex::new(file)));

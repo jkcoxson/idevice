@@ -9,7 +9,7 @@
 
 use log::{debug, warn};
 
-use crate::{afc::AfcClient, lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, afc::AfcClient, lockdown::LockdownClient, obf};
 
 /// Client for managing crash logs on an iOS device.
 ///
