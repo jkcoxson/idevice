@@ -1,13 +1,10 @@
 // Jackson Coxson
 
-#include "ffi.hpp"
-#include "usbmuxd.hpp"
+#include <idevice++/usbmuxd.hpp>
 #include <iostream>
 #include <optional>
 
 int main() {
-    std::cout << "Getting devices from usbmuxd\n";
-
     IdeviceFFI::FfiError                         e;
     std::optional<IdeviceFFI::UsbmuxdConnection> u =
         IdeviceFFI::UsbmuxdConnection::default_new(0, e);

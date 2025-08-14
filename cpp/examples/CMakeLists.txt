@@ -1,13 +1,17 @@
 # Jackson Coxson
 
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.15)
 project(IdeviceFFI CXX)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-# Set the paths
-set(HEADER_FILE ${CMAKE_SOURCE_DIR}/../../ffi/idevice.h)
+# Paths
+set(IDEVICE_CPP_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../include)   # public C++ headers
+set(IDEVICE_CPP_SRC_DIR     ${CMAKE_SOURCE_DIR}/../src)       # C++ .cpp files
+set(IDEVICE_FFI_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../../ffi)    # Rust FFI headers (idevice.h)
 if (MSVC)
   set(STATIC_LIB ${CMAKE_SOURCE_DIR}/../../target/release/idevice_ffi.lib)
 else()
@@ -16,57 +20,84 @@ endif()
 set(EXAMPLES_DIR ${CMAKE_SOURCE_DIR}/../examples)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-set(IDEVICE_CPP_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../include)  # cpp/include
-set(IDEVICE_FFI_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../../ffi)    # ffi/
-
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Warnings
 if (MSVC)
   add_compile_options(/W4 /permissive- /EHsc)
 else()
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# Find all C++ example files
+# ---- Build the C++ wrapper library -----------------------------------------
+
+# Collect your .cpps (prefer listing explicitly in real projects)
+file(GLOB IDEVICE_CPP_SOURCES
+  ${IDEVICE_CPP_SRC_DIR}/*.cpp
+)
+
+add_library(idevice_cpp STATIC ${IDEVICE_CPP_SOURCES})
+
+# Public headers for consumers; FFI headers are needed by your .cpps only
+target_include_directories(idevice_cpp
+  PUBLIC
+    ${IDEVICE_CPP_INCLUDE_DIR}
+  PRIVATE
+    ${IDEVICE_FFI_INCLUDE_DIR}
+)
+
+# Link to the Rust static lib (+ system libs/frameworks). Mark as PUBLIC so dependents inherit.
+target_link_libraries(idevice_cpp
+  PUBLIC
+    ${STATIC_LIB}
+)
+
+# Unix-y extras frequently required by Rust static libs
+if (UNIX AND NOT APPLE)
+  find_package(Threads REQUIRED)
+  target_link_libraries(idevice_cpp PUBLIC Threads::Threads dl m)
+endif()
+
+# Apple frameworks (propagate to dependents)
+if (APPLE)
+  target_link_libraries(idevice_cpp PUBLIC
+    "-framework CoreFoundation"
+    "-framework Security"
+    "-framework SystemConfiguration"
+    "-framework CoreServices"
+    "-framework IOKit"
+    "-framework CFNetwork"
+  )
+endif()
+
+# Windows system libs often needed with Rust std/tokio/ring
+if (WIN32)
+  target_link_libraries(idevice_cpp PUBLIC
+    ws2_32
+    userenv
+    ntdll
+    bcrypt
+    # iphlpapi  # uncomment if needed
+    # secur32 crypt32 ncrypt # if you switch TLS stacks
+  )
+endif()
+
+# Optional: position independent code if you later turn idevice_cpp into a shared lib
+set_target_properties(idevice_cpp PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# ---- Build each example and link against idevice_cpp ------------------------
+
 file(GLOB EXAMPLE_SOURCES ${EXAMPLES_DIR}/*.cpp)
 
-# Create an executable for each example file
 foreach(EXAMPLE_FILE ${EXAMPLE_SOURCES})
-    get_filename_component(EXAMPLE_NAME ${EXAMPLE_FILE} NAME_WE)
-    add_executable(${EXAMPLE_NAME} ${EXAMPLE_FILE})
+  get_filename_component(EXAMPLE_NAME ${EXAMPLE_FILE} NAME_WE)
+  add_executable(${EXAMPLE_NAME} ${EXAMPLE_FILE})
 
-    target_include_directories(${EXAMPLE_NAME} PRIVATE
-        ${IDEVICE_CPP_INCLUDE_DIR}
-        ${IDEVICE_FFI_INCLUDE_DIR}
-    )
+  # Examples include public headers and (if they directly include FFI headers) the FFI dir.
+  target_include_directories(${EXAMPLE_NAME} PRIVATE
+    ${IDEVICE_CPP_INCLUDE_DIR}
+    ${IDEVICE_FFI_INCLUDE_DIR}
+  )
 
-    # Include the generated header
-    target_include_directories(${EXAMPLE_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/..)
-
-    # Link the static Rust library
-    target_link_libraries(${EXAMPLE_NAME} PRIVATE ${STATIC_LIB})
-
-    # Bulk-link common macOS system frameworks
-    if(APPLE)
-      target_link_libraries(${EXAMPLE_NAME} PRIVATE
-          "-framework CoreFoundation"
-          "-framework Security"
-          "-framework SystemConfiguration"
-          "-framework CoreServices"
-          "-framework IOKit"
-          "-framework CFNetwork"
-      )
-    elseif (WIN32)
-      # System libs required by Rust std/tokio/reqwest/ring on Windows
-      target_link_libraries(${EXAMPLE_NAME} PRIVATE
-        ws2_32        # WSAStartup/WSACleanup, closesocket, freeaddrinfo
-        userenv       # GetUserProfileDirectoryW
-        ntdll         # NtReadFile, RtlNtStatusToDosError
-        bcrypt        # ring RNG (BCryptGenRandom)
-        # iphlpapi    # (optional) GetAdaptersAddresses, if you ever see it unresolved
-        # secur32 crypt32 ncrypt # (only if you switch to schannel/native-tls)
-      )
-    endif()
+  # Link to your C++ wrapper (inherits Rust lib + frameworks/system libs)
+  target_link_libraries(${EXAMPLE_NAME} PRIVATE idevice_cpp)
 endforeach()
-
 

@@ -12,7 +12,7 @@ use crate::{
 
 pub struct LockdowndClientHandle(pub LockdownClient);
 
-/// Connects to lockdownd service using TCP provider
+/// Connects to lockdownd service using provider
 ///
 /// # Arguments
 /// * [`provider`] - An IdeviceProvider

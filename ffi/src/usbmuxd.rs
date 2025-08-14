@@ -428,6 +428,26 @@ pub unsafe extern "C" fn idevice_usbmuxd_unix_addr_new(
     null_mut()
 }
 
+/// Creates a default UsbmuxdAddr struct for the platform
+///
+/// # Arguments
+/// * [`usbmuxd_addr`] - On success, will be set to point to a newly allocated UsbmuxdAddr handle
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `usbmuxd_addr` must be a valid, non-null pointer to a location where the handle will be stored
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_usbmuxd_default_addr_new(
+    usbmuxd_addr: *mut *mut UsbmuxdAddrHandle,
+) -> *mut IdeviceFfiError {
+    let addr = UsbmuxdAddr::default();
+    let boxed = Box::new(UsbmuxdAddrHandle(addr));
+    unsafe { *usbmuxd_addr = Box::into_raw(boxed) };
+    null_mut()
+}
+
 /// Frees a UsbmuxdAddr handle
 ///
 /// # Arguments

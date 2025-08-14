@@ -315,3 +315,18 @@ pub unsafe extern "C" fn idevice_string_free(string: *mut c_char) {
         let _ = unsafe { CString::from_raw(string) };
     }
 }
+
+/// Frees data allocated by this library
+///
+/// # Arguments
+/// * [`data`] - The data to free
+///
+/// # Safety
+/// `data` must be a valid pointer to data that was allocated by this library,
+/// or NULL (in which case this function does nothing)
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_data_free(data: *mut u8, len: usize) {
+    if !data.is_null() {
+        let _ = unsafe { std::slice::from_raw_parts(data, len) };
+    }
+}
