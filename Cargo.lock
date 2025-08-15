@@ -1746,9 +1746,9 @@ dependencies = [
 
 [[package]]
 name = "plist_ffi"
-version = "0.1.3"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06fba796e1466c87b971298751de238bb441f6a2a5b4b03b874880225550e4b3"
+checksum = "22a5ca928241bc2e8c5fd28b81772962389efdbfcb71dfc9ec694369e063cb3a"
 dependencies = [
  "cbindgen",
  "cc",
