@@ -3,12 +3,13 @@
 use std::ffi::{CStr, c_char};
 use std::ptr::null_mut;
 
-use idevice::tcp::stream::AdapterStream;
+use idevice::tcp::handle::StreamHandle;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::core_device_proxy::AdapterHandle;
 use crate::{IdeviceFfiError, RUNTIME, ReadWriteOpaque, ffi_err};
 
-pub struct AdapterStreamHandle<'a>(pub AdapterStream<'a>);
+pub struct AdapterStreamHandle(pub StreamHandle);
 
 /// Connects the adapter to a specific port
 ///
@@ -108,15 +109,9 @@ pub unsafe extern "C" fn adapter_close(handle: *mut AdapterStreamHandle) -> *mut
     }
 
     let adapter = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move { adapter.close().await });
+    RUNTIME.block_on(async move { adapter.close() });
 
-    match res {
-        Ok(_) => null_mut(),
-        Err(e) => {
-            log::error!("Adapter close failed: {e}");
-            ffi_err!(e)
-        }
-    }
+    null_mut()
 }
 
 /// Sends data through the adapter stream
@@ -145,7 +140,7 @@ pub unsafe extern "C" fn adapter_send(
     let adapter = unsafe { &mut (*handle).0 };
     let data_slice = unsafe { std::slice::from_raw_parts(data, length) };
 
-    let res = RUNTIME.block_on(async move { adapter.psh(data_slice).await });
+    let res = RUNTIME.block_on(async move { adapter.write_all(data_slice).await });
 
     match res {
         Ok(_) => null_mut(),
@@ -183,7 +178,11 @@ pub unsafe extern "C" fn adapter_recv(
     }
 
     let adapter = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move { adapter.recv().await });
+    let res: Result<Vec<u8>, std::io::Error> = RUNTIME.block_on(async move {
+        let mut buf = [0; 2048];
+        let res = adapter.read(&mut buf).await?;
+        Ok(buf[..res].to_vec())
+    });
 
     match res {
         Ok(received_data) => {
