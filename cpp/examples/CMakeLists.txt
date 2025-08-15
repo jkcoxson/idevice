@@ -12,6 +12,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(IDEVICE_CPP_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../include)   # public C++ headers
 set(IDEVICE_CPP_SRC_DIR     ${CMAKE_SOURCE_DIR}/../src)       # C++ .cpp files
 set(IDEVICE_FFI_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/../../ffi)    # Rust FFI headers (idevice.h)
+set(PLIST_CPP_INCLUDE_DIR   ${CMAKE_SOURCE_DIR}/../plist_ffi/cpp/include)
+set(PLIST_CPP_SRC_DIR       ${CMAKE_SOURCE_DIR}/../plist_ffi/cpp/src)
 if (MSVC)
   set(STATIC_LIB ${CMAKE_SOURCE_DIR}/../../target/release/idevice_ffi.lib)
 else()
@@ -29,19 +31,23 @@ endif()
 
 # ---- Build the C++ wrapper library -----------------------------------------
 
-# Collect your .cpps (prefer listing explicitly in real projects)
+# Collect your .cpps
 file(GLOB IDEVICE_CPP_SOURCES
   ${IDEVICE_CPP_SRC_DIR}/*.cpp
 )
 
-add_library(idevice_cpp STATIC ${IDEVICE_CPP_SOURCES})
+file(GLOB PLIST_CPP_SOURCES
+  ${PLIST_CPP_SRC_DIR}/*.cpp
+)
 
-# Public headers for consumers; FFI headers are needed by your .cpps only
+add_library(idevice_cpp STATIC ${IDEVICE_CPP_SOURCES} ${PLIST_CPP_SOURCES})
+
 target_include_directories(idevice_cpp
   PUBLIC
     ${IDEVICE_CPP_INCLUDE_DIR}
   PRIVATE
     ${IDEVICE_FFI_INCLUDE_DIR}
+    ${PLIST_CPP_INCLUDE_DIR}
 )
 
 # Link to the Rust static lib (+ system libs/frameworks). Mark as PUBLIC so dependents inherit.
@@ -68,15 +74,12 @@ if (APPLE)
   )
 endif()
 
-# Windows system libs often needed with Rust std/tokio/ring
 if (WIN32)
   target_link_libraries(idevice_cpp PUBLIC
     ws2_32
     userenv
     ntdll
     bcrypt
-    # iphlpapi  # uncomment if needed
-    # secur32 crypt32 ncrypt # if you switch TLS stacks
   )
 endif()
 
@@ -95,6 +98,7 @@ foreach(EXAMPLE_FILE ${EXAMPLE_SOURCES})
   target_include_directories(${EXAMPLE_NAME} PRIVATE
     ${IDEVICE_CPP_INCLUDE_DIR}
     ${IDEVICE_FFI_INCLUDE_DIR}
+    ${PLIST_CPP_INCLUDE_DIR}
   )
 
   # Link to your C++ wrapper (inherits Rust lib + frameworks/system libs)

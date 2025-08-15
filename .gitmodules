@@ -1,3 +1,6 @@
 [submodule "ffi/libplist"]
 	path = ffi/libplist
 	url = https://github.com/libimobiledevice/libplist.git
+[submodule "cpp/plist_ffi"]
+	path = cpp/plist_ffi
+	url = https://github.com/jkcoxson/plist_ffi.git

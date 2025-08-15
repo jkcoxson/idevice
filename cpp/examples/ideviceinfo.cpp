@@ -1,10 +1,12 @@
 // Jackson Coxson
 
+#include "plist/Dictionary.h"
 #include <idevice++/lockdown.hpp>
 #include <idevice++/provider.hpp>
 #include <idevice++/usbmuxd.hpp>
 #include <iostream>
 #include <optional>
+#include <plist/plist++.h>
 
 int main() {
     idevice_init_logger(Debug, Disabled, NULL);
@@ -70,5 +72,6 @@ int main() {
         std::cerr << "get values failed: " << e.message << "\n";
         return 1;
     }
-    plist_free(*values);
+    PList::Dictionary res = PList::Dictionary(*values);
+    std::cout << res.ToXml();
 }
