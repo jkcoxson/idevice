@@ -97,7 +97,7 @@ async fn main() {
     let host = matches.get_one::<String>("host");
 
     let provider =
-        match common::get_provider(udid, host, pairing_file, "debug-proxy-jkcoxson").await {
+        match common::get_provider(udid, host, pairing_file, "app_service-jkcoxson").await {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("{e}");

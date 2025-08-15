@@ -84,7 +84,6 @@ if (WIN32)
   )
 endif()
 
-# Optional: position independent code if you later turn idevice_cpp into a shared lib
 set_target_properties(idevice_cpp PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # ---- Build each example and link against idevice_cpp ------------------------

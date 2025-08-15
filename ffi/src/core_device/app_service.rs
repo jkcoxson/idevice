@@ -9,7 +9,7 @@ use idevice::{IdeviceError, ReadWrite, RsdService};
 
 use crate::core_device_proxy::AdapterHandle;
 use crate::rsd::RsdHandshakeHandle;
-use crate::{IdeviceFfiError, RUNTIME, ffi_err};
+use crate::{IdeviceFfiError, RUNTIME, ReadWriteOpaque, ffi_err};
 
 /// Opaque handle to an AppServiceClient
 pub struct AppServiceHandle(pub AppServiceClient<Box<dyn ReadWrite>>);
@@ -122,7 +122,7 @@ pub unsafe extern "C" fn app_service_connect_rsd(
 /// `handle` must be a valid pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn app_service_new(
-    socket: *mut Box<dyn ReadWrite>,
+    socket: *mut ReadWriteOpaque,
     handle: *mut *mut AppServiceHandle,
 ) -> *mut IdeviceFfiError {
     if socket.is_null() || handle.is_null() {
@@ -130,7 +130,7 @@ pub unsafe extern "C" fn app_service_new(
     }
 
     let socket = unsafe { Box::from_raw(socket) };
-    let res = RUNTIME.block_on(async move { AppServiceClient::new(*socket).await });
+    let res = RUNTIME.block_on(async move { AppServiceClient::new(socket.inner.unwrap()).await });
 
     match res {
         Ok(client) => {
