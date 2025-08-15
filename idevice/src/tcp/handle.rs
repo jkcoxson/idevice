@@ -205,6 +205,14 @@ pub struct StreamHandle {
     pending_writes: FuturesUnordered<oneshot::Receiver<Result<(), std::io::Error>>>,
 }
 
+impl StreamHandle {
+    pub fn close(&mut self) {
+        let _ = self.send_channel.send(HandleMessage::Close {
+            host_port: self.host_port,
+        });
+    }
+}
+
 impl AsyncRead for StreamHandle {
     /// Attempts to read from the connection into the provided buffer.
     ///
