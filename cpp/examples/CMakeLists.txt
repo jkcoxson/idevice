@@ -45,6 +45,7 @@ add_library(idevice_cpp STATIC ${IDEVICE_CPP_SOURCES} ${PLIST_CPP_SOURCES})
 target_include_directories(idevice_cpp
   PUBLIC
     ${IDEVICE_CPP_INCLUDE_DIR}
+    ${PLIST_CPP_INCLUDE_DIR}
   PRIVATE
     ${IDEVICE_FFI_INCLUDE_DIR}
     ${PLIST_CPP_INCLUDE_DIR}
