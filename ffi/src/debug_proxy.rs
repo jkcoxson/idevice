@@ -9,7 +9,7 @@ use idevice::{IdeviceError, ReadWrite, RsdService};
 
 use crate::core_device_proxy::AdapterHandle;
 use crate::rsd::RsdHandshakeHandle;
-use crate::{IdeviceFfiError, RUNTIME, ffi_err};
+use crate::{IdeviceFfiError, RUNTIME, ReadWriteOpaque, ffi_err};
 
 /// Opaque handle to a DebugProxyClient
 pub struct DebugProxyHandle(pub DebugProxyClient<Box<dyn ReadWrite>>);
@@ -170,7 +170,7 @@ pub unsafe extern "C" fn debug_proxy_connect_rsd(
 /// `handle` must be a valid pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn debug_proxy_new(
-    socket: *mut Box<dyn ReadWrite>,
+    socket: *mut ReadWriteOpaque,
     handle: *mut *mut DebugProxyHandle,
 ) -> *mut IdeviceFfiError {
     if socket.is_null() || handle.is_null() {
@@ -178,7 +178,7 @@ pub unsafe extern "C" fn debug_proxy_new(
     }
 
     let socket = unsafe { Box::from_raw(socket) };
-    let client = DebugProxyClient::new(*socket);
+    let client = DebugProxyClient::new(socket.inner.unwrap());
     let new_handle = DebugProxyHandle(client);
 
     unsafe { *handle = Box::into_raw(Box::new(new_handle)) };

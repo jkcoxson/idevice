@@ -66,7 +66,6 @@ class AppService {
     connect_rsd(Adapter& adapter, RsdHandshake& rsd, FfiError& err);
 
     // Factory: from socket Box<dyn ReadWrite> (consumes it).
-    // Only use if you actually obtain such a pointer from C.
     static std::optional<AppService> from_readwrite_ptr(ReadWriteOpaque* consumed, FfiError& err);
 
     // nice ergonomic overload: consume a C++ ReadWrite by releasing it

@@ -67,7 +67,7 @@ std::optional<uint32_t> UsbmuxdDevice::get_id() const {
 std::optional<UsbmuxdConnectionType> UsbmuxdDevice::get_connection_type() const {
     uint8_t t = idevice_usbmuxd_device_get_connection_type(handle_.get());
     if (t == 0)
-        return std::nullopt; // adjust to your API contract
+        return std::nullopt;
     return UsbmuxdConnectionType(t);
 }
 

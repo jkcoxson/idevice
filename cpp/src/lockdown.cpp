@@ -12,7 +12,6 @@ std::optional<Lockdown> Lockdown::connect(Provider& provider, FfiError& err) {
 
     if (IdeviceFfiError* e = ::lockdownd_connect(provider.raw(), &out)) {
         // Rust freed the provider on error -> abandon our ownership to avoid double free.
-        // Your Provider wrapper should expose release().
         provider.release();
         err = FfiError(e);
         return std::nullopt;
