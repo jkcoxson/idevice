@@ -1,6 +1,5 @@
 // Jackson Coxson
 
-#include "plist/Dictionary.h"
 #include <idevice++/lockdown.hpp>
 #include <idevice++/provider.hpp>
 #include <idevice++/usbmuxd.hpp>
