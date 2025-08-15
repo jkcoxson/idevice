@@ -311,7 +311,10 @@ pub unsafe extern "C" fn core_device_proxy_create_tcp_adapter(
 
     match result {
         Ok(adapter_obj) => {
-            let boxed = Box::new(AdapterHandle(adapter_obj.to_async_handle()));
+            // We have to run this in the RUNTIME since we're spawning a new thread
+            let adapter_handle = RUNTIME.block_on(async move { adapter_obj.to_async_handle() });
+
+            let boxed = Box::new(AdapterHandle(adapter_handle));
             unsafe { *adapter = Box::into_raw(boxed) };
             null_mut()
         }
