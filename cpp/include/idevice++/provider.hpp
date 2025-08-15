@@ -37,6 +37,8 @@ class Provider {
     Provider(const Provider&)                         = delete;
     Provider&              operator=(const Provider&) = delete;
 
+    std::optional<PairingFile> get_pairing_file(FfiError& err);
+
     IdeviceProviderHandle* raw() const noexcept { return handle_.get(); }
     static Provider        adopt(IdeviceProviderHandle* h) noexcept { return Provider(h); }
     IdeviceProviderHandle* release() noexcept { return handle_.release(); }

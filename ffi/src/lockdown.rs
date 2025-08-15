@@ -179,7 +179,7 @@ pub unsafe extern "C" fn lockdownd_get_value(
     domain: *const libc::c_char,
     out_plist: *mut plist_t,
 ) -> *mut IdeviceFfiError {
-    if key.is_null() || out_plist.is_null() {
+    if out_plist.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 

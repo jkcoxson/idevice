@@ -15,16 +15,19 @@ int main() {
     if (!u) {
         std::cerr << "failed to connect to usbmuxd";
         std::cerr << e.message;
+        return 1;
     }
 
     auto devices = u->get_devices(e);
     if (!devices) {
         std::cerr << "failed to get devices from usbmuxd";
         std::cerr << e.message;
+        return 1;
     }
     if (devices->empty()) {
         std::cerr << "no devices connected";
         std::cerr << e.message;
+        return 1;
     }
 
     auto& dev  = (*devices)[0];
@@ -55,7 +58,14 @@ int main() {
         return 1;
     }
 
-    auto values = client->get_value("", "", e);
+    auto pf = prov->get_pairing_file(e);
+    if (!pf) {
+        std::cerr << "failed to get pairing file: " << e.message << "\n";
+        return 1;
+    }
+    client->start_session(*pf, e);
+
+    auto values = client->get_value(NULL, NULL, e);
     if (!values) {
         std::cerr << "get values failed: " << e.message << "\n";
         return 1;

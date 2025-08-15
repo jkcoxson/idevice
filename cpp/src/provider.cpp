@@ -49,4 +49,15 @@ std::optional<Provider> Provider::usbmuxd_new(UsbmuxdAddr&&      addr,
     return Provider::adopt(out);
 }
 
+std::optional<PairingFile> Provider::get_pairing_file(FfiError& err) {
+
+    IdevicePairingFile* out = nullptr;
+    if (IdeviceFfiError* e = idevice_provider_get_pairing_file(handle_.get(), &out)) {
+      err = FfiError(e);
+        return std::nullopt;
+    }
+    
+    return PairingFile(out);
+}
+
 } // namespace IdeviceFFI

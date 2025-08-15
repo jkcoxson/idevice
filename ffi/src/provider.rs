@@ -7,6 +7,7 @@ use std::{ffi::CStr, ptr::null_mut};
 
 use crate::util::{SockAddr, idevice_sockaddr};
 use crate::{IdeviceFfiError, ffi_err, usbmuxd::UsbmuxdAddrHandle, util};
+use crate::{IdevicePairingFile, RUNTIME};
 
 pub struct IdeviceProviderHandle(pub Box<dyn IdeviceProvider>);
 
@@ -135,4 +136,33 @@ pub unsafe extern "C" fn usbmuxd_provider_new(
     unsafe { *provider = Box::into_raw(boxed) };
 
     null_mut()
+}
+
+/// Gets the pairing file for the device
+///
+/// # Arguments
+/// * [`provider`] - A pointer to the provider
+/// * [`pairing_file`] - A pointer to the newly allocated pairing file
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `provider` must be a valid, non-null pointer to the provider
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_provider_get_pairing_file(
+    provider: *mut IdeviceProviderHandle,
+    pairing_file: *mut *mut IdevicePairingFile,
+) -> *mut IdeviceFfiError {
+    let provider = unsafe { &mut *provider };
+
+    let res = RUNTIME.block_on(async move { provider.0.get_pairing_file().await });
+    match res {
+        Ok(pf) => {
+            let pf = Box::new(IdevicePairingFile(pf));
+            unsafe { *pairing_file = Box::into_raw(pf) };
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
 }
