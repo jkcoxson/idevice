@@ -105,6 +105,10 @@ path = "src/diagnostics.rs"
 name = "mobilebackup2"
 path = "src/mobilebackup2.rs"
 
+[[bin]]
+name = "diagnosticsservice"
+path = "src/diagnosticsservice.rs"
+
 [dependencies]
 idevice = { path = "../idevice", features = ["full"], default-features = false }
 tokio = { version = "1.43", features = ["full"] }
@@ -117,6 +121,7 @@ clap = { version = "4.5" }
 plist = { version = "1.7" }
 ns-keyed-archive = "0.1.2"
 uuid = "1.16"
+futures-util = { version = "0.3" }
 
 [features]
 default = ["aws-lc"]

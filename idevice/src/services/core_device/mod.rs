@@ -9,7 +9,9 @@ use crate::{
 };
 
 mod app_service;
+mod diagnosticsservice;
 pub use app_service::*;
+pub use diagnosticsservice::*;
 
 const CORE_SERVICE_VERSION: &str = "443.18";
 
