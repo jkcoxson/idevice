@@ -62,7 +62,7 @@
 
 use std::{collections::HashMap, io::ErrorKind, net::IpAddr, path::Path, sync::Arc};
 
-use log::trace;
+use log::{debug, trace, warn};
 use tokio::{io::AsyncWriteExt, sync::Mutex};
 
 use crate::ReadWrite;
@@ -542,6 +542,22 @@ impl Adapter {
             let ip_packet = self.read_ip_packet().await?;
             let res = TcpPacket::parse(&ip_packet)?;
             let mut ack_me = None;
+
+            if let Some(state) = self.states.get(&res.destination_port) {
+                // A keep-alive probe: ACK set, no payload, and seq == RCV.NXT - 1
+                let is_keepalive = res.flags.ack
+                    && res.payload.is_empty()
+                    && res.sequence_number.wrapping_add(1) == state.ack;
+
+                if is_keepalive {
+                    // Don't update any seq/ack state; just ACK what we already expect.
+                    debug!("responding to keep-alive probe");
+                    let port = res.destination_port;
+                    self.ack(port).await?;
+                    break;
+                }
+            }
+
             if let Some(state) = self.states.get_mut(&res.destination_port) {
                 if state.peer_seq > res.sequence_number {
                     // ignore retransmission
@@ -560,6 +576,7 @@ impl Adapter {
                     state.read_buffer.extend(res.payload);
                 }
                 if res.flags.rst {
+                    warn!("stream rst");
                     state.status = ConnectionStatus::Error(ErrorKind::ConnectionReset);
                 }
                 if res.flags.fin {
