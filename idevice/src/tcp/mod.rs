@@ -5,7 +5,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use log::debug;
+use log::trace;
 use tokio::io::AsyncWriteExt;
 
 use crate::{ReadWrite, provider::RsdProvider};
@@ -16,7 +16,7 @@ pub mod packets;
 pub mod stream;
 
 pub(crate) fn log_packet(file: &Arc<tokio::sync::Mutex<tokio::fs::File>>, packet: &[u8]) {
-    debug!("Logging {} byte packet", packet.len());
+    trace!("Logging {} byte packet", packet.len());
     let packet = packet.to_vec();
     let file = file.to_owned();
     let now = SystemTime::now();

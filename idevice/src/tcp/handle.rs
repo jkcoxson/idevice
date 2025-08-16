@@ -14,6 +14,8 @@ use tokio::{
     sync::oneshot,
 };
 
+use crate::tcp::adapter::ConnectionStatus;
+
 pub type ConnectToPortRes =
     oneshot::Sender<Result<(u16, AsyncRx<Result<Vec<u8>, std::io::Error>>), std::io::Error>>;
 
@@ -122,6 +124,23 @@ impl AdapterHandle {
                         }
                         for hp in dead {
                             handles.remove(&hp);
+                            let _ = adapter.close(hp).await;
+                        }
+
+                        let mut to_close = Vec::new();
+                        for (&hp, tx) in &handles {
+                            if let Ok(ConnectionStatus::Error(kind)) = adapter.get_status(hp) {
+                                if kind == std::io::ErrorKind::UnexpectedEof {
+                                    to_close.push(hp);
+                                } else {
+                                    let _ = tx.send(Err(std::io::Error::from(kind)));
+                                    to_close.push(hp);
+                                }
+                            }
+                        }
+                        for hp in to_close {
+                            handles.remove(&hp);
+                            // Best-effort close. For RST this just tidies state on our side
                             let _ = adapter.close(hp).await;
                         }
                     }

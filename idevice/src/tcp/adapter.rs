@@ -581,7 +581,7 @@ impl Adapter {
                 }
                 if res.flags.fin {
                     ack_me = Some(res.destination_port);
-                    state.status = ConnectionStatus::Error(ErrorKind::ConnectionReset);
+                    state.status = ConnectionStatus::Error(ErrorKind::UnexpectedEof);
                 }
                 if res.flags.syn && res.flags.ack {
                     ack_me = Some(res.destination_port);
