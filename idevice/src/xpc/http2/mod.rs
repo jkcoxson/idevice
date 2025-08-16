@@ -60,7 +60,8 @@ impl<R: ReadWrite> Http2Client<R> {
     }
 
     pub async fn open_stream(&mut self, stream_id: u32) -> Result<(), IdeviceError> {
-        self.cache.insert(stream_id, VecDeque::new());
+        // Sometimes Apple is silly and sends data to a stream that isn't open
+        self.cache.entry(stream_id).or_default();
         let frame = frame::HeadersFrame { stream_id }.serialize();
         self.inner.write_all(&frame).await?;
         self.inner.flush().await?;
@@ -124,11 +125,14 @@ impl<R: ReadWrite> Http2Client<R> {
                         let c = match self.cache.get_mut(&data_frame.stream_id) {
                             Some(c) => c,
                             None => {
+                                // Sometimes Apple is a little silly and sends data before the
+                                // stream is open.
                                 warn!(
                                     "Received message for stream ID {} not in cache",
                                     data_frame.stream_id
                                 );
-                                continue;
+                                self.cache.insert(data_frame.stream_id, VecDeque::new());
+                                self.cache.get_mut(&data_frame.stream_id).unwrap()
                             }
                         };
                         c.push_back(data_frame.payload);
