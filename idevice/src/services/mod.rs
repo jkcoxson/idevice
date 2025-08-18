@@ -2,6 +2,8 @@
 pub mod afc;
 #[cfg(feature = "amfi")]
 pub mod amfi;
+#[cfg(feature = "bt_packet_logger")]
+pub mod bt_packet_logger;
 #[cfg(feature = "companion_proxy")]
 pub mod companion_proxy;
 #[cfg(feature = "core_device")]

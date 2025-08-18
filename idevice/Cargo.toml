@@ -66,6 +66,7 @@ ring = ["rustls/ring", "tokio-rustls/ring"]
 
 afc = ["dep:chrono"]
 amfi = []
+bt_packet_logger = []
 companion_proxy = []
 core_device = ["xpc", "dep:uuid"]
 core_device_proxy = ["dep:serde_json", "dep:json", "dep:byteorder"]
@@ -101,6 +102,7 @@ xpc = ["dep:indexmap", "dep:uuid", "dep:async-stream"]
 full = [
   "afc",
   "amfi",
+  "bt_packet_logger",
   "companion_proxy",
   "core_device",
   "core_device_proxy",

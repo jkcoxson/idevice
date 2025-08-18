@@ -109,6 +109,10 @@ path = "src/mobilebackup2.rs"
 name = "diagnosticsservice"
 path = "src/diagnosticsservice.rs"
 
+[[bin]]
+name = "bt_packet_logger"
+path = "src/bt_packet_logger.rs"
+
 [dependencies]
 idevice = { path = "../idevice", features = ["full"], default-features = false }
 tokio = { version = "1.43", features = ["full"] }
