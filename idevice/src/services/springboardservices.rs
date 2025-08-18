@@ -57,12 +57,11 @@ impl SpringBoardServicesClient {
         &mut self,
         bundle_identifier: String,
     ) -> Result<Vec<u8>, IdeviceError> {
-        let mut req = plist::Dictionary::new();
-        req.insert("command".into(), "getIconPNGData".into());
-        req.insert("bundleId".into(), bundle_identifier.into());
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        let req = crate::plist!({
+            "command": "getIconPNGData",
+            "bundleId": bundle_identifier,
+        });
+        self.idevice.send_plist(req).await?;
 
         let mut res = self.idevice.read_plist().await?;
         match res.remove("pngData") {

@@ -90,11 +90,10 @@ impl HeartbeatClient {
     /// # Errors
     /// Returns `IdeviceError` if the message fails to send
     pub async fn send_polo(&mut self) -> Result<(), IdeviceError> {
-        let mut req = plist::Dictionary::new();
-        req.insert("Command".into(), "Polo".into());
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req.clone()))
-            .await?;
+        let req = crate::plist!({
+            "Command": "Polo"
+        });
+        self.idevice.send_plist(req).await?;
         Ok(())
     }
 }

@@ -35,12 +35,11 @@ impl RestoreServiceClient {
 
     /// Enter recovery
     pub async fn enter_recovery(&mut self) -> Result<(), IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("command".into(), "recovery".into());
+        let req = crate::plist!({
+            "command": "recovery"
+        });
 
-        self.stream
-            .send_object(plist::Value::Dictionary(req), true)
-            .await?;
+        self.stream.send_object(req, true).await?;
 
         let res = self.stream.recv().await?;
         let mut res = match res {
@@ -69,12 +68,10 @@ impl RestoreServiceClient {
 
     /// Reboot
     pub async fn reboot(&mut self) -> Result<(), IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("command".into(), "reboot".into());
-
-        self.stream
-            .send_object(plist::Value::Dictionary(req), true)
-            .await?;
+        let req = crate::plist!({
+            "command": "reboot"
+        });
+        self.stream.send_object(req, true).await?;
 
         let res = self.stream.recv().await?;
         let mut res = match res {
@@ -103,12 +100,10 @@ impl RestoreServiceClient {
 
     /// Get preflightinfo
     pub async fn get_preflightinfo(&mut self) -> Result<Dictionary, IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("command".into(), "getpreflightinfo".into());
-
-        self.stream
-            .send_object(plist::Value::Dictionary(req), true)
-            .await?;
+        let req = crate::plist!({
+            "command": "getpreflightinfo"
+        });
+        self.stream.send_object(req, true).await?;
 
         let res = self.stream.recv().await?;
         let mut res = match res {
@@ -133,12 +128,10 @@ impl RestoreServiceClient {
     /// Get nonces
     /// Doesn't seem to work
     pub async fn get_nonces(&mut self) -> Result<Dictionary, IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("command".into(), "getnonces".into());
-
-        self.stream
-            .send_object(plist::Value::Dictionary(req), true)
-            .await?;
+        let req = crate::plist!({
+            "command": "getnonces"
+        });
+        self.stream.send_object(req, true).await?;
 
         let res = self.stream.recv().await?;
         let mut res = match res {
@@ -163,12 +156,10 @@ impl RestoreServiceClient {
     /// Get app parameters
     /// Doesn't seem to work
     pub async fn get_app_parameters(&mut self) -> Result<Dictionary, IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("command".into(), "getappparameters".into());
-
-        self.stream
-            .send_object(plist::Value::Dictionary(req), true)
-            .await?;
+        let req = crate::plist!({
+            "command": "getappparameters"
+        });
+        self.stream.send_object(req, true).await?;
 
         let res = self.stream.recv().await?;
         let mut res = match res {
@@ -195,13 +186,11 @@ impl RestoreServiceClient {
     pub async fn restore_lang(&mut self, language: impl Into<String>) -> Result<(), IdeviceError> {
         let language = language.into();
 
-        let mut req = Dictionary::new();
-        req.insert("command".into(), "restorelang".into());
-        req.insert("argument".into(), language.into());
-
-        self.stream
-            .send_object(plist::Value::Dictionary(req), true)
-            .await?;
+        let req = crate::plist!({
+            "command": "restorelang",
+            "argument": language,
+        });
+        self.stream.send_object(req, true).await?;
 
         let res = self.stream.recv().await?;
         let mut res = match res {

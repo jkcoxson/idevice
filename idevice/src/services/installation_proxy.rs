@@ -70,22 +70,15 @@ impl InstallationProxyClient {
         bundle_identifiers: Option<Vec<String>>,
     ) -> Result<HashMap<String, plist::Value>, IdeviceError> {
         let application_type = application_type.unwrap_or("Any");
-        let mut options = plist::Dictionary::new();
-        if let Some(ids) = bundle_identifiers {
-            let ids = ids
-                .into_iter()
-                .map(plist::Value::String)
-                .collect::<Vec<plist::Value>>();
-            options.insert("BundleIDs".into(), ids.into());
-        }
-        options.insert("ApplicationType".into(), application_type.into());
 
-        let mut req = plist::Dictionary::new();
-        req.insert("Command".into(), "Lookup".into());
-        req.insert("ClientOptions".into(), plist::Value::Dictionary(options));
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        let req = crate::plist!({
+            "Command": "Lookup",
+            "ClientOptions": {
+                "ApplicationType": application_type,
+                "BundleIDs":? bundle_identifiers,
+            }
+        });
+        self.idevice.send_plist(req).await?;
 
         let mut res = self.idevice.read_plist().await?;
         match res.remove("LookupResult") {
@@ -155,14 +148,13 @@ impl InstallationProxyClient {
         let package_path = package_path.into();
         let options = options.unwrap_or(plist::Value::Dictionary(Dictionary::new()));
 
-        let mut command = Dictionary::new();
-        command.insert("Command".into(), "Install".into());
-        command.insert("ClientOptions".into(), options);
-        command.insert("PackagePath".into(), package_path.into());
+        let command = crate::plist!({
+            "Command": "Install",
+            "ClientOptions": options,
+            "PackagePath": package_path,
+        });
 
-        self.idevice
-            .send_plist(plist::Value::Dictionary(command))
-            .await?;
+        self.idevice.send_plist(command).await?;
 
         self.watch_completion(callback, state).await
     }
@@ -220,14 +212,13 @@ impl InstallationProxyClient {
         let package_path = package_path.into();
         let options = options.unwrap_or(plist::Value::Dictionary(Dictionary::new()));
 
-        let mut command = Dictionary::new();
-        command.insert("Command".into(), "Upgrade".into());
-        command.insert("ClientOptions".into(), options);
-        command.insert("PackagePath".into(), package_path.into());
+        let command = crate::plist!({
+            "Command": "Upgrade",
+            "ClientOptions": options,
+            "PackagePath": package_path,
+        });
 
-        self.idevice
-            .send_plist(plist::Value::Dictionary(command))
-            .await?;
+        self.idevice.send_plist(command).await?;
 
         self.watch_completion(callback, state).await
     }
@@ -285,14 +276,13 @@ impl InstallationProxyClient {
         let bundle_id = bundle_id.into();
         let options = options.unwrap_or(plist::Value::Dictionary(Dictionary::new()));
 
-        let mut command = Dictionary::new();
-        command.insert("Command".into(), "Uninstall".into());
-        command.insert("ApplicationIdentifier".into(), bundle_id.into());
-        command.insert("ClientOptions".into(), options);
+        let command = crate::plist!({
+            "Command": "Uninstall",
+            "ApplicationIdentifier": bundle_id,
+            "ClientOptions": options,
+        });
 
-        self.idevice
-            .send_plist(plist::Value::Dictionary(command))
-            .await?;
+        self.idevice.send_plist(command).await?;
 
         self.watch_completion(callback, state).await
     }
@@ -317,14 +307,13 @@ impl InstallationProxyClient {
     ) -> Result<bool, IdeviceError> {
         let options = options.unwrap_or(plist::Value::Dictionary(Dictionary::new()));
 
-        let mut command = Dictionary::new();
-        command.insert("Command".into(), "CheckCapabilitiesMatch".into());
-        command.insert("ClientOptions".into(), options);
-        command.insert("Capabilities".into(), capabilities.into());
+        let command = crate::plist!({
+            "Command": "CheckCapabilitiesMatch",
+            "ClientOptions": options,
+            "Capabilities": capabilities
+        });
 
-        self.idevice
-            .send_plist(plist::Value::Dictionary(command))
-            .await?;
+        self.idevice.send_plist(command).await?;
         let mut res = self.idevice.read_plist().await?;
 
         if let Some(caps) = res.remove("LookupResult").and_then(|x| x.as_boolean()) {
@@ -355,13 +344,12 @@ impl InstallationProxyClient {
     ) -> Result<Vec<plist::Value>, IdeviceError> {
         let options = options.unwrap_or(plist::Value::Dictionary(Dictionary::new()));
 
-        let mut command = Dictionary::new();
-        command.insert("Command".into(), "Browse".into());
-        command.insert("ClientOptions".into(), options);
+        let command = crate::plist!({
+            "Command": "Browse",
+            "ClientOptions": options,
+        });
 
-        self.idevice
-            .send_plist(plist::Value::Dictionary(command))
-            .await?;
+        self.idevice.send_plist(command).await?;
 
         let mut values = Vec::new();
         loop {

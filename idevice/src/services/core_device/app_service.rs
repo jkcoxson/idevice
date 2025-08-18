@@ -143,12 +143,13 @@ impl<R: ReadWrite> AppServiceClient<R> {
         internal_apps: bool,
         default_apps: bool,
     ) -> Result<Vec<AppListEntry>, IdeviceError> {
-        let mut options = plist::Dictionary::new();
-        options.insert("includeAppClips".into(), app_clips.into());
-        options.insert("includeRemovableApps".into(), removable_apps.into());
-        options.insert("includeHiddenApps".into(), hidden_apps.into());
-        options.insert("includeInternalApps".into(), internal_apps.into());
-        options.insert("includeDefaultApps".into(), default_apps.into());
+        let options = crate::plist!(dict {
+            "includeAppClips": app_clips,
+            "includeRemovableApps": removable_apps,
+            "includeHiddenApps": hidden_apps,
+            "includeInternalApps": internal_apps,
+            "includeDefaultApps": default_apps,
+        });
         let res = self
             .inner
             .invoke("com.apple.coredevice.feature.listapps", Some(options))

@@ -185,31 +185,14 @@ impl RestoreOptions {
     }
 
     pub fn to_plist(&self) -> Dictionary {
-        let mut opts = Dictionary::new();
-        opts.insert(
-            "RestoreShouldReboot".into(),
-            plist::Value::Boolean(self.reboot),
-        );
-        opts.insert(
-            "RestoreDontCopyBackup".into(),
-            plist::Value::Boolean(!self.copy),
-        );
-        opts.insert(
-            "RestorePreserveSettings".into(),
-            plist::Value::Boolean(self.preserve_settings),
-        );
-        opts.insert(
-            "RestoreSystemFiles".into(),
-            plist::Value::Boolean(self.system_files),
-        );
-        opts.insert(
-            "RemoveItemsNotRestored".into(),
-            plist::Value::Boolean(self.remove_items_not_restored),
-        );
-        if let Some(pw) = &self.password {
-            opts.insert("Password".into(), plist::Value::String(pw.clone()));
-        }
-        opts
+        crate::plist!(dict {
+            "RestoreShouldReboot": self.reboot,
+            "RestoreDontCopyBackup": !self.copy,
+            "RestorePreserveSettings": self.preserve_settings,
+            "RestoreSystemFiles": self.system_files,
+            "RemoveItemsNotRestored": self.remove_items_not_restored,
+            "Password":? self.password.clone()
+        })
     }
 }
 
@@ -297,12 +280,11 @@ impl MobileBackup2Client {
         debug!("Starting mobilebackup2 version exchange");
 
         // Send supported protocol versions (matching libimobiledevice)
-        let mut hello_dict = Dictionary::new();
-        let versions = vec![plist::Value::Real(2.0), plist::Value::Real(2.1)];
-        hello_dict.insert(
-            "SupportedProtocolVersions".into(),
-            plist::Value::Array(versions),
-        );
+        let hello_dict = crate::plist!(dict {
+            "SupportedProtocolVersions": [
+                2.0, 2.1
+            ]
+        });
 
         self.send_device_link_message("Hello", Some(hello_dict))
             .await?;
@@ -349,25 +331,15 @@ impl MobileBackup2Client {
         message_name: &str,
         options: Option<Dictionary>,
     ) -> Result<(), IdeviceError> {
-        // Create DLMessageProcessMessage array format
-        let mut message_array = Vec::new();
-        message_array.push(plist::Value::String("DLMessageProcessMessage".into()));
-
         // Create the actual message dictionary
-        let mut message_dict = Dictionary::new();
-        message_dict.insert("MessageName".into(), message_name.into());
-
-        if let Some(opts) = options {
-            for (key, value) in opts {
-                message_dict.insert(key, value);
-            }
-        }
-
-        message_array.push(plist::Value::Dictionary(message_dict));
+        let message_dict = crate::plist!(dict {
+            "MessageName": message_name,
+            :<? options,
+        });
 
         debug!("Sending device link message: {message_name}");
         self.idevice
-            .send_bplist(plist::Value::Array(message_array))
+            .send_bplist(crate::plist!(["DLMessageProcessMessage", message_dict]))
             .await
     }
 
@@ -453,17 +425,12 @@ impl MobileBackup2Client {
         source_identifier: Option<&str>,
         options: Option<Dictionary>,
     ) -> Result<(), IdeviceError> {
-        let mut dict = Dictionary::new();
-        if let Some(t) = target_identifier {
-            dict.insert("TargetIdentifier".into(), t.into());
-        }
-        if let Some(s) = source_identifier {
-            dict.insert("SourceIdentifier".into(), s.into());
-        }
-        if let Some(opts) = options {
-            dict.insert("Options".into(), plist::Value::Dictionary(opts));
+        let dict = crate::plist!(dict {
+            "TargetIdentifier":? target_identifier,
+            "SourceIdentifier":? source_identifier,
+            "Options":? options,
             // Special cases like Unback/EnableCloudBackup are handled by caller if needed
-        }
+        });
         self.send_device_link_message(request, Some(dict)).await
     }
 
@@ -1090,17 +1057,10 @@ impl MobileBackup2Client {
             .ok_or(IdeviceError::InvalidHostID)?;
         self.assert_backup_exists(backup_root, source)?;
 
-        let mut dict = Dictionary::new();
-        dict.insert(
-            "TargetIdentifier".into(),
-            plist::Value::String(target_udid.unwrap().to_string()),
-        );
-        if let Some(src) = source_identifier {
-            dict.insert(
-                "SourceIdentifier".into(),
-                plist::Value::String(src.to_string()),
-            );
-        }
+        let dict = crate::plist!(dict {
+            "TargetIdentifier": target_udid.unwrap(),
+            "SourceIdentifier":? source_identifier,
+        });
         self.send_device_link_message("Info", Some(dict)).await?;
 
         match self.process_restore_dl_loop(backup_root).await? {
@@ -1121,16 +1081,11 @@ impl MobileBackup2Client {
             .ok_or(IdeviceError::InvalidHostID)?;
         self.assert_backup_exists(backup_root, source)?;
 
-        let mut dict = Dictionary::new();
-        dict.insert("MessageName".into(), plist::Value::String("List".into()));
-        dict.insert(
-            "TargetIdentifier".into(),
-            plist::Value::String(target_udid.unwrap().to_string()),
-        );
-        dict.insert(
-            "SourceIdentifier".into(),
-            plist::Value::String(source.to_string()),
-        );
+        let dict = crate::plist!(dict {
+            "MessageName": "List",
+            "TargetIdentifier": target_udid.unwrap(),
+            "SourceIdentifier": source,
+        });
         self.send_device_link_message("List", Some(dict)).await?;
 
         match self.process_restore_dl_loop(backup_root).await? {
@@ -1151,20 +1106,12 @@ impl MobileBackup2Client {
             .or(target_udid)
             .ok_or(IdeviceError::InvalidHostID)?;
         self.assert_backup_exists(backup_root, source)?;
-
-        let mut dict = Dictionary::new();
-        dict.insert(
-            "TargetIdentifier".into(),
-            plist::Value::String(target_udid.unwrap().to_string()),
-        );
-        dict.insert("MessageName".into(), plist::Value::String("Unback".into()));
-        dict.insert(
-            "SourceIdentifier".into(),
-            plist::Value::String(source.to_string()),
-        );
-        if let Some(pw) = password {
-            dict.insert("Password".into(), plist::Value::String(pw.to_string()));
-        }
+        let dict = crate::plist!(dict {
+            "TargetIdentifier": target_udid.unwrap(),
+            "MessageName": "Unback",
+            "SourceIdentifier": source,
+            "Password":? password
+        });
         self.send_device_link_message("Unback", Some(dict)).await?;
         let _ = self.process_restore_dl_loop(backup_root).await?;
         Ok(())
@@ -1184,28 +1131,14 @@ impl MobileBackup2Client {
             .or(target_udid)
             .ok_or(IdeviceError::InvalidHostID)?;
         self.assert_backup_exists(backup_root, source)?;
-
-        let mut dict = Dictionary::new();
-        dict.insert("MessageName".into(), plist::Value::String("Extract".into()));
-        dict.insert(
-            "TargetIdentifier".into(),
-            plist::Value::String(target_udid.unwrap().to_string()),
-        );
-        dict.insert(
-            "DomainName".into(),
-            plist::Value::String(domain_name.to_string()),
-        );
-        dict.insert(
-            "RelativePath".into(),
-            plist::Value::String(relative_path.to_string()),
-        );
-        dict.insert(
-            "SourceIdentifier".into(),
-            plist::Value::String(source.to_string()),
-        );
-        if let Some(pw) = password {
-            dict.insert("Password".into(), plist::Value::String(pw.to_string()));
-        }
+        let dict = crate::plist!(dict {
+            "MessageName": "Extract",
+            "TargetIdentifier": target_udid.unwrap(),
+            "DomainName": domain_name,
+            "RelativePath": relative_path,
+            "SourceIdentifier": source,
+            "Password":? password,
+        });
         self.send_device_link_message("Extract", Some(dict)).await?;
         let _ = self.process_restore_dl_loop(backup_root).await?;
         Ok(())
@@ -1219,21 +1152,12 @@ impl MobileBackup2Client {
         new: Option<&str>,
     ) -> Result<(), IdeviceError> {
         let target_udid = self.idevice.udid();
-        let mut dict = Dictionary::new();
-        dict.insert(
-            "MessageName".into(),
-            plist::Value::String("ChangePassword".into()),
-        );
-        dict.insert(
-            "TargetIdentifier".into(),
-            plist::Value::String(target_udid.ok_or(IdeviceError::InvalidHostID)?.to_string()),
-        );
-        if let Some(o) = old {
-            dict.insert("OldPassword".into(), plist::Value::String(o.to_string()));
-        }
-        if let Some(n) = new {
-            dict.insert("NewPassword".into(), plist::Value::String(n.to_string()));
-        }
+        let dict = crate::plist!(dict {
+            "MessageName": "ChangePassword",
+            "TargetIdentifier": target_udid.ok_or(IdeviceError::InvalidHostID)?,
+            "OldPassword":? old,
+            "NewPassword":? new
+        });
         self.send_device_link_message("ChangePassword", Some(dict))
             .await?;
         let _ = self.process_restore_dl_loop(backup_root).await?;
@@ -1243,15 +1167,10 @@ impl MobileBackup2Client {
     /// Erase device via mobilebackup2
     pub async fn erase_device_from_path(&mut self, backup_root: &Path) -> Result<(), IdeviceError> {
         let target_udid = self.idevice.udid();
-        let mut dict = Dictionary::new();
-        dict.insert(
-            "MessageName".into(),
-            plist::Value::String("EraseDevice".into()),
-        );
-        dict.insert(
-            "TargetIdentifier".into(),
-            plist::Value::String(target_udid.ok_or(IdeviceError::InvalidHostID)?.to_string()),
-        );
+        let dict = crate::plist!(dict {
+            "MessageName": "EraseDevice",
+            "TargetIdentifier": target_udid.ok_or(IdeviceError::InvalidHostID)?
+        });
         self.send_device_link_message("EraseDevice", Some(dict))
             .await?;
         let _ = self.process_restore_dl_loop(backup_root).await?;
@@ -1291,10 +1210,10 @@ impl MobileBackup2Client {
     /// Returns `IdeviceError` if disconnection fails
     pub async fn disconnect(&mut self) -> Result<(), IdeviceError> {
         // Send DLMessageDisconnect array per DeviceLink protocol
-        let arr = vec![
-            plist::Value::String("DLMessageDisconnect".into()),
-            plist::Value::String("___EmptyParameterString___".into()),
-        ];
+        let arr = crate::plist!(array [
+            "DLMessageDisconnect",
+            "___EmptyParameterString___"
+        ]);
         self.send_dl_array(arr).await?;
         debug!("Disconnected from backup service");
         Ok(())

@@ -98,9 +98,10 @@ impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
             "launchSuspendedProcessWithDevicePath:bundleIdentifier:environment:arguments:options:"
                 .into(),
         );
-        let mut options = Dictionary::new();
-        options.insert("StartSuspendedKey".into(), start_suspended.into());
-        options.insert("KillExisting".into(), kill_existing.into());
+        let options = crate::plist!(dict {
+           "StartSuspendedKey": start_suspended,
+            "KillExisting": kill_existing
+        });
 
         let env_vars = match env_vars {
             Some(e) => e,

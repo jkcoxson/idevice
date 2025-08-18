@@ -52,6 +52,23 @@
 /// ```
 #[macro_export]
 macro_rules! plist {
+    // Force: dictionary out
+    (dict { $($tt:tt)+ }) => {{
+        let mut object = plist::Dictionary::new();
+        $crate::plist_internal!(@object object () ($($tt)+) ($($tt)+));
+        object
+    }};
+
+    // Force: value out (explicit, though default already does this)
+    (value { $($tt:tt)+ }) => {
+        $crate::plist_internal!({ $($tt)+ })
+    };
+
+    // Force: raw vec of plist::Value out
+    (array [ $($tt:tt)+ ]) => {
+        $crate::plist_internal!(@array [] $($tt)+)
+    };
+
     // Hide distracting implementation details from the generated rustdoc.
     ($($plist:tt)+) => {
         $crate::plist_internal!($($plist)+)
