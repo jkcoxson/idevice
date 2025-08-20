@@ -6,6 +6,7 @@ use std::{
     sync::Arc,
 };
 
+use log::debug;
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
     sync::Mutex,
@@ -109,6 +110,7 @@ impl Ipv4Packet {
         let ihl = (version_ihl & 0x0F) * 4;
 
         if version != 4 || ihl < 20 {
+            debug!("Got an invalid IPv4 header");
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Invalid IPv4 header",
@@ -220,21 +222,34 @@ pub struct Ipv6Packet {
     pub payload: Vec<u8>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) enum IpParseError<T> {
+    Ok { packet: T, bytes_consumed: usize },
+    NotEnough,
+    Invalid,
+}
+
 impl Ipv6Packet {
-    pub fn parse(packet: &[u8]) -> Option<Self> {
+    pub(crate) fn parse(packet: &[u8]) -> IpParseError<Ipv6Packet> {
         if packet.len() < 40 {
-            return None;
+            return IpParseError::NotEnough;
         }
 
         let version = packet[0] >> 4;
         if version != 6 {
-            return None;
+            return IpParseError::Invalid;
         }
 
         let traffic_class = ((packet[0] & 0x0F) << 4) | (packet[1] >> 4);
         let flow_label =
             ((packet[1] as u32 & 0x0F) << 16) | ((packet[2] as u32) << 8) | packet[3] as u32;
         let payload_length = u16::from_be_bytes([packet[4], packet[5]]);
+        let total_packet_len = 40 + payload_length as usize;
+
+        if packet.len() < total_packet_len {
+            return IpParseError::NotEnough;
+        }
+
         let next_header = packet[6];
         let hop_limit = packet[7];
         let source = Ipv6Addr::new(
@@ -258,19 +273,22 @@ impl Ipv6Packet {
             u16::from_be_bytes([packet[36], packet[37]]),
             u16::from_be_bytes([packet[38], packet[39]]),
         );
-        let payload = packet[40..].to_vec();
+        let payload = packet[40..total_packet_len].to_vec();
 
-        Some(Self {
-            version,
-            traffic_class,
-            flow_label,
-            payload_length,
-            next_header,
-            hop_limit,
-            source,
-            destination,
-            payload,
-        })
+        IpParseError::Ok {
+            packet: Self {
+                version,
+                traffic_class,
+                flow_label,
+                payload_length,
+                next_header,
+                hop_limit,
+                source,
+                destination,
+                payload,
+            },
+            bytes_consumed: total_packet_len,
+        }
     }
 
     pub async fn from_reader<R: AsyncRead + Unpin>(
@@ -278,14 +296,17 @@ impl Ipv6Packet {
         log: &Option<Arc<Mutex<tokio::fs::File>>>,
     ) -> Result<Self, std::io::Error> {
         let mut log_packet = Vec::new();
+
         let mut header = [0u8; 40]; // IPv6 header size is fixed at 40 bytes
         reader.read_exact(&mut header).await?;
+
         if log.is_some() {
             log_packet.extend_from_slice(&header);
         }
 
         let version = header[0] >> 4;
         if version != 6 {
+            debug!("Got an invalid IPv6 header");
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Invalid IPv6 header",
@@ -457,6 +478,7 @@ pub struct TcpPacket {
 impl TcpPacket {
     pub fn parse(packet: &[u8]) -> Result<Self, std::io::Error> {
         if packet.len() < 20 {
+            debug!("Got an invalid TCP header");
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Not enough bytes for TCP header",

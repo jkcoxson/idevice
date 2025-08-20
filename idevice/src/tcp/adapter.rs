@@ -112,7 +112,7 @@ impl ConnectionState {
 #[derive(Debug)]
 pub struct Adapter {
     /// The underlying transport connection
-    peer: Box<dyn ReadWrite>,
+    pub(crate) peer: Box<dyn ReadWrite>,
     /// The local IP address
     host_ip: IpAddr,
     /// The remote peer's IP address
@@ -538,63 +538,67 @@ impl Adapter {
     }
 
     pub(crate) async fn process_tcp_packet(&mut self) -> Result<(), std::io::Error> {
-        loop {
-            let ip_packet = self.read_ip_packet().await?;
-            let res = TcpPacket::parse(&ip_packet)?;
-            let mut ack_me = None;
+        let ip_packet = self.read_ip_packet().await?;
+        self.process_tcp_packet_from_payload(&ip_packet).await
+    }
 
-            if let Some(state) = self.states.get(&res.destination_port) {
-                // A keep-alive probe: ACK set, no payload, and seq == RCV.NXT - 1
-                let is_keepalive = res.flags.ack
-                    && res.payload.is_empty()
-                    && res.sequence_number.wrapping_add(1) == state.ack;
+    pub(crate) async fn process_tcp_packet_from_payload(
+        &mut self,
+        payload: &[u8],
+    ) -> Result<(), std::io::Error> {
+        let res = TcpPacket::parse(payload)?;
+        let mut ack_me = None;
 
-                if is_keepalive {
-                    // Don't update any seq/ack state; just ACK what we already expect.
-                    debug!("responding to keep-alive probe");
-                    let port = res.destination_port;
-                    self.ack(port).await?;
-                    break;
-                }
+        if let Some(state) = self.states.get(&res.destination_port) {
+            // A keep-alive probe: ACK set, no payload, and seq == RCV.NXT - 1
+            let is_keepalive = res.flags.ack
+                && res.payload.is_empty()
+                && res.sequence_number.wrapping_add(1) == state.ack;
+
+            if is_keepalive {
+                // Don't update any seq/ack state; just ACK what we already expect.
+                debug!("responding to keep-alive probe");
+                let port = res.destination_port;
+                self.ack(port).await?;
+                return Ok(());
+            }
+        }
+
+        if let Some(state) = self.states.get_mut(&res.destination_port) {
+            if state.peer_seq > res.sequence_number {
+                // ignore retransmission
+                return Ok(());
             }
 
-            if let Some(state) = self.states.get_mut(&res.destination_port) {
-                if state.peer_seq > res.sequence_number {
-                    // ignore retransmission
-                    continue;
-                }
-
-                state.peer_seq = res.sequence_number + res.payload.len() as u32;
-                state.ack = res.sequence_number
-                    + if res.payload.is_empty() && state.status != ConnectionStatus::Connected {
-                        1
-                    } else {
-                        res.payload.len() as u32
-                    };
-                if res.flags.psh || !res.payload.is_empty() {
-                    ack_me = Some(res.destination_port);
-                    state.read_buffer.extend(res.payload);
-                }
-                if res.flags.rst {
-                    warn!("stream rst");
-                    state.status = ConnectionStatus::Error(ErrorKind::ConnectionReset);
-                }
-                if res.flags.fin {
-                    ack_me = Some(res.destination_port);
-                    state.status = ConnectionStatus::Error(ErrorKind::UnexpectedEof);
-                }
-                if res.flags.syn && res.flags.ack {
-                    ack_me = Some(res.destination_port);
-                    state.seq = state.seq.wrapping_add(1);
-                    state.status = ConnectionStatus::Connected;
-                }
+            state.peer_seq = res.sequence_number + res.payload.len() as u32;
+            state.ack = res.sequence_number
+                + if res.payload.is_empty() && state.status != ConnectionStatus::Connected {
+                    1
+                } else {
+                    res.payload.len() as u32
+                };
+            if res.flags.psh || !res.payload.is_empty() {
+                ack_me = Some(res.destination_port);
+                state.read_buffer.extend(res.payload);
             }
-
-            // we have to ack outside of the mutable state borrow
-            if let Some(a) = ack_me {
-                self.ack(a).await?;
+            if res.flags.rst {
+                warn!("stream rst");
+                state.status = ConnectionStatus::Error(ErrorKind::ConnectionReset);
             }
-            break;
+            if res.flags.fin {
+                ack_me = Some(res.destination_port);
+                state.status = ConnectionStatus::Error(ErrorKind::UnexpectedEof);
+            }
+            if res.flags.syn && res.flags.ack {
+                ack_me = Some(res.destination_port);
+                state.seq = state.seq.wrapping_add(1);
+                state.status = ConnectionStatus::Connected;
+            }
+        }
+
+        // we have to ack outside of the mutable state borrow
+        if let Some(a) = ack_me {
+            self.ack(a).await?;
         }
         Ok(())
     }
