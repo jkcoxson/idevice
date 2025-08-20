@@ -8,7 +8,6 @@ use std::{
     sync::Arc,
 };
 
-use log::debug;
 use tokio::sync::Mutex;
 use tokio::{
     io::AsyncWriteExt,
@@ -168,7 +167,6 @@ pub unsafe extern "C" fn idevice_tcp_eat_object_read(
         let lock = object.receiver.lock().await;
         match lock.try_read(&mut buf) {
             Ok(size) => {
-                debug!("EATING");
                 let bytes = buf[..size].to_vec();
                 let mut res = bytes.into_boxed_slice();
                 unsafe {
