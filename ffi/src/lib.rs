@@ -39,6 +39,8 @@ pub mod rsd;
 pub mod springboardservices;
 #[cfg(feature = "syslog_relay")]
 pub mod syslog_relay;
+#[cfg(feature = "tunnel_tcp_stack")]
+pub mod tcp_object_stack;
 #[cfg(feature = "usbmuxd")]
 pub mod usbmuxd;
 pub mod util;
