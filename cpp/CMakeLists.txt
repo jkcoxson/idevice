@@ -50,6 +50,8 @@ set_target_properties(idevice_ffi PROPERTIES
   IMPORTED_LOCATION "${IDEVICE_FFI_PATH}"
 )
 
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../ffi/idevice.h" "${CMAKE_CURRENT_SOURCE_DIR}/include" COPYONLY)
+
 # ---- Our C++ library -------------------------------------------------------
 
 # Collect sources (convenience: tracks new files when you re-run CMake)

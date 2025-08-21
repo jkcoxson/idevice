@@ -1,6 +1,7 @@
 // Jackson Coxson
 
 #include <idevice++/diagnosticsservice.hpp>
+#include <cstring>
 
 namespace IdeviceFFI {
 
