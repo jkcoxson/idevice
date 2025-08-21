@@ -8,16 +8,13 @@ use std::{collections::HashMap, path::PathBuf, sync::Mutex, task::Poll};
 
 use crossfire::{AsyncRx, MTx, Tx, mpsc, spsc, stream::AsyncStream};
 use futures::{StreamExt, stream::FuturesUnordered};
-use log::{debug, trace};
+use log::trace;
 use tokio::{
-    io::{AsyncRead, AsyncReadExt, AsyncWrite},
+    io::{AsyncRead, AsyncWrite},
     sync::oneshot,
 };
 
-use crate::tcp::{
-    adapter::ConnectionStatus,
-    packets::{IpParseError, Ipv6Packet},
-};
+use crate::tcp::adapter::ConnectionStatus;
 
 pub type ConnectToPortRes =
     oneshot::Sender<Result<(u16, AsyncRx<Result<Vec<u8>, std::io::Error>>), std::io::Error>>;
@@ -54,8 +51,6 @@ impl AdapterHandle {
             let mut handles: HashMap<u16, Tx<Result<Vec<u8>, std::io::Error>>> = HashMap::new();
             let mut tick = tokio::time::interval(std::time::Duration::from_millis(1));
 
-            let mut read_buf = [0u8; 4096];
-            let mut bytes_in_buf = 0;
             loop {
                 tokio::select! {
                     // check for messages for us
@@ -102,84 +97,52 @@ impl AdapterHandle {
                         }
                     }
 
-                    result = adapter.peer.read(&mut read_buf[bytes_in_buf..]) => {
-                        match result {
-                            Ok(0) => {
-                                debug!("Underlying stream closed (EOF)");
-                                break; // Exit the main actor loop
-                            }
-                            Ok(s) => {
-                                bytes_in_buf += s;
-                                loop {
-                                    match Ipv6Packet::parse(&read_buf[..bytes_in_buf]) {
-                                        IpParseError::Ok { packet, bytes_consumed } => {
-                                            // We got a full packet! Process it.
-                                            if let Err(e) = adapter.process_tcp_packet_from_payload(&packet.payload).await {
-                                                debug!("CRITICAL: Failed to process IP packet: {e:?}");
-                                            }
-
-                                            // And remove it from the buffer by shifting the remaining bytes
-                                            read_buf.copy_within(bytes_consumed..bytes_in_buf, 0);
-                                            bytes_in_buf -= bytes_consumed;
-                                                                            // Push any newly available bytes to per-conn channels
-                                            let mut dead = Vec::new();
-                                            for (&hp, tx) in &handles {
-                                                match adapter.uncache_all(hp) {
-                                                    Ok(buf) if !buf.is_empty() => {
-                                                        if tx.send(Ok(buf)).is_err() {
-                                                            dead.push(hp);
-                                                        }
-                                                    }
-                                                    Err(e) => {
-                                                        let _ = tx.send(Err(e));
-                                                        dead.push(hp);
-                                                    }
-                                                    _ => {}
-                                                }
-                                            }
-                                            for hp in dead {
-                                                handles.remove(&hp);
-                                                let _ = adapter.close(hp).await;
-                                            }
-
-                                            let mut to_close = Vec::new();
-                                            for (&hp, tx) in &handles {
-                                                if let Ok(ConnectionStatus::Error(kind)) = adapter.get_status(hp) {
-                                                    if kind == std::io::ErrorKind::UnexpectedEof {
-                                                        to_close.push(hp);
-                                                    } else {
-                                                        let _ = tx.send(Err(std::io::Error::from(kind)));
-                                                        to_close.push(hp);
-                                                    }
-                                                }
-                                            }
-                                            for hp in to_close {
-                                                handles.remove(&hp);
-                                                // Best-effort close. For RST this just tidies state on our side
-                                                let _ = adapter.close(hp).await;
-                                            }
-                                        }
-                                        IpParseError::NotEnough => {
-                                            // Buffer doesn't have a full packet, wait for the next read
-                                            break;
-                                        }
-                                        IpParseError::Invalid => {
-                                            // Corrupted data, close the connection
-                                            // ... (error handling) ...
-                                            return;
-                                        }
-                                    }
-                                }
-
-                            }
-                            Err(e) => {
-                                debug!("Failed to read: {e:?}, closing stack");
+                    r = adapter.process_tcp_packet() => {
+                        if let Err(e) = r {
+                            // propagate error to all streams; close them
                             for (hp, tx) in handles.drain() {
                                 let _ = tx.send(Err(e.kind().into())); // or clone/convert
                                 let _ = adapter.close(hp).await;
                             }
-                                break;
+                            break;
+                        }
+
+                        // Push any newly available bytes to per-conn channels
+                        let mut dead = Vec::new();
+                        for (&hp, tx) in &handles {
+                            match adapter.uncache_all(hp) {
+                                Ok(buf) if !buf.is_empty() => {
+                                    if tx.send(Ok(buf)).is_err() {
+                                        dead.push(hp);
+                                    }
+                                }
+                                Err(e) => {
+                                    let _ = tx.send(Err(e));
+                                    dead.push(hp);
+                                }
+                                _ => {}
                             }
+                        }
+                        for hp in dead {
+                            handles.remove(&hp);
+                            let _ = adapter.close(hp).await;
+                        }
+
+                        let mut to_close = Vec::new();
+                        for (&hp, tx) in &handles {
+                            if let Ok(ConnectionStatus::Error(kind)) = adapter.get_status(hp) {
+                                if kind == std::io::ErrorKind::UnexpectedEof {
+                                    to_close.push(hp);
+                                } else {
+                                    let _ = tx.send(Err(std::io::Error::from(kind)));
+                                    to_close.push(hp);
+                                }
+                            }
+                        }
+                        for hp in to_close {
+                            handles.remove(&hp);
+                            // Best-effort close. For RST this just tidies state on our side
+                            let _ = adapter.close(hp).await;
                         }
                     }
 

@@ -63,9 +63,12 @@
 use std::{collections::HashMap, io::ErrorKind, net::IpAddr, path::Path, sync::Arc};
 
 use log::{debug, trace, warn};
-use tokio::{io::AsyncWriteExt, sync::Mutex};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::Mutex,
+};
 
-use crate::ReadWrite;
+use crate::{ReadWrite, tcp::packets::IpParseError};
 
 use super::packets::{Ipv4Packet, Ipv6Packet, ProtocolNumber, TcpFlags, TcpPacket};
 
@@ -112,7 +115,7 @@ impl ConnectionState {
 #[derive(Debug)]
 pub struct Adapter {
     /// The underlying transport connection
-    pub(crate) peer: Box<dyn ReadWrite>,
+    peer: Box<dyn ReadWrite>,
     /// The local IP address
     host_ip: IpAddr,
     /// The remote peer's IP address
@@ -121,6 +124,8 @@ pub struct Adapter {
     /// The states of the connections
     states: HashMap<u16, ConnectionState>, // host port by state
     dropped: Vec<u16>,
+    read_buf: [u8; 4096],
+    bytes_in_buf: usize,
 
     /// Optional PCAP file for packet logging
     pcap: Option<Arc<Mutex<tokio::fs::File>>>,
@@ -143,6 +148,8 @@ impl Adapter {
             peer_ip,
             states: HashMap::new(),
             dropped: Vec::new(),
+            read_buf: [0u8; 4096],
+            bytes_in_buf: 0,
             pcap: None,
         }
     }
@@ -518,22 +525,36 @@ impl Adapter {
     async fn read_ip_packet(&mut self) -> Result<Vec<u8>, std::io::Error> {
         self.write_buffer_flush().await?;
         Ok(loop {
-            match self.host_ip {
-                IpAddr::V4(_) => {
-                    let packet = Ipv4Packet::from_reader(&mut self.peer, &self.pcap).await?;
-                    trace!("IPv4 packet: {packet:#?}");
-                    if packet.protocol == 6 {
-                        break packet.payload;
-                    }
+            // try the data we already have
+            match Ipv6Packet::parse(&self.read_buf[..self.bytes_in_buf]) {
+                IpParseError::Ok {
+                    packet,
+                    bytes_consumed,
+                } => {
+                    // And remove it from the buffer by shifting the remaining bytes
+                    self.read_buf
+                        .copy_within(bytes_consumed..self.bytes_in_buf, 0);
+                    self.bytes_in_buf -= bytes_consumed;
+                    break packet.payload;
                 }
-                IpAddr::V6(_) => {
-                    let packet = Ipv6Packet::from_reader(&mut self.peer, &self.pcap).await?;
-                    trace!("IPv6 packet: {packet:#?}");
-                    if packet.next_header == 6 {
-                        break packet.payload;
-                    }
+                IpParseError::NotEnough => {
+                    // Buffer doesn't have a full packet, wait for the next read
+                }
+                IpParseError::Invalid => {
+                    // Corrupted data, close the connection
+                    return Err(std::io::Error::new(
+                        ErrorKind::InvalidData,
+                        "invalid IPv6 parse",
+                    ));
                 }
             }
+            // go get  more
+            let s = self
+                .peer
+                .read(&mut self.read_buf[self.bytes_in_buf..])
+                .await?;
+
+            self.bytes_in_buf += s;
         })
     }
 

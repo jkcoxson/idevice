@@ -110,7 +110,7 @@ impl Ipv4Packet {
         let ihl = (version_ihl & 0x0F) * 4;
 
         if version != 4 || ihl < 20 {
-            debug!("Got an invalid IPv4 header");
+            debug!("Got an invalid IPv4 header from reader");
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Invalid IPv4 header",
@@ -306,7 +306,7 @@ impl Ipv6Packet {
 
         let version = header[0] >> 4;
         if version != 6 {
-            debug!("Got an invalid IPv6 header");
+            debug!("Got an invalid IPv6 header from reader");
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Invalid IPv6 header",
