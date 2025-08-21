@@ -61,6 +61,24 @@ static std::vector<RsdService> to_cpp_and_free(CRsdServiceArray* arr) {
     return out;
 }
 
+RsdHandshake::RsdHandshake(const RsdHandshake& other) {
+    if (other.handle_) {
+        // Call the Rust FFI to clone the underlying handle
+        handle_.reset(rsd_handshake_clone(other.handle_.get()));
+    }
+    // If other.handle_ is null, our new handle_ will also be null, which is correct.
+}
+
+RsdHandshake& RsdHandshake::operator=(const RsdHandshake& other) {
+    // Check for self-assignment
+    if (this != &other) {
+        // Create a temporary copy, then swap ownership
+        RsdHandshake temp(other);
+        std::swap(handle_, temp.handle_);
+    }
+    return *this;
+}
+
 // ---------- factory ----------
 std::optional<RsdHandshake> RsdHandshake::from_socket(ReadWrite&& rw, FfiError& err) {
     RsdHandshakeHandle* out = nullptr;

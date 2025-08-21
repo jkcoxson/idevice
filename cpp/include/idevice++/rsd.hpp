@@ -37,11 +37,13 @@ class RsdHandshake {
     std::optional<RsdService> service_info(const std::string& name, FfiError& err) const;
 
     // RAII / moves
-    ~RsdHandshake() noexcept                           = default;
-    RsdHandshake(RsdHandshake&&) noexcept              = default;
-    RsdHandshake& operator=(RsdHandshake&&) noexcept   = default;
-    RsdHandshake(const RsdHandshake&)                  = delete;
-    RsdHandshake&       operator=(const RsdHandshake&) = delete;
+    ~RsdHandshake() noexcept                         = default;
+    RsdHandshake(RsdHandshake&&) noexcept            = default;
+    RsdHandshake& operator=(RsdHandshake&&) noexcept = default;
+
+    // Enable Copying
+    RsdHandshake(const RsdHandshake& other);
+    RsdHandshake&       operator=(const RsdHandshake& other);
 
     RsdHandshakeHandle* raw() const noexcept { return handle_.get(); }
     static RsdHandshake adopt(RsdHandshakeHandle* h) noexcept { return RsdHandshake(h); }

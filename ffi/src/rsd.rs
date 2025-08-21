@@ -10,6 +10,7 @@ use idevice::rsd::RsdHandshake;
 use crate::{IdeviceFfiError, RUNTIME, ReadWriteOpaque, ffi_err};
 
 /// Opaque handle to an RsdHandshake
+#[derive(Clone)]
 pub struct RsdHandshakeHandle(pub RsdHandshake);
 
 /// C-compatible representation of an RSD service
@@ -368,6 +369,22 @@ pub unsafe extern "C" fn rsd_get_service_info(
 
     unsafe { *service_info = Box::into_raw(c_service) };
     null_mut()
+}
+
+/// Clones an RSD handshake
+///
+/// # Safety
+/// Pass a valid pointer allocated by this library
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rsd_handshake_clone(
+    handshake: *mut RsdHandshakeHandle,
+) -> *mut RsdHandshakeHandle {
+    if handshake.is_null() {
+        return null_mut();
+    }
+    let handshake = unsafe { &mut *handshake };
+    let new_handshake = handshake.clone();
+    Box::into_raw(Box::new(new_handshake))
 }
 
 /// Frees a string returned by RSD functions

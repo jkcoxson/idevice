@@ -23,6 +23,7 @@ pub struct RsdService {
     pub service_version: Option<i64>,
 }
 
+#[derive(Debug, Clone)]
 pub struct RsdHandshake {
     pub services: HashMap<String, RsdService>,
     pub protocol_version: usize,
