@@ -48,9 +48,7 @@ async fn main() {
         .get_matches();
 
     if matches.get_flag("about") {
-        println!(
-            "ideviceinstaller - install/upgrade apps using AFC + InstallationProxy (Rust)"
-        );
+        println!("ideviceinstaller - install/upgrade apps using AFC + InstallationProxy (Rust)");
         println!("Copyright (c) 2025");
         return;
     }
@@ -78,7 +76,8 @@ async fn main() {
             },
             (),
         )
-        .await {
+        .await
+        {
             Ok(()) => println!("install success"),
             Err(e) => eprintln!("Install failed: {e}"),
         }
@@ -93,7 +92,8 @@ async fn main() {
             },
             (),
         )
-        .await {
+        .await
+        {
             Ok(()) => println!("upgrade success"),
             Err(e) => eprintln!("Upgrade failed: {e}"),
         }
@@ -101,5 +101,3 @@ async fn main() {
         eprintln!("Invalid usage, pass -h for help");
     }
 }
-
-

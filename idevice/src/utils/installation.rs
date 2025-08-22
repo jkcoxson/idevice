@@ -14,13 +14,12 @@
 use std::path::Path;
 
 use crate::{
-    IdeviceError,
+    IdeviceError, IdeviceService,
+    provider::IdeviceProvider,
     services::{
-        afc::{opcode::AfcFopenMode, AfcClient},
+        afc::{AfcClient, opcode::AfcFopenMode},
         installation_proxy::InstallationProxyClient,
     },
-    provider::IdeviceProvider,
-    IdeviceService,
 };
 
 const PUBLIC_STAGING: &str = "PublicStaging";
@@ -127,8 +126,9 @@ pub async fn install_package<P: AsRef<Path>>(
     local_path: P,
     options: Option<plist::Value>,
 ) -> Result<(), IdeviceError> {
-    let UploadedPackageInfo { remote_package_path } =
-        upload_package_to_public_staging(provider, local_path).await?;
+    let UploadedPackageInfo {
+        remote_package_path,
+    } = upload_package_to_public_staging(provider, local_path).await?;
 
     let mut inst = InstallationProxyClient::connect(provider).await?;
     inst.install(remote_package_path, options).await
@@ -143,8 +143,9 @@ pub async fn upgrade_package<P: AsRef<Path>>(
     local_path: P,
     options: Option<plist::Value>,
 ) -> Result<(), IdeviceError> {
-    let UploadedPackageInfo { remote_package_path } =
-        upload_package_to_public_staging(provider, local_path).await?;
+    let UploadedPackageInfo {
+        remote_package_path,
+    } = upload_package_to_public_staging(provider, local_path).await?;
 
     let mut inst = InstallationProxyClient::connect(provider).await?;
     inst.upgrade(remote_package_path, options).await
@@ -163,8 +164,9 @@ where
     Fut: std::future::Future<Output = ()>,
     S: Clone,
 {
-    let UploadedPackageInfo { remote_package_path } =
-        upload_package_to_public_staging(provider, local_path).await?;
+    let UploadedPackageInfo {
+        remote_package_path,
+    } = upload_package_to_public_staging(provider, local_path).await?;
 
     let mut inst = InstallationProxyClient::connect(provider).await?;
     inst.install_with_callback(remote_package_path, options, callback, state)
@@ -184,8 +186,9 @@ where
     Fut: std::future::Future<Output = ()>,
     S: Clone,
 {
-    let UploadedPackageInfo { remote_package_path } =
-        upload_package_to_public_staging(provider, local_path).await?;
+    let UploadedPackageInfo {
+        remote_package_path,
+    } = upload_package_to_public_staging(provider, local_path).await?;
 
     let mut inst = InstallationProxyClient::connect(provider).await?;
     inst.upgrade_with_callback(remote_package_path, options, callback, state)
@@ -209,7 +212,9 @@ async fn upload_bytes_to_public_staging(
     fd.write(data.as_ref()).await?;
     fd.close().await?;
 
-    Ok(UploadedPackageInfo { remote_package_path: remote_path })
+    Ok(UploadedPackageInfo {
+        remote_package_path: remote_path,
+    })
 }
 
 /// Install an application from raw bytes by first uploading them to `PublicStaging` and then
@@ -223,8 +228,9 @@ pub async fn install_bytes(
     remote_name: &str,
     options: Option<plist::Value>,
 ) -> Result<(), IdeviceError> {
-    let UploadedPackageInfo { remote_package_path } =
-        upload_bytes_to_public_staging(provider, data, remote_name).await?;
+    let UploadedPackageInfo {
+        remote_package_path,
+    } = upload_bytes_to_public_staging(provider, data, remote_name).await?;
     let mut inst = InstallationProxyClient::connect(provider).await?;
     inst.install(remote_package_path, options).await
 }
@@ -247,8 +253,9 @@ where
     Fut: std::future::Future<Output = ()>,
     S: Clone,
 {
-    let UploadedPackageInfo { remote_package_path } =
-        upload_bytes_to_public_staging(provider, data, remote_name).await?;
+    let UploadedPackageInfo {
+        remote_package_path,
+    } = upload_bytes_to_public_staging(provider, data, remote_name).await?;
     let mut inst = InstallationProxyClient::connect(provider).await?;
     inst.install_with_callback(remote_package_path, options, callback, state)
         .await
@@ -265,8 +272,9 @@ pub async fn upgrade_bytes(
     remote_name: &str,
     options: Option<plist::Value>,
 ) -> Result<(), IdeviceError> {
-    let UploadedPackageInfo { remote_package_path } =
-        upload_bytes_to_public_staging(provider, data, remote_name).await?;
+    let UploadedPackageInfo {
+        remote_package_path,
+    } = upload_bytes_to_public_staging(provider, data, remote_name).await?;
     let mut inst = InstallationProxyClient::connect(provider).await?;
     inst.upgrade(remote_package_path, options).await
 }
@@ -289,11 +297,10 @@ where
     Fut: std::future::Future<Output = ()>,
     S: Clone,
 {
-    let UploadedPackageInfo { remote_package_path } =
-        upload_bytes_to_public_staging(provider, data, remote_name).await?;
+    let UploadedPackageInfo {
+        remote_package_path,
+    } = upload_bytes_to_public_staging(provider, data, remote_name).await?;
     let mut inst = InstallationProxyClient::connect(provider).await?;
     inst.upgrade_with_callback(remote_package_path, options, callback, state)
         .await
 }
-
-
