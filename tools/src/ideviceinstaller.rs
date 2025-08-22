@@ -1,7 +1,7 @@
 // A minimal ideviceinstaller-like CLI to install/upgrade apps
 
 use clap::{Arg, ArgAction, Command};
-use idevice::{IdeviceService, provider::IdeviceProvider, utils::installation};
+use idevice::utils::installation;
 
 mod common;
 
