@@ -4,7 +4,6 @@
 //! which manages provisioning profiles and certificates.
 
 use log::warn;
-use plist::Dictionary;
 
 use crate::{Idevice, IdeviceError, IdeviceService, RsdService, obf};
 
@@ -71,14 +70,13 @@ impl MisagentClient {
     /// client.install(profile_data).await?;
     /// ```
     pub async fn install(&mut self, profile: Vec<u8>) -> Result<(), IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("MessageType".into(), "Install".into());
-        req.insert("Profile".into(), plist::Value::Data(profile));
-        req.insert("ProfileType".into(), "Provisioning".into());
+        let req = crate::plist!({
+            "MessageType": "Install",
+            "Profile": profile,
+            "ProfileType": "Provisioning"
+        });
 
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        self.idevice.send_plist(req).await?;
 
         let mut res = self.idevice.read_plist().await?;
 
@@ -121,14 +119,13 @@ impl MisagentClient {
     /// client.remove("asdf").await?;
     /// ```
     pub async fn remove(&mut self, id: &str) -> Result<(), IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("MessageType".into(), "Remove".into());
-        req.insert("ProfileID".into(), id.into());
-        req.insert("ProfileType".into(), "Provisioning".into());
+        let req = crate::plist!({
+            "MessageType": "Remove",
+            "ProfileID": id,
+            "ProfileType": "Provisioning"
+        });
 
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        self.idevice.send_plist(req).await?;
 
         let mut res = self.idevice.read_plist().await?;
 
@@ -170,13 +167,12 @@ impl MisagentClient {
     /// }
     /// ```
     pub async fn copy_all(&mut self) -> Result<Vec<Vec<u8>>, IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("MessageType".into(), "CopyAll".into());
-        req.insert("ProfileType".into(), "Provisioning".into());
+        let req = crate::plist!({
+            "MessageType": "CopyAll",
+            "ProfileType": "Provisioning"
+        });
 
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        self.idevice.send_plist(req).await?;
 
         let mut res = self.idevice.read_plist().await?;
         match res.remove("Payload") {
