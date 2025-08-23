@@ -174,11 +174,12 @@ impl Idevice {
     /// # Errors
     /// Returns `IdeviceError` if communication fails or response is invalid
     pub async fn get_type(&mut self) -> Result<String, IdeviceError> {
-        let mut req = plist::Dictionary::new();
-        req.insert("Label".into(), self.label.clone().into());
-        req.insert("Request".into(), "QueryType".into());
-        let message = plist::to_value(&req)?;
-        self.send_plist(message).await?;
+        let req = crate::plist!({
+            "Label": self.label.clone(),
+            "Request": "QueryType",
+        });
+        self.send_plist(req).await?;
+
         let message: plist::Dictionary = self.read_plist().await?;
         match message.get("Type") {
             Some(m) => Ok(plist::from_value(m)?),
@@ -193,11 +194,13 @@ impl Idevice {
     /// # Errors
     /// Returns `IdeviceError` if the protocol sequence isn't followed correctly
     pub async fn rsd_checkin(&mut self) -> Result<(), IdeviceError> {
-        let mut req = plist::Dictionary::new();
-        req.insert("Label".into(), self.label.clone().into());
-        req.insert("ProtocolVersion".into(), "2".into());
-        req.insert("Request".into(), "RSDCheckin".into());
-        self.send_plist(plist::to_value(&req).unwrap()).await?;
+        let req = crate::plist!({
+            "Label": self.label.clone(),
+            "ProtocolVersion": "2",
+            "Request": "RSDCheckin",
+        });
+
+        self.send_plist(req).await?;
         let res = self.read_plist().await?;
         match res.get("Request").and_then(|x| x.as_string()) {
             Some(r) => {
