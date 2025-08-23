@@ -4,6 +4,7 @@
 //! https://github.com/doronz88/pymobiledevice3/blob/master/pymobiledevice3/services/os_trace.py
 
 use chrono::{DateTime, NaiveDateTime};
+use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
@@ -30,7 +31,7 @@ pub struct OsTraceRelayReceiver {
     inner: OsTraceRelayClient,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OsTraceLog {
     pub pid: u32,
     pub timestamp: NaiveDateTime,
@@ -41,13 +42,13 @@ pub struct OsTraceLog {
     pub label: Option<SyslogLabel>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SyslogLabel {
     pub subsystem: String,
     pub category: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LogLevel {
     Notice = 0,
     Info = 1,

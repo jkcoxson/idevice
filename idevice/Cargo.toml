@@ -30,7 +30,9 @@ base64 = { version = "0.22" }
 
 indexmap = { version = "2.7", features = ["serde"], optional = true }
 uuid = { version = "1.12", features = ["serde", "v4"], optional = true }
-chrono = { version = "0.4.40", optional = true, default-features = false }
+chrono = { version = "0.4.40", optional = true, default-features = false, features = [
+  "serde",
+] }
 
 serde_json = { version = "1", optional = true }
 json = { version = "0.12", optional = true }
