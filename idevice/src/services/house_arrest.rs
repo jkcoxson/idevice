@@ -4,8 +4,6 @@
 //! installed on an iOS device. This is typically used for file transfer and inspection of
 //! app-specific data during development or diagnostics.
 
-use plist::{Dictionary, Value};
-
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 use super::afc::AfcClient;
@@ -91,10 +89,12 @@ impl HouseArrestClient {
     /// # Errors
     /// Returns `IdeviceError` if the request or AFC setup fails
     async fn vend(mut self, bundle_id: String, cmd: String) -> Result<AfcClient, IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("Command".into(), cmd.into());
-        req.insert("Identifier".into(), bundle_id.into());
-        self.idevice.send_plist(Value::Dictionary(req)).await?;
+        let req = crate::plist!({
+            "Command": cmd,
+            "Identifier": bundle_id
+        });
+
+        self.idevice.send_plist(req).await?;
         self.idevice.read_plist().await?;
 
         Ok(AfcClient::new(self.idevice))
