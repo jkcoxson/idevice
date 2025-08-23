@@ -114,7 +114,11 @@ async fn main() {
         println!("Location set!");
         println!("Press ctrl-c to stop");
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            ls_client
+                .set(latitude, longitude)
+                .await
+                .expect("Failed to set location");
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         }
     } else {
         eprintln!("Invalid usage, pass -h for help");
