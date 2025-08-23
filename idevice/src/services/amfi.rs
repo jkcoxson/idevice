@@ -1,7 +1,5 @@
 //! Abstraction for Apple Mobile File Integrity
 
-use plist::Dictionary;
-
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 /// Client for interacting with the AMFI service on the device
@@ -33,11 +31,10 @@ impl AmfiClient {
     /// Shows the developer mode option in settings in iOS 18+
     /// Settings -> Privacy & Security -> Developer Mode
     pub async fn reveal_developer_mode_option_in_ui(&mut self) -> Result<(), IdeviceError> {
-        let mut request = Dictionary::new();
-        request.insert("action".into(), 0.into());
-        self.idevice
-            .send_plist(plist::Value::Dictionary(request))
-            .await?;
+        let request = crate::plist!({
+            "action": 0,
+        });
+        self.idevice.send_plist(request).await?;
 
         let res = self.idevice.read_plist().await?;
         if res.get("success").is_some() {
@@ -49,11 +46,10 @@ impl AmfiClient {
 
     /// Enables developer mode, triggering a reboot on iOS 18+
     pub async fn enable_developer_mode(&mut self) -> Result<(), IdeviceError> {
-        let mut request = Dictionary::new();
-        request.insert("action".into(), 1.into());
-        self.idevice
-            .send_plist(plist::Value::Dictionary(request))
-            .await?;
+        let request = crate::plist!({
+            "action": 1,
+        });
+        self.idevice.send_plist(request).await?;
 
         let res = self.idevice.read_plist().await?;
         if res.get("success").is_some() {
@@ -65,11 +61,10 @@ impl AmfiClient {
 
     /// Shows the accept dialogue for enabling developer mode
     pub async fn accept_developer_mode(&mut self) -> Result<(), IdeviceError> {
-        let mut request = Dictionary::new();
-        request.insert("action".into(), 2.into());
-        self.idevice
-            .send_plist(plist::Value::Dictionary(request))
-            .await?;
+        let request = crate::plist!({
+            "action": 2,
+        });
+        self.idevice.send_plist(request).await?;
 
         let res = self.idevice.read_plist().await?;
         if res.get("success").is_some() {
@@ -81,11 +76,10 @@ impl AmfiClient {
 
     /// Gets the developer mode status
     pub async fn get_developer_mode_status(&mut self) -> Result<bool, IdeviceError> {
-        let mut request = Dictionary::new();
-        request.insert("action".into(), 3.into());
-        self.idevice
-            .send_plist(plist::Value::Dictionary(request))
-            .await?;
+        let request = crate::plist!({
+            "action": 3,
+        });
+        self.idevice.send_plist(request).await?;
 
         let res = self.idevice.read_plist().await?;
         match res.get("success").and_then(|x| x.as_boolean()) {
@@ -104,15 +98,12 @@ impl AmfiClient {
         &mut self,
         uuid: impl Into<String>,
     ) -> Result<bool, IdeviceError> {
-        let mut request = Dictionary::new();
-        request.insert("action".into(), 4.into());
-        request.insert(
-            "input_profile_uuid".into(),
-            plist::Value::String(uuid.into()),
-        );
-        self.idevice
-            .send_plist(plist::Value::Dictionary(request))
-            .await?;
+        let request = crate::plist!({
+            "action": 4,
+            "input_profile_uuid": uuid.into(),
+        });
+
+        self.idevice.send_plist(request).await?;
 
         let res = self.idevice.read_plist().await?;
         match res.get("success").and_then(|x| x.as_boolean()) {
