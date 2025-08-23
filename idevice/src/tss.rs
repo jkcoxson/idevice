@@ -30,13 +30,11 @@ impl TSSRequest {
     /// - Client version string
     /// - Random UUID for request identification
     pub fn new() -> Self {
-        let mut inner = plist::Dictionary::new();
-        inner.insert("@HostPlatformInfo".into(), "mac".into());
-        inner.insert("@VersionInfo".into(), TSS_CLIENT_VERSION_STRING.into());
-        inner.insert(
-            "@UUID".into(),
-            uuid::Uuid::new_v4().to_string().to_uppercase().into(),
-        );
+        let inner = crate::plist!(dict {
+            "@HostPlatformInfo": "mac",
+            "@VersionInfo": TSS_CLIENT_VERSION_STRING,
+            "@UUID": uuid::Uuid::new_v4().to_string().to_uppercase()
+        });
         Self { inner }
     }
 
