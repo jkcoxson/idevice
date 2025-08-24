@@ -2,7 +2,9 @@
 
 use clap::{Arg, Command};
 use idevice::{
-    IdeviceService, RsdService, core_device::AppServiceClient, core_device_proxy::CoreDeviceProxy,
+    IdeviceService, RsdService,
+    core_device::{AppServiceClient, OpenStdioSocketClient},
+    core_device_proxy::CoreDeviceProxy,
     rsd::RsdHandshake,
 };
 
@@ -136,12 +138,42 @@ async fn main() {
             }
         };
 
+        let mut stdio_conn = OpenStdioSocketClient::connect_rsd(&mut adapter, &mut handshake)
+            .await
+            .expect("no stdio");
+
+        let stdio_uuid = stdio_conn.read_uuid().await.expect("no uuid");
+        println!("stdio uuid: {stdio_uuid:?}");
+
         let res = asc
-            .launch_application(bundle_id, &[], false, false, None, None)
+            .launch_application(bundle_id, &[], true, false, None, None, Some(stdio_uuid))
             .await
             .expect("no launch");
 
-        println!("{res:#?}");
+        println!("Launch response {res:#?}");
+
+        let (mut remote_reader, mut remote_writer) = tokio::io::split(stdio_conn.inner);
+        let mut local_stdin = tokio::io::stdin();
+        let mut local_stdout = tokio::io::stdout();
+
+        tokio::select! {
+            // Task 1: Copy data from the remote process to local stdout
+            res = tokio::io::copy(&mut remote_reader, &mut local_stdout) => {
+                if let Err(e) = res {
+                    eprintln!("Error copying from remote to local: {}", e);
+                }
+                println!("\nRemote connection closed.");
+                return;
+            }
+            // Task 2: Copy data from local stdin to the remote process
+            res = tokio::io::copy(&mut local_stdin, &mut remote_writer) => {
+                if let Err(e) = res {
+                    eprintln!("Error copying from local to remote: {}", e);
+                }
+                println!("\nLocal stdin closed.");
+                return;
+            }
+        }
     } else if matches.subcommand_matches("processes").is_some() {
         let p = asc.list_processes().await.expect("no processes?");
         println!("{p:#?}");
