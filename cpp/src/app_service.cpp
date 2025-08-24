@@ -112,6 +112,7 @@ std::optional<LaunchResponse> AppService::launch(const std::string&             
                                                       c_argv.size(),
                                                       kill_existing ? 1 : 0,
                                                       start_suspended ? 1 : 0,
+                                                      NULL, // TODO: stdio handling
                                                       &resp)) {
         err = FfiError(e);
         return std::nullopt;

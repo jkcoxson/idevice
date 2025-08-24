@@ -14,6 +14,7 @@ tokio = { version = "1.44.1", features = ["full"] }
 libc = "0.2.171"
 plist = "1.7.1"
 plist_ffi = { version = "0.1.5" }
+uuid = { version = "1.12", features = ["v4"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.60", features = ["Win32_Networking_WinSock"] }
@@ -25,7 +26,7 @@ ring = ["idevice/ring"]
 
 afc = ["idevice/afc"]
 amfi = ["idevice/amfi"]
-core_device = ["idevice/core_device", "dep:futures"]
+core_device = ["idevice/core_device", "dep:futures", "dep:uuid"]
 core_device_proxy = ["idevice/core_device_proxy"]
 crashreportcopymobile = ["idevice/crashreportcopymobile"]
 debug_proxy = ["idevice/debug_proxy"]

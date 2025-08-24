@@ -299,6 +299,7 @@ pub unsafe extern "C" fn app_service_free_app_list(apps: *mut AppListEntryC, cou
 /// * [`argc`] - Number of arguments
 /// * [`kill_existing`] - Whether to kill existing instances
 /// * [`start_suspended`] - Whether to start suspended
+/// * [`stdio_uuid`] - The UUID received from openstdiosocket, null for none
 /// * [`response`] - Pointer to store the launch response (caller must free)
 ///
 /// # Returns
@@ -314,6 +315,7 @@ pub unsafe extern "C" fn app_service_launch_app(
     argc: usize,
     kill_existing: c_int,
     start_suspended: c_int,
+    stdio_uuid: *const u8,
     response: *mut *mut LaunchResponseC,
 ) -> *mut IdeviceFfiError {
     if handle.is_null() || bundle_id.is_null() || response.is_null() {
@@ -337,6 +339,13 @@ pub unsafe extern "C" fn app_service_launch_app(
         }
     }
 
+    let stdio_uuid = if stdio_uuid.is_null() {
+        None
+    } else {
+        let stdio_uuid = unsafe { std::slice::from_raw_parts(stdio_uuid, 16) };
+        Some(uuid::Uuid::from_bytes(stdio_uuid.try_into().unwrap()))
+    };
+
     let client = unsafe { &mut (*handle).0 };
     let res = RUNTIME.block_on(async move {
         client
@@ -347,6 +356,7 @@ pub unsafe extern "C" fn app_service_launch_app(
                 start_suspended != 0,
                 None, // environment
                 None, // platform_options
+                stdio_uuid,
             )
             .await
     });

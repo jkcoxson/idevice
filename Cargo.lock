@@ -1179,6 +1179,7 @@ dependencies = [
  "simplelog",
  "tokio",
  "ureq",
+ "uuid",
  "windows-sys 0.60.2",
 ]
 
