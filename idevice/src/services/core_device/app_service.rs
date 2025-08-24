@@ -3,7 +3,7 @@
 use log::warn;
 use serde::Deserialize;
 
-use crate::{IdeviceError, ReadWrite, RsdService, obf};
+use crate::{IdeviceError, ReadWrite, RsdService, obf, xpc::XPCObject};
 
 use super::CoreDeviceServiceClient;
 
@@ -152,7 +152,7 @@ impl<R: ReadWrite> AppServiceClient<R> {
         });
         let res = self
             .inner
-            .invoke("com.apple.coredevice.feature.listapps", Some(options))
+            .invoke_with_plist("com.apple.coredevice.feature.listapps", options)
             .await?;
 
         let res = match res.as_array() {
@@ -178,6 +178,16 @@ impl<R: ReadWrite> AppServiceClient<R> {
         Ok(desd)
     }
 
+    /// Launches an application by a bundle ID.
+    ///
+    /// # Notes
+    /// * `start_suspended` - If set to true, you will need to attach a debugger using
+    ///   `DebugServer` to continue.
+    ///
+    /// * `stdio_uuid` - Create a new ``OpenStdioSocketClient``, read the UUID, and pass it to this
+    ///   function. Note that if the process already has another stdio UUID, this parameter is ignored by
+    ///   iOS. Either make sure the proccess isn't running, or pass ``kill_existing: true``
+    #[allow(clippy::too_many_arguments)] // still didn't ask
     pub async fn launch_application(
         &mut self,
         bundle_id: impl Into<String>,
@@ -186,6 +196,7 @@ impl<R: ReadWrite> AppServiceClient<R> {
         start_suspended: bool,
         environment: Option<plist::Dictionary>,
         platform_options: Option<plist::Dictionary>,
+        stdio_uuid: Option<uuid::Uuid>,
     ) -> Result<LaunchResponse, IdeviceError> {
         let bundle_id = bundle_id.into();
 
@@ -196,20 +207,34 @@ impl<R: ReadWrite> AppServiceClient<R> {
                 }
             },
             "options": {
-                "arguments": arguments, // Now this will work directly
+                "arguments": arguments,
                 "environmentVariables": environment.unwrap_or_default(),
                 "standardIOUsesPseudoterminals": true,
                 "startStopped": start_suspended,
                 "terminateExisting": kill_existing,
                 "user": {
-                    "shortName": "mobile"
+                    "active": true,
                 },
                 "platformSpecificOptions": plist::Value::Data(crate::util::plist_to_xml_bytes(&platform_options.unwrap_or_default())),
             },
-            "standardIOIdentifiers": {}
-        })
-        .into_dictionary()
-        .unwrap();
+        });
+
+        let req: XPCObject = req.into();
+        let mut req = req.to_dictionary().unwrap();
+        req.insert(
+            "standardIOIdentifiers".into(),
+            match stdio_uuid {
+                Some(u) => {
+                    let u = XPCObject::Uuid(u);
+                    let mut d = crate::xpc::Dictionary::new();
+                    d.insert("standardInput".into(), u.clone());
+                    d.insert("standardOutput".into(), u.clone());
+                    d.insert("standardError".into(), u.clone());
+                    d.into()
+                }
+                None => crate::xpc::Dictionary::new().into(),
+            },
+        );
 
         let res = self
             .inner
@@ -259,13 +284,11 @@ impl<R: ReadWrite> AppServiceClient<R> {
     ) -> Result<(), IdeviceError> {
         let bundle_id = bundle_id.into();
         self.inner
-            .invoke(
+            .invoke_with_plist(
                 "com.apple.coredevice.feature.uninstallapp",
-                Some(
-                    crate::plist!({"bundleIdentifier": bundle_id})
-                        .into_dictionary()
-                        .unwrap(),
-                ),
+                crate::plist!({"bundleIdentifier": bundle_id})
+                    .into_dictionary()
+                    .unwrap(),
             )
             .await?;
 
@@ -279,16 +302,14 @@ impl<R: ReadWrite> AppServiceClient<R> {
     ) -> Result<SignalResponse, IdeviceError> {
         let res = self
             .inner
-            .invoke(
+            .invoke_with_plist(
                 "com.apple.coredevice.feature.sendsignaltoprocess",
-                Some(
-                    crate::plist!({
-                        "process": { "processIdentifier": pid as i64},
-                        "signal": signal as i64,
-                    })
-                    .into_dictionary()
-                    .unwrap(),
-                ),
+                crate::plist!({
+                    "process": { "processIdentifier": pid as i64},
+                    "signal": signal as i64,
+                })
+                .into_dictionary()
+                .unwrap(),
             )
             .await?;
 
@@ -314,19 +335,17 @@ impl<R: ReadWrite> AppServiceClient<R> {
         let bundle_id = bundle_id.into();
         let res = self
             .inner
-            .invoke(
+            .invoke_with_plist(
                 "com.apple.coredevice.feature.fetchappicons",
-                Some(
-                    crate::plist!({
-                        "width": width,
-                        "height": height,
-                        "scale": scale,
-                        "allowPlaceholder": allow_placeholder,
-                        "bundleIdentifier": bundle_id
-                    })
-                    .into_dictionary()
-                    .unwrap(),
-                ),
+                crate::plist!({
+                    "width": width,
+                    "height": height,
+                    "scale": scale,
+                    "allowPlaceholder": allow_placeholder,
+                    "bundleIdentifier": bundle_id
+                })
+                .into_dictionary()
+                .unwrap(),
             )
             .await?;
 

@@ -45,7 +45,7 @@ impl<R: ReadWrite> DiagnostisServiceClient<R> {
 
         let res = self
             .inner
-            .invoke("com.apple.coredevice.feature.capturesysdiagnose", Some(req))
+            .invoke_with_plist("com.apple.coredevice.feature.capturesysdiagnose", req)
             .await?;
 
         if let Some(len) = res
