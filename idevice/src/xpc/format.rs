@@ -252,7 +252,6 @@ impl XPCObject {
             }
             XPCObject::Uuid(uuid) => {
                 buf.extend_from_slice(&(XPCType::Uuid as u32).to_le_bytes());
-                buf.extend_from_slice(&16_u32.to_le_bytes());
                 buf.extend_from_slice(uuid.as_bytes());
             }
             XPCObject::FileTransfer { msg_id, data } => {
@@ -406,6 +405,13 @@ impl XPCObject {
     }
 
     pub fn as_dictionary(&self) -> Option<&Dictionary> {
+        match self {
+            XPCObject::Dictionary(dict) => Some(dict),
+            _ => None,
+        }
+    }
+
+    pub fn to_dictionary(self) -> Option<Dictionary> {
         match self {
             XPCObject::Dictionary(dict) => Some(dict),
             _ => None,
