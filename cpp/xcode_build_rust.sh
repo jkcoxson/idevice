@@ -1,5 +1,7 @@
 #!/bin/sh
 
+cp ../ffi/idevice.h include/
+
 # This script builds a Rust library for use in an Xcode project.
 # It's designed to be used as a "Run Script" build phase on a native Xcode target.
 # It handles multiple architectures by building for each and combining them with `lipo`.
