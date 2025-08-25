@@ -65,15 +65,6 @@ export SDKROOT="${SDK_PATH}" # Also respected by some build scripts.
 STATIC_LIB_NAME="lib$(echo $CRATE_NAME | sed 's/-/_/g').a"
 LIPO_INPUT_FILES=""
 
-# Determine if this is a release or debug build.
-if [ "$CONFIGURATION" = "Release" ]; then
-  RELEASE_FLAG="--release"
-  RUST_BUILD_SUBDIR="release"
-else
-  RELEASE_FLAG=""
-  RUST_BUILD_SUBDIR="debug"
-fi
-
 # Loop through each architecture specified by Xcode.
 for ARCH in $ARCHS; do
   # Determine the Rust target triple based on the architecture and platform.
@@ -102,9 +93,9 @@ for ARCH in $ARCHS; do
   # export PATH="${SDK_PATH}:$PATH"
 
   # Run the cargo build command. It will inherit the exported RUSTFLAGS.
-  (cd "$RUST_PROJECT_PATH" && ${CARGO} build ${RELEASE_FLAG} --target ${RUST_TARGET})
+  (cd "$RUST_PROJECT_PATH" && ${CARGO} build --release --target ${RUST_TARGET})
 
-  BUILT_LIB_PATH="${RUST_PROJECT_PATH}/../target/${RUST_TARGET}/${RUST_BUILD_SUBDIR}/${STATIC_LIB_NAME}"
+  BUILT_LIB_PATH="${RUST_PROJECT_PATH}/../target/${RUST_TARGET}/release/${STATIC_LIB_NAME}"
 
   # Add the path of the built library to our list for `lipo`.
   LIPO_INPUT_FILES="${LIPO_INPUT_FILES} ${BUILT_LIB_PATH}"
