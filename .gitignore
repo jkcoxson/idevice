@@ -17,3 +17,4 @@ bundle.zip
 /swift/include/*.h
 /swift/.build
 /swift/.swiftpm
+xcuserdata
