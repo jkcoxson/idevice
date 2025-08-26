@@ -18,3 +18,7 @@ bundle.zip
 /swift/.build
 /swift/.swiftpm
 xcuserdata
+
+._*
+*.vcxproj.user
+.vs
