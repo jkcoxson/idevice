@@ -29,6 +29,9 @@ IF /I "%~1" == "x64" (
 IF /I "%~1" == "ARM64" (
     SET "RUST_TARGET=aarch64-pc-windows-msvc"
 )
+IF /I "%~1" == "Win32" (
+    SET "RUST_TARGET=i686-pc-windows-msvc"
+)
 
 IF NOT DEFINED RUST_TARGET (
     echo Error: Unsupported Visual Studio platform '%~1'.

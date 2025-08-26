@@ -191,6 +191,9 @@
       <AdditionalDependencies>idevice_ffi.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
     </Lib>
+    <PreBuildEvent>
+      <Command>call "$(ProjectDir)..\vs_build_rust.bat" "$(Platform)" "$(OutDir)"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -219,6 +222,9 @@
       <AdditionalDependencies>idevice_ffi.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
     </Lib>
+    <PreBuildEvent>
+      <Command>call "$(ProjectDir)..\vs_build_rust.bat" "$(Platform)" "$(OutDir)"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -305,6 +311,9 @@
       <AdditionalDependencies>idevice_ffi.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
     </Lib>
+    <PreBuildEvent>
+      <Command>call "$(ProjectDir)..\vs_build_rust.bat" "$(Platform)" "$(OutDir)"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
     <ClCompile>
@@ -333,6 +342,9 @@
       <AdditionalDependencies>idevice_ffi.lib</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
     </Lib>
+    <PreBuildEvent>
+      <Command>call "$(ProjectDir)..\vs_build_rust.bat" "$(Platform)" "$(OutDir)"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
