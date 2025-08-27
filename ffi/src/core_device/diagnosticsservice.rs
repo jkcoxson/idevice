@@ -7,6 +7,7 @@ use std::ptr::null_mut;
 use futures::{Stream, StreamExt};
 use idevice::core_device::DiagnostisServiceClient;
 use idevice::{IdeviceError, ReadWrite, RsdService};
+use log::debug;
 
 use crate::core_device_proxy::AdapterHandle;
 use crate::rsd::RsdHandshakeHandle;
@@ -45,12 +46,17 @@ pub unsafe extern "C" fn diagnostics_service_connect_rsd(
         RUNTIME.block_on(async move {
             let provider_ref = unsafe { &mut (*provider).0 };
             let handshake_ref = unsafe { &mut (*handshake).0 };
+            debug!(
+                "Connecting to DiagnosticsService: provider {provider_ref:?}, handshake: {:?}",
+                handshake_ref.uuid
+            );
 
             DiagnostisServiceClient::connect_rsd(provider_ref, handshake_ref).await
         });
 
     match res {
         Ok(client) => {
+            debug!("Connected to DiagnosticsService");
             let boxed = Box::new(DiagnosticsServiceHandle(client));
             unsafe { *handle = Box::into_raw(boxed) };
             null_mut()

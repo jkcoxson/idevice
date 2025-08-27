@@ -12,6 +12,7 @@ use log::trace;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::oneshot,
+    time::timeout,
 };
 
 use crate::tcp::adapter::ConnectionStatus;
@@ -172,8 +173,8 @@ impl AdapterHandle {
             ));
         }
 
-        match res_rx.await {
-            Ok(r) => {
+        match timeout(std::time::Duration::from_secs(8), res_rx).await {
+            Ok(Ok(r)) => {
                 let (host_port, recv_channel) = r?;
                 Ok(StreamHandle {
                     host_port,
@@ -183,9 +184,13 @@ impl AdapterHandle {
                     pending_writes: FuturesUnordered::new(),
                 })
             }
-            Err(_) => Err(std::io::Error::new(
+            Ok(Err(_)) => Err(std::io::Error::new(
                 std::io::ErrorKind::BrokenPipe,
                 "adapter closed",
+            )),
+            Err(_) => Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "channel recv timeout",
             )),
         }
     }

@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use log::warn;
+use log::{debug, warn};
 use serde::Deserialize;
 
 use crate::{IdeviceError, ReadWrite, RemoteXpcClient, provider::RsdProvider};
@@ -169,6 +169,10 @@ impl RsdHandshake {
             }
         };
 
+        debug!(
+            "Connecting to RSD service {service_name} on port {}",
+            service.port
+        );
         let stream = provider.connect_to_service_port(service.port).await?;
         T::from_stream(stream).await
     }

@@ -205,6 +205,7 @@ impl Adapter {
 
         // Wait for the syn ack
         self.states.insert(host_port, state);
+        let start_time = std::time::Instant::now();
         loop {
             self.process_tcp_packet().await?;
             if let Some(s) = self.states.get(&host_port) {
@@ -216,6 +217,12 @@ impl Adapter {
                         return Err(std::io::Error::new(e, "failed to connect"));
                     }
                     ConnectionStatus::WaitingForSyn => {
+                        if start_time.elapsed() > std::time::Duration::from_secs(5) {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::TimedOut,
+                                "didn't syn in time",
+                            ));
+                        }
                         continue;
                     }
                 }
@@ -526,7 +533,7 @@ impl Adapter {
         self.write_buffer_flush().await?;
         Ok(loop {
             // try the data we already have
-            match Ipv6Packet::parse(&self.read_buf[..self.bytes_in_buf]) {
+            match Ipv6Packet::parse(&self.read_buf[..self.bytes_in_buf], &self.pcap) {
                 IpParseError::Ok {
                     packet,
                     bytes_consumed,
@@ -559,8 +566,15 @@ impl Adapter {
     }
 
     pub(crate) async fn process_tcp_packet(&mut self) -> Result<(), std::io::Error> {
-        let ip_packet = self.read_ip_packet().await?;
-        self.process_tcp_packet_from_payload(&ip_packet).await
+        tokio::select! {
+            ip_packet = self.read_ip_packet() => {
+                let ip_packet = ip_packet?;
+                self.process_tcp_packet_from_payload(&ip_packet).await
+            }
+            _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => {
+                Ok(())
+            }
+        }
     }
 
     pub(crate) async fn process_tcp_packet_from_payload(

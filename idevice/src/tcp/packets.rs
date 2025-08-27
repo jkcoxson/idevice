@@ -230,7 +230,10 @@ pub(crate) enum IpParseError<T> {
 }
 
 impl Ipv6Packet {
-    pub(crate) fn parse(packet: &[u8]) -> IpParseError<Ipv6Packet> {
+    pub(crate) fn parse(
+        packet: &[u8],
+        log: &Option<Arc<Mutex<tokio::fs::File>>>,
+    ) -> IpParseError<Ipv6Packet> {
         if packet.len() < 40 {
             return IpParseError::NotEnough;
         }
@@ -274,6 +277,13 @@ impl Ipv6Packet {
             u16::from_be_bytes([packet[38], packet[39]]),
         );
         let payload = packet[40..total_packet_len].to_vec();
+
+        if let Some(log) = log {
+            let mut log_packet = Vec::new();
+            log_packet.extend_from_slice(&packet[..40]);
+            log_packet.extend_from_slice(&payload);
+            super::log_packet(log, &log_packet);
+        }
 
         IpParseError::Ok {
             packet: Self {
@@ -699,7 +709,7 @@ mod tests {
         );
         println!("{b1:02X?}");
 
-        let ip1 = Ipv6Packet::parse(&b1);
+        let ip1 = Ipv6Packet::parse(&b1, &None);
         println!("{ip1:#?}");
     }
 
