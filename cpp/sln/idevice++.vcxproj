@@ -54,10 +54,12 @@
     <ClInclude Include="..\include\idevice++\idevice.hpp" />
     <ClInclude Include="..\include\idevice++\location_simulation.hpp" />
     <ClInclude Include="..\include\idevice++\lockdown.hpp" />
+    <ClInclude Include="..\include\idevice++\option.hpp" />
     <ClInclude Include="..\include\idevice++\pairing_file.hpp" />
     <ClInclude Include="..\include\idevice++\provider.hpp" />
     <ClInclude Include="..\include\idevice++\readwrite.hpp" />
     <ClInclude Include="..\include\idevice++\remote_server.hpp" />
+    <ClInclude Include="..\include\idevice++\result.hpp" />
     <ClInclude Include="..\include\idevice++\rsd.hpp" />
     <ClInclude Include="..\include\idevice++\tcp_object_stack.hpp" />
     <ClInclude Include="..\include\idevice++\usbmuxd.hpp" />
@@ -177,7 +179,7 @@
       <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\..\ffi</AdditionalIncludeDirectories>
       <PrecompiledHeader />
       <PrecompiledHeaderFile />
-      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard>Default</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -208,7 +210,7 @@
       <PrecompiledHeaderFile>
       </PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\..\ffi</AdditionalIncludeDirectories>
-      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard>Default</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -237,7 +239,7 @@
       <PrecompiledHeaderFile>
       </PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\..\ffi</AdditionalIncludeDirectories>
-      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard>Default</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -268,7 +270,7 @@
       <PrecompiledHeaderFile>
       </PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\..\ffi</AdditionalIncludeDirectories>
-      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard>Default</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -297,7 +299,7 @@
       <PrecompiledHeaderFile>
       </PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\..\ffi</AdditionalIncludeDirectories>
-      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard>Default</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -328,7 +330,7 @@
       <PrecompiledHeaderFile>
       </PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\..\ffi</AdditionalIncludeDirectories>
-      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard>Default</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>

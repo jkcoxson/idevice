@@ -116,5 +116,14 @@
     <ClInclude Include="..\include\idevice++\usbmuxd.hpp">
       <Filter>Header Files\idevice++</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\ffi\idevice.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\option.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\result.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
