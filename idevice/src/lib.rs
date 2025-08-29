@@ -16,6 +16,7 @@ pub mod tunneld;
 #[cfg(feature = "usbmuxd")]
 pub mod usbmuxd;
 mod util;
+pub mod utils;
 #[cfg(feature = "xpc")]
 pub mod xpc;
 
