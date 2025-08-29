@@ -76,25 +76,22 @@ async fn main() {
         idevice::dvt::remote_server::RemoteServerClient<Box<dyn idevice::ReadWrite>>,
     > = None;
 
-    match CoreDeviceProxy::connect(&*provider).await {
-        Ok(proxy) => {
-            let rsd_port = proxy.handshake.server_rsd_port;
-            let adapter = proxy.create_software_tunnel().expect("no software tunnel");
-            let mut adapter = adapter.to_async_handle();
-            let stream = adapter.connect(rsd_port).await.expect("no RSD connect");
+    if let Ok(proxy) = CoreDeviceProxy::connect(&*provider).await {
+        let rsd_port = proxy.handshake.server_rsd_port;
+        let adapter = proxy.create_software_tunnel().expect("no software tunnel");
+        let mut adapter = adapter.to_async_handle();
+        let stream = adapter.connect(rsd_port).await.expect("no RSD connect");
 
-            // Make the connection to RemoteXPC (iOS 17+)
-            let mut handshake = RsdHandshake::new(stream).await.unwrap();
-            let mut rs_client = idevice::dvt::remote_server::RemoteServerClient::connect_rsd(
-                &mut adapter,
-                &mut handshake,
-            )
-            .await
-            .expect("no connect");
-            rs_client.read_message(0).await.expect("no read??");
-            rs_client_opt = Some(rs_client);
-        }
-        Err(_) => {}
+        // Make the connection to RemoteXPC (iOS 17+)
+        let mut handshake = RsdHandshake::new(stream).await.unwrap();
+        let mut rs_client = idevice::dvt::remote_server::RemoteServerClient::connect_rsd(
+            &mut adapter,
+            &mut handshake,
+        )
+        .await
+        .expect("no connect");
+        rs_client.read_message(0).await.expect("no read??");
+        rs_client_opt = Some(rs_client);
     }
 
     let mut rs_client = if let Some(c) = rs_client_opt {
