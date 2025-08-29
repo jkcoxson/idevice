@@ -1,8 +1,8 @@
 // Jackson Coxson
 
 use clap::{Arg, Command};
-use idevice::{IdeviceService, RsdService, core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake};
 use idevice::services::lockdown::LockdownClient;
+use idevice::{IdeviceService, RsdService, core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake};
 
 mod common;
 
@@ -72,7 +72,9 @@ async fn main() {
             }
         };
 
-    let mut rs_client_opt: Option<idevice::dvt::remote_server::RemoteServerClient<Box<dyn idevice::ReadWrite>>> = None;
+    let mut rs_client_opt: Option<
+        idevice::dvt::remote_server::RemoteServerClient<Box<dyn idevice::ReadWrite>>,
+    > = None;
 
     match CoreDeviceProxy::connect(&*provider).await {
         Ok(proxy) => {
@@ -83,18 +85,25 @@ async fn main() {
 
             // Make the connection to RemoteXPC (iOS 17+)
             let mut handshake = RsdHandshake::new(stream).await.unwrap();
-            let mut rs_client = idevice::dvt::remote_server::RemoteServerClient::connect_rsd(&mut adapter, &mut handshake)
-                .await
-                .expect("no connect");
+            let mut rs_client = idevice::dvt::remote_server::RemoteServerClient::connect_rsd(
+                &mut adapter,
+                &mut handshake,
+            )
+            .await
+            .expect("no connect");
             rs_client.read_message(0).await.expect("no read??");
             rs_client_opt = Some(rs_client);
         }
         Err(_) => {}
     }
 
-    let mut rs_client = if let Some(c) = rs_client_opt { c } else {
+    let mut rs_client = if let Some(c) = rs_client_opt {
+        c
+    } else {
         // Read iOS version to decide whether we can fallback to remoteserver
-        let mut lockdown = LockdownClient::connect(&*provider).await.expect("lockdown connect failed");
+        let mut lockdown = LockdownClient::connect(&*provider)
+            .await
+            .expect("lockdown connect failed");
         lockdown
             .start_session(&provider.get_pairing_file().await.expect("pairing file"))
             .await
@@ -105,13 +114,15 @@ async fn main() {
             .ok()
             .and_then(|v| v.as_string().map(|s| s.to_string()))
             .unwrap_or_default();
-        let major: u32 = pv.split('.').next().and_then(|s| s.parse().ok()).unwrap_or(0);
+        let major: u32 = pv
+            .split('.')
+            .next()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
 
         if major >= 17 {
             // iOS 17+ with no CoreDeviceProxy: do not attempt remoteserver (would return InvalidService)
-            panic!(
-                "iOS {pv} detected and CoreDeviceProxy unavailable. RemoteXPC tunnel required."
-            );
+            panic!("iOS {pv} detected and CoreDeviceProxy unavailable. RemoteXPC tunnel required.");
         }
 
         // iOS 16 and earlier: fallback to Lockdown remoteserver (or DVTSecureSocketProxy)

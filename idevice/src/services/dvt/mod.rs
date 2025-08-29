@@ -1,8 +1,8 @@
 // Jackson Coxson
 
-use crate::{Idevice, IdeviceError, ReadWrite, RsdService, obf};
 use crate::provider::IdeviceProvider;
 use crate::services::lockdown::LockdownClient;
+use crate::{Idevice, IdeviceError, ReadWrite, RsdService, obf};
 
 #[cfg(feature = "location_simulation")]
 pub mod location_simulation;
@@ -37,7 +37,9 @@ impl crate::IdeviceService for remote_server::RemoteServerClient<Box<dyn ReadWri
     async fn connect(provider: &dyn IdeviceProvider) -> Result<Self, IdeviceError> {
         // Establish Lockdown session
         let mut lockdown = LockdownClient::connect(provider).await?;
-        lockdown.start_session(&provider.get_pairing_file().await?).await?;
+        lockdown
+            .start_session(&provider.get_pairing_file().await?)
+            .await?;
 
         // Try main Instruments service first, then DVTSecureSocketProxy (seen on iOS 14)
         let try_names = [
@@ -46,15 +48,19 @@ impl crate::IdeviceService for remote_server::RemoteServerClient<Box<dyn ReadWri
         ];
 
         let mut last_err: Option<IdeviceError> = None;
-        for name in try_names {            
+        for name in try_names {
             match lockdown.start_service(name).await {
                 Ok((port, ssl)) => {
                     let mut idevice = provider.connect(port).await?;
                     if ssl {
-                        idevice.start_session(&provider.get_pairing_file().await?).await?;
+                        idevice
+                            .start_session(&provider.get_pairing_file().await?)
+                            .await?;
                     }
                     // Convert to transport and build client
-                    let socket = idevice.get_socket().ok_or(IdeviceError::NoEstablishedConnection)?;
+                    let socket = idevice
+                        .get_socket()
+                        .ok_or(IdeviceError::NoEstablishedConnection)?;
                     return Ok(remote_server::RemoteServerClient::new(socket));
                 }
                 Err(e) => {
