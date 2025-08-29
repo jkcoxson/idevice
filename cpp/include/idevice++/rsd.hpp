@@ -25,16 +25,16 @@ using RsdPtr =
 class RsdHandshake {
   public:
     // Factory: consumes the ReadWrite socket regardless of result
-    static std::optional<RsdHandshake>     from_socket(ReadWrite&& rw, FfiError& err);
+    static Result<RsdHandshake, FfiError>     from_socket(ReadWrite&& rw);
 
     // Basic info
-    std::optional<size_t>                  protocol_version(FfiError& err) const;
-    std::optional<std::string>             uuid(FfiError& err) const;
+    Result<size_t, FfiError>                  protocol_version() const;
+    Result<std::string, FfiError>             uuid() const;
 
     // Services
-    std::optional<std::vector<RsdService>> services(FfiError& err) const;
-    std::optional<bool>       service_available(const std::string& name, FfiError& err) const;
-    std::optional<RsdService> service_info(const std::string& name, FfiError& err) const;
+    Result<std::vector<RsdService>, FfiError> services() const;
+    Result<bool, FfiError>                    service_available(const std::string& name) const;
+    Result<RsdService, FfiError>              service_info(const std::string& name) const;
 
     // RAII / moves
     ~RsdHandshake() noexcept                         = default;

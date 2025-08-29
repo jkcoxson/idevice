@@ -3,8 +3,8 @@
 #pragma once
 #include <idevice++/bindings.hpp>
 #include <idevice++/remote_server.hpp>
+#include <idevice++/result.hpp>
 #include <memory>
-#include <optional>
 
 namespace IdeviceFFI {
 
@@ -14,10 +14,10 @@ using LocSimPtr = std::unique_ptr<LocationSimulationHandle,
 class LocationSimulation {
   public:
     // Factory: borrows the RemoteServer; not consumed
-    static std::optional<LocationSimulation> create(RemoteServer& server, FfiError& err);
+    static Result<LocationSimulation, FfiError> create(RemoteServer& server);
 
-    bool                                     clear(FfiError& err);
-    bool                                     set(double latitude, double longitude, FfiError& err);
+    Result<void, FfiError>                      clear();
+    Result<void, FfiError>                      set(double latitude, double longitude);
 
     ~LocationSimulation() noexcept                                 = default;
     LocationSimulation(LocationSimulation&&) noexcept              = default;

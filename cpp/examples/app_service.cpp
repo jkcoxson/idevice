@@ -9,6 +9,7 @@
 #include <idevice++/app_service.hpp>
 #include <idevice++/core_device_proxy.hpp>
 #include <idevice++/ffi.hpp>
+#include <idevice++/option.hpp>
 #include <idevice++/provider.hpp>
 #include <idevice++/readwrite.hpp>
 #include <idevice++/rsd.hpp>
@@ -16,8 +17,9 @@
 
 using namespace IdeviceFFI;
 
+[[noreturn]]
 static void die(const char* msg, const FfiError& e) {
-    std::cerr << msg << ": " << e.message << "\n";
+    std::cerr << msg << ": " << e.message << "(" << e.code << ")\n";
     std::exit(1);
 }
 
@@ -42,26 +44,25 @@ int main(int argc, char** argv) {
     FfiError    err;
 
     // 1) Connect to usbmuxd and pick first device
-    auto        mux = UsbmuxdConnection::default_new(/*tag*/ 0, err);
-    if (!mux)
-        die("failed to connect to usbmuxd", err);
+    auto        mux = UsbmuxdConnection::default_new(/*tag*/ 0);
+    if_let_err(mux, err, { die("failed to connect to usbmuxd", err); });
 
-    auto devices = mux->get_devices(err);
-    if (!devices)
-        die("failed to list devices", err);
-    if (devices->empty()) {
+    auto devices_res = mux.unwrap().get_devices();
+    if_let_err(devices_res, err, { die("failed to list devices", err); });
+    auto& devices = devices_res.unwrap();
+    if (devices.empty()) {
         std::cerr << "no devices connected\n";
         return 1;
     }
-    auto& dev  = (*devices)[0];
+    auto& dev  = (devices)[0];
 
     auto  udid = dev.get_udid();
-    if (!udid) {
+    if (udid.is_none()) {
         std::cerr << "device has no UDID\n";
         return 1;
     }
     auto mux_id = dev.get_id();
-    if (!mux_id) {
+    if (mux_id.is_none()) {
         std::cerr << "device has no mux id\n";
         return 1;
     }
@@ -72,53 +73,49 @@ int main(int argc, char** argv) {
     const uint32_t    tag   = 0;
     const std::string label = "app_service-jkcoxson";
 
-    auto provider = Provider::usbmuxd_new(std::move(addr), tag, *udid, *mux_id, label, err);
-    if (!provider)
-        die("failed to create provider", err);
+    auto              provider_res =
+        Provider::usbmuxd_new(std::move(addr), tag, udid.unwrap(), mux_id.unwrap(), label);
+    if_let_err(provider_res, err, { die("failed to create provider", err); });
+    auto& provider = provider_res.unwrap();
 
     // 3) CoreDeviceProxy
-    auto cdp = CoreDeviceProxy::connect(*provider, err);
-    if (!cdp)
-        die("failed to connect CoreDeviceProxy", err);
+    auto  cdp      = CoreDeviceProxy::connect(provider).unwrap_or_else(
+        [](FfiError e) -> CoreDeviceProxy { die("failed to connect CoreDeviceProxy", e); });
 
-    auto rsd_port = cdp->get_server_rsd_port(err);
-    if (!rsd_port)
-        die("failed to get server RSD port", err);
+    auto rsd_port = cdp.get_server_rsd_port().unwrap_or_else(
+        [](FfiError err) -> uint16_t { die("failed to get server RSD port", err); });
 
     // 4) Create software tunnel adapter (consumes proxy)
-    auto adapter = std::move(*cdp).create_tcp_adapter(err);
-    if (!adapter)
-        die("failed to create software tunnel adapter", err);
+    auto adapter = std::move(cdp).create_tcp_adapter();
+    if_let_err(adapter, err, { die("failed to create software tunnel adapter", err); });
 
     // 5) Connect adapter to RSD → ReadWrite stream
-    auto stream = adapter->connect(*rsd_port, err);
-    if (!stream)
-        die("failed to connect RSD stream", err);
+    auto stream = adapter.unwrap().connect(rsd_port);
+    if_let_err(stream, err, { die("failed to connect RSD stream", err); });
 
     // 6) RSD handshake (consumes stream)
-    auto rsd = RsdHandshake::from_socket(std::move(*stream), err);
-    if (!rsd)
-        die("failed RSD handshake", err);
+    auto rsd = RsdHandshake::from_socket(std::move(stream.unwrap()));
+    if_let_err(rsd, err, { die("failed RSD handshake", err); });
 
     // 7) AppService over RSD (borrows adapter + handshake)
-    auto app = AppService::connect_rsd(*adapter, *rsd, err);
-    if (!app)
-        die("failed to connect AppService", err);
+    auto app = AppService::connect_rsd(adapter.unwrap(), rsd.unwrap())
+                   .unwrap_or_else([&](FfiError e) -> AppService {
+                       die("failed to connect AppService", e); // never returns
+                   });
 
     // 8) Commands
     if (cmd == "list") {
-        auto apps = app->list_apps(/*app_clips*/ true,
-                                   /*removable*/ true,
-                                   /*hidden*/ true,
-                                   /*internal*/ true,
-                                   /*default_apps*/ true,
-                                   err);
-        if (!apps)
-            die("list_apps failed", err);
+        auto apps = app.list_apps(/*app_clips*/ true,
+                                  /*removable*/ true,
+                                  /*hidden*/ true,
+                                  /*internal*/ true,
+                                  /*default_apps*/ true)
+                        .unwrap_or_else(
+                            [](FfiError e) -> std::vector<AppInfo> { die("list_apps failed", e); });
 
-        for (const auto& a : *apps) {
-            std::cout << "- " << a.bundle_identifier << " | name=" << a.name
-                      << " | version=" << (a.version ? *a.version : std::string("<none>"))
+        for (const auto& a : apps) {
+            std::cout << "- " << a.bundle_identifier << " | name=" << a.name << " | version="
+                      << (a.version.is_some() ? a.version.unwrap() : std::string("<none>"))
                       << " | dev=" << (a.is_developer_app ? "y" : "n")
                       << " | hidden=" << (a.is_hidden ? "y" : "n") << "\n";
         }
@@ -132,27 +129,27 @@ int main(int argc, char** argv) {
         std::string              bundle_id = argv[2];
 
         std::vector<std::string> args; // empty in this example
-        auto                     resp = app->launch(bundle_id,
-                                args,
-                                /*kill_existing*/ false,
-                                /*start_suspended*/ false,
-                                err);
-        if (!resp)
-            die("launch failed", err);
+        auto                     resp =
+            app.launch(bundle_id,
+                       args,
+                       /*kill_existing*/ false,
+                       /*start_suspended*/ false)
+                .unwrap_or_else([](FfiError e) -> LaunchResponse { die("launch failed", e); });
 
-        std::cout << "Launched pid=" << resp->pid << " exe=" << resp->executable_url
-                  << " piv=" << resp->process_identifier_version
-                  << " audit_token_len=" << resp->audit_token.size() << "\n";
+        std::cout << "Launched pid=" << resp.pid << " exe=" << resp.executable_url
+                  << " piv=" << resp.process_identifier_version
+                  << " audit_token_len=" << resp.audit_token.size() << "\n";
         return 0;
 
     } else if (cmd == "processes") {
-        auto procs = app->list_processes(err);
-        if (!procs)
-            die("list_processes failed", err);
+        auto procs = app.list_processes().unwrap_or_else(
+            [](FfiError e) -> std::vector<ProcessToken> { die("list_processes failed", e); });
 
-        for (const auto& p : *procs) {
+        for (const auto& p : procs) {
             std::cout << p.pid << " : "
-                      << (p.executable_url ? *p.executable_url : std::string("<none>")) << "\n";
+                      << (p.executable_url.is_some() ? p.executable_url.unwrap()
+                                                     : std::string("<none>"))
+                      << "\n";
         }
         return 0;
 
@@ -163,8 +160,7 @@ int main(int argc, char** argv) {
         }
         std::string bundle_id = argv[2];
 
-        if (!app->uninstall(bundle_id, err))
-            die("uninstall failed", err);
+        if_let_err(app.uninstall(bundle_id), err, { die("uninstall failed", err); });
         std::cout << "Uninstalled " << bundle_id << "\n";
         return 0;
 
@@ -176,13 +172,14 @@ int main(int argc, char** argv) {
         uint32_t pid    = static_cast<uint32_t>(std::stoul(argv[2]));
         uint32_t signal = static_cast<uint32_t>(std::stoul(argv[3]));
 
-        auto     res    = app->send_signal(pid, signal, err);
-        if (!res)
-            die("send_signal failed", err);
+        auto res = app.send_signal(pid, signal).unwrap_or_else([](FfiError e) -> SignalResponse {
+            die("send_signal failed", e);
+        });
 
-        std::cout << "Signaled pid=" << res->pid << " signal=" << res->signal
-                  << " ts_ms=" << res->device_timestamp_ms
-                  << " exe=" << (res->executable_url ? *res->executable_url : std::string("<none>"))
+        std::cout << "Signaled pid=" << res.pid << " signal=" << res.signal
+                  << " ts_ms=" << res.device_timestamp_ms << " exe="
+                  << (res.executable_url.is_some() ? res.executable_url.unwrap()
+                                                   : std::string("<none>"))
                   << "\n";
         return 0;
 
@@ -196,22 +193,22 @@ int main(int argc, char** argv) {
         float       hw        = (argc >= 5) ? std::stof(argv[4]) : 1.0f;
         float       scale     = (argc >= 6) ? std::stof(argv[5]) : 1.0f;
 
-        auto icon = app->fetch_icon(bundle_id, hw, hw, scale, /*allow_placeholder*/ true, err);
-        if (!icon)
-            die("fetch_app_icon failed", err);
+        auto        icon =
+            app.fetch_icon(bundle_id, hw, hw, scale, /*allow_placeholder*/ true)
+                .unwrap_or_else([](FfiError e) -> IconData { die("fetch_app_icon failed", e); });
 
         std::ofstream out(save_path, std::ios::binary);
         if (!out) {
             std::cerr << "Failed to open " << save_path << " for writing\n";
             return 1;
         }
-        out.write(reinterpret_cast<const char*>(icon->data.data()),
-                  static_cast<std::streamsize>(icon->data.size()));
+        out.write(reinterpret_cast<const char*>(icon.data.data()),
+                  static_cast<std::streamsize>(icon.data.size()));
         out.close();
 
-        std::cout << "Saved icon to " << save_path << " (" << icon->data.size() << " bytes, "
-                  << icon->icon_width << "x" << icon->icon_height << ", min " << icon->minimum_width
-                  << "x" << icon->minimum_height << ")\n";
+        std::cout << "Saved icon to " << save_path << " (" << icon.data.size() << " bytes, "
+                  << icon.icon_width << "x" << icon.icon_height << ", min " << icon.minimum_width
+                  << "x" << icon.minimum_height << ")\n";
         return 0;
 
     } else {

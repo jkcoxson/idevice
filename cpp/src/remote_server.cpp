@@ -4,27 +4,26 @@
 
 namespace IdeviceFFI {
 
-std::optional<RemoteServer> RemoteServer::from_socket(ReadWrite&& rw, FfiError& err) {
+Result<RemoteServer, FfiError> RemoteServer::from_socket(ReadWrite&& rw) {
     RemoteServerHandle* out = nullptr;
 
     // Rust consumes the stream regardless of result, release BEFORE the call
     ReadWriteOpaque*    raw = rw.release();
 
-    if (IdeviceFfiError* e = ::remote_server_new(raw, &out)) {
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError            e(::remote_server_new(raw, &out));
+    if (e) {
+        return Err(e);
     }
-    return RemoteServer::adopt(out);
+    return Ok(RemoteServer::adopt(out));
 }
 
-std::optional<RemoteServer>
-RemoteServer::connect_rsd(Adapter& adapter, RsdHandshake& rsd, FfiError& err) {
+Result<RemoteServer, FfiError> RemoteServer::connect_rsd(Adapter& adapter, RsdHandshake& rsd) {
     RemoteServerHandle* out = nullptr;
-    if (IdeviceFfiError* e = ::remote_server_connect_rsd(adapter.raw(), rsd.raw(), &out)) {
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError            e(::remote_server_connect_rsd(adapter.raw(), rsd.raw(), &out));
+    if (e) {
+        return Err(e);
     }
-    return RemoteServer::adopt(out);
+    return Ok(RemoteServer::adopt(out));
 }
 
 } // namespace IdeviceFFI

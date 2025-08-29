@@ -5,8 +5,8 @@
 
 #include <cstdint>
 #include <idevice++/idevice.hpp>
+#include <idevice++/option.hpp>
 #include <idevice++/pairing_file.hpp>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -29,10 +29,9 @@ using ConnectionPtr =
 
 class UsbmuxdAddr {
   public:
-    static std::optional<UsbmuxdAddr>
-    tcp_new(const sockaddr* addr, socklen_t addr_len, FfiError& err);
+    static Result<UsbmuxdAddr, FfiError> tcp_new(const sockaddr* addr, socklen_t addr_len);
 #if defined(__unix__) || defined(__APPLE__)
-    static std::optional<UsbmuxdAddr> unix_new(const std::string& path, FfiError& err);
+    static Result<UsbmuxdAddr, FfiError> unix_new(const std::string& path);
 #endif
     static UsbmuxdAddr default_new();
 
@@ -66,19 +65,19 @@ class UsbmuxdConnectionType {
 
 class UsbmuxdDevice {
   public:
-    ~UsbmuxdDevice() noexcept                                  = default;
-    UsbmuxdDevice(UsbmuxdDevice&&) noexcept                    = default;
-    UsbmuxdDevice& operator=(UsbmuxdDevice&&) noexcept         = default;
-    UsbmuxdDevice(const UsbmuxdDevice&)                        = delete;
-    UsbmuxdDevice&             operator=(const UsbmuxdDevice&) = delete;
+    ~UsbmuxdDevice() noexcept                            = default;
+    UsbmuxdDevice(UsbmuxdDevice&&) noexcept              = default;
+    UsbmuxdDevice& operator=(UsbmuxdDevice&&) noexcept   = default;
+    UsbmuxdDevice(const UsbmuxdDevice&)                  = delete;
+    UsbmuxdDevice&       operator=(const UsbmuxdDevice&) = delete;
 
-    static UsbmuxdDevice       adopt(UsbmuxdDeviceHandle* h) noexcept { return UsbmuxdDevice(h); }
+    static UsbmuxdDevice adopt(UsbmuxdDeviceHandle* h) noexcept { return UsbmuxdDevice(h); }
 
-    UsbmuxdDeviceHandle*       raw() const noexcept { return handle_.get(); }
+    UsbmuxdDeviceHandle* raw() const noexcept { return handle_.get(); }
 
-    std::optional<std::string> get_udid() const;
-    std::optional<uint32_t>    get_id() const;
-    std::optional<UsbmuxdConnectionType> get_connection_type() const;
+    Option<std::string>  get_udid() const;
+    Option<uint32_t>     get_id() const;
+    Option<UsbmuxdConnectionType> get_connection_type() const;
 
   private:
     explicit UsbmuxdDevice(UsbmuxdDeviceHandle* h) noexcept : handle_(h) {}
@@ -91,30 +90,28 @@ class PairingFile;
 
 class UsbmuxdConnection {
   public:
-    static std::optional<UsbmuxdConnection>
-    tcp_new(const idevice_sockaddr* addr, idevice_socklen_t addr_len, uint32_t tag, FfiError& err);
+    static Result<UsbmuxdConnection, FfiError>
+    tcp_new(const idevice_sockaddr* addr, idevice_socklen_t addr_len, uint32_t tag);
 #if defined(__unix__) || defined(__APPLE__)
-    static std::optional<UsbmuxdConnection>
-    unix_new(const std::string& path, uint32_t tag, FfiError& err);
+    static Result<UsbmuxdConnection, FfiError> unix_new(const std::string& path, uint32_t tag);
 #endif
-    static std::optional<UsbmuxdConnection> default_new(uint32_t tag, FfiError& err);
+    static Result<UsbmuxdConnection, FfiError> default_new(uint32_t tag);
 
-    ~UsbmuxdConnection() noexcept                                                 = default;
-    UsbmuxdConnection(UsbmuxdConnection&&) noexcept                               = default;
-    UsbmuxdConnection& operator=(UsbmuxdConnection&&) noexcept                    = default;
-    UsbmuxdConnection(const UsbmuxdConnection&)                                   = delete;
-    UsbmuxdConnection&                        operator=(const UsbmuxdConnection&) = delete;
+    ~UsbmuxdConnection() noexcept                                                    = default;
+    UsbmuxdConnection(UsbmuxdConnection&&) noexcept                                  = default;
+    UsbmuxdConnection& operator=(UsbmuxdConnection&&) noexcept                       = default;
+    UsbmuxdConnection(const UsbmuxdConnection&)                                      = delete;
+    UsbmuxdConnection&                           operator=(const UsbmuxdConnection&) = delete;
 
-    std::optional<std::vector<UsbmuxdDevice>> get_devices(FfiError& err) const;
-    std::optional<std::string>                get_buid(FfiError& err) const;
-    std::optional<PairingFile> get_pair_record(const std::string& udid, FfiError& err);
+    Result<std::vector<UsbmuxdDevice>, FfiError> get_devices() const;
+    Result<std::string, FfiError>                get_buid() const;
+    Result<PairingFile, FfiError>                get_pair_record(const std::string& udid);
 
-    std::optional<Idevice>
-    connect_to_device(uint32_t device_id, uint16_t port, const std::string& path, FfiError& err) &&;
-    std::optional<Idevice>
-    connect_to_device(uint32_t, uint16_t, const std::string&, FfiError&) & = delete;
-    std::optional<Idevice>
-    connect_to_device(uint32_t, uint16_t, const std::string&, FfiError&) const& = delete;
+    Result<Idevice, FfiError>
+    connect_to_device(uint32_t device_id, uint16_t port, const std::string& path) &&;
+    Result<Idevice, FfiError> connect_to_device(uint32_t, uint16_t, const std::string&) & = delete;
+    Result<Idevice, FfiError>
+    connect_to_device(uint32_t, uint16_t, const std::string&) const& = delete;
 
     UsbmuxdConnectionHandle* raw() const noexcept { return handle_.get(); }
 

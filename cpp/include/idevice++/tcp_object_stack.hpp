@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 
 #include <idevice++/core_device_proxy.hpp>
@@ -12,7 +11,8 @@
 
 namespace IdeviceFFI {
 
-// ---------------- OwnedBuffer: RAII for zero-copy read buffers ----------------
+// ---------------- OwnedBuffer: RAII for zero-copy read buffers
+// ----------------
 class OwnedBuffer {
   public:
     OwnedBuffer() noexcept : p_(nullptr), n_(0) {}
@@ -117,7 +117,8 @@ class TcpObjectStackEater {
     ~TcpObjectStackEater() { reset(); }
 
     // Blocks until a packet is available. On success, 'out' adopts the buffer
-    // and you must keep 'out' alive until done (RAII frees via idevice_data_free).
+    // and you must keep 'out' alive until done (RAII frees via
+    // idevice_data_free).
     bool            read(OwnedBuffer& out, FfiError& err) const;
 
     ::TcpEatObject* raw() const { return h_; }
@@ -139,34 +140,34 @@ class TcpObjectStackEater {
 // ---------------- Stack builder: returns feeder + eater + adapter ------------
 class TcpObjectStack {
   public:
-    TcpObjectStack()                                     = default;
-    TcpObjectStack(const TcpObjectStack&)                = delete; // no sharing
-    TcpObjectStack& operator=(const TcpObjectStack&)     = delete;
-    TcpObjectStack(TcpObjectStack&&) noexcept            = default; // movable
-    TcpObjectStack& operator=(TcpObjectStack&&) noexcept = default;
+    TcpObjectStack()                                 = default;
+    TcpObjectStack(const TcpObjectStack&)            = delete; // no sharing
+    TcpObjectStack& operator=(const TcpObjectStack&) = delete;
+    TcpObjectStack(TcpObjectStack&&) noexcept        = default; // movable
+    TcpObjectStack&                         operator=(TcpObjectStack&&) noexcept = default;
 
     // Build the stack (dual-handle). Name kept to minimize churn.
-    static std::optional<TcpObjectStack>
-    create(const std::string& our_ip, const std::string& their_ip, FfiError& err);
+    static Result<TcpObjectStack, FfiError> create(const std::string& our_ip,
+                                                   const std::string& their_ip);
 
-    TcpObjectStackFeeder&               feeder();
-    const TcpObjectStackFeeder&         feeder() const;
+    TcpObjectStackFeeder&                   feeder();
+    const TcpObjectStackFeeder&             feeder() const;
 
-    TcpObjectStackEater&                eater();
-    const TcpObjectStackEater&          eater() const;
+    TcpObjectStackEater&                    eater();
+    const TcpObjectStackEater&              eater() const;
 
-    Adapter&                            adapter();
-    const Adapter&                      adapter() const;
+    Adapter&                                adapter();
+    const Adapter&                          adapter() const;
 
-    std::optional<TcpObjectStackFeeder> release_feeder(); // nullptr inside wrapper after call
-    std::optional<TcpObjectStackEater>  release_eater();  // nullptr inside wrapper after call
-    std::optional<Adapter>              release_adapter();
+    Option<TcpObjectStackFeeder>            release_feeder(); // nullptr inside wrapper after call
+    Option<TcpObjectStackEater>             release_eater();  // nullptr inside wrapper after call
+    Option<Adapter>                         release_adapter();
 
   private:
     struct Impl {
-        TcpObjectStackFeeder   feeder;
-        TcpObjectStackEater    eater;
-        std::optional<Adapter> adapter;
+        TcpObjectStackFeeder feeder;
+        TcpObjectStackEater  eater;
+        Option<Adapter>      adapter;
     };
     // Unique ownership so there’s a single point of truth to release from
     std::unique_ptr<Impl> impl_;

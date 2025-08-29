@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1914C7972E623CC2002EAB6E /* option.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 1914C7962E623CC2002EAB6E /* option.hpp */; };
+		1914C7992E623CC8002EAB6E /* result.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 1914C7982E623CC8002EAB6E /* result.hpp */; };
 		198077932E5CA6EF00CB501E /* adapter_stream.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1980776C2E5CA69800CB501E /* adapter_stream.cpp */; };
 		198077942E5CA6EF00CB501E /* app_service.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1980776D2E5CA69800CB501E /* app_service.cpp */; };
 		198077952E5CA6EF00CB501E /* core_device.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1980776E2E5CA69800CB501E /* core_device.cpp */; };
@@ -44,6 +46,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		1914C7962E623CC2002EAB6E /* option.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = option.hpp; sourceTree = "<group>"; };
+		1914C7982E623CC8002EAB6E /* result.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = result.hpp; sourceTree = "<group>"; };
 		1980776C2E5CA69800CB501E /* adapter_stream.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = adapter_stream.cpp; sourceTree = "<group>"; };
 		1980776D2E5CA69800CB501E /* app_service.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = app_service.cpp; sourceTree = "<group>"; };
 		1980776E2E5CA69800CB501E /* core_device.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = core_device.cpp; sourceTree = "<group>"; };
@@ -155,6 +159,8 @@
 				198077B12E5CA6FC00CB501E /* rsd.hpp */,
 				198077B22E5CA6FC00CB501E /* tcp_object_stack.hpp */,
 				198077B32E5CA6FC00CB501E /* usbmuxd.hpp */,
+				1914C7962E623CC2002EAB6E /* option.hpp */,
+				1914C7982E623CC8002EAB6E /* result.hpp */,
 			);
 			path = "idevice++";
 			sourceTree = "<group>";
@@ -196,11 +202,13 @@
 				198077C12E5CA6FC00CB501E /* readwrite.hpp in Headers */,
 				198077C22E5CA6FC00CB501E /* location_simulation.hpp in Headers */,
 				198077C32E5CA6FC00CB501E /* adapter_stream.hpp in Headers */,
+				1914C7972E623CC2002EAB6E /* option.hpp in Headers */,
 				198077C42E5CA6FC00CB501E /* lockdown.hpp in Headers */,
 				198077C52E5CA6FC00CB501E /* usbmuxd.hpp in Headers */,
 				198077C62E5CA6FC00CB501E /* app_service.hpp in Headers */,
 				198077C72E5CA6FC00CB501E /* idevice.hpp in Headers */,
 				198077C82E5CA6FC00CB501E /* provider.hpp in Headers */,
+				1914C7992E623CC8002EAB6E /* result.hpp in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -433,14 +441,22 @@
 		198077912E5CA6C700CB501E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_WARN_SUSPICIOUS_IMPLICIT_CONVERSION = YES;
 				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 4FW3Q8784L;
 				EXECUTABLE_PREFIX = lib;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = NO;
+				GCC_WARN_SIGN_COMPARE = YES;
+				GCC_WARN_UNKNOWN_PRAGMAS = YES;
+				GCC_WARN_UNUSED_LABEL = YES;
+				GCC_WARN_UNUSED_PARAMETER = YES;
 				LIBRARY_SEARCH_PATHS = (
 					"${TARGET_BUILD_DIR}/**",
 					"$(PROJECT_DIR)/${DESTINATION_PATH}",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.5;
+				OTHER_LDFLAGS = "-Wall";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -453,14 +469,22 @@
 		198077922E5CA6C700CB501E /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANG_WARN_SUSPICIOUS_IMPLICIT_CONVERSION = YES;
 				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 4FW3Q8784L;
 				EXECUTABLE_PREFIX = lib;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = NO;
+				GCC_WARN_SIGN_COMPARE = YES;
+				GCC_WARN_UNKNOWN_PRAGMAS = YES;
+				GCC_WARN_UNUSED_LABEL = YES;
+				GCC_WARN_UNUSED_PARAMETER = YES;
 				LIBRARY_SEARCH_PATHS = (
 					"${TARGET_BUILD_DIR}/**",
 					"$(PROJECT_DIR)/${DESTINATION_PATH}",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.5;
+				OTHER_LDFLAGS = "-Wall";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;

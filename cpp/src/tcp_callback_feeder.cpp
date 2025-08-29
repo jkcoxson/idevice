@@ -28,16 +28,16 @@ bool TcpObjectStackEater::read(OwnedBuffer& out, FfiError& err) const {
 }
 
 // ---------- TcpStackFromCallback ----------
-std::optional<TcpObjectStack>
-TcpObjectStack::create(const std::string& our_ip, const std::string& their_ip, FfiError& err) {
+Result<TcpObjectStack, FfiError> TcpObjectStack::create(const std::string& our_ip,
+                                                        const std::string& their_ip) {
     ::TcpFeedObject* feeder_h  = nullptr;
     ::TcpEatObject*  eater_h   = nullptr;
     ::AdapterHandle* adapter_h = nullptr;
 
-    if (IdeviceFfiError* e = ::idevice_tcp_stack_into_sync_objects(
-            our_ip.c_str(), their_ip.c_str(), &feeder_h, &eater_h, &adapter_h)) {
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError         e(::idevice_tcp_stack_into_sync_objects(
+        our_ip.c_str(), their_ip.c_str(), &feeder_h, &eater_h, &adapter_h));
+    if (e) {
+        return Err(e);
     }
 
     auto impl     = std::make_unique<Impl>();
@@ -47,7 +47,7 @@ TcpObjectStack::create(const std::string& our_ip, const std::string& their_ip, F
 
     TcpObjectStack out;
     out.impl_ = std::move(impl);
-    return out;
+    return Ok(std::move(out));
 }
 
 TcpObjectStackFeeder& TcpObjectStack::feeder() {
@@ -65,49 +65,54 @@ const TcpObjectStackEater& TcpObjectStack::eater() const {
 }
 
 Adapter& TcpObjectStack::adapter() {
-    if (!impl_ || !impl_->adapter) {
+    if (!impl_ || impl_->adapter.is_some()) {
         static Adapter* never = nullptr;
         return *never;
     }
-    return *(impl_->adapter);
+    return (impl_->adapter.unwrap());
 }
 const Adapter& TcpObjectStack::adapter() const {
-    if (!impl_ || !impl_->adapter) {
+    if (!impl_ || impl_->adapter.is_none()) {
         static Adapter* never = nullptr;
         return *never;
     }
-    return *(impl_->adapter);
+    return (impl_->adapter.unwrap());
 }
 
 // ---------- Release APIs ----------
-std::optional<TcpObjectStackFeeder> TcpObjectStack::release_feeder() {
-    if (!impl_)
-        return std::nullopt;
+Option<TcpObjectStackFeeder> TcpObjectStack::release_feeder() {
+    if (!impl_) {
+        return None;
+    }
     auto has = impl_->feeder.raw() != nullptr;
-    if (!has)
-        return std::nullopt;
+    if (!has) {
+        return None;
+    }
     TcpObjectStackFeeder out = std::move(impl_->feeder);
     // impl_->feeder is now empty (h_ == nullptr) thanks to move
-    return std::optional<TcpObjectStackFeeder>(std::move(out));
+    return Some(std::move(out));
 }
 
-std::optional<TcpObjectStackEater> TcpObjectStack::release_eater() {
-    if (!impl_)
-        return std::nullopt;
+Option<TcpObjectStackEater> TcpObjectStack::release_eater() {
+    if (!impl_) {
+        return None;
+    }
     auto has = impl_->eater.raw() != nullptr;
-    if (!has)
-        return std::nullopt;
+    if (!has) {
+        return None;
+    }
     TcpObjectStackEater out = std::move(impl_->eater);
-    return std::optional<TcpObjectStackEater>(std::move(out));
+    return Some(std::move(out));
 }
 
-std::optional<Adapter> TcpObjectStack::release_adapter() {
-    if (!impl_ || !impl_->adapter)
-        return std::nullopt;
+Option<Adapter> TcpObjectStack::release_adapter() {
+    if (!impl_ || impl_->adapter.is_none()) {
+        return None;
+    }
     // Move out and clear our optional
-    auto out = std::move(*(impl_->adapter));
+    auto out = std::move((impl_->adapter.unwrap()));
     impl_->adapter.reset();
-    return std::optional<Adapter>(std::move(out));
+    return Some(std::move(out));
 }
 
 } // namespace IdeviceFFI

@@ -6,10 +6,10 @@
 #pragma once
 
 #include <idevice++/ffi.hpp>
-#include <optional>
+#include <idevice++/result.hpp>
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
 
 namespace IdeviceFFI {
 struct PairingFileDeleter {
@@ -20,8 +20,8 @@ using PairingFilePtr = std::unique_ptr<IdevicePairingFile, PairingFileDeleter>;
 
 class PairingFile {
   public:
-    static std::optional<PairingFile> read(const std::string& path, FfiError& err);
-    static std::optional<PairingFile> from_bytes(const uint8_t* data, size_t size, FfiError& err);
+    static Result<PairingFile, FfiError> read(const std::string& path);
+    static Result<PairingFile, FfiError> from_bytes(const uint8_t* data, size_t size);
 
     ~PairingFile() noexcept                    = default; // unique_ptr handles destruction
 
@@ -29,9 +29,9 @@ class PairingFile {
     PairingFile& operator=(const PairingFile&) = delete;
 
     PairingFile(PairingFile&&) noexcept        = default; // move is correct by default
-    PairingFile&                        operator=(PairingFile&&) noexcept = default;
+    PairingFile&                           operator=(PairingFile&&) noexcept = default;
 
-    std::optional<std::vector<uint8_t>> serialize(FfiError& err) const;
+    Result<std::vector<uint8_t>, FfiError> serialize() const;
 
     explicit PairingFile(IdevicePairingFile* ptr) noexcept : ptr_(ptr) {}
     IdevicePairingFile* raw() const noexcept { return ptr_.get(); }

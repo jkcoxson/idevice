@@ -5,7 +5,7 @@
 
 #include <idevice++/ffi.hpp>
 #include <idevice++/pairing_file.hpp>
-#include <optional>
+#include <idevice++/result.hpp>
 #include <string>
 
 #if defined(_WIN32) && !defined(__MINGW32__)
@@ -21,8 +21,9 @@ namespace IdeviceFFI {
 // Generic “bind a free function” deleter
 template <class T, void (*FreeFn)(T*)> struct FnDeleter {
     void operator()(T* p) const noexcept {
-        if (p)
+        if (p) {
             FreeFn(p);
+        }
     }
 };
 
@@ -30,16 +31,15 @@ using IdevicePtr = std::unique_ptr<IdeviceHandle, FnDeleter<IdeviceHandle, idevi
 
 class Idevice {
   public:
-    static std::optional<Idevice>
-    create(IdeviceSocketHandle* socket, const std::string& label, FfiError& err);
+    static Result<Idevice, FfiError> create(IdeviceSocketHandle* socket, const std::string& label);
 
-    static std::optional<Idevice>
-    create_tcp(const sockaddr* addr, socklen_t addr_len, const std::string& label, FfiError& err);
+    static Result<Idevice, FfiError>
+    create_tcp(const sockaddr* addr, socklen_t addr_len, const std::string& label);
 
     // Methods
-    std::optional<std::string> get_type(FfiError& err) const;
-    bool                       rsd_checkin(FfiError& err);
-    bool                       start_session(const PairingFile& pairing_file, FfiError& err);
+    Result<std::string, FfiError> get_type() const;
+    Result<void, FfiError>        rsd_checkin();
+    Result<void, FfiError>        start_session(const PairingFile& pairing_file);
 
     // Ownership/RAII
     ~Idevice() noexcept                      = default;

@@ -4,29 +4,29 @@
 
 namespace IdeviceFFI {
 
-std::optional<LocationSimulation> LocationSimulation::create(RemoteServer& server, FfiError& err) {
+Result<LocationSimulation, FfiError> LocationSimulation::create(RemoteServer& server) {
     LocationSimulationHandle* out = nullptr;
-    if (IdeviceFfiError* e = ::location_simulation_new(server.raw(), &out)) {
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError                  e(::location_simulation_new(server.raw(), &out));
+    if (e) {
+        return Err(e);
     }
-    return LocationSimulation::adopt(out);
+    return Ok(LocationSimulation::adopt(out));
 }
 
-bool LocationSimulation::clear(FfiError& err) {
-    if (IdeviceFfiError* e = ::location_simulation_clear(handle_.get())) {
-        err = FfiError(e);
-        return false;
+Result<void, FfiError> LocationSimulation::clear() {
+    FfiError e(::location_simulation_clear(handle_.get()));
+    if (e) {
+        return Err(e);
     }
-    return true;
+    return Ok();
 }
 
-bool LocationSimulation::set(double latitude, double longitude, FfiError& err) {
-    if (IdeviceFfiError* e = ::location_simulation_set(handle_.get(), latitude, longitude)) {
-        err = FfiError(e);
-        return false;
+Result<void, FfiError> LocationSimulation::set(double latitude, double longitude) {
+    FfiError e(::location_simulation_set(handle_.get(), latitude, longitude));
+    if (e) {
+        return Err(e);
     }
-    return true;
+    return Ok();
 }
 
 } // namespace IdeviceFFI

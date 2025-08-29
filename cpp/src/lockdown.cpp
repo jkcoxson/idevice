@@ -7,60 +7,51 @@
 
 namespace IdeviceFFI {
 
-std::optional<Lockdown> Lockdown::connect(Provider& provider, FfiError& err) {
+Result<Lockdown, FfiError> Lockdown::connect(Provider& provider) {
     LockdowndClientHandle* out = nullptr;
-
-    if (IdeviceFfiError* e = ::lockdownd_connect(provider.raw(), &out)) {
-        // Rust freed the provider on error -> abandon our ownership to avoid double free.
+    FfiError               e(::lockdownd_connect(provider.raw(), &out));
+    if (e) {
         provider.release();
-        err = FfiError(e);
-        return std::nullopt;
+        return Err(e);
     }
-    // Success: provider is NOT consumed; keep ownership.
-    return Lockdown::adopt(out);
+    return Ok(Lockdown::adopt(out));
 }
 
-std::optional<Lockdown> Lockdown::from_socket(Idevice&& socket, FfiError& err) {
+Result<Lockdown, FfiError> Lockdown::from_socket(Idevice&& socket) {
     LockdowndClientHandle* out = nullptr;
-
-    if (IdeviceFfiError* e = ::lockdownd_new(socket.raw(), &out)) {
-        // Error: Rust did NOT consume the socket (it returns early for invalid args),
-        // so keep ownership; report error.
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError               e(::lockdownd_new(socket.raw(), &out));
+    if (e) {
+        return Err(e);
     }
-    // Success: Rust consumed the socket -> abandon our ownership.
     socket.release();
-    return Lockdown::adopt(out);
+    return Ok(Lockdown::adopt(out));
 }
 
-bool Lockdown::start_session(const PairingFile& pf, FfiError& err) {
-    if (IdeviceFfiError* e = ::lockdownd_start_session(handle_.get(), pf.raw())) {
-        err = FfiError(e);
-        return false;
+Result<void, FfiError> Lockdown::start_session(const PairingFile& pf) {
+    FfiError e(::lockdownd_start_session(handle_.get(), pf.raw()));
+    if (e) {
+        return Err(e);
     }
-    return true;
+    return Ok();
 }
 
-std::optional<std::pair<uint16_t, bool>> Lockdown::start_service(const std::string& identifier,
-                                                                 FfiError&          err) {
+Result<std::pair<uint16_t, bool>, FfiError> Lockdown::start_service(const std::string& identifier) {
     uint16_t port = 0;
     bool     ssl  = false;
-    if (IdeviceFfiError* e =
-            ::lockdownd_start_service(handle_.get(), identifier.c_str(), &port, &ssl)) {
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError e(::lockdownd_start_service(handle_.get(), identifier.c_str(), &port, &ssl));
+    if (e) {
+        return Err(e);
     }
-    return std::make_pair(port, ssl);
+    return Ok(std::make_pair(port, ssl));
 }
 
-std::optional<plist_t> Lockdown::get_value(const char* key, const char* domain, FfiError& err) {
-    plist_t out = nullptr;
-    if (IdeviceFfiError* e = ::lockdownd_get_value(handle_.get(), key, domain, &out)) {
-        err = FfiError(e);
-        return std::nullopt;
+Result<plist_t, FfiError> Lockdown::get_value(const char* key, const char* domain) {
+    plist_t  out = nullptr;
+    FfiError e(::lockdownd_get_value(handle_.get(), key, domain, &out));
+    if (e) {
+        return Err(e);
     }
-    return out; // caller now owns `out` and must free with the plist API
+    return Ok(out);
 }
 
 } // namespace IdeviceFFI

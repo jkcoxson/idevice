@@ -7,10 +7,12 @@ namespace IdeviceFFI {
 // ---------- helpers to copy/free CRsdService ----------
 static RsdService to_cpp_and_free(CRsdService* c) {
     RsdService s;
-    if (c->name)
+    if (c->name) {
         s.name = c->name;
-    if (c->entitlement)
+    }
+    if (c->entitlement) {
         s.entitlement = c->entitlement;
+    }
     s.port            = c->port;
     s.uses_remote_xpc = c->uses_remote_xpc;
     s.service_version = c->service_version;
@@ -20,8 +22,9 @@ static RsdService to_cpp_and_free(CRsdService* c) {
         auto** arr = c->features;
         s.features.reserve(c->features_count);
         for (size_t i = 0; i < c->features_count; ++i) {
-            if (arr[i])
+            if (arr[i]) {
                 s.features.emplace_back(arr[i]);
+            }
         }
     }
 
@@ -33,8 +36,9 @@ static RsdService to_cpp_and_free(CRsdService* c) {
 static std::vector<RsdService> to_cpp_and_free(CRsdServiceArray* arr) {
     std::vector<RsdService> out;
     if (!arr || !arr->services || arr->count == 0) {
-        if (arr)
+        if (arr) {
             rsd_free_services(arr);
+        }
         return out;
     }
     out.reserve(arr->count);
@@ -51,8 +55,9 @@ static std::vector<RsdService> to_cpp_and_free(CRsdServiceArray* arr) {
             auto** feats = begin[i].features;
             out.back().features.reserve(begin[i].features_count);
             for (size_t j = 0; j < begin[i].features_count; ++j) {
-                if (feats[j])
+                if (feats[j]) {
                     out.back().features.emplace_back(feats[j]);
+                }
             }
         }
     }
@@ -80,68 +85,67 @@ RsdHandshake& RsdHandshake::operator=(const RsdHandshake& other) {
 }
 
 // ---------- factory ----------
-std::optional<RsdHandshake> RsdHandshake::from_socket(ReadWrite&& rw, FfiError& err) {
+Result<RsdHandshake, FfiError> RsdHandshake::from_socket(ReadWrite&& rw) {
     RsdHandshakeHandle* out = nullptr;
 
     // Rust consumes the socket regardless of result ⇒ release BEFORE call.
     ReadWriteOpaque*    raw = rw.release();
-
-    if (IdeviceFfiError* e = rsd_handshake_new(raw, &out)) {
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError            e(rsd_handshake_new(raw, &out));
+    if (e) {
+        return Err(e);
     }
-    return RsdHandshake::adopt(out);
+    return Ok(RsdHandshake::adopt(out));
 }
 
 // ---------- queries ----------
-std::optional<size_t> RsdHandshake::protocol_version(FfiError& err) const {
-    size_t v = 0;
-    if (IdeviceFfiError* e = rsd_get_protocol_version(handle_.get(), &v)) {
-        err = FfiError(e);
-        return std::nullopt;
+Result<size_t, FfiError> RsdHandshake::protocol_version() const {
+    size_t   v = 0;
+    FfiError e(rsd_get_protocol_version(handle_.get(), &v));
+    if (e) {
+        return Err(e);
     }
-    return v;
+    return Ok(v);
 }
 
-std::optional<std::string> RsdHandshake::uuid(FfiError& err) const {
-    char* c = nullptr;
-    if (IdeviceFfiError* e = rsd_get_uuid(handle_.get(), &c)) {
-        err = FfiError(e);
-        return std::nullopt;
+Result<std::string, FfiError> RsdHandshake::uuid() const {
+    char*    c = nullptr;
+    FfiError e(rsd_get_uuid(handle_.get(), &c));
+    if (e) {
+        return Err(e);
     }
     std::string out;
     if (c) {
         out = c;
         rsd_free_string(c);
     }
-    return out;
+    return Ok(out);
 }
 
-std::optional<std::vector<RsdService>> RsdHandshake::services(FfiError& err) const {
+Result<std::vector<RsdService>, FfiError> RsdHandshake::services() const {
     CRsdServiceArray* arr = nullptr;
-    if (IdeviceFfiError* e = rsd_get_services(handle_.get(), &arr)) {
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError          e(rsd_get_services(handle_.get(), &arr));
+    if (e) {
+        return Err(e);
     }
-    return to_cpp_and_free(arr);
+    return Ok(to_cpp_and_free(arr));
 }
 
-std::optional<bool> RsdHandshake::service_available(const std::string& name, FfiError& err) const {
-    bool avail = false;
-    if (IdeviceFfiError* e = rsd_service_available(handle_.get(), name.c_str(), &avail)) {
-        err = FfiError(e);
-        return std::nullopt;
+Result<bool, FfiError> RsdHandshake::service_available(const std::string& name) const {
+    bool     avail = false;
+    FfiError e(rsd_service_available(handle_.get(), name.c_str(), &avail));
+    if (e) {
+        return Err(e);
     }
-    return avail;
+    return Ok(avail);
 }
 
-std::optional<RsdService> RsdHandshake::service_info(const std::string& name, FfiError& err) const {
+Result<RsdService, FfiError> RsdHandshake::service_info(const std::string& name) const {
     CRsdService* svc = nullptr;
-    if (IdeviceFfiError* e = rsd_get_service_info(handle_.get(), name.c_str(), &svc)) {
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError     e(rsd_get_service_info(handle_.get(), name.c_str(), &svc));
+    if (e) {
+        return Err(e);
     }
-    return to_cpp_and_free(svc);
+    return Ok(to_cpp_and_free(svc));
 }
 
 } // namespace IdeviceFFI

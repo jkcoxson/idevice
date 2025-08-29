@@ -1,35 +1,39 @@
 // Jackson Coxson
 
-#include <idevice++/diagnosticsservice.hpp>
 #include <cstring>
+#include <idevice++/diagnosticsservice.hpp>
+#include <idevice++/option.hpp>
 
 namespace IdeviceFFI {
 
 // Local helper: take ownership of a C string and convert to std::string
-static std::optional<std::string> take_cstring(char* p) {
-    if (!p)
-        return std::nullopt;
+static Option<std::string> take_cstring(char* p) {
+    if (!p) {
+        return None;
+    }
+
     std::string s(p);
     ::idevice_string_free(p);
-    return s;
+    return Some(std::move(s));
 }
 
 // -------- SysdiagnoseStream --------
-std::optional<std::vector<uint8_t>> SysdiagnoseStream::next_chunk(FfiError& err) {
-    if (!h_)
-        return std::nullopt;
+Result<Option<std::vector<uint8_t>>, FfiError> SysdiagnoseStream::next_chunk() {
+    if (!h_) {
+        return Err(FfiError::NotConnected());
+    }
 
     uint8_t*    data = nullptr;
     std::size_t len  = 0;
 
-    if (IdeviceFfiError* e = ::sysdiagnose_stream_next(h_, &data, &len)) {
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError    e(::sysdiagnose_stream_next(h_, &data, &len));
+    if (e) {
+        return Err(e);
     }
 
     if (!data || len == 0) {
         // End of stream
-        return std::nullopt;
+        return Ok(Option<std::vector<uint8_t>>(None));
     }
 
     // Copy into a C++ buffer
@@ -38,52 +42,52 @@ std::optional<std::vector<uint8_t>> SysdiagnoseStream::next_chunk(FfiError& err)
 
     idevice_data_free(data, len);
 
-    return out;
+    return Ok(Some(out));
 }
 
 // -------- DiagnosticsService --------
-std::optional<DiagnosticsService>
-DiagnosticsService::connect_rsd(Adapter& adapter, RsdHandshake& rsd, FfiError& err) {
+Result<DiagnosticsService, FfiError> DiagnosticsService::connect_rsd(Adapter&      adapter,
+                                                                     RsdHandshake& rsd) {
     ::DiagnosticsServiceHandle* out = nullptr;
-    if (IdeviceFfiError* e = ::diagnostics_service_connect_rsd(adapter.raw(), rsd.raw(), &out)) {
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError e(::diagnostics_service_connect_rsd(adapter.raw(), rsd.raw(), &out));
+    if (e) {
+        return Err(e);
     }
-    return DiagnosticsService(out);
+    return Ok(DiagnosticsService(out));
 }
 
-std::optional<DiagnosticsService> DiagnosticsService::from_stream_ptr(::ReadWriteOpaque* consumed,
-                                                                      FfiError&          err) {
+Result<DiagnosticsService, FfiError>
+DiagnosticsService::from_stream_ptr(::ReadWriteOpaque* consumed) {
     ::DiagnosticsServiceHandle* out = nullptr;
-    if (IdeviceFfiError* e = ::diagnostics_service_new(consumed, &out)) {
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError                    e(::diagnostics_service_new(consumed, &out));
+    if (e) {
+        return Err(e);
     }
-    return DiagnosticsService(out);
+    return Ok(DiagnosticsService(out));
 }
 
-std::optional<SysdiagnoseCapture> DiagnosticsService::capture_sysdiagnose(bool      dry_run,
-                                                                          FfiError& err) {
-    if (!h_)
-        return std::nullopt;
+Result<SysdiagnoseCapture, FfiError> DiagnosticsService::capture_sysdiagnose(bool dry_run) {
+    if (!h_) {
+        return Err(FfiError::NotConnected());
+    }
 
     char*                      filename_c   = nullptr;
     std::size_t                expected_len = 0;
     ::SysdiagnoseStreamHandle* stream_h     = nullptr;
 
-    if (IdeviceFfiError* e = ::diagnostics_service_capture_sysdiagnose(
-            h_, dry_run ? true : false, &filename_c, &expected_len, &stream_h)) {
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError                   e(::diagnostics_service_capture_sysdiagnose(
+        h_, dry_run ? true : false, &filename_c, &expected_len, &stream_h));
+    if (e) {
+        return Err(e);
     }
 
-    auto               fname = take_cstring(filename_c).value_or(std::string{});
+    auto               fname = take_cstring(filename_c).unwrap_or(std::string{});
     SysdiagnoseStream  stream(stream_h);
 
     SysdiagnoseCapture cap{/*preferred_filename*/ std::move(fname),
                            /*expected_length*/ expected_len,
                            /*stream*/ std::move(stream)};
-    return cap;
+    return Ok(std::move(cap));
 }
 
 } // namespace IdeviceFFI

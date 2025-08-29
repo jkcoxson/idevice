@@ -8,46 +8,46 @@ namespace IdeviceFFI {
 
 // Deleter definition (out-of-line)
 void PairingFileDeleter::operator()(IdevicePairingFile* p) const noexcept {
-    if (p)
+    if (p) {
         idevice_pairing_file_free(p);
+    }
 }
 
 // Static member definitions
-std::optional<PairingFile> PairingFile::read(const std::string& path, FfiError& err) {
+Result<PairingFile, FfiError> PairingFile::read(const std::string& path) {
     IdevicePairingFile* ptr = nullptr;
-    if (IdeviceFfiError* e = idevice_pairing_file_read(path.c_str(), &ptr)) {
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError            e(idevice_pairing_file_read(path.c_str(), &ptr));
+    if (e) {
+        return Err(e);
     }
-    return PairingFile(ptr);
+    return Ok(PairingFile(ptr));
 }
 
-std::optional<PairingFile>
-PairingFile::from_bytes(const uint8_t* data, size_t size, FfiError& err) {
+Result<PairingFile, FfiError> PairingFile::from_bytes(const uint8_t* data, size_t size) {
     IdevicePairingFile* raw = nullptr;
-    if (IdeviceFfiError* e = idevice_pairing_file_from_bytes(data, size, &raw)) {
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError            e(idevice_pairing_file_from_bytes(data, size, &raw));
+    if (e) {
+        return Err(e);
     }
-    return PairingFile(raw);
+    return Ok(PairingFile(raw));
 }
 
-std::optional<std::vector<uint8_t>> PairingFile::serialize(FfiError& err) const {
+Result<std::vector<uint8_t>, FfiError> PairingFile::serialize() const {
     if (!ptr_) {
-        return std::nullopt;
+        return Err(FfiError::InvalidArgument());
     }
 
     uint8_t* data = nullptr;
     size_t   size = 0;
 
-    if (IdeviceFfiError* e = idevice_pairing_file_serialize(ptr_.get(), &data, &size)) {
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError e(idevice_pairing_file_serialize(ptr_.get(), &data, &size));
+    if (e) {
+        return Err(e);
     }
 
     std::vector<uint8_t> out(data, data + size);
     idevice_data_free(data, size);
-    return out;
+    return Ok(out);
 }
 
 } // namespace IdeviceFFI

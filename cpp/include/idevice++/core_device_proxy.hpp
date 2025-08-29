@@ -5,8 +5,10 @@
 
 #include <idevice++/bindings.hpp>
 #include <idevice++/ffi.hpp>
+#include <idevice++/option.hpp>
 #include <idevice++/provider.hpp>
 #include <idevice++/readwrite.hpp>
+#include <idevice++/result.hpp>
 
 namespace IdeviceFFI {
 
@@ -22,32 +24,33 @@ struct CoreClientParams {
 
 class Adapter {
   public:
-    ~Adapter() noexcept                      = default;
-    Adapter(Adapter&&) noexcept              = default;
-    Adapter& operator=(Adapter&&) noexcept   = default;
-    Adapter(const Adapter&)                  = delete;
-    Adapter&       operator=(const Adapter&) = delete;
+    ~Adapter() noexcept                              = default;
+    Adapter(Adapter&&) noexcept                      = default;
+    Adapter& operator=(Adapter&&) noexcept           = default;
+    Adapter(const Adapter&)                          = delete;
+    Adapter&               operator=(const Adapter&) = delete;
 
-    static Adapter adopt(AdapterHandle* h) noexcept { return Adapter(h); }
-    AdapterHandle* raw() const noexcept { return handle_.get(); }
+    static Adapter         adopt(AdapterHandle* h) noexcept { return Adapter(h); }
+    AdapterHandle*         raw() const noexcept { return handle_.get(); }
 
     // Enable PCAP
-    bool           pcap(const std::string& path, FfiError& err) {
-        if (IdeviceFfiError* e = ::adapter_pcap(handle_.get(), path.c_str())) {
-            err = FfiError(e);
-            return false;
+    Result<void, FfiError> pcap(const std::string& path) {
+        FfiError e(::adapter_pcap(handle_.get(), path.c_str()));
+        if (e) {
+            return Err(e);
         }
-        return true;
+        return Ok();
     }
 
-    // Connect to a port, returns a ReadWrite stream (to be consumed by RSD/CoreDeviceProxy)
-    std::optional<ReadWrite> connect(uint16_t port, FfiError& err) {
+    // Connect to a port, returns a ReadWrite stream (to be consumed by
+    // RSD/CoreDeviceProxy)
+    Result<ReadWrite, FfiError> connect(uint16_t port) {
         ReadWriteOpaque* s = nullptr;
-        if (IdeviceFfiError* e = ::adapter_connect(handle_.get(), port, &s)) {
-            err = FfiError(e);
-            return std::nullopt;
+        FfiError         e(::adapter_connect(handle_.get(), port, &s));
+        if (e) {
+            return Err(e);
         }
-        return ReadWrite::adopt(s);
+        return Ok(ReadWrite::adopt(s));
     }
 
   private:
@@ -58,28 +61,28 @@ class Adapter {
 class CoreDeviceProxy {
   public:
     // Factory: connect using a Provider (NOT consumed on success or error)
-    static std::optional<CoreDeviceProxy> connect(Provider& provider, FfiError& err);
+    static Result<CoreDeviceProxy, FfiError> connect(Provider& provider);
 
-    // Factory: from a socket; Rust consumes the socket regardless of result → we release before
-    // call
-    static std::optional<CoreDeviceProxy> from_socket(Idevice&& socket, FfiError& err);
+    // Factory: from a socket; Rust consumes the socket regardless of result → we
+    // release before call
+    static Result<CoreDeviceProxy, FfiError> from_socket(Idevice&& socket);
 
     // Send/recv
-    bool                                  send(const uint8_t* data, size_t len, FfiError& err);
-    bool                                  send(const std::vector<uint8_t>& buf, FfiError& err) {
-        return send(buf.data(), buf.size(), err);
+    Result<void, FfiError>                   send(const uint8_t* data, size_t len);
+    Result<void, FfiError>                   send(const std::vector<uint8_t>& buf) {
+        return send(buf.data(), buf.size());
     }
 
     // recv into a pre-sized buffer; resizes to actual bytes received
-    bool                            recv(std::vector<uint8_t>& out, FfiError& err);
+    Result<void, FfiError>             recv(std::vector<uint8_t>& out);
 
     // Handshake info
-    std::optional<CoreClientParams> get_client_parameters(FfiError& err) const;
-    std::optional<std::string>      get_server_address(FfiError& err) const;
-    std::optional<uint16_t>         get_server_rsd_port(FfiError& err) const;
+    Result<CoreClientParams, FfiError> get_client_parameters() const;
+    Result<std::string, FfiError>      get_server_address() const;
+    Result<uint16_t, FfiError>         get_server_rsd_port() const;
 
     // Consuming creation of a TCP adapter: Rust consumes the proxy handle
-    std::optional<Adapter>          create_tcp_adapter(FfiError& err) &&;
+    Result<Adapter, FfiError>          create_tcp_adapter() &&;
 
     // RAII / moves
     ~CoreDeviceProxy() noexcept                              = default;

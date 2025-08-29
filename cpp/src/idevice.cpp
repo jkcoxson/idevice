@@ -4,53 +4,50 @@
 
 namespace IdeviceFFI {
 
-std::optional<Idevice>
-Idevice::create(IdeviceSocketHandle* socket, const std::string& label, FfiError& err) {
+Result<Idevice, FfiError> Idevice::create(IdeviceSocketHandle* socket, const std::string& label) {
     IdeviceHandle* h = nullptr;
-    if (IdeviceFfiError* e = idevice_new(socket, label.c_str(), &h)) {
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError       e(idevice_new(socket, label.c_str(), &h));
+    if (e) {
+        return Err(e);
     }
-    return Idevice(h);
+    return Ok(Idevice(h));
 }
 
-std::optional<Idevice> Idevice::create_tcp(const sockaddr*    addr,
-                                           socklen_t          addr_len,
-                                           const std::string& label,
-                                           FfiError&          err) {
+Result<Idevice, FfiError>
+Idevice::create_tcp(const sockaddr* addr, socklen_t addr_len, const std::string& label) {
     IdeviceHandle* h = nullptr;
-    if (IdeviceFfiError* e = idevice_new_tcp_socket(addr, addr_len, label.c_str(), &h)) {
-        err = FfiError(e);
-        return std::nullopt;
+    FfiError       e(idevice_new_tcp_socket(addr, addr_len, label.c_str(), &h));
+    if (e) {
+        return Err(e);
     }
-    return Idevice(h);
+    return Ok(Idevice(h));
 }
 
-std::optional<std::string> Idevice::get_type(FfiError& err) const {
-    char* cstr = nullptr;
-    if (IdeviceFfiError* e = idevice_get_type(handle_.get(), &cstr)) {
-        err = FfiError(e);
-        return std::nullopt;
+Result<std::string, FfiError> Idevice::get_type() const {
+    char*    cstr = nullptr;
+    FfiError e(idevice_get_type(handle_.get(), &cstr));
+    if (e) {
+        return Err(e);
     }
     std::string out(cstr);
     idevice_string_free(cstr);
-    return out;
+    return Ok(out);
 }
 
-bool Idevice::rsd_checkin(FfiError& err) {
-    if (IdeviceFfiError* e = idevice_rsd_checkin(handle_.get())) {
-        err = FfiError(e);
-        return false;
+Result<void, FfiError> Idevice::rsd_checkin() {
+    FfiError e(idevice_rsd_checkin(handle_.get()));
+    if (e) {
+        return Err(e);
     }
-    return true;
+    return Ok();
 }
 
-bool Idevice::start_session(const PairingFile& pairing_file, FfiError& err) {
-    if (IdeviceFfiError* e = idevice_start_session(handle_.get(), pairing_file.raw())) {
-        err = FfiError(e);
-        return false;
+Result<void, FfiError> Idevice::start_session(const PairingFile& pairing_file) {
+    FfiError e(idevice_start_session(handle_.get(), pairing_file.raw()));
+    if (e) {
+        return Err(e);
     }
-    return true;
+    return Ok();
 }
 
 } // namespace IdeviceFFI

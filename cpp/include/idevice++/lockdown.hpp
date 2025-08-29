@@ -5,7 +5,6 @@
 #include <idevice++/ffi.hpp>
 #include <idevice++/provider.hpp>
 #include <memory>
-#include <optional>
 #include <string>
 
 namespace IdeviceFFI {
@@ -16,16 +15,15 @@ using LockdownPtr =
 class Lockdown {
   public:
     // Factory: connect via Provider
-    static std::optional<Lockdown>           connect(Provider& provider, FfiError& err);
+    static Result<Lockdown, FfiError>           connect(Provider& provider);
 
     // Factory: wrap an existing Idevice socket (consumes it on success)
-    static std::optional<Lockdown>           from_socket(Idevice&& socket, FfiError& err);
+    static Result<Lockdown, FfiError>           from_socket(Idevice&& socket);
 
     // Ops
-    bool                                     start_session(const PairingFile& pf, FfiError& err);
-    std::optional<std::pair<uint16_t, bool>> start_service(const std::string& identifier,
-                                                           FfiError&          err);
-    std::optional<plist_t> get_value(const char* key, const char* domain, FfiError& err);
+    Result<void, FfiError>                      start_session(const PairingFile& pf);
+    Result<std::pair<uint16_t, bool>, FfiError> start_service(const std::string& identifier);
+    Result<plist_t, FfiError>                   get_value(const char* key, const char* domain);
 
     // RAII / moves
     ~Lockdown() noexcept                              = default;

@@ -9,7 +9,6 @@
 #include <idevice++/readwrite.hpp>
 #include <idevice++/rsd.hpp>
 #include <memory>
-#include <optional>
 
 namespace IdeviceFFI {
 
@@ -19,11 +18,10 @@ using RemoteServerPtr =
 class RemoteServer {
   public:
     // Factory: consumes the ReadWrite stream regardless of result
-    static std::optional<RemoteServer> from_socket(ReadWrite&& rw, FfiError& err);
+    static Result<RemoteServer, FfiError> from_socket(ReadWrite&& rw);
 
     // Factory: borrows adapter + handshake (neither is consumed)
-    static std::optional<RemoteServer>
-    connect_rsd(Adapter& adapter, RsdHandshake& rsd, FfiError& err);
+    static Result<RemoteServer, FfiError> connect_rsd(Adapter& adapter, RsdHandshake& rsd);
 
     // RAII / moves
     ~RemoteServer() noexcept                           = default;

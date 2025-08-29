@@ -4,13 +4,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
 // Bring in the global C ABI (all C structs/functions are global)
 #include <idevice++/core_device_proxy.hpp>
 #include <idevice++/ffi.hpp>
+#include <idevice++/result.hpp>
 #include <idevice++/rsd.hpp>
 
 namespace IdeviceFFI {
@@ -33,32 +33,33 @@ class DebugProxy {
 
     ~DebugProxy() { reset(); }
 
-    // Factory: connect over RSD (borrows adapter & handshake; does not consume them)
-    static std::optional<DebugProxy>
-    connect_rsd(Adapter& adapter, RsdHandshake& rsd, FfiError& err);
+    // Factory: connect over RSD (borrows adapter & handshake; does not consume
+    // them)
+    static Result<DebugProxy, FfiError>   connect_rsd(Adapter& adapter, RsdHandshake& rsd);
 
     // Factory: consume a ReadWrite stream (fat pointer)
-    static std::optional<DebugProxy> from_readwrite_ptr(::ReadWriteOpaque* consumed, FfiError& err);
+    static Result<DebugProxy, FfiError>   from_readwrite_ptr(::ReadWriteOpaque* consumed);
 
     // Convenience: consume a C++ ReadWrite wrapper by releasing it into the ABI
-    static std::optional<DebugProxy> from_readwrite(ReadWrite&& rw, FfiError& err);
+    static Result<DebugProxy, FfiError>   from_readwrite(ReadWrite&& rw);
 
     // API
-    std::optional<std::string>
-    send_command(const std::string& name, const std::vector<std::string>& argv, FfiError& err);
+    Result<Option<std::string>, FfiError> send_command(const std::string&              name,
+                                                       const std::vector<std::string>& argv);
 
-    std::optional<std::string> read_response(FfiError& err);
+    Result<Option<std::string>, FfiError> read_response();
 
-    bool                       send_raw(const std::vector<uint8_t>& data, FfiError& err);
+    Result<void, FfiError>                send_raw(const std::vector<uint8_t>& data);
 
-    // Reads up to `len` bytes; ABI returns a heap C string (we treat as bytes → string)
-    std::optional<std::string> read(std::size_t len, FfiError& err);
+    // Reads up to `len` bytes; ABI returns a heap C string (we treat as bytes →
+    // string)
+    Result<Option<std::string>, FfiError> read(std::size_t len);
 
     // Sets argv, returns textual reply (OK/echo/etc)
-    std::optional<std::string> set_argv(const std::vector<std::string>& argv, FfiError& err);
+    Result<Option<std::string>, FfiError> set_argv(const std::vector<std::string>& argv);
 
-    bool                       send_ack(FfiError& err);
-    bool                       send_nack(FfiError& err);
+    Result<void, FfiError>                send_ack();
+    Result<void, FfiError>                send_nack();
 
     // No error object in ABI; immediate effect
     void set_ack_mode(bool enabled) { ::debug_proxy_set_ack_mode(handle_, enabled ? 1 : 0); }
@@ -99,10 +100,9 @@ class DebugCommand {
 
     ~DebugCommand() { reset(); }
 
-    static std::optional<DebugCommand> make(const std::string&              name,
-                                            const std::vector<std::string>& argv);
+    static Option<DebugCommand> make(const std::string& name, const std::vector<std::string>& argv);
 
-    ::DebugserverCommandHandle*        raw() const { return handle_; }
+    ::DebugserverCommandHandle* raw() const { return handle_; }
 
   private:
     explicit DebugCommand(::DebugserverCommandHandle* h) : handle_(h) {}

@@ -26,3 +26,7 @@ ReflowComments: true
 PointerAlignment: Left
 BinPackArguments: false
 BinPackParameters: false
+AllowShortBlocksOnASingleLine: Never
+MacroBlockBegin: "^#define"
+MacroBlockEnd: "^#undef"
+InsertBraces: true

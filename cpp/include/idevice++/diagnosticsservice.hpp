@@ -3,7 +3,6 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,10 +31,11 @@ class SysdiagnoseStream {
 
     ~SysdiagnoseStream() { reset(); }
 
-    // Pull next chunk. Returns nullopt on end-of-stream. On error, returns nullopt and sets `err`.
-    std::optional<std::vector<uint8_t>> next_chunk(FfiError& err);
+    // Pull next chunk. Returns nullopt on end-of-stream. On error, returns
+    // nullopt and sets `err`.
+    Result<Option<std::vector<uint8_t>>, FfiError> next_chunk();
 
-    SysdiagnoseStreamHandle*            raw() const { return h_; }
+    SysdiagnoseStreamHandle*                       raw() const { return h_; }
 
   private:
     friend class DiagnosticsService;
@@ -78,21 +78,20 @@ class DiagnosticsService {
     ~DiagnosticsService() { reset(); }
 
     // Connect via RSD (borrows adapter & handshake; does not consume them)
-    static std::optional<DiagnosticsService>
-    connect_rsd(Adapter& adapter, RsdHandshake& rsd, FfiError& err);
+    static Result<DiagnosticsService, FfiError> connect_rsd(Adapter& adapter, RsdHandshake& rsd);
 
     // Create from a ReadWrite stream (consumes it)
-    static std::optional<DiagnosticsService> from_stream_ptr(::ReadWriteOpaque* consumed,
-                                                             FfiError&          err);
+    static Result<DiagnosticsService, FfiError> from_stream_ptr(::ReadWriteOpaque* consumed);
 
-    static std::optional<DiagnosticsService> from_stream(ReadWrite&& rw, FfiError& err) {
-        return from_stream_ptr(rw.release(), err);
+    static Result<DiagnosticsService, FfiError> from_stream(ReadWrite&& rw) {
+        return from_stream_ptr(rw.release());
     }
 
-    // Start sysdiagnose capture; on success returns filename, length and a byte stream
-    std::optional<SysdiagnoseCapture> capture_sysdiagnose(bool dry_run, FfiError& err);
+    // Start sysdiagnose capture; on success returns filename, length and a byte
+    // stream
+    Result<SysdiagnoseCapture, FfiError> capture_sysdiagnose(bool dry_run);
 
-    ::DiagnosticsServiceHandle*       raw() const { return h_; }
+    ::DiagnosticsServiceHandle*          raw() const { return h_; }
 
   private:
     explicit DiagnosticsService(::DiagnosticsServiceHandle* h) : h_(h) {}

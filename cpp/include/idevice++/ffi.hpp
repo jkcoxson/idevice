@@ -15,7 +15,10 @@ class FfiError {
     FfiError(const IdeviceFfiError* err);
     FfiError();
 
-    explicit operator bool() const { return code != 0; }
+    explicit        operator bool() const { return code != 0; }
+
+    static FfiError NotConnected();
+    static FfiError InvalidArgument();
 };
 } // namespace IdeviceFFI
 #endif

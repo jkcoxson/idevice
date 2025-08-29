@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <idevice++/bindings.hpp>
 #include <idevice++/ffi.hpp>
+#include <idevice++/option.hpp>
+#include <idevice++/result.hpp>
 #include <vector>
 
 struct IdeviceFfiError;
@@ -31,16 +33,16 @@ class AdapterStream {
 
     ~AdapterStream() noexcept = default; // no auto-close; caller controls
 
-    AdapterStreamHandle* raw() const noexcept { return h_; }
+    AdapterStreamHandle*   raw() const noexcept { return h_; }
 
-    bool                 close(FfiError& err);
-    bool                 send(const uint8_t* data, size_t len, FfiError& err);
-    bool                 send(const std::vector<uint8_t>& buf, FfiError& err) {
-        return send(buf.data(), buf.size(), err);
+    Result<void, FfiError> close();
+    Result<void, FfiError> send(const uint8_t* data, size_t len);
+    Result<void, FfiError> send(const std::vector<uint8_t>& buf) {
+        return send(buf.data(), buf.size());
     }
 
     // recv into caller-provided buffer (resizes to actual length)
-    bool recv(std::vector<uint8_t>& out, FfiError& err, size_t max_hint = 2048);
+    Result<std::vector<uint8_t>, FfiError> recv(size_t max_hint = 2048);
 
   private:
     AdapterStreamHandle* h_{};
