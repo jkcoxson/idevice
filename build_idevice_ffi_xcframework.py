@@ -13,7 +13,7 @@ class IdeviceFfiXCFrameworkBuilder:
         self.build_dir = self.project_root / "build" / "idevice_ffi"
         self.xcframework_dir = self.project_root / "xcframework"
 
-        # Platform configurations - Support iOS, iOS Simulator, tvOS, tvOS Simulator, macOS, Mac Catalyst, visionOS
+        # Platform configurations - Support iOS, iOS Simulator, tvOS, tvOS Simulator, macOS, Mac Catalyst
         self.platforms = {
             'iphoneos': {
                 'rust_target': 'aarch64-apple-ios',
@@ -56,20 +56,6 @@ class IdeviceFfiXCFrameworkBuilder:
                 'archs': ['arm64', 'x86_64'],
                 'min_version': '13.1',
                 'platform_name': 'Mac Catalyst'
-            },
-            'xros': {
-                'rust_target': 'aarch64-apple-visionos',
-                'sdk': 'xros',
-                'arch': 'arm64',
-                'min_version': '1.0',
-                'platform_name': 'visionOS'
-            },
-            'xrsimulator': {
-                'rust_targets': ['aarch64-apple-visionos-sim'],
-                'sdk': 'xrsimulator',
-                'archs': ['arm64'],
-                'min_version': '1.0',
-                'platform_name': 'visionOS Simulator'
             }
         }
 
@@ -151,9 +137,9 @@ class IdeviceFfiXCFrameworkBuilder:
         except Exception as e:
             print(f"Warning: failed to ensure some targets: {e}")
 
-        # Note: tvOS and visionOS targets are Tier 3 and not available as pre-built targets
+        # Note: tvOS targets are Tier 3 and not available as pre-built targets
         # We'll use -Zbuild-std to build them from source
-        print("Using nightly Rust with -Zbuild-std for tvOS/visionOS targets (Tier 3)")
+        print("Using nightly Rust with -Zbuild-std for tvOS targets (Tier 3)")
 
     def build_for_target(self, platform, rust_target, arch):
         """Build the Rust crate for a specific target"""
@@ -185,14 +171,12 @@ class IdeviceFfiXCFrameworkBuilder:
         elif platform in ['maccatalyst']:
             env['MACOSX_DEPLOYMENT_TARGET'] = platform_config['min_version']
             env['IPHONEOS_DEPLOYMENT_TARGET'] = platform_config['min_version']
-        elif platform in ['xros', 'xrsimulator']:
-            env['VISIONOS_DEPLOYMENT_TARGET'] = platform_config['min_version']
 
         # Build the static library
         print(f"\n=== Building for {platform} ({arch}) using target {rust_target} ===")
 
-        # Use nightly toolchain for tvOS/visionOS targets (Tier 3)
-        if ('apple-tvos' in rust_target) or ('apple-visionos' in rust_target):
+        # Use nightly toolchain for tvOS targets (Tier 3)
+        if ('apple-tvos' in rust_target):
             cargo_cmd = [
                 'cargo', '+nightly', 'build',
                 '-Zbuild-std=std,panic_abort',
@@ -418,16 +402,6 @@ class IdeviceFfiXCFrameworkBuilder:
                 supported_platform = "ios"
                 supported_architectures = sorted_archs
                 platform_variant = "maccatalyst"
-            elif platform == 'xros':
-                library_identifier = "visionos-arm64"
-                supported_platform = "visionos"
-                supported_architectures = ["arm64"]
-                platform_variant = None
-            elif platform == 'xrsimulator':
-                library_identifier = "visionos-arm64-simulator"
-                supported_platform = "visionos"
-                supported_architectures = ["arm64"]
-                platform_variant = "simulator"
             else:
                 continue  # Skip unknown platforms
 
@@ -494,9 +468,7 @@ class IdeviceFfiXCFrameworkBuilder:
             'appletvos': 'appletvos',
             'appletvsimulator': 'appletvsimulator',
             'macosx': 'macosx',
-            'maccatalyst': 'maccatalyst',
-            'xros': 'xros',
-            'xrsimulator': 'xrsimulator'
+            'maccatalyst': 'maccatalyst'
         }
 
         platform = platform_map.get(sdk_name.lower())
