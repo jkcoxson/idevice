@@ -13,7 +13,7 @@ class IdeviceFfiXCFrameworkBuilder:
         self.build_dir = self.project_root / "build" / "idevice_ffi"
         self.xcframework_dir = self.project_root / "xcframework"
 
-        # Platform configurations - Support iOS, iOS Simulator, tvOS, and tvOS Simulator
+        # Platform configurations - Support iOS, iOS Simulator, tvOS, tvOS Simulator, macOS, Mac Catalyst, visionOS
         self.platforms = {
             'iphoneos': {
                 'rust_target': 'aarch64-apple-ios',
@@ -30,18 +30,46 @@ class IdeviceFfiXCFrameworkBuilder:
                 'platform_name': 'iOS Simulator'
             },
             'appletvos': {
-                'rust_target': 'aarch64-apple-tvos',  # Use native tvOS target
+                'rust_target': 'aarch64-apple-tvos',
                 'sdk': 'appletvos',
                 'arch': 'arm64',
                 'min_version': '12.0',
                 'platform_name': 'tvOS'
             },
             'appletvsimulator': {
-                'rust_targets': ['aarch64-apple-tvos-sim'],  # Use native tvOS sim targets (ARM64 only)
+                'rust_targets': ['aarch64-apple-tvos-sim', 'x86_64-apple-tvos'],
                 'sdk': 'appletvsimulator',
-                'archs': ['arm64'],  # ARM64 only
+                'archs': ['arm64', 'x86_64'],
                 'min_version': '12.0',
                 'platform_name': 'tvOS Simulator'
+            },
+            'macosx': {
+                'rust_targets': ['aarch64-apple-darwin', 'x86_64-apple-darwin'],
+                'sdk': 'macosx',
+                'archs': ['arm64', 'x86_64'],
+                'min_version': '12.0',
+                'platform_name': 'macOS'
+            },
+            'maccatalyst': {
+                'rust_targets': ['aarch64-apple-ios-macabi', 'x86_64-apple-ios-macabi'],
+                'sdk': 'macosx',
+                'archs': ['arm64', 'x86_64'],
+                'min_version': '12.0',
+                'platform_name': 'Mac Catalyst'
+            },
+            'xros': {
+                'rust_target': 'aarch64-apple-visionos',
+                'sdk': 'xros',
+                'arch': 'arm64',
+                'min_version': '1.0',
+                'platform_name': 'visionOS'
+            },
+            'xrsimulator': {
+                'rust_targets': ['aarch64-apple-visionos-sim'],
+                'sdk': 'xrsimulator',
+                'archs': ['arm64'],
+                'min_version': '1.0',
+                'platform_name': 'visionOS Simulator'
             }
         }
 
@@ -99,7 +127,7 @@ class IdeviceFfiXCFrameworkBuilder:
         except subprocess.CalledProcessError:
             print("rust-src component might already be installed")
 
-        # Ensure stable iOS targets are installed for smoother builds
+        # Ensure stable targets are installed where available
         try:
             home_dir = os.environ.get('HOME', os.path.expanduser('~'))
             env = {
@@ -111,17 +139,21 @@ class IdeviceFfiXCFrameworkBuilder:
                 'LANG': os.environ.get('LANG', 'en_US.UTF-8'),
                 'LC_ALL': os.environ.get('LC_ALL', 'en_US.UTF-8')
             }
-            for target in ['aarch64-apple-ios', 'aarch64-apple-ios-sim', 'x86_64-apple-ios']:
+            for target in [
+                'aarch64-apple-ios', 'aarch64-apple-ios-sim', 'x86_64-apple-ios',
+                'aarch64-apple-darwin', 'x86_64-apple-darwin',
+                'aarch64-apple-ios-macabi', 'x86_64-apple-ios-macabi'
+            ]:
                 try:
                     self.run_command(['rustup', 'target', 'add', target], cwd=self.project_root, env=env)
                 except subprocess.CalledProcessError:
                     print(f"Target {target} might already be installed or not required on this toolchain")
         except Exception as e:
-            print(f"Warning: failed to ensure iOS targets: {e}")
+            print(f"Warning: failed to ensure some targets: {e}")
 
-        # Note: tvOS targets are Tier 3 and not available as pre-built targets
+        # Note: tvOS and visionOS targets are Tier 3 and not available as pre-built targets
         # We'll use -Zbuild-std to build them from source
-        print("Using nightly Rust with -Zbuild-std for tvOS targets (Tier 3)")
+        print("Using nightly Rust with -Zbuild-std for tvOS/visionOS targets (Tier 3)")
 
     def build_for_target(self, platform, rust_target, arch):
         """Build the Rust crate for a specific target"""
@@ -137,7 +169,7 @@ class IdeviceFfiXCFrameworkBuilder:
             'PATH': f"{home_dir}/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin",
             'HOME': home_dir,
             'USER': os.environ.get('USER', os.getlogin()),
-            'SHELL': os.environ.get('SHELL', '/bin/bash'),
+            'SHELL': os.environ.get('SHELL', '/bin/zsh'),
             'TERM': os.environ.get('TERM', 'xterm-256color'),
             'LANG': os.environ.get('LANG', 'en_US.UTF-8'),
             'LC_ALL': os.environ.get('LC_ALL', 'en_US.UTF-8')
@@ -146,29 +178,36 @@ class IdeviceFfiXCFrameworkBuilder:
         # Set deployment target
         if platform in ['iphoneos', 'iphonesimulator']:
             env['IPHONEOS_DEPLOYMENT_TARGET'] = platform_config['min_version']
-        else:  # tvOS
+        elif platform in ['appletvos', 'appletvsimulator']:
             env['TVOS_DEPLOYMENT_TARGET'] = platform_config['min_version']
+        elif platform in ['macosx']:
+            env['MACOSX_DEPLOYMENT_TARGET'] = platform_config['min_version']
+        elif platform in ['maccatalyst']:
+            env['MACOSX_DEPLOYMENT_TARGET'] = platform_config['min_version']
+            env['IPHONEOS_DEPLOYMENT_TARGET'] = platform_config['min_version']
+        elif platform in ['xros', 'xrsimulator']:
+            env['VISIONOS_DEPLOYMENT_TARGET'] = platform_config['min_version']
 
         # Build the static library
         print(f"\n=== Building for {platform} ({arch}) using target {rust_target} ===")
 
-        # Use nightly toolchain for tvOS targets (Tier 3)
-        if rust_target.startswith('aarch64-apple-tvos') or rust_target.startswith('x86_64-apple-tvos'):
+        # Use nightly toolchain for tvOS/visionOS targets (Tier 3)
+        if ('apple-tvos' in rust_target) or ('apple-visionos' in rust_target):
             cargo_cmd = [
                 'cargo', '+nightly', 'build',
                 '-Zbuild-std=std,panic_abort',
                 '--release',
                 '--target', rust_target,
-                '--features', 'full,ring',  # Build with all features using ring crypto
-                '--no-default-features'  # Disable default aws-lc
+                '--features', 'full,ring',
+                '--no-default-features'
             ]
         else:
             cargo_cmd = [
                 'cargo', 'build',
                 '--release',
                 '--target', rust_target,
-                '--features', 'full,ring',  # Build with all features using ring crypto
-                '--no-default-features'  # Disable default aws-lc
+                '--features', 'full,ring',
+                '--no-default-features'
             ]
 
         self.run_command(cargo_cmd, cwd=self.idevice_ffi_dir, env=env)
@@ -182,11 +221,6 @@ class IdeviceFfiXCFrameworkBuilder:
 
         output_lib = build_subdir / "libidevice_ffi.a"
         shutil.copy2(lib_file, output_lib)
-
-        # Post-process the library to change platform metadata for tvOS
-        # Disabled - using RUSTFLAGS approach instead
-        # if platform in ['appletvos', 'appletvsimulator']:
-        #     self.fix_tvos_platform_metadata(output_lib, platform)
 
         # Copy headers
         header_file = self.idevice_ffi_dir / "idevice.h"
@@ -294,7 +328,7 @@ class IdeviceFfiXCFrameworkBuilder:
             return self.build_for_target(platform, rust_target, arch)
 
     def create_xcframework(self, platform_builds):
-        """Create the XCFramework manually with correct tvOS/iOS platform identifiers"""
+        """Create the XCFramework manually with correct platform identifiers"""
         xcframework_path = self.xcframework_dir / "idevice_ffi.xcframework"
 
         # Remove existing XCFramework
@@ -324,9 +358,18 @@ class IdeviceFfiXCFrameworkBuilder:
                 supported_architectures = ["arm64"]
                 platform_variant = None
             elif platform == 'appletvsimulator':
-                library_identifier = "tvos-arm64-simulator"
+                detected_archs = self.get_lib_archs(lib_path) or platform_config.get('archs', [])
+                sorted_archs = sorted(detected_archs)
+                if sorted_archs == ["arm64", "x86_64"]:
+                    library_identifier = "tvos-arm64_x86_64-simulator"
+                elif sorted_archs == ["arm64"]:
+                    library_identifier = "tvos-arm64-simulator"
+                elif sorted_archs == ["x86_64"]:
+                    library_identifier = "tvos-x86_64-simulator"
+                else:
+                    library_identifier = "tvos-simulator"
                 supported_platform = "tvos"
-                supported_architectures = ["arm64"]  # ARM64 only
+                supported_architectures = sorted_archs
                 platform_variant = "simulator"
             elif platform == 'iphoneos':
                 library_identifier = "ios-arm64"
@@ -334,9 +377,7 @@ class IdeviceFfiXCFrameworkBuilder:
                 supported_architectures = ["arm64"]
                 platform_variant = None
             elif platform == 'iphonesimulator':
-                detected_archs = self.get_lib_archs(lib_path)
-                if not detected_archs:
-                    detected_archs = platform_config.get('archs', [])
+                detected_archs = self.get_lib_archs(lib_path) or platform_config.get('archs', [])
                 sorted_archs = sorted(detected_archs)
                 if sorted_archs == ["arm64", "x86_64"]:
                     library_identifier = "ios-arm64_x86_64-simulator"
@@ -347,7 +388,45 @@ class IdeviceFfiXCFrameworkBuilder:
                 else:
                     library_identifier = "ios-simulator"
                 supported_platform = "ios"
-                supported_architectures = sorted_archs if sorted_archs else platform_config.get('archs', [])
+                supported_architectures = sorted_archs
+                platform_variant = "simulator"
+            elif platform == 'macosx':
+                detected_archs = self.get_lib_archs(lib_path) or platform_config.get('archs', [])
+                sorted_archs = sorted(detected_archs)
+                if sorted_archs == ["arm64", "x86_64"]:
+                    library_identifier = "macos-arm64_x86_64"
+                elif sorted_archs == ["arm64"]:
+                    library_identifier = "macos-arm64"
+                elif sorted_archs == ["x86_64"]:
+                    library_identifier = "macos-x86_64"
+                else:
+                    library_identifier = "macos"
+                supported_platform = "macos"
+                supported_architectures = sorted_archs
+                platform_variant = None
+            elif platform == 'maccatalyst':
+                detected_archs = self.get_lib_archs(lib_path) or platform_config.get('archs', [])
+                sorted_archs = sorted(detected_archs)
+                if sorted_archs == ["arm64", "x86_64"]:
+                    library_identifier = "ios-arm64_x86_64-maccatalyst"
+                elif sorted_archs == ["arm64"]:
+                    library_identifier = "ios-arm64-maccatalyst"
+                elif sorted_archs == ["x86_64"]:
+                    library_identifier = "ios-x86_64-maccatalyst"
+                else:
+                    library_identifier = "ios-maccatalyst"
+                supported_platform = "ios"
+                supported_architectures = sorted_archs
+                platform_variant = "maccatalyst"
+            elif platform == 'xros':
+                library_identifier = "visionos-arm64"
+                supported_platform = "visionos"
+                supported_architectures = ["arm64"]
+                platform_variant = None
+            elif platform == 'xrsimulator':
+                library_identifier = "visionos-arm64-simulator"
+                supported_platform = "visionos"
+                supported_architectures = ["arm64"]
                 platform_variant = "simulator"
             else:
                 continue  # Skip unknown platforms
@@ -413,7 +492,11 @@ class IdeviceFfiXCFrameworkBuilder:
             'iphoneos': 'iphoneos',
             'iphonesimulator': 'iphonesimulator',
             'appletvos': 'appletvos',
-            'appletvsimulator': 'appletvsimulator'
+            'appletvsimulator': 'appletvsimulator',
+            'macosx': 'macosx',
+            'maccatalyst': 'maccatalyst',
+            'xros': 'xros',
+            'xrsimulator': 'xrsimulator'
         }
 
         platform = platform_map.get(sdk_name.lower())
