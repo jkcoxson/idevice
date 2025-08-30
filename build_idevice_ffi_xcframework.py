@@ -54,7 +54,7 @@ class IdeviceFfiXCFrameworkBuilder:
                 'rust_targets': ['aarch64-apple-ios-macabi', 'x86_64-apple-ios-macabi'],
                 'sdk': 'macosx',
                 'archs': ['arm64', 'x86_64'],
-                'min_version': '12.0',
+                'min_version': '13.1',
                 'platform_name': 'Mac Catalyst'
             },
             'xros': {
