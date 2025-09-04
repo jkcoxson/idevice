@@ -44,12 +44,9 @@ int main(int argc, char** argv) {
     FfiError    err;
 
     // 1) Connect to usbmuxd and pick first device
-    auto        mux = UsbmuxdConnection::default_new(/*tag*/ 0);
-    if_let_err(mux, err, { die("failed to connect to usbmuxd", err); });
+    auto mux     = UsbmuxdConnection::default_new(/*tag*/ 0).expect("failed to connect to usbmuxd");
 
-    auto devices_res = mux.unwrap().get_devices();
-    if_let_err(devices_res, err, { die("failed to list devices", err); });
-    auto& devices = devices_res.unwrap();
+    auto devices = mux.get_devices().expect("failed to list devices");
     if (devices.empty()) {
         std::cerr << "no devices connected\n";
         return 1;
@@ -73,35 +70,31 @@ int main(int argc, char** argv) {
     const uint32_t    tag   = 0;
     const std::string label = "app_service-jkcoxson";
 
-    auto              provider_res =
-        Provider::usbmuxd_new(std::move(addr), tag, udid.unwrap(), mux_id.unwrap(), label);
-    if_let_err(provider_res, err, { die("failed to create provider", err); });
-    auto& provider = provider_res.unwrap();
+    auto              provider =
+        Provider::usbmuxd_new(std::move(addr), tag, udid.unwrap(), mux_id.unwrap(), label)
+            .expect("failed to create provider");
 
     // 3) CoreDeviceProxy
-    auto  cdp      = CoreDeviceProxy::connect(provider).unwrap_or_else(
+    auto cdp = CoreDeviceProxy::connect(provider).unwrap_or_else(
         [](FfiError e) -> CoreDeviceProxy { die("failed to connect CoreDeviceProxy", e); });
 
     auto rsd_port = cdp.get_server_rsd_port().unwrap_or_else(
         [](FfiError err) -> uint16_t { die("failed to get server RSD port", err); });
 
     // 4) Create software tunnel adapter (consumes proxy)
-    auto adapter = std::move(cdp).create_tcp_adapter();
-    if_let_err(adapter, err, { die("failed to create software tunnel adapter", err); });
+    auto adapter =
+        std::move(cdp).create_tcp_adapter().expect("failed to create software tunnel adapter");
 
     // 5) Connect adapter to RSD → ReadWrite stream
-    auto stream = adapter.unwrap().connect(rsd_port);
-    if_let_err(stream, err, { die("failed to connect RSD stream", err); });
+    auto stream = adapter.connect(rsd_port).expect("failed to connect RSD stream");
 
     // 6) RSD handshake (consumes stream)
-    auto rsd = RsdHandshake::from_socket(std::move(stream.unwrap()));
-    if_let_err(rsd, err, { die("failed RSD handshake", err); });
+    auto rsd    = RsdHandshake::from_socket(std::move(stream)).expect("failed RSD handshake");
 
     // 7) AppService over RSD (borrows adapter + handshake)
-    auto app = AppService::connect_rsd(adapter.unwrap(), rsd.unwrap())
-                   .unwrap_or_else([&](FfiError e) -> AppService {
-                       die("failed to connect AppService", e); // never returns
-                   });
+    auto app = AppService::connect_rsd(adapter, rsd).unwrap_or_else([&](FfiError e) -> AppService {
+        die("failed to connect AppService", e); // never returns
+    });
 
     // 8) Commands
     if (cmd == "list") {
@@ -160,7 +153,7 @@ int main(int argc, char** argv) {
         }
         std::string bundle_id = argv[2];
 
-        if_let_err(app.uninstall(bundle_id), err, { die("uninstall failed", err); });
+        app.uninstall(bundle_id).expect("Uninstall failed");
         std::cout << "Uninstalled " << bundle_id << "\n";
         return 0;
 

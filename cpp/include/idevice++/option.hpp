@@ -8,7 +8,6 @@
 
 #pragma once
 
-#include <cstdio>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -106,6 +105,8 @@ template <typename T> class Option {
     // unwrap_or / unwrap_or_else
     T unwrap_or(T default_value) const& { return has_ ? *ptr() : std::move(default_value); }
     T unwrap_or(T default_value) && { return has_ ? std::move(*ptr()) : std::move(default_value); }
+    T unwrap_or(const T& default_value) const& { return has_ ? *ptr() : default_value; }
+    T unwrap_or(T&& default_value) const& { return has_ ? *ptr() : std::move(default_value); }
 
     template <typename F> T unwrap_or_else(F&& f) const& {
         return has_ ? *ptr() : static_cast<T>(f());
@@ -123,6 +124,16 @@ template <typename T> class Option {
         }
         return Option<U>(None);
     }
+
+    template <typename F>
+    auto map(F&& f) && -> Option<typename std::decay<decltype(f(std::move(*ptr())))>::type> {
+        using U = typename std::decay<decltype(f(std::move(*ptr())))>::type;
+        if (has_) {
+            // Move the value into the function
+            return Option<U>(f(std::move(*ptr())));
+        }
+        return Option<U>(None);
+    }
 };
 
 // Helpers
@@ -131,21 +142,17 @@ template <typename T> inline Option<typename std::decay<T>::type> Some(T&& v) {
 }
 inline Option<void> Some() = delete; // no Option<void>
 
-// template <typename T> inline Option<T> None() {
-//     return Option<T>(none);
-// } // still needs T specified
-
-// Prefer this at call sites (lets return-type drive the type):
-//   return none;
-
-#define match_option(opt, SOME, NONE)                                                              \
-    if ((opt).is_some()) {                                                                         \
-        auto&& SOME = (opt).unwrap();
-#define or_else                                                                                    \
-    }                                                                                              \
-    else {                                                                                         \
-        NONE;                                                                                      \
-    }
+#define match_option(opt, some_name, some_block, none_block)                                       \
+    /* NOTE: you may return in a block, but not break/continue */                                  \
+    do {                                                                                           \
+        auto&& _option_val = (opt);                                                                \
+        if (_option_val.is_some()) {                                                               \
+            auto&& some_name = _option_val.unwrap();                                               \
+            some_block                                                                             \
+        } else {                                                                                   \
+            none_block                                                                             \
+        }                                                                                          \
+    } while (0)
 
 // --- Option helpers: if_let_some / if_let_some_move / if_let_none ---
 
@@ -154,6 +161,7 @@ inline Option<void> Some() = delete; // no Option<void>
 
 /* Bind a reference to the contained value if Some(...) */
 #define if_let_some(expr, name, block)                                                             \
+    /* NOTE: you may return in a block, but not break/continue */                                  \
     do {                                                                                           \
         auto _opt_unique(_opt_) = (expr);                                                          \
         if (_opt_unique(_opt_).is_some()) {                                                        \
@@ -164,19 +172,11 @@ inline Option<void> Some() = delete; // no Option<void>
 
 /* Move the contained value out (consumes the Option) if Some(...) */
 #define if_let_some_move(expr, name, block)                                                        \
+    /* NOTE: you may return in a block, but not break/continue */                                  \
     do {                                                                                           \
         auto _opt_unique(_opt_) = (expr);                                                          \
         if (_opt_unique(_opt_).is_some()) {                                                        \
             auto name = std::move(_opt_unique(_opt_)).unwrap();                                    \
-            block                                                                                  \
-        }                                                                                          \
-    } while (0)
-
-/* Run a block if the option is None */
-#define if_let_none(expr, block)                                                                   \
-    do {                                                                                           \
-        auto _opt_unique(_opt_) = (expr);                                                          \
-        if (_opt_unique(_opt_).is_none()) {                                                        \
             block                                                                                  \
         }                                                                                          \
     } while (0)

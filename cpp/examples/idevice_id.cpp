@@ -4,19 +4,10 @@
 #include <iostream>
 
 int main() {
-    auto u = IdeviceFFI::UsbmuxdConnection::default_new(0);
-    if_let_err(u, e, {
-        std::cerr << "failed to connect to usbmuxd";
-        std::cerr << e.message;
-    });
+    auto u = IdeviceFFI::UsbmuxdConnection::default_new(0).expect("failed to connect to usbmuxd");
+    auto devices = u.get_devices().expect("failed to get devices from usbmuxd");
 
-    auto devices = u.unwrap().get_devices();
-    if_let_err(devices, e, {
-        std::cerr << "failed to get devices from usbmuxd";
-        std::cerr << e.message;
-    });
-
-    for (IdeviceFFI::UsbmuxdDevice& d : devices.unwrap()) {
+    for (IdeviceFFI::UsbmuxdDevice& d : devices) {
         auto udid = d.get_udid();
         if (udid.is_none()) {
             std::cerr << "failed to get udid";

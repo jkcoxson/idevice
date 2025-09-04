@@ -76,6 +76,57 @@ template <typename T, typename E> class Result {
         }
     }
 
+    // Copy Assignment
+    Result& operator=(const Result& other) {
+        // Prevent self-assignment
+        if (this == &other) {
+            return *this;
+        }
+
+        // Destroy the current value
+        if (is_ok_) {
+            ok_value_.~T();
+        } else {
+            err_value_.~E();
+        }
+
+        is_ok_ = other.is_ok_;
+
+        // Construct the new value
+        if (is_ok_) {
+            new (&ok_value_) T(other.ok_value_);
+        } else {
+            new (&err_value_) E(other.err_value_);
+        }
+
+        return *this;
+    }
+
+    // Move Assignment
+    Result& operator=(Result&& other) noexcept {
+        if (this == &other) {
+            return *this;
+        }
+
+        // Destroy the current value
+        if (is_ok_) {
+            ok_value_.~T();
+        } else {
+            err_value_.~E();
+        }
+
+        is_ok_ = other.is_ok_;
+
+        // Construct the new value by moving
+        if (is_ok_) {
+            new (&ok_value_) T(std::move(other.ok_value_));
+        } else {
+            new (&err_value_) E(std::move(other.err_value_));
+        }
+
+        return *this;
+    }
+
     bool is_ok() const { return is_ok_; }
     bool is_err() const { return !is_ok_; }
 
@@ -131,6 +182,32 @@ template <typename T, typename E> class Result {
     }
 
     T unwrap_or(T&& default_value) const { return is_ok_ ? ok_value_ : std::move(default_value); }
+
+    T expect(const char* message) && {
+        if (is_err()) {
+            std::fprintf(stderr, "Fatal (expect) error: %s\n", message);
+            std::terminate();
+        }
+        return std::move(ok_value_);
+    }
+
+    // Returns a mutable reference from an lvalue Result
+    T& expect(const char* message) & {
+        if (is_err()) {
+            std::fprintf(stderr, "Fatal (expect) error: %s\n", message);
+            std::terminate();
+        }
+        return ok_value_;
+    }
+
+    // Returns a const reference from a const lvalue Result
+    const T& expect(const char* message) const& {
+        if (is_err()) {
+            std::fprintf(stderr, "Fatal (expect) error: %s\n", message);
+            std::terminate();
+        }
+        return ok_value_;
+    }
 
     template <typename F> T unwrap_or_else(F&& f) & {
         return is_ok_ ? ok_value_ : static_cast<T>(f(err_value_));
@@ -206,26 +283,24 @@ template <typename E> class Result<void, E> {
         }
         return err_value_;
     }
+
+    void expect(const char* message) const {
+        if (is_err()) {
+            std::fprintf(stderr, "Fatal (expect) error: %s\n", message);
+            std::terminate();
+        }
+    }
 };
 
 #define match_result(res, ok_name, ok_block, err_name, err_block)                                  \
-    if ((res).is_ok()) {                                                                           \
-        auto&& ok_name = (res).unwrap();                                                           \
-        ok_block                                                                                   \
-    } else {                                                                                       \
-        auto&& err_name = (res).unwrap_err();                                                      \
-        err_block                                                                                  \
-    }
-
-#define if_let_err(res, name, block)                                                               \
-    if ((res).is_err()) {                                                                          \
-        auto&& name = (res).unwrap_err();                                                          \
-        block                                                                                      \
-    }
-
-#define if_let_ok(res, name, block)                                                                \
-    if ((res).is_ok()) {                                                                           \
-        auto&& name = (res).unwrap();                                                              \
-        block                                                                                      \
-    }
+    do {                                                                                           \
+        auto&& _result_val = (res);                                                                \
+        if (_result_val.is_ok()) {                                                                 \
+            auto&& ok_name = _result_val.unwrap();                                                 \
+            ok_block                                                                               \
+        } else {                                                                                   \
+            auto&& err_name = _result_val.unwrap_err();                                            \
+            err_block                                                                              \
+        }                                                                                          \
+    } while (0)
 } // namespace IdeviceFFI
