@@ -117,7 +117,7 @@ template <typename T> class Option {
 
     // map
     template <typename F>
-    auto map(F&& f) const -> Option<typename std::decay<decltype(f(*ptr()))>::type> {
+    auto map(F&& f) const& -> Option<typename std::decay<decltype(f(*ptr()))>::type> {
         using U = typename std::decay<decltype(f(*ptr()))>::type;
         if (has_) {
             return Option<U>(f(*ptr()));
