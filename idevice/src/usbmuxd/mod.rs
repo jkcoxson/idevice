@@ -335,6 +335,32 @@ impl UsbmuxdConnection {
         }
     }
 
+    /// Tells usbmuxd to save the pairing record in its storage
+    ///
+    /// # Arguments
+    /// * `device_id` - usbmuxd device ID
+    /// * `udid` - the device UDID/serial
+    /// * `pair_record` - a serialized plist of the pair record
+    pub async fn save_pair_record(
+        &mut self,
+        device_id: u32,
+        udid: &str,
+        pair_record: Vec<u8>,
+    ) -> Result<(), IdeviceError> {
+        let req = crate::plist!(dict {
+            "MessageType": "SavePairRecord",
+            "PairRecordData": pair_record,
+            "DeviceID": device_id,
+            "PairRecordID": udid,
+        });
+        self.write_plist(req).await?;
+        let res = self.read_plist().await?;
+        match res.get("Number").and_then(|x| x.as_unsigned_integer()) {
+            Some(0) => Ok(()),
+            _ => Err(IdeviceError::UnexpectedResponse),
+        }
+    }
+
     /// Writes a PLIST message to usbmuxd
     async fn write_plist(&mut self, req: plist::Dictionary) -> Result<(), IdeviceError> {
         let raw = raw_packet::RawPacket::new(
