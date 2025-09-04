@@ -113,6 +113,10 @@ path = "src/diagnosticsservice.rs"
 name = "bt_packet_logger"
 path = "src/bt_packet_logger.rs"
 
+[[bin]]
+name = "pcapd"
+path = "src/pcapd.rs"
+
 [dependencies]
 idevice = { path = "../idevice", features = ["full"], default-features = false }
 tokio = { version = "1.43", features = ["full"] }

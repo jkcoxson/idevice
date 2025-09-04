@@ -33,6 +33,8 @@ pub mod mobile_image_mounter;
 pub mod mobilebackup2;
 #[cfg(feature = "syslog_relay")]
 pub mod os_trace_relay;
+#[cfg(feature = "pcapd")]
+pub mod pcapd;
 #[cfg(feature = "restore_service")]
 pub mod restore_service;
 #[cfg(feature = "rsd")]

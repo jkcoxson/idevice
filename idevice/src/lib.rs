@@ -373,6 +373,22 @@ impl Idevice {
     /// # Errors
     /// Returns `IdeviceError` if reading, parsing fails, or device reports an error
     async fn read_plist(&mut self) -> Result<plist::Dictionary, IdeviceError> {
+        let res = self.read_plist_value().await?;
+        let res: plist::Dictionary = plist::from_value(&res)?;
+        debug!("Received plist: {}", pretty_print_dictionary(&res));
+
+        if let Some(e) = res.get("Error") {
+            let e: String = plist::from_value(e)?;
+            if let Some(e) = IdeviceError::from_device_error_type(e.as_str(), &res) {
+                return Err(e);
+            } else {
+                return Err(IdeviceError::UnknownErrorType(e));
+            }
+        }
+        Ok(res)
+    }
+
+    async fn read_plist_value(&mut self) -> Result<plist::Value, IdeviceError> {
         if let Some(socket) = &mut self.socket {
             debug!("Reading response size");
             let mut buf = [0u8; 4];
@@ -380,17 +396,7 @@ impl Idevice {
             let len = u32::from_be_bytes(buf);
             let mut buf = vec![0; len as usize];
             socket.read_exact(&mut buf).await?;
-            let res: plist::Dictionary = plist::from_bytes(&buf)?;
-            debug!("Received plist: {}", pretty_print_dictionary(&res));
-
-            if let Some(e) = res.get("Error") {
-                let e: String = plist::from_value(e)?;
-                if let Some(e) = IdeviceError::from_device_error_type(e.as_str(), &res) {
-                    return Err(e);
-                } else {
-                    return Err(IdeviceError::UnknownErrorType(e));
-                }
-            }
+            let res: plist::Value = plist::from_bytes(&buf)?;
             Ok(res)
         } else {
             Err(IdeviceError::NoEstablishedConnection)
@@ -689,6 +695,8 @@ pub enum IdeviceError {
     UnsupportedWatchKey = -63,
     #[error("malformed command")]
     MalformedCommand = -64,
+    #[error("integer overflow")]
+    IntegerOverflow = -65,
 }
 
 impl IdeviceError {
@@ -839,6 +847,7 @@ impl IdeviceError {
             IdeviceError::FfiBufferTooSmall(_, _) => -62,
             IdeviceError::UnsupportedWatchKey => -63,
             IdeviceError::MalformedCommand => -64,
+            IdeviceError::IntegerOverflow => -65,
         }
     }
 }

@@ -85,6 +85,7 @@ mobile_image_mounter = ["dep:sha2"]
 mobilebackup2 = []
 location_simulation = []
 pair = ["chrono/default", "tokio/time", "dep:sha2", "dep:rsa", "dep:x509-cert"]
+pcapd = []
 obfuscate = ["dep:obfstr"]
 restore_service = []
 rsd = ["xpc"]
@@ -120,6 +121,7 @@ full = [
   "mobile_image_mounter",
   "mobilebackup2",
   "pair",
+  "pcapd",
   "restore_service",
   "rsd",
   "springboardservices",
