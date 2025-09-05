@@ -56,6 +56,8 @@ x509-cert = { version = "0.2", optional = true, features = [
 
 obfstr = { version = "0.4", optional = true }
 
+async_zip = { version = "0.0.18", optional = true }
+
 [dev-dependencies]
 tokio = { version = "1.43", features = ["full"] }
 tun-rs = { version = "2.0.8", features = ["async_tokio"] }
@@ -78,7 +80,13 @@ diagnostics_relay = []
 dvt = ["dep:byteorder", "dep:ns-keyed-archive"]
 heartbeat = ["tokio/macros", "tokio/time"]
 house_arrest = ["afc"]
-installation_proxy = []
+installation_proxy = [
+  "dep:async_zip", 
+  "dep:futures",
+  "async_zip/tokio", 
+  "async_zip/deflate",
+  "tokio/fs"
+]
 springboardservices = []
 misagent = []
 mobile_image_mounter = ["dep:sha2"]
