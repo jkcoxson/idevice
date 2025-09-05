@@ -16,18 +16,6 @@ async fn main() {
     let matches = Command::new("pcapd")
         .about("Capture IP packets")
         .arg(
-            Arg::new("host")
-                .long("host")
-                .value_name("HOST")
-                .help("IP address of the device"),
-        )
-        .arg(
-            Arg::new("pairing_file")
-                .long("pairing-file")
-                .value_name("PATH")
-                .help("Path to the pairing file"),
-        )
-        .arg(
             Arg::new("udid")
                 .value_name("UDID")
                 .help("UDID of the device (overrides host/pairing file)")
@@ -54,11 +42,9 @@ async fn main() {
     }
 
     let udid = matches.get_one::<String>("udid");
-    let host = matches.get_one::<String>("host");
-    let pairing_file = matches.get_one::<String>("pairing_file");
     let out = matches.get_one::<String>("out").map(String::to_owned);
 
-    let provider = match common::get_provider(udid, host, pairing_file, "pcapd-jkcoxson").await {
+    let provider = match common::get_provider(udid, None, None, "pcapd-jkcoxson").await {
         Ok(p) => p,
         Err(e) => {
             eprintln!("{e}");
@@ -68,7 +54,7 @@ async fn main() {
 
     let mut logger_client = PcapdClient::connect(&*provider)
         .await
-        .expect("Failed to connect to pcapd");
+        .expect("Failed to connect to pcapd! This service is only available over USB!");
 
     logger_client.next_packet().await.unwrap();
 

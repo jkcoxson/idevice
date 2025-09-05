@@ -1,4 +1,5 @@
 //! Abstraction for pcapd
+//! Note that this service only works over USB or through RSD.
 
 use plist::Value;
 use tokio::io::AsyncWrite;
@@ -11,6 +12,7 @@ const ETHERNET_HEADER: &[u8] = &[
 ];
 
 /// Client for interacting with the pcapd service on the device.
+/// Note that this service only works over USB or through RSD.
 pub struct PcapdClient {
     /// The underlying device connection with established service
     pub idevice: Idevice,
