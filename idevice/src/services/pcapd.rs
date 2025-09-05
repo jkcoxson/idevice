@@ -34,7 +34,9 @@ impl RsdService for PcapdClient {
     }
 
     async fn from_stream(stream: Box<dyn crate::ReadWrite>) -> Result<Self, crate::IdeviceError> {
-        Ok(Self::new(Idevice::new(stream, "".to_string())))
+        let mut idevice = Idevice::new(stream, "");
+        idevice.rsd_checkin().await?;
+        Ok(Self::new(idevice))
     }
 }
 
