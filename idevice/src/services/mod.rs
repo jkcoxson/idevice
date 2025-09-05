@@ -35,6 +35,8 @@ pub mod mobilebackup2;
 pub mod os_trace_relay;
 #[cfg(feature = "pcapd")]
 pub mod pcapd;
+#[cfg(feature = "preboard_service")]
+pub mod preboard_service;
 #[cfg(feature = "restore_service")]
 pub mod restore_service;
 #[cfg(feature = "rsd")]

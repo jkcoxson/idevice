@@ -86,6 +86,7 @@ mobilebackup2 = []
 location_simulation = []
 pair = ["chrono/default", "tokio/time", "dep:sha2", "dep:rsa", "dep:x509-cert"]
 pcapd = []
+preboard_service = []
 obfuscate = ["dep:obfstr"]
 restore_service = []
 rsd = ["xpc"]
@@ -122,6 +123,7 @@ full = [
   "mobilebackup2",
   "pair",
   "pcapd",
+  "preboard_service",
   "restore_service",
   "rsd",
   "springboardservices",

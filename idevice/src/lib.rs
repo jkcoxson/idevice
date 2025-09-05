@@ -379,7 +379,20 @@ impl Idevice {
         debug!("Received plist: {}", pretty_print_dictionary(&res));
 
         if let Some(e) = res.get("Error") {
-            let e: String = plist::from_value(e)?;
+            let e = match e {
+                plist::Value::String(e) => e.to_string(),
+                plist::Value::Integer(e) => {
+                    if let Some(error_string) = res.get("ErrorString").and_then(|x| x.as_string()) {
+                        error_string.to_string()
+                    } else {
+                        e.to_string()
+                    }
+                }
+                _ => {
+                    log::error!("Error is not a string or integer from read_plist: {e:?}");
+                    return Err(IdeviceError::UnexpectedResponse);
+                }
+            };
             if let Some(e) = IdeviceError::from_device_error_type(e.as_str(), &res) {
                 return Err(e);
             } else {
@@ -698,6 +711,8 @@ pub enum IdeviceError {
     MalformedCommand = -64,
     #[error("integer overflow")]
     IntegerOverflow = -65,
+    #[error("canceled by user")]
+    CanceledByUser = -66,
 }
 
 impl IdeviceError {
@@ -710,6 +725,9 @@ impl IdeviceError {
     /// # Returns
     /// Some(IdeviceError) if the string maps to a known error type, None otherwise
     fn from_device_error_type(e: &str, context: &plist::Dictionary) -> Option<Self> {
+        if e.contains("NSDebugDescription=Canceled by user.") {
+            return Some(Self::CanceledByUser);
+        }
         match e {
             "GetProhibited" => Some(Self::GetProhibited),
             "InvalidHostID" => Some(Self::InvalidHostID),
@@ -849,6 +867,7 @@ impl IdeviceError {
             IdeviceError::UnsupportedWatchKey => -63,
             IdeviceError::MalformedCommand => -64,
             IdeviceError::IntegerOverflow => -65,
+            IdeviceError::CanceledByUser => -66,
         }
     }
 }

@@ -121,6 +121,10 @@ path = "src/bt_packet_logger.rs"
 name = "pcapd"
 path = "src/pcapd.rs"
 
+[[bin]]
+name = "preboard"
+path = "src/preboard.rs"
+
 [dependencies]
 idevice = { path = "../idevice", features = ["full"], default-features = false }
 tokio = { version = "1.43", features = ["full"] }
