@@ -22,6 +22,10 @@ name = "instproxy"
 path = "src/instproxy.rs"
 
 [[bin]]
+name = "ideviceinstaller"
+path = "src/ideviceinstaller.rs"
+
+[[bin]]
 name = "mounter"
 path = "src/mounter.rs"
 
