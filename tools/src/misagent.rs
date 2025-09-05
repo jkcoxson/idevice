@@ -2,8 +2,8 @@
 
 use std::path::PathBuf;
 
-use clap::{arg, value_parser, Arg, Command};
-use idevice::{misagent::MisagentClient, IdeviceService};
+use clap::{Arg, Command, arg, value_parser};
+use idevice::{IdeviceService, misagent::MisagentClient};
 
 mod common;
 
@@ -52,7 +52,9 @@ async fn main() {
         .get_matches();
 
     if matches.get_flag("about") {
-        println!("mounter - query and manage images mounted on a device. Reimplementation of libimobiledevice's binary.");
+        println!(
+            "mounter - query and manage images mounted on a device. Reimplementation of libimobiledevice's binary."
+        );
         println!("Copyright (c) 2025 Jackson Coxson");
         return;
     }

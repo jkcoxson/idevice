@@ -16,6 +16,7 @@ pub mod tunneld;
 #[cfg(feature = "usbmuxd")]
 pub mod usbmuxd;
 mod util;
+pub mod utils;
 #[cfg(feature = "xpc")]
 pub mod xpc;
 
@@ -36,6 +37,8 @@ use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub use util::{pretty_print_dictionary, pretty_print_plist};
+
+use crate::services::lockdown::LockdownClient;
 
 /// A trait combining all required characteristics for a device communication socket
 ///
@@ -61,29 +64,58 @@ pub trait IdeviceService: Sized {
     ///
     /// # Arguments
     /// * `provider` - The device provider that can supply connections
-    fn connect(
-        provider: &dyn IdeviceProvider,
-    ) -> impl std::future::Future<Output = Result<Self, IdeviceError>> + Send;
+    ///
+    // From the docs
+    // │ │ ├╴  use of `async fn` in public traits is discouraged as auto trait bounds cannot be specified
+    // │ │ │    you can suppress this lint if you plan to use the trait only in your own code, or do not care about auto traits like `Send` on the `Future`
+    // │ │ │    `#[warn(async_fn_in_trait)]` on by default rustc (async_fn_in_trait) [66, 5]
+    #[allow(async_fn_in_trait)]
+    async fn connect(provider: &dyn IdeviceProvider) -> Result<Self, IdeviceError> {
+        let mut lockdown = LockdownClient::connect(provider).await?;
+        lockdown
+            .start_session(&provider.get_pairing_file().await?)
+            .await?;
+        // Best-effort fetch UDID for downstream defaults (e.g., MobileBackup2 Target/Source identifiers)
+        let udid_value = match lockdown.get_value(Some("UniqueDeviceID"), None).await {
+            Ok(v) => v.as_string().map(|s| s.to_string()),
+            Err(_) => None,
+        };
+
+        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
+
+        let mut idevice = provider.connect(port).await?;
+        if ssl {
+            idevice
+                .start_session(&provider.get_pairing_file().await?)
+                .await?;
+        }
+
+        if let Some(udid) = udid_value {
+            idevice.set_udid(udid);
+        }
+
+        Self::from_stream(idevice).await
+    }
+
+    #[allow(async_fn_in_trait)]
+    async fn from_stream(idevice: Idevice) -> Result<Self, IdeviceError>;
 }
 
 #[cfg(feature = "rsd")]
 pub trait RsdService: Sized {
     fn rsd_service_name() -> std::borrow::Cow<'static, str>;
     fn from_stream(
-        stream: Self::Stream,
+        stream: Box<dyn ReadWrite>,
     ) -> impl std::future::Future<Output = Result<Self, IdeviceError>> + Send;
-    fn connect_rsd<'a, S>(
-        provider: &'a mut impl RsdProvider<'a, Stream = S>,
+    fn connect_rsd(
+        provider: &mut impl RsdProvider,
         handshake: &mut rsd::RsdHandshake,
     ) -> impl std::future::Future<Output = Result<Self, IdeviceError>>
     where
-        Self: crate::RsdService<Stream = S>,
-        S: ReadWrite,
+        Self: crate::RsdService,
     {
         handshake.connect(provider)
     }
-
-    type Stream: ReadWrite;
 }
 
 /// Type alias for boxed device connection sockets
@@ -101,6 +133,8 @@ pub struct Idevice {
     socket: Option<Box<dyn ReadWrite>>,
     /// Unique label identifying this connection
     label: String,
+    /// Cached device UDID for convenience in higher-level protocols
+    udid: Option<String>,
 }
 
 impl Idevice {
@@ -113,7 +147,22 @@ impl Idevice {
         Self {
             socket: Some(socket),
             label: label.into(),
+            udid: None,
         }
+    }
+
+    pub fn get_socket(self) -> Option<Box<dyn ReadWrite>> {
+        self.socket
+    }
+
+    /// Sets cached UDID
+    pub fn set_udid(&mut self, udid: impl Into<String>) {
+        self.udid = Some(udid.into());
+    }
+
+    /// Returns cached UDID if available
+    pub fn udid(&self) -> Option<&str> {
+        self.udid.as_deref()
     }
 
     /// Queries the device type
@@ -126,11 +175,12 @@ impl Idevice {
     /// # Errors
     /// Returns `IdeviceError` if communication fails or response is invalid
     pub async fn get_type(&mut self) -> Result<String, IdeviceError> {
-        let mut req = plist::Dictionary::new();
-        req.insert("Label".into(), self.label.clone().into());
-        req.insert("Request".into(), "QueryType".into());
-        let message = plist::to_value(&req)?;
-        self.send_plist(message).await?;
+        let req = crate::plist!({
+            "Label": self.label.clone(),
+            "Request": "QueryType",
+        });
+        self.send_plist(req).await?;
+
         let message: plist::Dictionary = self.read_plist().await?;
         match message.get("Type") {
             Some(m) => Ok(plist::from_value(m)?),
@@ -145,11 +195,13 @@ impl Idevice {
     /// # Errors
     /// Returns `IdeviceError` if the protocol sequence isn't followed correctly
     pub async fn rsd_checkin(&mut self) -> Result<(), IdeviceError> {
-        let mut req = plist::Dictionary::new();
-        req.insert("Label".into(), self.label.clone().into());
-        req.insert("ProtocolVersion".into(), "2".into());
-        req.insert("Request".into(), "RSDCheckin".into());
-        self.send_plist(plist::to_value(&req).unwrap()).await?;
+        let req = crate::plist!({
+            "Label": self.label.clone(),
+            "ProtocolVersion": "2",
+            "Request": "RSDCheckin",
+        });
+
+        self.send_plist(req).await?;
         let res = self.read_plist().await?;
         match res.get("Request").and_then(|x| x.as_string()) {
             Some(r) => {
@@ -322,6 +374,35 @@ impl Idevice {
     /// # Errors
     /// Returns `IdeviceError` if reading, parsing fails, or device reports an error
     async fn read_plist(&mut self) -> Result<plist::Dictionary, IdeviceError> {
+        let res = self.read_plist_value().await?;
+        let res: plist::Dictionary = plist::from_value(&res)?;
+        debug!("Received plist: {}", pretty_print_dictionary(&res));
+
+        if let Some(e) = res.get("Error") {
+            let e = match e {
+                plist::Value::String(e) => e.to_string(),
+                plist::Value::Integer(e) => {
+                    if let Some(error_string) = res.get("ErrorString").and_then(|x| x.as_string()) {
+                        error_string.to_string()
+                    } else {
+                        e.to_string()
+                    }
+                }
+                _ => {
+                    log::error!("Error is not a string or integer from read_plist: {e:?}");
+                    return Err(IdeviceError::UnexpectedResponse);
+                }
+            };
+            if let Some(e) = IdeviceError::from_device_error_type(e.as_str(), &res) {
+                return Err(e);
+            } else {
+                return Err(IdeviceError::UnknownErrorType(e));
+            }
+        }
+        Ok(res)
+    }
+
+    async fn read_plist_value(&mut self) -> Result<plist::Value, IdeviceError> {
         if let Some(socket) = &mut self.socket {
             debug!("Reading response size");
             let mut buf = [0u8; 4];
@@ -329,17 +410,7 @@ impl Idevice {
             let len = u32::from_be_bytes(buf);
             let mut buf = vec![0; len as usize];
             socket.read_exact(&mut buf).await?;
-            let res: plist::Dictionary = plist::from_bytes(&buf)?;
-            debug!("Received plist: {}", pretty_print_dictionary(&res));
-
-            if let Some(e) = res.get("Error") {
-                let e: String = plist::from_value(e)?;
-                if let Some(e) = IdeviceError::from_device_error_type(e.as_str(), &res) {
-                    return Err(e);
-                } else {
-                    return Err(IdeviceError::UnknownErrorType(e));
-                }
-            }
+            let res: plist::Value = plist::from_bytes(&buf)?;
             Ok(res)
         } else {
             Err(IdeviceError::NoEstablishedConnection)
@@ -390,9 +461,39 @@ impl Idevice {
         pairing_file: &pairing_file::PairingFile,
     ) -> Result<(), IdeviceError> {
         if CryptoProvider::get_default().is_none() {
-            if let Err(e) =
-                CryptoProvider::install_default(rustls::crypto::aws_lc_rs::default_provider())
-            {
+            // rust-analyzer will choke on this block, don't worry about it
+            let crypto_provider: CryptoProvider = {
+                #[cfg(all(feature = "ring", not(feature = "aws-lc")))]
+                {
+                    debug!("Using ring crypto backend");
+                    rustls::crypto::ring::default_provider()
+                }
+
+                #[cfg(all(feature = "aws-lc", not(feature = "ring")))]
+                {
+                    debug!("Using aws-lc crypto backend");
+                    rustls::crypto::aws_lc_rs::default_provider()
+                }
+
+                #[cfg(not(any(feature = "ring", feature = "aws-lc")))]
+                {
+                    compile_error!(
+                        "No crypto backend was selected! Specify an idevice feature for a crypto backend"
+                    );
+                }
+
+                #[cfg(all(feature = "ring", feature = "aws-lc"))]
+                {
+                    // We can't throw a compile error because it breaks rust-analyzer.
+                    // My sanity while debugging the workspace crates are more important.
+
+                    debug!("Using ring crypto backend, because both were passed");
+                    log::warn!("Both ring && aws-lc are selected as idevice crypto backends!");
+                    rustls::crypto::ring::default_provider()
+                }
+            };
+
+            if let Err(e) = CryptoProvider::install_default(crypto_provider) {
                 // For whatever reason, getting the default provider will return None on iOS at
                 // random. Installing the default provider a second time will return an error, so
                 // we will log it but not propogate it. An issue should be opened with rustls.
@@ -600,22 +701,22 @@ pub enum IdeviceError {
 
     #[cfg(feature = "remote_pairing")]
     #[error("could not parse as JSON")]
-    JsonParseFailed(#[from] json::Error) = -63,
+    JsonParseFailed(#[from] json::Error) = -67,
 
     #[cfg(feature = "remote_pairing")]
     #[error("unknown TLV type: {0}")]
-    UnknownTlv(u8) = -64,
+    UnknownTlv(u8) = -68,
 
     #[cfg(feature = "remote_pairing")]
     #[error("malformed TLV")]
-    MalformedTlv = -65,
+    MalformedTlv = -69,
 
     #[error("failed to decode base64 string")]
-    Base64Decode(#[from] base64::DecodeError) = -66,
+    Base64Decode(#[from] base64::DecodeError) = -70,
 
     #[cfg(feature = "remote_pairing")]
     #[error("pair verify failed")]
-    PairVerifyFailed = -67,
+    PairVerifyFailed = -71,
 
     #[error("invalid arguments were passed")]
     FfiInvalidArg = -60,
@@ -623,6 +724,14 @@ pub enum IdeviceError {
     FfiInvalidString = -61,
     #[error("buffer passed is too small - needs {0}, got {1}")]
     FfiBufferTooSmall(usize, usize) = -62,
+    #[error("unsupported watch key")]
+    UnsupportedWatchKey = -63,
+    #[error("malformed command")]
+    MalformedCommand = -64,
+    #[error("integer overflow")]
+    IntegerOverflow = -65,
+    #[error("canceled by user")]
+    CanceledByUser = -66,
 }
 
 impl IdeviceError {
@@ -635,6 +744,9 @@ impl IdeviceError {
     /// # Returns
     /// Some(IdeviceError) if the string maps to a known error type, None otherwise
     fn from_device_error_type(e: &str, context: &plist::Dictionary) -> Option<Self> {
+        if e.contains("NSDebugDescription=Canceled by user.") {
+            return Some(Self::CanceledByUser);
+        }
         match e {
             "GetProhibited" => Some(Self::GetProhibited),
             "InvalidHostID" => Some(Self::InvalidHostID),
@@ -646,6 +758,8 @@ impl IdeviceError {
             "UserDeniedPairing" => Some(Self::UserDeniedPairing),
             #[cfg(feature = "pair")]
             "PasswordProtected" => Some(Self::PasswordProtected),
+            "UnsupportedWatchKey" => Some(Self::UnsupportedWatchKey),
+            "MalformedCommand" => Some(Self::MalformedCommand),
             "InternalError" => {
                 let detailed_error = context
                     .get("DetailedError")
@@ -769,16 +883,20 @@ impl IdeviceError {
             IdeviceError::FfiInvalidArg => -60,
             IdeviceError::FfiInvalidString => -61,
             IdeviceError::FfiBufferTooSmall(_, _) => -62,
+            IdeviceError::UnsupportedWatchKey => -63,
+            IdeviceError::MalformedCommand => -64,
+            IdeviceError::IntegerOverflow => -65,
+            IdeviceError::CanceledByUser => -66,
 
             #[cfg(feature = "remote_pairing")]
-            IdeviceError::JsonParseFailed(_) => -63,
+            IdeviceError::JsonParseFailed(_) => -67,
             #[cfg(feature = "remote_pairing")]
-            IdeviceError::UnknownTlv(_) => -64,
+            IdeviceError::UnknownTlv(_) => -68,
             #[cfg(feature = "remote_pairing")]
-            IdeviceError::MalformedTlv => -65,
-            IdeviceError::Base64Decode(_) => -66,
+            IdeviceError::MalformedTlv => -69,
+            IdeviceError::Base64Decode(_) => -70,
             #[cfg(feature = "remote_pairing")]
-            IdeviceError::PairVerifyFailed => -67,
+            IdeviceError::PairVerifyFailed => -71,
         }
     }
 }

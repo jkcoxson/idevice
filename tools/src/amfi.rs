@@ -1,7 +1,7 @@
 // Jackson Coxson
 
 use clap::{Arg, Command};
-use idevice::{amfi::AmfiClient, IdeviceService};
+use idevice::{IdeviceService, amfi::AmfiClient};
 
 mod common;
 

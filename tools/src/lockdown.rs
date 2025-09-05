@@ -1,7 +1,7 @@
 // Jackson Coxson
 
-use clap::{arg, Arg, Command};
-use idevice::{lockdown::LockdownClient, pretty_print_plist, IdeviceService};
+use clap::{Arg, Command, arg};
+use idevice::{IdeviceService, lockdown::LockdownClient, pretty_print_plist};
 use plist::Value;
 
 mod common;
@@ -39,12 +39,7 @@ async fn main() {
         .subcommand(
             Command::new("get")
                 .about("Gets a value")
-                .arg(arg!(-v --value <STRING> "the value to get").required(true))
-                .arg(arg!(-d --domain <STRING> "the domain to get in").required(false)),
-        )
-        .subcommand(
-            Command::new("get_all")
-                .about("Gets all")
+                .arg(arg!(-v --value <STRING> "the value to get").required(false))
                 .arg(arg!(-d --domain <STRING> "the domain to get in").required(false)),
         )
         .subcommand(
@@ -57,7 +52,9 @@ async fn main() {
         .get_matches();
 
     if matches.get_flag("about") {
-        println!("lockdown - query and manage values on a device. Reimplementation of libimobiledevice's binary.");
+        println!(
+            "lockdown - query and manage values on a device. Reimplementation of libimobiledevice's binary."
+        );
         println!("Copyright (c) 2025 Jackson Coxson");
         return;
     }
@@ -86,8 +83,8 @@ async fn main() {
 
     match matches.subcommand() {
         Some(("get", sub_m)) => {
-            let key = sub_m.get_one::<String>("value").unwrap();
-            let domain = sub_m.get_one::<String>("domain").cloned();
+            let key = sub_m.get_one::<String>("value").map(|x| x.as_str());
+            let domain = sub_m.get_one::<String>("domain").map(|x| x.as_str());
 
             match lockdown_client.get_value(key, domain).await {
                 Ok(value) => {
@@ -98,27 +95,18 @@ async fn main() {
                 }
             }
         }
-        Some(("get_all", sub_m)) => {
-            let domain = sub_m.get_one::<String>("domain").cloned();
-
-            match lockdown_client.get_all_values(domain).await {
-                Ok(value) => {
-                    println!("{}", pretty_print_plist(&plist::Value::Dictionary(value)));
-                }
-                Err(e) => {
-                    eprintln!("Error getting value: {e}");
-                }
-            }
-        }
 
         Some(("set", sub_m)) => {
             let key = sub_m.get_one::<String>("key").unwrap();
             let value_str = sub_m.get_one::<String>("value").unwrap();
-            let domain = sub_m.get_one::<String>("domain").cloned();
+            let domain = sub_m.get_one::<String>("domain");
 
             let value = Value::String(value_str.clone());
 
-            match lockdown_client.set_value(key, value, domain).await {
+            match lockdown_client
+                .set_value(key, value, domain.map(|x| x.as_str()))
+                .await
+            {
                 Ok(()) => println!("Successfully set"),
                 Err(e) => eprintln!("Error setting value: {e}"),
             }

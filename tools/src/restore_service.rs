@@ -2,9 +2,8 @@
 
 use clap::{Arg, Command};
 use idevice::{
-    core_device_proxy::CoreDeviceProxy, pretty_print_dictionary,
-    restore_service::RestoreServiceClient, rsd::RsdHandshake, tcp::stream::AdapterStream,
-    IdeviceService, RsdService,
+    IdeviceService, RsdService, core_device_proxy::CoreDeviceProxy, pretty_print_dictionary,
+    restore_service::RestoreServiceClient, rsd::RsdHandshake,
 };
 
 mod common;
@@ -52,7 +51,9 @@ async fn main() {
         .get_matches();
 
     if matches.get_flag("about") {
-        println!("mounter - query and manage images mounted on a device. Reimplementation of libimobiledevice's binary.");
+        println!(
+            "mounter - query and manage images mounted on a device. Reimplementation of libimobiledevice's binary."
+        );
         println!("Copyright (c) 2025 Jackson Coxson");
         return;
     }
@@ -75,11 +76,9 @@ async fn main() {
         .expect("no core proxy");
     let rsd_port = proxy.handshake.server_rsd_port;
 
-    let mut adapter = proxy.create_software_tunnel().expect("no software tunnel");
-
-    let stream = AdapterStream::connect(&mut adapter, rsd_port)
-        .await
-        .expect("no RSD connect");
+    let adapter = proxy.create_software_tunnel().expect("no software tunnel");
+    let mut adapter = adapter.to_async_handle();
+    let stream = adapter.connect(rsd_port).await.expect("no RSD connect");
 
     // Make the connection to RemoteXPC
     let mut handshake = RsdHandshake::new(stream).await.unwrap();

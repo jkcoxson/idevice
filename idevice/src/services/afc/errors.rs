@@ -66,7 +66,7 @@ impl std::fmt::Display for AfcError {
             AfcError::NotEnoughData => "Not enough data",
             AfcError::DirNotEmpty => "Directory not empty",
         };
-        write!(f, "{}", description)
+        write!(f, "{description}")
     }
 }
 

@@ -3,10 +3,10 @@
 
 use std::{io::Write, path::PathBuf};
 
-use clap::{arg, value_parser, Arg, Command};
+use clap::{Arg, Command, arg, value_parser};
 use idevice::{
-    lockdown::LockdownClient, mobile_image_mounter::ImageMounter, pretty_print_plist,
-    IdeviceService,
+    IdeviceService, lockdown::LockdownClient, mobile_image_mounter::ImageMounter,
+    pretty_print_plist,
 };
 
 mod common;
@@ -67,7 +67,9 @@ async fn main() {
         .get_matches();
 
     if matches.get_flag("about") {
-        println!("mounter - query and manage images mounted on a device. Reimplementation of libimobiledevice's binary.");
+        println!(
+            "mounter - query and manage images mounted on a device. Reimplementation of libimobiledevice's binary."
+        );
         println!("Copyright (c) 2025 Jackson Coxson");
         return;
     }
@@ -89,7 +91,10 @@ async fn main() {
         .await
         .expect("Unable to connect to lockdown");
 
-    let product_version = match lockdown_client.get_value("ProductVersion", None).await {
+    let product_version = match lockdown_client
+        .get_value(Some("ProductVersion"), None)
+        .await
+    {
         Ok(p) => p,
         Err(_) => {
             lockdown_client
@@ -97,7 +102,7 @@ async fn main() {
                 .await
                 .unwrap();
             lockdown_client
-                .get_value("ProductVersion", None)
+                .get_value(Some("ProductVersion"), None)
                 .await
                 .unwrap()
         }
@@ -182,21 +187,22 @@ async fn main() {
                 .await
                 .expect("Unable to read signature");
 
-            let unique_chip_id = match lockdown_client.get_value("UniqueChipID", None).await {
-                Ok(u) => u,
-                Err(_) => {
-                    lockdown_client
-                        .start_session(&provider.get_pairing_file().await.unwrap())
-                        .await
-                        .expect("Unable to start session");
-                    lockdown_client
-                        .get_value("UniqueChipID", None)
-                        .await
-                        .expect("Unable to get UniqueChipID")
+            let unique_chip_id =
+                match lockdown_client.get_value(Some("UniqueChipID"), None).await {
+                    Ok(u) => u,
+                    Err(_) => {
+                        lockdown_client
+                            .start_session(&provider.get_pairing_file().await.unwrap())
+                            .await
+                            .expect("Unable to start session");
+                        lockdown_client
+                            .get_value(Some("UniqueChipID"), None)
+                            .await
+                            .expect("Unable to get UniqueChipID")
+                    }
                 }
-            }
-            .as_unsigned_integer()
-            .expect("Unexpected value for chip IP");
+                .as_unsigned_integer()
+                .expect("Unexpected value for chip IP");
 
             mounter_client
                 .mount_personalized_with_callback(
@@ -208,7 +214,7 @@ async fn main() {
                     unique_chip_id,
                     async |((n, d), _)| {
                         let percent = (n as f64 / d as f64) * 100.0;
-                        print!("\rProgress: {:.2}%", percent);
+                        print!("\rProgress: {percent:.2}%");
                         std::io::stdout().flush().unwrap(); // Make sure it prints immediately
                         if n == d {
                             println!();

@@ -3,7 +3,7 @@ name = "idevice-tools"
 description = "Rust binary tools to interact with services on iOS devices."
 authors = ["Jackson Coxson"]
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "MIT"
 documentation = "https://docs.rs/idevice"
 repository = "https://github.com/jkcoxson/idevice"
@@ -22,12 +22,16 @@ name = "instproxy"
 path = "src/instproxy.rs"
 
 [[bin]]
+name = "ideviceinstaller"
+path = "src/ideviceinstaller.rs"
+
+[[bin]]
 name = "mounter"
 path = "src/mounter.rs"
 
-[[bin]]
-name = "core_device_proxy_tun"
-path = "src/core_device_proxy_tun.rs"
+# [[bin]]
+# name = "core_device_proxy_tun"
+# path = "src/core_device_proxy_tun.rs"
 
 [[bin]]
 name = "idevice_id"
@@ -97,15 +101,49 @@ path = "src/restore_service.rs"
 name = "remote_pairing"
 path = "src/remote_pairing.rs"
 
+[[bin]]
+name = "companion_proxy"
+path = "src/companion_proxy.rs"
+
+[[bin]]
+name = "diagnostics"
+path = "src/diagnostics.rs"
+
+[[bin]]
+name = "mobilebackup2"
+path = "src/mobilebackup2.rs"
+
+[[bin]]
+name = "diagnosticsservice"
+path = "src/diagnosticsservice.rs"
+
+[[bin]]
+name = "bt_packet_logger"
+path = "src/bt_packet_logger.rs"
+
+[[bin]]
+name = "pcapd"
+path = "src/pcapd.rs"
+
+[[bin]]
+name = "preboard"
+path = "src/preboard.rs"
+
 [dependencies]
-idevice = { path = "../idevice", features = ["full"] }
-tokio = { version = "1.43", features = ["io-util", "macros", "time", "full"] }
+idevice = { path = "../idevice", features = ["full"], default-features = false }
+tokio = { version = "1.43", features = ["full"] }
 log = { version = "0.4" }
 env_logger = { version = "0.11" }
-tun-rs = { version = "1.5", features = ["async"] }
+# tun-rs = { version = "1.5", features = ["async"] }
 sha2 = { version = "0.10" }
 ureq = { version = "3" }
 clap = { version = "4.5" }
 plist = { version = "1.7" }
 ns-keyed-archive = "0.1.2"
 uuid = "1.16"
+futures-util = { version = "0.3" }
+
+[features]
+default = ["aws-lc"]
+aws-lc = ["idevice/aws-lc"]
+ring = ["idevice/ring"]

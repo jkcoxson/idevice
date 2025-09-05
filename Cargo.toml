@@ -1,4 +1,10 @@
 [workspace]
 
 resolver = "2"
-members = [ "ffi","idevice", "tools"]
+members = ["ffi", "idevice", "tools"]
+
+[profile.release]
+opt-level = "z"
+codegen-units = 1
+lto = true
+panic = "abort"

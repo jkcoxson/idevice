@@ -4,10 +4,10 @@
 //! https://github.com/doronz88/pymobiledevice3/blob/master/pymobiledevice3/services/os_trace.py
 
 use chrono::{DateTime, NaiveDateTime};
-use plist::Dictionary;
+use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 
-use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 /// Client for interacting with the iOS device OsTraceRelay service
 pub struct OsTraceRelayClient {
@@ -21,40 +21,7 @@ impl IdeviceService for OsTraceRelayClient {
         obf!("com.apple.os_trace_relay")
     }
 
-    /// Establishes a connection to the OsTraceRelay service
-    ///
-    /// # Arguments
-    /// * `provider` - Device connection provider
-    ///
-    /// # Returns
-    /// A connected `OsTraceRelayClient` instance
-    ///
-    /// # Errors
-    /// Returns `IdeviceError` if any step of the connection process fails
-    ///
-    /// # Process
-    /// 1. Connects to lockdownd service
-    /// 2. Starts a lockdown session
-    /// 3. Requests the OsTraceRelay service port
-    /// 4. Establishes connection to the OsTraceRelay port
-    /// 5. Optionally starts TLS if required by service
-    async fn connect(
-        provider: &dyn crate::provider::IdeviceProvider,
-    ) -> Result<Self, IdeviceError> {
-        let mut lockdown = LockdownClient::connect(provider).await?;
-        lockdown
-            .start_session(&provider.get_pairing_file().await?)
-            .await?;
-
-        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
-
-        let mut idevice = provider.connect(port).await?;
-        if ssl {
-            idevice
-                .start_session(&provider.get_pairing_file().await?)
-                .await?;
-        }
-
+    async fn from_stream(idevice: Idevice) -> Result<Self, crate::IdeviceError> {
         Ok(Self { idevice })
     }
 }
@@ -64,7 +31,7 @@ pub struct OsTraceRelayReceiver {
     inner: OsTraceRelayClient,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OsTraceLog {
     pub pid: u32,
     pub timestamp: NaiveDateTime,
@@ -75,13 +42,13 @@ pub struct OsTraceLog {
     pub label: Option<SyslogLabel>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SyslogLabel {
     pub subsystem: String,
     pub category: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LogLevel {
     Notice = 0,
     Info = 1,
@@ -103,15 +70,14 @@ impl OsTraceRelayClient {
             Some(p) => p as i64,
             None => -1,
         };
-        let mut req = Dictionary::new();
-        req.insert("Request".into(), "StartActivity".into());
-        req.insert("Pid".into(), Into::into(pid));
-        req.insert("MessageFilter".into(), Into::into(65_535));
-        req.insert("StreamFlags".into(), Into::into(60));
+        let req = crate::plist!({
+            "Request": "StartActivity",
+            "Pid": pid,
+            "MessageFilter": 65_535,
+            "StreamFlags": 60
+        });
 
-        self.idevice
-            .send_bplist(plist::Value::Dictionary(req))
-            .await?;
+        self.idevice.send_bplist(req).await?;
 
         // Read a single byte
         self.idevice.read_raw(1).await?;
@@ -133,12 +99,11 @@ impl OsTraceRelayClient {
 
     /// Get the list of available PIDs
     pub async fn get_pid_list(&mut self) -> Result<Vec<u64>, IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("Request".into(), "PidList".into());
+        let req = crate::plist!({
+            "Request": "PidList"
+        });
 
-        self.idevice
-            .send_bplist(plist::Value::Dictionary(req))
-            .await?;
+        self.idevice.send_bplist(req).await?;
 
         // Read a single byte
         self.idevice.read_raw(1).await?;
@@ -166,24 +131,14 @@ impl OsTraceRelayClient {
         age_limit: Option<u64>,
         start_time: Option<u64>,
     ) -> Result<(), IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("Request".into(), "CreateArchive".into());
+        let req = crate::plist!({
+            "Request": "CreateArchive",
+            "SizeLimit":? size_limit,
+            "AgeLimit":? age_limit,
+            "StartTime":? start_time,
+        });
 
-        if let Some(size) = size_limit {
-            req.insert("SizeLimit".into(), size.into());
-        }
-
-        if let Some(age) = age_limit {
-            req.insert("AgeLimit".into(), age.into());
-        }
-
-        if let Some(time) = start_time {
-            req.insert("StartTime".into(), time.into());
-        }
-
-        self.idevice
-            .send_bplist(plist::Value::Dictionary(req))
-            .await?;
+        self.idevice.send_bplist(req).await?;
 
         // Read a single byte
         if self.idevice.read_raw(1).await?[0] != 1 {

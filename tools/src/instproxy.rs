@@ -2,7 +2,7 @@
 // Just lists apps for now
 
 use clap::{Arg, Command};
-use idevice::{installation_proxy::InstallationProxyClient, IdeviceService};
+use idevice::{IdeviceService, installation_proxy::InstallationProxyClient};
 
 mod common;
 
@@ -47,7 +47,9 @@ async fn main() {
         .get_matches();
 
     if matches.get_flag("about") {
-        println!("instproxy - query and manage apps installed on a device. Reimplementation of libimobiledevice's binary.");
+        println!(
+            "instproxy - query and manage apps installed on a device. Reimplementation of libimobiledevice's binary."
+        );
         println!("Copyright (c) 2025 Jackson Coxson");
         return;
     }
@@ -69,10 +71,7 @@ async fn main() {
         .await
         .expect("Unable to connect to instproxy");
     if matches.subcommand_matches("lookup").is_some() {
-        let apps = instproxy_client
-            .get_apps(Some("User".to_string()), None)
-            .await
-            .unwrap();
+        let apps = instproxy_client.get_apps(Some("User"), None).await.unwrap();
         for app in apps.keys() {
             println!("{app}");
         }

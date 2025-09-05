@@ -1,7 +1,6 @@
 // Jackson Coxson
 
 #include "idevice.h"
-#include "plist/plist.h"
 #include <arpa/inet.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -122,7 +121,7 @@ int main() {
 
   // Get all values
   plist_t all_values = NULL;
-  err = lockdownd_get_all_values(client, &all_values);
+  err = lockdownd_get_value(client, NULL, NULL, &all_values);
   if (err != NULL) {
     fprintf(stderr, "Failed to get all values: [%d] %s", err->code,
             err->message);

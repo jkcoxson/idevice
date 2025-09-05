@@ -5,12 +5,11 @@ use std::os::raw::{c_float, c_int};
 use std::ptr::{self, null_mut};
 
 use idevice::core_device::AppServiceClient;
-use idevice::tcp::stream::AdapterStream;
 use idevice::{IdeviceError, ReadWrite, RsdService};
 
 use crate::core_device_proxy::AdapterHandle;
 use crate::rsd::RsdHandshakeHandle;
-use crate::{IdeviceFfiError, RUNTIME, ffi_err};
+use crate::{IdeviceFfiError, RUNTIME, ReadWriteOpaque, ffi_err};
 
 /// Opaque handle to an AppServiceClient
 pub struct AppServiceHandle(pub AppServiceClient<Box<dyn ReadWrite>>);
@@ -91,16 +90,17 @@ pub unsafe extern "C" fn app_service_connect_rsd(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<AppServiceClient<AdapterStream>, IdeviceError> = RUNTIME.block_on(async move {
-        let provider_ref = unsafe { &mut (*provider).0 };
-        let handshake_ref = unsafe { &mut (*handshake).0 };
+    let res: Result<AppServiceClient<Box<dyn ReadWrite>>, IdeviceError> =
+        RUNTIME.block_on(async move {
+            let provider_ref = unsafe { &mut (*provider).0 };
+            let handshake_ref = unsafe { &mut (*handshake).0 };
 
-        AppServiceClient::connect_rsd(provider_ref, handshake_ref).await
-    });
+            AppServiceClient::connect_rsd(provider_ref, handshake_ref).await
+        });
 
     match res {
         Ok(client) => {
-            let boxed = Box::new(AppServiceHandle(client.box_inner()));
+            let boxed = Box::new(AppServiceHandle(client));
             unsafe { *handle = Box::into_raw(boxed) };
             null_mut()
         }
@@ -122,7 +122,7 @@ pub unsafe extern "C" fn app_service_connect_rsd(
 /// `handle` must be a valid pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn app_service_new(
-    socket: *mut Box<dyn ReadWrite>,
+    socket: *mut ReadWriteOpaque,
     handle: *mut *mut AppServiceHandle,
 ) -> *mut IdeviceFfiError {
     if socket.is_null() || handle.is_null() {
@@ -130,7 +130,7 @@ pub unsafe extern "C" fn app_service_new(
     }
 
     let socket = unsafe { Box::from_raw(socket) };
-    let res = RUNTIME.block_on(async move { AppServiceClient::new(*socket).await });
+    let res = RUNTIME.block_on(async move { AppServiceClient::new(socket.inner.unwrap()).await });
 
     match res {
         Ok(client) => {
@@ -299,6 +299,7 @@ pub unsafe extern "C" fn app_service_free_app_list(apps: *mut AppListEntryC, cou
 /// * [`argc`] - Number of arguments
 /// * [`kill_existing`] - Whether to kill existing instances
 /// * [`start_suspended`] - Whether to start suspended
+/// * [`stdio_uuid`] - The UUID received from openstdiosocket, null for none
 /// * [`response`] - Pointer to store the launch response (caller must free)
 ///
 /// # Returns
@@ -314,6 +315,7 @@ pub unsafe extern "C" fn app_service_launch_app(
     argc: usize,
     kill_existing: c_int,
     start_suspended: c_int,
+    stdio_uuid: *const u8,
     response: *mut *mut LaunchResponseC,
 ) -> *mut IdeviceFfiError {
     if handle.is_null() || bundle_id.is_null() || response.is_null() {
@@ -329,13 +331,20 @@ pub unsafe extern "C" fn app_service_launch_app(
     if !argv.is_null() && argc > 0 {
         let argv_slice = unsafe { std::slice::from_raw_parts(argv, argc) };
         for &arg in argv_slice {
-            if !arg.is_null() {
-                if let Ok(arg_str) = unsafe { CStr::from_ptr(arg) }.to_str() {
-                    args.push(arg_str);
-                }
+            if !arg.is_null()
+                && let Ok(arg_str) = unsafe { CStr::from_ptr(arg) }.to_str()
+            {
+                args.push(arg_str);
             }
         }
     }
+
+    let stdio_uuid = if stdio_uuid.is_null() {
+        None
+    } else {
+        let stdio_uuid = unsafe { std::slice::from_raw_parts(stdio_uuid, 16) };
+        Some(uuid::Uuid::from_bytes(stdio_uuid.try_into().unwrap()))
+    };
 
     let client = unsafe { &mut (*handle).0 };
     let res = RUNTIME.block_on(async move {
@@ -347,6 +356,7 @@ pub unsafe extern "C" fn app_service_launch_app(
                 start_suspended != 0,
                 None, // environment
                 None, // platform_options
+                stdio_uuid,
             )
             .await
     });

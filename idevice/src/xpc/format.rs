@@ -18,6 +18,9 @@ pub enum XPCFlag {
     WantingReply,
     InitHandshake,
 
+    FileTxStreamRequest,
+    FileTxStreamResponse,
+
     Custom(u32),
 }
 
@@ -28,6 +31,8 @@ impl From<XPCFlag> for u32 {
             XPCFlag::DataFlag => 0x00000100,
             XPCFlag::WantingReply => 0x00010000,
             XPCFlag::InitHandshake => 0x00400000,
+            XPCFlag::FileTxStreamRequest => 0x00100000,
+            XPCFlag::FileTxStreamResponse => 0x00200000,
             XPCFlag::Custom(inner) => inner,
         }
     }
@@ -68,6 +73,7 @@ pub enum XPCType {
     String = 0x00009000,
     Data = 0x00008000,
     Uuid = 0x0000a000,
+    FileTransfer = 0x0001a000,
 }
 
 impl TryFrom<u32> for XPCType {
@@ -85,6 +91,7 @@ impl TryFrom<u32> for XPCType {
             0x00009000 => Ok(Self::String),
             0x00008000 => Ok(Self::Data),
             0x0000a000 => Ok(Self::Uuid),
+            0x0001a000 => Ok(Self::FileTransfer),
             _ => Err(IdeviceError::UnknownXpcType(value))?,
         }
     }
@@ -107,6 +114,8 @@ pub enum XPCObject {
     String(String),
     Data(Vec<u8>),
     Uuid(uuid::Uuid),
+
+    FileTransfer { msg_id: u64, data: Box<XPCObject> },
 }
 
 impl From<plist::Value> for XPCObject {
@@ -152,6 +161,12 @@ impl XPCObject {
                     dict.insert(k.clone(), v.to_plist());
                 }
                 plist::Value::Dictionary(dict)
+            }
+            Self::FileTransfer { msg_id, data } => {
+                crate::plist!({
+                    "msg_id": *msg_id,
+                    "data": data.to_plist(),
+                })
             }
         }
     }
@@ -237,8 +252,12 @@ impl XPCObject {
             }
             XPCObject::Uuid(uuid) => {
                 buf.extend_from_slice(&(XPCType::Uuid as u32).to_le_bytes());
-                buf.extend_from_slice(&16_u32.to_le_bytes());
                 buf.extend_from_slice(uuid.as_bytes());
+            }
+            XPCObject::FileTransfer { msg_id, data } => {
+                buf.extend_from_slice(&(XPCType::FileTransfer as u32).to_le_bytes());
+                buf.extend_from_slice(&msg_id.to_le_bytes());
+                data.encode_object(buf)?;
             }
         }
         Ok(())
@@ -370,10 +389,29 @@ impl XPCObject {
                 cursor.read_exact(&mut data)?;
                 Ok(XPCObject::Uuid(uuid::Builder::from_bytes(data).into_uuid()))
             }
+            XPCType::FileTransfer => {
+                let mut id_buf = [0u8; 8];
+                cursor.read_exact(&mut id_buf)?;
+                let msg_id = u64::from_le_bytes(id_buf);
+
+                // The next thing in the stream is a full XPC object
+                let inner = Self::decode_object(cursor)?;
+                Ok(XPCObject::FileTransfer {
+                    msg_id,
+                    data: Box::new(inner),
+                })
+            }
         }
     }
 
     pub fn as_dictionary(&self) -> Option<&Dictionary> {
+        match self {
+            XPCObject::Dictionary(dict) => Some(dict),
+            _ => None,
+        }
+    }
+
+    pub fn to_dictionary(self) -> Option<Dictionary> {
         match self {
             XPCObject::Dictionary(dict) => Some(dict),
             _ => None,
@@ -529,7 +567,7 @@ impl std::fmt::Debug for XPCMessage {
         let known_mask = 0x00000001 | 0x00000100 | 0x00010000 | 0x00400000;
         let custom_bits = self.flags & !known_mask;
         if custom_bits != 0 {
-            parts.push(format!("Custom(0x{:08X})", custom_bits));
+            parts.push(format!("Custom(0x{custom_bits:08X})"));
         }
 
         write!(

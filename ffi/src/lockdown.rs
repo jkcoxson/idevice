@@ -1,8 +1,9 @@
 // Jackson Coxson
 
-use std::{ffi::c_void, ptr::null_mut};
+use std::ptr::null_mut;
 
 use idevice::{IdeviceError, IdeviceService, lockdown::LockdownClient, provider::IdeviceProvider};
+use plist_ffi::plist_t;
 
 use crate::{
     IdeviceFfiError, IdeviceHandle, IdevicePairingFile, RUNTIME, ffi_err,
@@ -11,7 +12,7 @@ use crate::{
 
 pub struct LockdowndClientHandle(pub LockdownClient);
 
-/// Connects to lockdownd service using TCP provider
+/// Connects to lockdownd service using provider
 ///
 /// # Arguments
 /// * [`provider`] - An IdeviceProvider
@@ -176,24 +177,32 @@ pub unsafe extern "C" fn lockdownd_get_value(
     client: *mut LockdowndClientHandle,
     key: *const libc::c_char,
     domain: *const libc::c_char,
-    out_plist: *mut *mut c_void,
+    out_plist: *mut plist_t,
 ) -> *mut IdeviceFfiError {
-    if key.is_null() || out_plist.is_null() {
+    if out_plist.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let value = unsafe { std::ffi::CStr::from_ptr(key) }
-        .to_string_lossy()
-        .into_owned();
+    let value = if key.is_null() {
+        None
+    } else {
+        Some(match unsafe { std::ffi::CStr::from_ptr(key) }.to_str() {
+            Ok(v) => v,
+            Err(_) => {
+                return ffi_err!(IdeviceError::InvalidCString);
+            }
+        })
+    };
 
     let domain = if domain.is_null() {
         None
     } else {
-        Some(
-            unsafe { std::ffi::CStr::from_ptr(domain) }
-                .to_string_lossy()
-                .into_owned(),
-        )
+        Some(match unsafe { std::ffi::CStr::from_ptr(domain) }.to_str() {
+            Ok(v) => v,
+            Err(_) => {
+                return ffi_err!(IdeviceError::InvalidCString);
+            }
+        })
     };
 
     let res: Result<plist::Value, IdeviceError> = RUNTIME.block_on(async move {
@@ -204,55 +213,7 @@ pub unsafe extern "C" fn lockdownd_get_value(
     match res {
         Ok(value) => {
             unsafe {
-                *out_plist = crate::util::plist_to_libplist(&value);
-            }
-            null_mut()
-        }
-        Err(e) => ffi_err!(e),
-    }
-}
-
-/// Gets all values from lockdownd
-///
-/// # Arguments
-/// * `client` - A valid LockdowndClient handle
-/// * `out_plist` - Pointer to store the returned plist dictionary
-///
-/// # Returns
-/// An IdeviceFfiError on error, null on success
-///
-/// # Safety
-/// `client` must be a valid pointer to a handle allocated by this library
-/// `out_plist` must be a valid pointer to store the plist
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn lockdownd_get_all_values(
-    client: *mut LockdowndClientHandle,
-    domain: *const libc::c_char,
-    out_plist: *mut *mut c_void,
-) -> *mut IdeviceFfiError {
-    if out_plist.is_null() {
-        return ffi_err!(IdeviceError::FfiInvalidArg);
-    }
-
-    let domain = if domain.is_null() {
-        None
-    } else {
-        Some(
-            unsafe { std::ffi::CStr::from_ptr(domain) }
-                .to_string_lossy()
-                .into_owned(),
-        )
-    };
-
-    let res: Result<plist::Dictionary, IdeviceError> = RUNTIME.block_on(async move {
-        let client_ref = unsafe { &mut (*client).0 };
-        client_ref.get_all_values(domain).await
-    });
-
-    match res {
-        Ok(dict) => {
-            unsafe {
-                *out_plist = crate::util::plist_to_libplist(&plist::Value::Dictionary(dict));
+                *out_plist = plist_ffi::PlistWrapper::new_node(value).into_ptr();
             }
             null_mut()
         }

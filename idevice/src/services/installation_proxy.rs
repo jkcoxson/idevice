@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use log::warn;
 use plist::Dictionary;
 
-use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 /// Client for interacting with the iOS installation proxy service
 ///
@@ -25,39 +25,7 @@ impl IdeviceService for InstallationProxyClient {
         obf!("com.apple.mobile.installation_proxy")
     }
 
-    /// Establishes a connection to the installation proxy service
-    ///
-    /// # Arguments
-    /// * `provider` - Device connection provider
-    ///
-    /// # Returns
-    /// A connected `InstallationProxyClient` instance
-    ///
-    /// # Errors
-    /// Returns `IdeviceError` if any step of the connection process fails
-    ///
-    /// # Process
-    /// 1. Connects to lockdownd service
-    /// 2. Starts a lockdown session
-    /// 3. Requests the installation proxy service port
-    /// 4. Establishes connection to the service port
-    /// 5. Optionally starts TLS if required by service
-    async fn connect(
-        provider: &dyn crate::provider::IdeviceProvider,
-    ) -> Result<Self, IdeviceError> {
-        let mut lockdown = LockdownClient::connect(provider).await?;
-        lockdown
-            .start_session(&provider.get_pairing_file().await?)
-            .await?;
-        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
-
-        let mut idevice = provider.connect(port).await?;
-        if ssl {
-            idevice
-                .start_session(&provider.get_pairing_file().await?)
-                .await?;
-        }
-
+    async fn from_stream(idevice: Idevice) -> Result<Self, crate::IdeviceError> {
         Ok(Self::new(idevice))
     }
 }
@@ -98,26 +66,19 @@ impl InstallationProxyClient {
     /// ```
     pub async fn get_apps(
         &mut self,
-        application_type: Option<String>,
+        application_type: Option<&str>,
         bundle_identifiers: Option<Vec<String>>,
     ) -> Result<HashMap<String, plist::Value>, IdeviceError> {
-        let application_type = application_type.unwrap_or("Any".to_string());
-        let mut options = plist::Dictionary::new();
-        if let Some(ids) = bundle_identifiers {
-            let ids = ids
-                .into_iter()
-                .map(plist::Value::String)
-                .collect::<Vec<plist::Value>>();
-            options.insert("BundleIDs".into(), ids.into());
-        }
-        options.insert("ApplicationType".into(), application_type.into());
+        let application_type = application_type.unwrap_or("Any");
 
-        let mut req = plist::Dictionary::new();
-        req.insert("Command".into(), "Lookup".into());
-        req.insert("ClientOptions".into(), plist::Value::Dictionary(options));
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        let req = crate::plist!({
+            "Command": "Lookup",
+            "ClientOptions": {
+                "ApplicationType": application_type,
+                "BundleIDs":? bundle_identifiers,
+            }
+        });
+        self.idevice.send_plist(req).await?;
 
         let mut res = self.idevice.read_plist().await?;
         match res.remove("LookupResult") {
@@ -187,14 +148,13 @@ impl InstallationProxyClient {
         let package_path = package_path.into();
         let options = options.unwrap_or(plist::Value::Dictionary(Dictionary::new()));
 
-        let mut command = Dictionary::new();
-        command.insert("Command".into(), "Install".into());
-        command.insert("ClientOptions".into(), options);
-        command.insert("PackagePath".into(), package_path.into());
+        let command = crate::plist!({
+            "Command": "Install",
+            "ClientOptions": options,
+            "PackagePath": package_path,
+        });
 
-        self.idevice
-            .send_plist(plist::Value::Dictionary(command))
-            .await?;
+        self.idevice.send_plist(command).await?;
 
         self.watch_completion(callback, state).await
     }
@@ -252,14 +212,13 @@ impl InstallationProxyClient {
         let package_path = package_path.into();
         let options = options.unwrap_or(plist::Value::Dictionary(Dictionary::new()));
 
-        let mut command = Dictionary::new();
-        command.insert("Command".into(), "Upgrade".into());
-        command.insert("ClientOptions".into(), options);
-        command.insert("PackagePath".into(), package_path.into());
+        let command = crate::plist!({
+            "Command": "Upgrade",
+            "ClientOptions": options,
+            "PackagePath": package_path,
+        });
 
-        self.idevice
-            .send_plist(plist::Value::Dictionary(command))
-            .await?;
+        self.idevice.send_plist(command).await?;
 
         self.watch_completion(callback, state).await
     }
@@ -317,14 +276,13 @@ impl InstallationProxyClient {
         let bundle_id = bundle_id.into();
         let options = options.unwrap_or(plist::Value::Dictionary(Dictionary::new()));
 
-        let mut command = Dictionary::new();
-        command.insert("Command".into(), "Uninstall".into());
-        command.insert("ApplicationIdentifier".into(), bundle_id.into());
-        command.insert("ClientOptions".into(), options);
+        let command = crate::plist!({
+            "Command": "Uninstall",
+            "ApplicationIdentifier": bundle_id,
+            "ClientOptions": options,
+        });
 
-        self.idevice
-            .send_plist(plist::Value::Dictionary(command))
-            .await?;
+        self.idevice.send_plist(command).await?;
 
         self.watch_completion(callback, state).await
     }
@@ -349,14 +307,13 @@ impl InstallationProxyClient {
     ) -> Result<bool, IdeviceError> {
         let options = options.unwrap_or(plist::Value::Dictionary(Dictionary::new()));
 
-        let mut command = Dictionary::new();
-        command.insert("Command".into(), "CheckCapabilitiesMatch".into());
-        command.insert("ClientOptions".into(), options);
-        command.insert("Capabilities".into(), capabilities.into());
+        let command = crate::plist!({
+            "Command": "CheckCapabilitiesMatch",
+            "ClientOptions": options,
+            "Capabilities": capabilities
+        });
 
-        self.idevice
-            .send_plist(plist::Value::Dictionary(command))
-            .await?;
+        self.idevice.send_plist(command).await?;
         let mut res = self.idevice.read_plist().await?;
 
         if let Some(caps) = res.remove("LookupResult").and_then(|x| x.as_boolean()) {
@@ -387,13 +344,12 @@ impl InstallationProxyClient {
     ) -> Result<Vec<plist::Value>, IdeviceError> {
         let options = options.unwrap_or(plist::Value::Dictionary(Dictionary::new()));
 
-        let mut command = Dictionary::new();
-        command.insert("Command".into(), "Browse".into());
-        command.insert("ClientOptions".into(), options);
+        let command = crate::plist!({
+            "Command": "Browse",
+            "ClientOptions": options,
+        });
 
-        self.idevice
-            .send_plist(plist::Value::Dictionary(command))
-            .await?;
+        self.idevice.send_plist(command).await?;
 
         let mut values = Vec::new();
         loop {
@@ -408,10 +364,10 @@ impl InstallationProxyClient {
                 break;
             }
 
-            if let Some(status) = res.get("Status").and_then(|x| x.as_string()) {
-                if status == "Complete" {
-                    break;
-                }
+            if let Some(status) = res.get("Status").and_then(|x| x.as_string())
+                && status == "Complete"
+            {
+                break;
             }
         }
         Ok(values)
@@ -456,10 +412,10 @@ impl InstallationProxyClient {
                 callback((c, state.clone())).await;
             }
 
-            if let Some(c) = res.remove("Status").and_then(|x| x.into_string()) {
-                if c == "Complete" {
-                    break;
-                }
+            if let Some(c) = res.remove("Status").and_then(|x| x.into_string())
+                && c == "Complete"
+            {
+                break;
             }
         }
         Ok(())

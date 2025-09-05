@@ -4,19 +4,19 @@
 use std::str::FromStr;
 
 use rsa::{
+    RsaPrivateKey, RsaPublicKey,
     pkcs1::DecodeRsaPublicKey,
     pkcs1v15::SigningKey,
     pkcs8::{EncodePrivateKey, LineEnding, SubjectPublicKeyInfo},
-    RsaPrivateKey, RsaPublicKey,
 };
 use sha2::Sha256;
 use x509_cert::{
+    Certificate,
     builder::{Builder, CertificateBuilder, Profile},
     der::EncodePem,
     name::Name,
     serial_number::SerialNumber,
     time::Validity,
-    Certificate,
 };
 
 #[derive(Clone, Debug)]

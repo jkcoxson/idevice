@@ -2,7 +2,7 @@
 // Heartbeat client
 
 use clap::{Arg, Command};
-use idevice::{heartbeat::HeartbeatClient, IdeviceService};
+use idevice::{IdeviceService, heartbeat::HeartbeatClient};
 
 mod common;
 

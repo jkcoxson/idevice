@@ -2,9 +2,9 @@
 
 use clap::{Arg, Command};
 use idevice::{
+    IdeviceService,
     lockdown::LockdownClient,
     usbmuxd::{Connection, UsbmuxdAddr, UsbmuxdConnection},
-    IdeviceService,
 };
 
 #[tokio::main]
@@ -74,10 +74,13 @@ async fn main() {
         .expect("Pairing file test failed");
 
     // Add the UDID (jitterbug spec)
-    pairing_file.udid = Some(dev.udid);
+    pairing_file.udid = Some(dev.udid.clone());
+    let pairing_file = pairing_file.serialize().expect("failed to serialize");
 
-    println!(
-        "{}",
-        String::from_utf8(pairing_file.serialize().unwrap()).unwrap()
-    );
+    println!("{}", String::from_utf8(pairing_file.clone()).unwrap());
+
+    // Save with usbmuxd
+    u.save_pair_record(dev.device_id, &dev.udid, pairing_file)
+        .await
+        .expect("no save");
 }

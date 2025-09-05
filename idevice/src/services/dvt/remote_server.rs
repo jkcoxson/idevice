@@ -55,8 +55,8 @@ use log::{debug, warn};
 use tokio::io::AsyncWriteExt;
 
 use crate::{
-    dvt::message::{Aux, AuxValue, Message, MessageHeader, PayloadHeader},
     IdeviceError, ReadWrite,
+    dvt::message::{Aux, AuxValue, Message, MessageHeader, PayloadHeader},
 };
 
 /// Message type identifier for instruments protocol
@@ -112,7 +112,7 @@ impl<R: ReadWrite> RemoteServerClient<R> {
     }
 
     /// Returns a handle to the root channel (channel 0)
-    pub fn root_channel(&mut self) -> Channel<R> {
+    pub fn root_channel<'c>(&'c mut self) -> Channel<'c, R> {
         Channel {
             client: self,
             channel: 0,
@@ -131,10 +131,10 @@ impl<R: ReadWrite> RemoteServerClient<R> {
     /// # Errors
     /// * `IdeviceError::UnexpectedResponse` if server responds with unexpected data
     /// * Other IO or serialization errors
-    pub async fn make_channel(
-        &mut self,
+    pub async fn make_channel<'c>(
+        &'c mut self,
         identifier: impl Into<String>,
-    ) -> Result<Channel<R>, IdeviceError> {
+    ) -> Result<Channel<'c, R>, IdeviceError> {
         let code = self.new_channel;
         self.new_channel += 1;
 
@@ -164,7 +164,7 @@ impl<R: ReadWrite> RemoteServerClient<R> {
         self.build_channel(code)
     }
 
-    fn build_channel(&mut self, code: u32) -> Result<Channel<R>, IdeviceError> {
+    fn build_channel<'c>(&'c mut self, code: u32) -> Result<Channel<'c, R>, IdeviceError> {
         Ok(Channel {
             client: self,
             channel: code,

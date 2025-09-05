@@ -105,10 +105,10 @@ pub unsafe extern "C" fn process_control_launch_app(
         for &env_var in env_vars_slice {
             if !env_var.is_null() {
                 let env_var = unsafe { CStr::from_ptr(env_var) };
-                if let Ok(env_var) = env_var.to_str() {
-                    if let Some((key, value)) = env_var.split_once('=') {
-                        env_dict.insert(key.to_string(), Value::String(value.to_string()));
-                    }
+                if let Ok(env_var) = env_var.to_str()
+                    && let Some((key, value)) = env_var.split_once('=')
+                {
+                    env_dict.insert(key.to_string(), Value::String(value.to_string()));
                 }
             }
         }

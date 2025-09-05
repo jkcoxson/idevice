@@ -37,11 +37,12 @@
 use plist::Value;
 
 use crate::{
+    IdeviceError, ReadWrite,
     dvt::{
         message::AuxValue,
         remote_server::{Channel, RemoteServerClient},
     },
-    obf, IdeviceError, ReadWrite,
+    obf,
 };
 
 /// A client for the location simulation service

@@ -8,7 +8,7 @@
 use log::{debug, warn};
 use plist::Value;
 
-use crate::{util::plist_to_xml_bytes, IdeviceError};
+use crate::{IdeviceError, util::plist_to_xml_bytes};
 
 /// TSS client version string sent in requests
 const TSS_CLIENT_VERSION_STRING: &str = "libauthinstall-1033.0.2";
@@ -30,13 +30,11 @@ impl TSSRequest {
     /// - Client version string
     /// - Random UUID for request identification
     pub fn new() -> Self {
-        let mut inner = plist::Dictionary::new();
-        inner.insert("@HostPlatformInfo".into(), "mac".into());
-        inner.insert("@VersionInfo".into(), TSS_CLIENT_VERSION_STRING.into());
-        inner.insert(
-            "@UUID".into(),
-            uuid::Uuid::new_v4().to_string().to_uppercase().into(),
-        );
+        let inner = crate::plist!(dict {
+            "@HostPlatformInfo": "mac",
+            "@VersionInfo": TSS_CLIENT_VERSION_STRING,
+            "@UUID": uuid::Uuid::new_v4().to_string().to_uppercase()
+        });
         Self { inner }
     }
 
@@ -172,15 +170,15 @@ pub fn apply_restore_request_rules(
 
             for (key, value) in actions {
                 // Skip special values (255 typically means "ignore")
-                if let Some(i) = value.as_unsigned_integer() {
-                    if i == 255 {
-                        continue;
-                    }
+                if let Some(i) = value.as_unsigned_integer()
+                    && i == 255
+                {
+                    continue;
                 }
-                if let Some(i) = value.as_signed_integer() {
-                    if i == 255 {
-                        continue;
-                    }
+                if let Some(i) = value.as_signed_integer()
+                    && i == 255
+                {
+                    continue;
                 }
 
                 input.remove(key); // Explicitly remove before inserting

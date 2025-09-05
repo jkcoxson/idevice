@@ -7,7 +7,7 @@ use log::error;
 use plist::Value;
 use serde::{Deserialize, Serialize};
 
-use crate::{obf, pairing_file, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, obf, pairing_file};
 
 /// Client for interacting with the iOS lockdown service
 ///
@@ -40,6 +40,10 @@ impl IdeviceService for LockdownClient {
         provider: &dyn crate::provider::IdeviceProvider,
     ) -> Result<Self, IdeviceError> {
         let idevice = provider.connect(Self::LOCKDOWND_PORT).await?;
+        Ok(Self::new(idevice))
+    }
+
+    async fn from_stream(idevice: Idevice) -> Result<Self, crate::IdeviceError> {
         Ok(Self::new(idevice))
     }
 }
@@ -86,63 +90,19 @@ impl LockdownClient {
     /// ```
     pub async fn get_value(
         &mut self,
-        key: impl Into<String>,
-        domain: Option<String>,
+        key: Option<&str>,
+        domain: Option<&str>,
     ) -> Result<Value, IdeviceError> {
-        let key = key.into();
-
-        let mut request = plist::Dictionary::new();
-        request.insert("Label".into(), self.idevice.label.clone().into());
-        request.insert("Request".into(), "GetValue".into());
-        request.insert("Key".into(), key.into());
-
-        if let Some(domain) = domain {
-            request.insert("Domain".into(), domain.into());
-        }
-
-        self.idevice
-            .send_plist(plist::Value::Dictionary(request))
-            .await?;
+        let request = crate::plist!({
+            "Label": self.idevice.label.clone(),
+            "Request": "GetValue",
+            "Key":? key,
+            "Domain":? domain
+        });
+        self.idevice.send_plist(request).await?;
         let message: plist::Dictionary = self.idevice.read_plist().await?;
         match message.get("Value") {
             Some(m) => Ok(m.to_owned()),
-            None => Err(IdeviceError::UnexpectedResponse),
-        }
-    }
-
-    /// Retrieves all available values from the device
-    ///
-    /// # Returns
-    /// A dictionary containing all device values
-    ///
-    /// # Errors
-    /// Returns `IdeviceError` if:
-    /// - Communication fails
-    /// - The response is malformed
-    ///
-    /// # Example
-    /// ```rust
-    /// let all_values = client.get_all_values().await?;
-    /// for (key, value) in all_values {
-    ///     println!("{}: {:?}", key, value);
-    /// }
-    /// ```
-    pub async fn get_all_values(
-        &mut self,
-        domain: Option<String>,
-    ) -> Result<plist::Dictionary, IdeviceError> {
-        let mut request = plist::Dictionary::new();
-        request.insert("Label".into(), self.idevice.label.clone().into());
-        request.insert("Request".into(), "GetValue".into());
-        if let Some(domain) = domain {
-            request.insert("Domain".into(), domain.into());
-        }
-
-        let message = plist::to_value(&request)?;
-        self.idevice.send_plist(message).await?;
-        let message: plist::Dictionary = self.idevice.read_plist().await?;
-        match message.get("Value") {
-            Some(m) => Ok(plist::from_value(m)?),
             None => Err(IdeviceError::UnexpectedResponse),
         }
     }
@@ -167,23 +127,19 @@ impl LockdownClient {
         &mut self,
         key: impl Into<String>,
         value: Value,
-        domain: Option<String>,
+        domain: Option<&str>,
     ) -> Result<(), IdeviceError> {
         let key = key.into();
 
-        let mut req = plist::Dictionary::new();
-        req.insert("Label".into(), self.idevice.label.clone().into());
-        req.insert("Request".into(), "SetValue".into());
-        req.insert("Key".into(), key.into());
-        req.insert("Value".into(), value);
+        let req = crate::plist!({
+            "Label": self.idevice.label.clone(),
+            "Request": "SetValue",
+            "Key": key,
+            "Value": value,
+            "Domain":? domain
+        });
 
-        if let Some(domain) = domain {
-            req.insert("Domain".into(), domain.into());
-        }
-
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        self.idevice.send_plist(req).await?;
         self.idevice.read_plist().await?;
 
         Ok(())
@@ -210,28 +166,14 @@ impl LockdownClient {
             return Err(IdeviceError::NoEstablishedConnection);
         }
 
-        let mut request = plist::Dictionary::new();
-        request.insert(
-            "Label".to_string(),
-            plist::Value::String(self.idevice.label.clone()),
-        );
+        let request = crate::plist!({
+            "Label": self.idevice.label.clone(),
+            "Request": "StartSession",
+            "HostID": pairing_file.host_id.clone(),
+            "SystemBUID": pairing_file.system_buid.clone()
 
-        request.insert(
-            "Request".to_string(),
-            plist::Value::String("StartSession".to_string()),
-        );
-        request.insert(
-            "HostID".to_string(),
-            plist::Value::String(pairing_file.host_id.clone()),
-        );
-        request.insert(
-            "SystemBUID".to_string(),
-            plist::Value::String(pairing_file.system_buid.clone()),
-        );
-
-        self.idevice
-            .send_plist(plist::Value::Dictionary(request))
-            .await?;
+        });
+        self.idevice.send_plist(request).await?;
 
         let response = self.idevice.read_plist().await?;
         match response.get("EnableSessionSSL") {
@@ -269,12 +211,11 @@ impl LockdownClient {
         identifier: impl Into<String>,
     ) -> Result<(u16, bool), IdeviceError> {
         let identifier = identifier.into();
-        let mut req = plist::Dictionary::new();
-        req.insert("Request".into(), "StartService".into());
-        req.insert("Service".into(), identifier.into());
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        let req = crate::plist!({
+            "Request": "StartService",
+            "Service": identifier,
+        });
+        self.idevice.send_plist(req).await?;
         let response = self.idevice.read_plist().await?;
 
         let ssl = match response.get("EnableServiceSSL") {
@@ -321,7 +262,7 @@ impl LockdownClient {
         let host_id = host_id.into();
         let system_buid = system_buid.into();
 
-        let pub_key = self.get_value("DevicePublicKey", None).await?;
+        let pub_key = self.get_value(Some("DevicePublicKey"), None).await?;
         let pub_key = match pub_key.as_data().map(|x| x.to_vec()) {
             Some(p) => p,
             None => {
@@ -330,7 +271,7 @@ impl LockdownClient {
             }
         };
 
-        let wifi_mac = self.get_value("WiFiAddress", None).await?;
+        let wifi_mac = self.get_value(Some("WiFiAddress"), None).await?;
         let wifi_mac = match wifi_mac.as_string() {
             Some(w) => w,
             None => {
@@ -340,37 +281,29 @@ impl LockdownClient {
         };
 
         let ca = crate::ca::generate_certificates(&pub_key, None).unwrap();
-        let mut pair_record = plist::Dictionary::new();
-        pair_record.insert("DevicePublicKey".into(), plist::Value::Data(pub_key));
-        pair_record.insert("DeviceCertificate".into(), plist::Value::Data(ca.dev_cert));
-        pair_record.insert(
-            "HostCertificate".into(),
-            plist::Value::Data(ca.host_cert.clone()),
-        );
-        pair_record.insert("HostID".into(), host_id.into());
-        pair_record.insert("RootCertificate".into(), plist::Value::Data(ca.host_cert));
-        pair_record.insert(
-            "RootPrivateKey".into(),
-            plist::Value::Data(ca.private_key.clone()),
-        );
-        pair_record.insert("WiFiMACAddress".into(), wifi_mac.into());
-        pair_record.insert("SystemBUID".into(), system_buid.into());
+        let mut pair_record = crate::plist!(dict {
+            "DevicePublicKey": pub_key,
+            "DeviceCertificate": ca.dev_cert,
+            "HostCertificate": ca.host_cert.clone(),
+            "HostID": host_id,
+            "RootCertificate": ca.host_cert,
+            "RootPrivateKey": ca.private_key.clone(),
+            "WiFiMACAddress": wifi_mac,
+            "SystemBUID": system_buid,
+        });
 
-        let mut options = plist::Dictionary::new();
-        options.insert("ExtendedPairingErrors".into(), true.into());
-
-        let mut req = plist::Dictionary::new();
-        req.insert("Label".into(), self.idevice.label.clone().into());
-        req.insert("Request".into(), "Pair".into());
-        req.insert(
-            "PairRecord".into(),
-            plist::Value::Dictionary(pair_record.clone()),
-        );
-        req.insert("ProtocolVersion".into(), "2".into());
-        req.insert("PairingOptions".into(), plist::Value::Dictionary(options));
+        let req = crate::plist!({
+            "Label": self.idevice.label.clone(),
+            "Request": "Pair",
+            "PairRecord": pair_record.clone(),
+            "ProtocolVersion": "2",
+            "PairingOptions": {
+                "ExtendedPairingErrors": true
+            }
+        });
 
         loop {
-            self.idevice.send_plist(req.clone().into()).await?;
+            self.idevice.send_plist(req.clone()).await?;
             match self.idevice.read_plist().await {
                 Ok(escrow) => {
                     pair_record.insert("HostPrivateKey".into(), plist::Value::Data(ca.private_key));

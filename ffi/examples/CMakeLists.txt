@@ -8,9 +8,12 @@ project(IdeviceFFI C)
 set(HEADER_FILE ${CMAKE_SOURCE_DIR}/../idevice.h)
 set(STATIC_LIB ${CMAKE_SOURCE_DIR}/../../target/release/libidevice_ffi.a)
 set(EXAMPLES_DIR ${CMAKE_SOURCE_DIR}/../examples)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # Find all C example files
 file(GLOB EXAMPLE_SOURCES ${EXAMPLES_DIR}/*.c)
+
+find_package(PkgConfig REQUIRED)
 
 # Create an executable for each example file
 foreach(EXAMPLE_FILE ${EXAMPLE_SOURCES})
@@ -26,29 +29,9 @@ foreach(EXAMPLE_FILE ${EXAMPLE_SOURCES})
     # Link the static Rust library
     target_link_libraries(${EXAMPLE_NAME} PRIVATE ${STATIC_LIB})
 
-    # libplist
-
-    if( APPLE )
-      # use static linking
-      find_library( LIBPLIST libplist-2.0.a REQUIRED )
-      message( STATUS "(Static linking) LIBPLIST " ${LIBPLIST} )
-      target_link_libraries ( ${EXAMPLE_NAME} PRIVATE ${LIBPLIST} )
-    elseif( WIN32)
-    pkg_search_module(PLIST REQUIRED libplist-2.0)
-      find_library( LIBPLIST ${PLIST_LIBRARIES} PATH ${PLIST_LIBDIR} )
-      target_link_libraries ( ${EXAMPLE_NAME} PRIVATE ${LIBPLIST} )
-    else ()
-      pkg_search_module(PLIST libplist>=2.0)
-      if(NOT PLIST_FOUND)
-        pkg_search_module(PLIST REQUIRED libplist-2.0)
-      endif()
-      find_library( LIBPLIST ${PLIST_LIBRARIES} PATH ${PLIST_LIBDIR} )
-      target_link_libraries ( ${EXAMPLE_NAME} PUBLIC ${LIBPLIST} )
+    if(UNIX AND NOT APPLE)
+      target_link_libraries(${EXAMPLE_NAME} PRIVATE m)
     endif()
-    if ( PLIST_FOUND )
-      message( STATUS "found libplist-${PLIST_VERSION}" )
-    endif()
-    target_include_directories( ${EXAMPLE_NAME} PRIVATE ${PLIST_INCLUDE_DIRS} )
 
     # Bulk-link common macOS system frameworks
     if(APPLE)

@@ -101,9 +101,8 @@ mod tests {
     async fn test_get_tunneld_devices() {
         let host = SocketAddr::new(IpAddr::from_str("127.0.0.1").unwrap(), DEFAULT_PORT);
         match get_tunneld_devices(host).await {
-            Ok(devices) => println!("Found tunneld devices: {:#?}", devices),
-            Err(e) => println!("Error querying tunneld: {}", e),
+            Ok(devices) => println!("Found tunneld devices: {devices:#?}"),
+            Err(e) => println!("Error querying tunneld: {e}"),
         }
     }
 }
-

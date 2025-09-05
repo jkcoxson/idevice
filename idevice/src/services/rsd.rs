@@ -3,10 +3,10 @@
 
 use std::collections::HashMap;
 
-use log::warn;
+use log::{debug, warn};
 use serde::Deserialize;
 
-use crate::{provider::RsdProvider, IdeviceError, ReadWrite, RemoteXpcClient};
+use crate::{IdeviceError, ReadWrite, RemoteXpcClient, provider::RsdProvider};
 
 /// Describes an available XPC service
 #[derive(Debug, Clone, Deserialize)]
@@ -23,6 +23,7 @@ pub struct RsdService {
     pub service_version: Option<i64>,
 }
 
+#[derive(Debug, Clone)]
 pub struct RsdHandshake {
     pub services: HashMap<String, RsdService>,
     pub protocol_version: usize,
@@ -156,13 +157,9 @@ impl RsdHandshake {
         })
     }
 
-    pub async fn connect<'a, T, S>(
-        &mut self,
-        provider: &'a mut impl RsdProvider<'a, Stream = S>,
-    ) -> Result<T, IdeviceError>
+    pub async fn connect<T>(&mut self, provider: &mut impl RsdProvider) -> Result<T, IdeviceError>
     where
-        T: crate::RsdService<Stream = S>,
-        S: ReadWrite,
+        T: crate::RsdService,
     {
         let service_name = T::rsd_service_name();
         let service = match self.services.get(&service_name.to_string()) {
@@ -172,6 +169,10 @@ impl RsdHandshake {
             }
         };
 
+        debug!(
+            "Connecting to RSD service {service_name} on port {}",
+            service.port
+        );
         let stream = provider.connect_to_service_port(service.port).await?;
         T::from_stream(stream).await
     }

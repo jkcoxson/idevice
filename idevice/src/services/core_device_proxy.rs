@@ -13,7 +13,7 @@
 //! # Features
 //! - `tunnel_tcp_stack`: Enables software TCP/IP tunnel creation using a virtual adapter. See the tcp moduel.
 
-use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 use byteorder::{BigEndian, WriteBytesExt};
 use serde::{Deserialize, Serialize};
@@ -97,34 +97,7 @@ impl IdeviceService for CoreDeviceProxy {
         obf!("com.apple.internal.devicecompute.CoreDeviceProxy")
     }
 
-    /// Connects to the CoreDeviceProxy service
-    ///
-    /// # Arguments
-    ///
-    /// * `provider` - An implementation of `IdeviceProvider` that supplies
-    ///   pairing data and socket connections.
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(CoreDeviceProxy)` if connection and handshake succeed.
-    /// * `Err(IdeviceError)` if any step fails.
-    async fn connect(
-        provider: &dyn crate::provider::IdeviceProvider,
-    ) -> Result<Self, IdeviceError> {
-        let mut lockdown = LockdownClient::connect(provider).await?;
-        lockdown
-            .start_session(&provider.get_pairing_file().await?)
-            .await?;
-
-        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
-
-        let mut idevice = provider.connect(port).await?;
-        if ssl {
-            idevice
-                .start_session(&provider.get_pairing_file().await?)
-                .await?;
-        }
-
+    async fn from_stream(idevice: Idevice) -> Result<Self, crate::IdeviceError> {
         Self::new(idevice).await
     }
 }

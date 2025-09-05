@@ -3,52 +3,43 @@
 use log::warn;
 use plist::Dictionary;
 
-use crate::{obf, IdeviceError, ReadWrite, RemoteXpcClient, RsdService};
+use crate::{IdeviceError, ReadWrite, RemoteXpcClient, RsdService, obf};
 
 /// Client for interacting with the Restore Service
-pub struct RestoreServiceClient<R: ReadWrite> {
+pub struct RestoreServiceClient {
     /// The underlying device connection with established Restore Service service
-    pub stream: RemoteXpcClient<R>,
+    pub stream: RemoteXpcClient<Box<dyn ReadWrite>>,
 }
 
-impl<R: ReadWrite> RsdService for RestoreServiceClient<R> {
+impl RsdService for RestoreServiceClient {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.RestoreRemoteServices.restoreserviced")
     }
 
-    async fn from_stream(stream: R) -> Result<Self, IdeviceError> {
+    async fn from_stream(stream: Box<dyn ReadWrite>) -> Result<Self, IdeviceError> {
         Self::new(stream).await
     }
-
-    type Stream = R;
 }
 
-impl<'a, R: ReadWrite + 'a> RestoreServiceClient<R> {
+impl RestoreServiceClient {
     /// Creates a new Restore Service client a socket connection,
     /// and connects to the RemoteXPC service.
     ///
     /// # Arguments
     /// * `idevice` - Pre-established device connection
-    pub async fn new(stream: R) -> Result<Self, IdeviceError> {
+    pub async fn new(stream: Box<dyn ReadWrite>) -> Result<Self, IdeviceError> {
         let mut stream = RemoteXpcClient::new(stream).await?;
         stream.do_handshake().await?;
         Ok(Self { stream })
     }
 
-    pub fn box_inner(self) -> RestoreServiceClient<Box<dyn ReadWrite + 'a>> {
-        RestoreServiceClient {
-            stream: self.stream.box_inner(),
-        }
-    }
-
     /// Enter recovery
     pub async fn enter_recovery(&mut self) -> Result<(), IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("command".into(), "recovery".into());
+        let req = crate::plist!({
+            "command": "recovery"
+        });
 
-        self.stream
-            .send_object(plist::Value::Dictionary(req), true)
-            .await?;
+        self.stream.send_object(req, true).await?;
 
         let res = self.stream.recv().await?;
         let mut res = match res {
@@ -77,12 +68,10 @@ impl<'a, R: ReadWrite + 'a> RestoreServiceClient<R> {
 
     /// Reboot
     pub async fn reboot(&mut self) -> Result<(), IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("command".into(), "reboot".into());
-
-        self.stream
-            .send_object(plist::Value::Dictionary(req), true)
-            .await?;
+        let req = crate::plist!({
+            "command": "reboot"
+        });
+        self.stream.send_object(req, true).await?;
 
         let res = self.stream.recv().await?;
         let mut res = match res {
@@ -111,12 +100,10 @@ impl<'a, R: ReadWrite + 'a> RestoreServiceClient<R> {
 
     /// Get preflightinfo
     pub async fn get_preflightinfo(&mut self) -> Result<Dictionary, IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("command".into(), "getpreflightinfo".into());
-
-        self.stream
-            .send_object(plist::Value::Dictionary(req), true)
-            .await?;
+        let req = crate::plist!({
+            "command": "getpreflightinfo"
+        });
+        self.stream.send_object(req, true).await?;
 
         let res = self.stream.recv().await?;
         let mut res = match res {
@@ -141,12 +128,10 @@ impl<'a, R: ReadWrite + 'a> RestoreServiceClient<R> {
     /// Get nonces
     /// Doesn't seem to work
     pub async fn get_nonces(&mut self) -> Result<Dictionary, IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("command".into(), "getnonces".into());
-
-        self.stream
-            .send_object(plist::Value::Dictionary(req), true)
-            .await?;
+        let req = crate::plist!({
+            "command": "getnonces"
+        });
+        self.stream.send_object(req, true).await?;
 
         let res = self.stream.recv().await?;
         let mut res = match res {
@@ -171,12 +156,10 @@ impl<'a, R: ReadWrite + 'a> RestoreServiceClient<R> {
     /// Get app parameters
     /// Doesn't seem to work
     pub async fn get_app_parameters(&mut self) -> Result<Dictionary, IdeviceError> {
-        let mut req = Dictionary::new();
-        req.insert("command".into(), "getappparameters".into());
-
-        self.stream
-            .send_object(plist::Value::Dictionary(req), true)
-            .await?;
+        let req = crate::plist!({
+            "command": "getappparameters"
+        });
+        self.stream.send_object(req, true).await?;
 
         let res = self.stream.recv().await?;
         let mut res = match res {
@@ -203,13 +186,11 @@ impl<'a, R: ReadWrite + 'a> RestoreServiceClient<R> {
     pub async fn restore_lang(&mut self, language: impl Into<String>) -> Result<(), IdeviceError> {
         let language = language.into();
 
-        let mut req = Dictionary::new();
-        req.insert("command".into(), "restorelang".into());
-        req.insert("argument".into(), language.into());
-
-        self.stream
-            .send_object(plist::Value::Dictionary(req), true)
-            .await?;
+        let req = crate::plist!({
+            "command": "restorelang",
+            "argument": language,
+        });
+        self.stream.send_object(req, true).await?;
 
         let res = self.stream.recv().await?;
         let mut res = match res {

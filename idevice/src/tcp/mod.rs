@@ -5,18 +5,18 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use log::debug;
-use stream::AdapterStream;
+use log::trace;
 use tokio::io::AsyncWriteExt;
 
-use crate::provider::RsdProvider;
+use crate::{ReadWrite, provider::RsdProvider};
 
 pub mod adapter;
+pub mod handle;
 pub mod packets;
 pub mod stream;
 
 pub(crate) fn log_packet(file: &Arc<tokio::sync::Mutex<tokio::fs::File>>, packet: &[u8]) {
-    debug!("Logging {} byte packet", packet.len());
+    trace!("Logging {} byte packet", packet.len());
     let packet = packet.to_vec();
     let file = file.to_owned();
     let now = SystemTime::now();
@@ -39,16 +39,14 @@ pub(crate) fn log_packet(file: &Arc<tokio::sync::Mutex<tokio::fs::File>>, packet
     });
 }
 
-impl<'a> RsdProvider<'a> for adapter::Adapter {
+impl RsdProvider for handle::AdapterHandle {
     async fn connect_to_service_port(
-        &'a mut self,
+        &mut self,
         port: u16,
-    ) -> Result<stream::AdapterStream<'a>, crate::IdeviceError> {
-        let s = stream::AdapterStream::connect(self, port).await?;
-        Ok(s)
+    ) -> Result<Box<dyn ReadWrite>, crate::IdeviceError> {
+        let s = self.connect(port).await?;
+        Ok(Box::new(s))
     }
-
-    type Stream = AdapterStream<'a>;
 }
 
 #[cfg(test)]

@@ -11,7 +11,7 @@ use log::warn;
 use opcode::{AfcFopenMode, AfcOpcode};
 use packet::{AfcPacket, AfcPacketHeader};
 
-use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 pub mod errors;
 pub mod file;
@@ -65,30 +65,7 @@ impl IdeviceService for AfcClient {
         obf!("com.apple.afc")
     }
 
-    /// Connects to the AFC service on the device
-    ///
-    /// # Arguments
-    /// * `provider` - The iDevice provider to use for the connection
-    ///
-    /// # Returns
-    /// A new `AfcClient` instance on success
-    async fn connect(
-        provider: &dyn crate::provider::IdeviceProvider,
-    ) -> Result<Self, IdeviceError> {
-        let mut lockdown = LockdownClient::connect(provider).await?;
-        lockdown
-            .start_session(&provider.get_pairing_file().await?)
-            .await?;
-
-        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
-
-        let mut idevice = provider.connect(port).await?;
-        if ssl {
-            idevice
-                .start_session(&provider.get_pairing_file().await?)
-                .await?;
-        }
-
+    async fn from_stream(idevice: Idevice) -> Result<Self, IdeviceError> {
         Ok(Self {
             idevice,
             package_number: 0,
@@ -399,11 +376,11 @@ impl AfcClient {
     ///
     /// # Returns
     /// A `FileDescriptor` struct for the opened file
-    pub async fn open(
-        &mut self,
+    pub async fn open<'f>(
+        &'f mut self,
         path: impl Into<String>,
         mode: AfcFopenMode,
-    ) -> Result<FileDescriptor, IdeviceError> {
+    ) -> Result<FileDescriptor<'f>, IdeviceError> {
         let path = path.into();
         let mut header_payload = (mode as u64).to_le_bytes().to_vec();
         header_payload.extend(path.as_bytes());

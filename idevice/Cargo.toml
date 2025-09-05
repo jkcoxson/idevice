@@ -2,8 +2,8 @@
 name = "idevice"
 description = "A Rust library to interact with services on iOS devices."
 authors = ["Jackson Coxson"]
-version = "0.1.35"
-edition = "2021"
+version = "0.1.41"
+edition = "2024"
 license = "MIT"
 documentation = "https://docs.rs/idevice"
 repository = "https://github.com/jkcoxson/idevice"
@@ -12,8 +12,12 @@ keywords = ["lockdownd", "ios"]
 
 [dependencies]
 tokio = { version = "1.43", features = ["io-util"] }
-tokio-rustls = "0.26"
-rustls = "0.23"
+tokio-rustls = { version = "0.26", default-features = false }
+rustls = { version = "0.23", default-features = false, features = [
+  "std",
+  "tls12",
+] }
+crossfire = { version = "2.0", optional = true } # TODO: update to 2.1 when it comes out
 
 plist = { version = "1.7" }
 serde = { version = "1", features = ["derive"] }
@@ -26,7 +30,9 @@ base64 = { version = "0.22" }
 
 indexmap = { version = "2.7", features = ["serde"], optional = true }
 uuid = { version = "1.12", features = ["serde", "v4"], optional = true }
-chrono = { version = "0.4.40", optional = true, default-features = false }
+chrono = { version = "0.4.40", optional = true, default-features = false, features = [
+  "serde",
+] }
 
 serde_json = { version = "1", optional = true }
 json = { version = "0.12", optional = true }
@@ -35,10 +41,10 @@ bytes = { version = "1.10", optional = true }
 
 reqwest = { version = "0.12", features = [
   "json",
-  "rustls-tls",
 ], optional = true, default-features = false }
 rand = { version = "0.9", optional = true }
 futures = { version = "0.3", optional = true }
+async-stream = { version = "0.3.6", optional = true }
 
 sha2 = { version = "0.10", optional = true, features = ["oid"] }
 
@@ -60,12 +66,19 @@ tun-rs = { version = "2.0.8", features = ["async_tokio"] }
 bytes = "1.10.1"
 
 [features]
+default = ["aws-lc"]
+aws-lc = ["rustls/aws-lc-rs", "tokio-rustls/aws-lc-rs"]
+ring = ["rustls/ring", "tokio-rustls/ring"]
+
 afc = ["dep:chrono"]
 amfi = []
+bt_packet_logger = []
+companion_proxy = []
 core_device = ["xpc", "dep:uuid"]
 core_device_proxy = ["dep:serde_json", "dep:json", "dep:byteorder"]
 crashreportcopymobile = ["afc"]
 debug_proxy = []
+diagnostics_relay = []
 dvt = ["dep:byteorder", "dep:ns-keyed-archive"]
 heartbeat = ["tokio/macros", "tokio/time"]
 house_arrest = ["afc"]
@@ -73,8 +86,11 @@ installation_proxy = []
 springboardservices = []
 misagent = []
 mobile_image_mounter = ["dep:sha2"]
+mobilebackup2 = []
 location_simulation = []
 pair = ["chrono/default", "tokio/time", "dep:sha2", "dep:rsa", "dep:x509-cert"]
+pcapd = []
+preboard_service = []
 obfuscate = ["dep:obfstr"]
 restore_service = []
 remote_pairing = [
@@ -88,18 +104,27 @@ remote_pairing = [
 rsd = ["xpc"]
 syslog_relay = ["dep:bytes"]
 tcp = ["tokio/net"]
-tunnel_tcp_stack = ["dep:rand", "dep:futures", "tokio/fs", "tokio/sync"]
+tunnel_tcp_stack = [
+  "dep:rand",
+  "dep:futures",
+  "tokio/fs",
+  "tokio/sync",
+  "dep:crossfire",
+]
 tss = ["dep:uuid", "dep:reqwest"]
 tunneld = ["dep:serde_json", "dep:json", "dep:reqwest"]
 usbmuxd = ["tokio/net"]
-xpc = ["dep:indexmap", "dep:uuid"]
+xpc = ["dep:indexmap", "dep:uuid", "dep:async-stream"]
 full = [
   "afc",
   "amfi",
+  "bt_packet_logger",
+  "companion_proxy",
   "core_device",
   "core_device_proxy",
   "crashreportcopymobile",
   "debug_proxy",
+  "diagnostics_relay",
   "dvt",
   "heartbeat",
   "house_arrest",
@@ -107,7 +132,10 @@ full = [
   "location_simulation",
   "misagent",
   "mobile_image_mounter",
+  "mobilebackup2",
   "pair",
+  "pcapd",
+  "preboard_service",
   "restore_service",
   "usbmuxd",
   "xpc",

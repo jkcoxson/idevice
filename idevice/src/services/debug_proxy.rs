@@ -8,21 +8,19 @@ use log::debug;
 use std::fmt::Write;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::{obf, IdeviceError, ReadWrite, RsdService};
+use crate::{IdeviceError, ReadWrite, RsdService, obf};
 
-impl<R: ReadWrite> RsdService for DebugProxyClient<R> {
+impl RsdService for DebugProxyClient<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.internal.dt.remote.debugproxy")
     }
 
-    async fn from_stream(stream: R) -> Result<Self, IdeviceError> {
+    async fn from_stream(stream: Box<dyn ReadWrite>) -> Result<Self, IdeviceError> {
         Ok(Self {
             socket: stream,
             noack_mode: false,
         })
     }
-
-    type Stream = R;
 }
 
 /// Client for interacting with the iOS debug proxy service
@@ -107,10 +105,10 @@ impl<R: ReadWrite> DebugProxyClient<R> {
         let checksum = calculate_checksum(&packet_data);
 
         // Construct the full packet
-        let packet = format!("${}#{}", packet_data, checksum);
+        let packet = format!("${packet_data}#{checksum}");
 
         // Log the packet for debugging
-        debug!("Sending packet: {}", packet);
+        debug!("Sending packet: {packet}");
 
         // Send the packet
         self.socket.write_all(packet.as_bytes()).await?;
@@ -237,7 +235,7 @@ impl<R: ReadWrite> DebugProxyClient<R> {
 
             // Hex encode the argument
             for byte in arg.bytes() {
-                let hex = format!("{:02X}", byte);
+                let hex = format!("{byte:02X}");
                 pkt[pktp..pktp + 2].copy_from_slice(hex.as_bytes());
                 pktp += 2;
             }
@@ -290,7 +288,7 @@ impl<R: ReadWrite> DebugProxyClient<R> {
 /// between '$' and '#', formatted as two lowercase hex digits.
 fn calculate_checksum(data: &str) -> String {
     let checksum = data.bytes().fold(0u8, |acc, byte| acc.wrapping_add(byte));
-    format!("{:02x}", checksum)
+    format!("{checksum:02x}")
 }
 
 /// Hex-encodes bytes as uppercase string

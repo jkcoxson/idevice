@@ -15,7 +15,7 @@ use log::{debug, warn};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{
-    pairing_file::PairingFile, provider::UsbmuxdProvider, Idevice, IdeviceError, ReadWrite,
+    Idevice, IdeviceError, ReadWrite, pairing_file::PairingFile, provider::UsbmuxdProvider,
 };
 
 mod des;
@@ -331,6 +331,32 @@ impl UsbmuxdConnection {
                 Some(6) => Err(IdeviceError::UsbBadVersion),
                 _ => Err(IdeviceError::UnexpectedResponse),
             },
+            _ => Err(IdeviceError::UnexpectedResponse),
+        }
+    }
+
+    /// Tells usbmuxd to save the pairing record in its storage
+    ///
+    /// # Arguments
+    /// * `device_id` - usbmuxd device ID
+    /// * `udid` - the device UDID/serial
+    /// * `pair_record` - a serialized plist of the pair record
+    pub async fn save_pair_record(
+        &mut self,
+        device_id: u32,
+        udid: &str,
+        pair_record: Vec<u8>,
+    ) -> Result<(), IdeviceError> {
+        let req = crate::plist!(dict {
+            "MessageType": "SavePairRecord",
+            "PairRecordData": pair_record,
+            "DeviceID": device_id,
+            "PairRecordID": udid,
+        });
+        self.write_plist(req).await?;
+        let res = self.read_plist().await?;
+        match res.get("Number").and_then(|x| x.as_unsigned_integer()) {
+            Some(0) => Ok(()),
             _ => Err(IdeviceError::UnexpectedResponse),
         }
     }

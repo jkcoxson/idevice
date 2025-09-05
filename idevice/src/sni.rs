@@ -7,16 +7,16 @@
 // Assuming that there's no use for unchecked certs is naive.
 
 use rustls::{
-    client::{
-        danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier},
-        WebPkiServerVerifier,
-    },
-    pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer, ServerName, UnixTime},
     ClientConfig, DigitallySignedStruct,
+    client::{
+        WebPkiServerVerifier,
+        danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier},
+    },
+    pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime, pem::PemObject},
 };
 use std::sync::Arc;
 
-use crate::{pairing_file::PairingFile, IdeviceError};
+use crate::{IdeviceError, pairing_file::PairingFile};
 
 #[derive(Debug)]
 pub struct NoServerNameVerification {

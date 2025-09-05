@@ -2,6 +2,10 @@
 pub mod afc;
 #[cfg(feature = "amfi")]
 pub mod amfi;
+#[cfg(feature = "bt_packet_logger")]
+pub mod bt_packet_logger;
+#[cfg(feature = "companion_proxy")]
+pub mod companion_proxy;
 #[cfg(feature = "core_device")]
 pub mod core_device;
 #[cfg(feature = "core_device_proxy")]
@@ -10,6 +14,8 @@ pub mod core_device_proxy;
 pub mod crashreportcopymobile;
 #[cfg(feature = "debug_proxy")]
 pub mod debug_proxy;
+#[cfg(feature = "diagnostics_relay")]
+pub mod diagnostics_relay;
 #[cfg(feature = "dvt")]
 pub mod dvt;
 #[cfg(feature = "heartbeat")]
@@ -23,8 +29,14 @@ pub mod lockdown;
 pub mod misagent;
 #[cfg(feature = "mobile_image_mounter")]
 pub mod mobile_image_mounter;
+#[cfg(feature = "mobilebackup2")]
+pub mod mobilebackup2;
 #[cfg(feature = "syslog_relay")]
 pub mod os_trace_relay;
+#[cfg(feature = "pcapd")]
+pub mod pcapd;
+#[cfg(feature = "preboard_service")]
+pub mod preboard_service;
 #[cfg(feature = "remote_pairing")]
 pub mod remote_pairing;
 #[cfg(feature = "restore_service")]

@@ -7,7 +7,7 @@ use std::path::Path;
 
 use log::warn;
 use plist::Data;
-use rustls::pki_types::{pem::PemObject, CertificateDer};
+use rustls::pki_types::{CertificateDer, pem::PemObject};
 use serde::{Deserialize, Serialize};
 
 /// Represents a complete iOS device pairing record
@@ -219,7 +219,7 @@ fn ensure_pem_headers(data: &[u8], pem_type: &str) -> Vec<u8> {
     let mut result = Vec::new();
 
     // Add header
-    let header = format!("-----BEGIN {}-----\n", pem_type);
+    let header = format!("-----BEGIN {pem_type}-----\n");
     result.extend_from_slice(header.as_bytes());
 
     // Add base64 content with line breaks every 64 characters
@@ -244,7 +244,7 @@ fn ensure_pem_headers(data: &[u8], pem_type: &str) -> Vec<u8> {
     result.push(b'\n');
 
     // Add footer
-    let footer = format!("-----END {}-----", pem_type);
+    let footer = format!("-----END {pem_type}-----");
     result.extend_from_slice(footer.as_bytes());
 
     result

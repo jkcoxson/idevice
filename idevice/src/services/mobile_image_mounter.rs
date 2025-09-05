@@ -9,7 +9,7 @@
 
 use log::debug;
 
-use crate::{lockdown::LockdownClient, obf, Idevice, IdeviceError, IdeviceService};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 use sha2::{Digest, Sha384};
 
 #[cfg(feature = "tss")]
@@ -33,41 +33,8 @@ impl IdeviceService for ImageMounter {
         obf!("com.apple.mobile.mobile_image_mounter")
     }
 
-    /// Establishes a connection to the image mounter service
-    ///
-    /// # Arguments
-    /// * `provider` - Device connection provider
-    ///
-    /// # Returns
-    /// A connected `ImageMounter` instance
-    ///
-    /// # Errors
-    /// Returns `IdeviceError` if any step of the connection process fails
-    ///
-    /// # Process
-    /// 1. Connects to lockdownd service
-    /// 2. Starts a lockdown session
-    /// 3. Requests the image mounter service port
-    /// 4. Establishes connection to the service port
-    /// 5. Optionally starts TLS if required by service
-    async fn connect(
-        provider: &dyn crate::provider::IdeviceProvider,
-    ) -> Result<Self, IdeviceError> {
-        let mut lockdown = LockdownClient::connect(provider).await?;
-        lockdown
-            .start_session(&provider.get_pairing_file().await?)
-            .await?;
-
-        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
-
-        let mut idevice = provider.connect(port).await?;
-        if ssl {
-            idevice
-                .start_session(&provider.get_pairing_file().await?)
-                .await?;
-        }
-
-        Ok(Self { idevice })
+    async fn from_stream(idevice: Idevice) -> Result<Self, crate::IdeviceError> {
+        Ok(Self::new(idevice))
     }
 }
 
@@ -88,11 +55,10 @@ impl ImageMounter {
     /// # Errors
     /// Returns `IdeviceError` if communication fails or response is malformed
     pub async fn copy_devices(&mut self) -> Result<Vec<plist::Value>, IdeviceError> {
-        let mut req = plist::Dictionary::new();
-        req.insert("Command".into(), "CopyDevices".into());
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        let req = crate::plist!({
+            "Command": "CopyDevices"
+        });
+        self.idevice.send_plist(req).await?;
         let mut res = self.idevice.read_plist().await?;
 
         match res.remove("EntryList") {
@@ -113,15 +79,14 @@ impl ImageMounter {
     /// Returns `IdeviceError::NotFound` if image doesn't exist
     pub async fn lookup_image(
         &mut self,
-        image_type: impl Into<String>,
+        image_type: impl Into<&str>,
     ) -> Result<Vec<u8>, IdeviceError> {
         let image_type = image_type.into();
-        let mut req = plist::Dictionary::new();
-        req.insert("Command".into(), "LookupImage".into());
-        req.insert("ImageType".into(), image_type.into());
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        let req = crate::plist!({
+            "Command": "LookupImage",
+            "ImageType": image_type
+        });
+        self.idevice.send_plist(req).await?;
 
         let res = self.idevice.read_plist().await?;
         match res.get("ImageSignature") {
@@ -185,14 +150,13 @@ impl ImageMounter {
             }
         };
 
-        let mut req = plist::Dictionary::new();
-        req.insert("Command".into(), "ReceiveBytes".into());
-        req.insert("ImageType".into(), image_type.into());
-        req.insert("ImageSize".into(), image_size.into());
-        req.insert("ImageSignature".into(), plist::Value::Data(signature));
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        let req = crate::plist!({
+            "Command": "ReceiveBytes",
+            "ImageType": image_type,
+            "ImageSize": image_size,
+            "ImageSignature": signature,
+        });
+        self.idevice.send_plist(req).await?;
 
         let res = self.idevice.read_plist().await?;
         match res.get("Status") {
@@ -243,19 +207,14 @@ impl ImageMounter {
     ) -> Result<(), IdeviceError> {
         let image_type = image_type.into();
 
-        let mut req = plist::Dictionary::new();
-        req.insert("Command".into(), "MountImage".into());
-        req.insert("ImageType".into(), image_type.into());
-        req.insert("ImageSignature".into(), plist::Value::Data(signature));
-        if let Some(trust_cache) = trust_cache {
-            req.insert("ImageTrustCache".into(), plist::Value::Data(trust_cache));
-        }
-        if let Some(info_plist) = info_plist {
-            req.insert("ImageInfoPlist".into(), info_plist);
-        }
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        let req = crate::plist!({
+            "Command": "MountImage",
+            "ImageType": image_type,
+            "ImageSignature": signature,
+            "ImageTrustCache":? trust_cache,
+            "ImageInfoPlist":? info_plist,
+        });
+        self.idevice.send_plist(req).await?;
 
         let res = self.idevice.read_plist().await?;
 
@@ -286,12 +245,11 @@ impl ImageMounter {
         mount_path: impl Into<String>,
     ) -> Result<(), IdeviceError> {
         let mount_path = mount_path.into();
-        let mut req = plist::Dictionary::new();
-        req.insert("Command".into(), "UnmountImage".into());
-        req.insert("MountPath".into(), mount_path.into());
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        let req = crate::plist!({
+            "Command": "UnmountImage",
+            "MountPath": mount_path,
+        });
+        self.idevice.send_plist(req).await?;
 
         let res = self.idevice.read_plist().await?;
         match res.get("Status") {
@@ -321,14 +279,13 @@ impl ImageMounter {
     ) -> Result<Vec<u8>, IdeviceError> {
         let image_type = image_type.into();
 
-        let mut req = plist::Dictionary::new();
-        req.insert("Command".into(), "QueryPersonalizationManifest".into());
-        req.insert("PersonalizedImageType".into(), image_type.clone().into());
-        req.insert("ImageType".into(), image_type.into());
-        req.insert("ImageSignature".into(), plist::Value::Data(signature));
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        let req = crate::plist!({
+            "Command": "QueryPersonalizationManifest",
+            "PersonalizedImageType": image_type.clone(),
+            "ImageType": image_type,
+            "ImageSignature": signature
+        });
+        self.idevice.send_plist(req).await?;
 
         let mut res = self.idevice.read_plist().await?;
         match res.remove("ImageSignature") {
@@ -345,11 +302,10 @@ impl ImageMounter {
     /// # Errors
     /// Returns `IdeviceError` if query fails
     pub async fn query_developer_mode_status(&mut self) -> Result<bool, IdeviceError> {
-        let mut req = plist::Dictionary::new();
-        req.insert("Command".into(), "QueryDeveloperModeStatus".into());
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        let req = crate::plist!({
+            "Command": "QueryDeveloperModeStatus"
+        });
+        self.idevice.send_plist(req).await?;
 
         let res = self.idevice.read_plist().await?;
         match res.get("DeveloperModeStatus") {
@@ -370,16 +326,13 @@ impl ImageMounter {
     /// Returns `IdeviceError` if query fails
     pub async fn query_nonce(
         &mut self,
-        personalized_image_type: Option<String>,
+        personalized_image_type: Option<&str>,
     ) -> Result<Vec<u8>, IdeviceError> {
-        let mut req = plist::Dictionary::new();
-        req.insert("Command".into(), "QueryNonce".into());
-        if let Some(image_type) = personalized_image_type {
-            req.insert("PersonalizedImageType".into(), image_type.into());
-        }
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        let req = crate::plist!({
+            "Command": "QueryNonce",
+            "PersonalizedImageType":? personalized_image_type,
+        });
+        self.idevice.send_plist(req).await?;
 
         let res = self.idevice.read_plist().await?;
         match res.get("PersonalizationNonce") {
@@ -400,16 +353,13 @@ impl ImageMounter {
     /// Returns `IdeviceError` if query fails
     pub async fn query_personalization_identifiers(
         &mut self,
-        image_type: Option<String>,
+        image_type: Option<&str>,
     ) -> Result<plist::Dictionary, IdeviceError> {
-        let mut req = plist::Dictionary::new();
-        req.insert("Command".into(), "QueryPersonalizationIdentifiers".into());
-        if let Some(image_type) = image_type {
-            req.insert("PersonalizedImageType".into(), image_type.into());
-        }
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        let req = crate::plist!({
+            "Command": "QueryPersonalizationIdentifiers",
+            "PersonalizedImageType":? image_type,
+        });
+        self.idevice.send_plist(req).await?;
 
         let res = self.idevice.read_plist().await?;
         match res.get("PersonalizationIdentifiers") {
@@ -423,11 +373,10 @@ impl ImageMounter {
     /// # Errors
     /// Returns `IdeviceError` if operation fails
     pub async fn roll_personalization_nonce(&mut self) -> Result<(), IdeviceError> {
-        let mut req = plist::Dictionary::new();
-        req.insert("Command".into(), "RollPersonalizationNonce".into());
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        let req = crate::plist!({
+            "Command": "RollPersonalizationNonce"
+        });
+        self.idevice.send_plist(req).await?;
 
         Ok(())
     }
@@ -437,11 +386,10 @@ impl ImageMounter {
     /// # Errors
     /// Returns `IdeviceError` if operation fails
     pub async fn roll_cryptex_nonce(&mut self) -> Result<(), IdeviceError> {
-        let mut req = plist::Dictionary::new();
-        req.insert("Command".into(), "RollCryptexNonce".into());
-        self.idevice
-            .send_plist(plist::Value::Dictionary(req))
-            .await?;
+        let req = crate::plist!({
+            "Command": "RollCryptexNonce"
+        });
+        self.idevice.send_plist(req).await?;
 
         Ok(())
     }
@@ -626,10 +574,7 @@ impl ImageMounter {
         request.insert("ApECID", unique_chip_id);
         request.insert(
             "ApNonce",
-            plist::Value::Data(
-                self.query_nonce(Some("DeveloperDiskImage".to_string()))
-                    .await?,
-            ),
+            plist::Value::Data(self.query_nonce(Some("DeveloperDiskImage")).await?),
         );
         request.insert("ApProductionMode", true);
         request.insert("ApSecurityDomain", 1);
@@ -705,11 +650,12 @@ impl ImageMounter {
             }
         };
 
-        let mut parameters = plist::Dictionary::new();
-        parameters.insert("ApProductionMode".into(), true.into());
-        parameters.insert("ApSecurityDomain".into(), 1.into());
-        parameters.insert("ApSecurityMode".into(), true.into());
-        parameters.insert("ApSupportsImg4".into(), true.into());
+        let parameters = crate::plist!(dict {
+            "ApProductionMode": true,
+            "ApSecurityMode": 1,
+            "ApSecurityMode": true,
+            "ApSupportsImg4": true
+        });
 
         for (key, manifest_item) in manifest {
             println!("{key}, {manifest_item:?}");
@@ -746,10 +692,9 @@ impl ImageMounter {
                 .and_then(|l| l.as_dictionary())
                 .and_then(|l| l.get("Info"))
                 .and_then(|i| i.as_dictionary())
+                && let Some(plist::Value::Array(rules)) = info.get("RestoreRequestRules")
             {
-                if let Some(plist::Value::Array(rules)) = info.get("RestoreRequestRules") {
-                    crate::tss::apply_restore_request_rules(&mut tss_entry, &parameters, rules);
-                }
+                crate::tss::apply_restore_request_rules(&mut tss_entry, &parameters, rules);
             }
 
             if manifest_item.get("Digest").is_none() {

@@ -18,9 +18,7 @@ pub async fn get_provider(
     pairing_file: Option<&String>,
     label: &str,
 ) -> Result<Box<dyn IdeviceProvider>, String> {
-    let provider: Box<dyn IdeviceProvider> = if udid.is_some() {
-        let udid = udid.unwrap();
-
+    let provider: Box<dyn IdeviceProvider> = if let Some(udid) = udid {
         let mut usbmuxd = if let Ok(var) = std::env::var("USBMUXD_SOCKET_ADDRESS") {
             let socket = SocketAddr::from_str(&var).expect("Bad USBMUXD_SOCKET_ADDRESS");
             let socket = tokio::net::TcpStream::connect(socket)
@@ -40,14 +38,16 @@ pub async fn get_provider(
             }
         };
         Box::new(dev.to_provider(UsbmuxdAddr::from_env_var().unwrap(), label))
-    } else if host.is_some() && pairing_file.is_some() {
-        let host = match IpAddr::from_str(host.unwrap()) {
+    } else if let Some(host) = host
+        && let Some(pairing_file) = pairing_file
+    {
+        let host = match IpAddr::from_str(host) {
             Ok(h) => h,
             Err(e) => {
                 return Err(format!("Invalid host: {e:?}"));
             }
         };
-        let pairing_file = match PairingFile::read_from_file(pairing_file.unwrap()) {
+        let pairing_file = match PairingFile::read_from_file(pairing_file) {
             Ok(p) => p,
             Err(e) => {
                 return Err(format!("Unable to read pairing file: {e:?}"));

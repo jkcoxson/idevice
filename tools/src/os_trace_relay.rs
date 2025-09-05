@@ -1,7 +1,7 @@
 // Jackson Coxson
 
 use clap::{Arg, Command};
-use idevice::{os_trace_relay::OsTraceRelayClient, IdeviceService};
+use idevice::{IdeviceService, os_trace_relay::OsTraceRelayClient};
 
 mod common;
 

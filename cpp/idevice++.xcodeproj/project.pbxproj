@@ -1,0 +1,521 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1914C7972E623CC2002EAB6E /* option.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 1914C7962E623CC2002EAB6E /* option.hpp */; };
+		1914C7992E623CC8002EAB6E /* result.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 1914C7982E623CC8002EAB6E /* result.hpp */; };
+		198077932E5CA6EF00CB501E /* adapter_stream.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1980776C2E5CA69800CB501E /* adapter_stream.cpp */; };
+		198077942E5CA6EF00CB501E /* app_service.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1980776D2E5CA69800CB501E /* app_service.cpp */; };
+		198077952E5CA6EF00CB501E /* core_device.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1980776E2E5CA69800CB501E /* core_device.cpp */; };
+		198077962E5CA6EF00CB501E /* debug_proxy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1980776F2E5CA69800CB501E /* debug_proxy.cpp */; };
+		198077972E5CA6EF00CB501E /* diagnosticsservice.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077702E5CA69800CB501E /* diagnosticsservice.cpp */; };
+		198077982E5CA6EF00CB501E /* ffi.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077712E5CA69800CB501E /* ffi.cpp */; };
+		198077992E5CA6EF00CB501E /* idevice.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077722E5CA69800CB501E /* idevice.cpp */; };
+		1980779A2E5CA6EF00CB501E /* location_simulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077732E5CA69800CB501E /* location_simulation.cpp */; };
+		1980779B2E5CA6EF00CB501E /* lockdown.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077742E5CA69800CB501E /* lockdown.cpp */; };
+		1980779C2E5CA6EF00CB501E /* pairing_file.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077752E5CA69800CB501E /* pairing_file.cpp */; };
+		1980779D2E5CA6EF00CB501E /* provider.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077762E5CA69800CB501E /* provider.cpp */; };
+		1980779E2E5CA6EF00CB501E /* remote_server.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077772E5CA69800CB501E /* remote_server.cpp */; };
+		1980779F2E5CA6EF00CB501E /* rsd.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077782E5CA69800CB501E /* rsd.cpp */; };
+		198077A02E5CA6EF00CB501E /* tcp_callback_feeder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077792E5CA69800CB501E /* tcp_callback_feeder.cpp */; };
+		198077A12E5CA6EF00CB501E /* usbmuxd.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1980777A2E5CA69800CB501E /* usbmuxd.cpp */; };
+		198077B72E5CA6FC00CB501E /* core_device_proxy.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077A62E5CA6FC00CB501E /* core_device_proxy.hpp */; };
+		198077B82E5CA6FC00CB501E /* pairing_file.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077AD2E5CA6FC00CB501E /* pairing_file.hpp */; };
+		198077B92E5CA6FC00CB501E /* bindings.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077A52E5CA6FC00CB501E /* bindings.hpp */; };
+		198077BA2E5CA6FC00CB501E /* diagnosticsservice.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077A82E5CA6FC00CB501E /* diagnosticsservice.hpp */; };
+		198077BB2E5CA6FC00CB501E /* idevice.h in Headers */ = {isa = PBXBuildFile; fileRef = 198077B52E5CA6FC00CB501E /* idevice.h */; };
+		198077BC2E5CA6FC00CB501E /* debug_proxy.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077A72E5CA6FC00CB501E /* debug_proxy.hpp */; };
+		198077BD2E5CA6FC00CB501E /* ffi.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077A92E5CA6FC00CB501E /* ffi.hpp */; };
+		198077BE2E5CA6FC00CB501E /* rsd.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077B12E5CA6FC00CB501E /* rsd.hpp */; };
+		198077BF2E5CA6FC00CB501E /* tcp_object_stack.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077B22E5CA6FC00CB501E /* tcp_object_stack.hpp */; };
+		198077C02E5CA6FC00CB501E /* remote_server.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077B02E5CA6FC00CB501E /* remote_server.hpp */; };
+		198077C12E5CA6FC00CB501E /* readwrite.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077AF2E5CA6FC00CB501E /* readwrite.hpp */; };
+		198077C22E5CA6FC00CB501E /* location_simulation.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077AB2E5CA6FC00CB501E /* location_simulation.hpp */; };
+		198077C32E5CA6FC00CB501E /* adapter_stream.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077A32E5CA6FC00CB501E /* adapter_stream.hpp */; };
+		198077C42E5CA6FC00CB501E /* lockdown.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077AC2E5CA6FC00CB501E /* lockdown.hpp */; };
+		198077C52E5CA6FC00CB501E /* usbmuxd.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077B32E5CA6FC00CB501E /* usbmuxd.hpp */; };
+		198077C62E5CA6FC00CB501E /* app_service.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077A42E5CA6FC00CB501E /* app_service.hpp */; };
+		198077C72E5CA6FC00CB501E /* idevice.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077AA2E5CA6FC00CB501E /* idevice.hpp */; };
+		198077C82E5CA6FC00CB501E /* provider.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077AE2E5CA6FC00CB501E /* provider.hpp */; };
+		198077DF2E5CCA2900CB501E /* libidevice_ffi.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 198077DB2E5CC33000CB501E /* libidevice_ffi.a */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1914C7962E623CC2002EAB6E /* option.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = option.hpp; sourceTree = "<group>"; };
+		1914C7982E623CC8002EAB6E /* result.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = result.hpp; sourceTree = "<group>"; };
+		1980776C2E5CA69800CB501E /* adapter_stream.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = adapter_stream.cpp; sourceTree = "<group>"; };
+		1980776D2E5CA69800CB501E /* app_service.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = app_service.cpp; sourceTree = "<group>"; };
+		1980776E2E5CA69800CB501E /* core_device.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = core_device.cpp; sourceTree = "<group>"; };
+		1980776F2E5CA69800CB501E /* debug_proxy.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = debug_proxy.cpp; sourceTree = "<group>"; };
+		198077702E5CA69800CB501E /* diagnosticsservice.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = diagnosticsservice.cpp; sourceTree = "<group>"; };
+		198077712E5CA69800CB501E /* ffi.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ffi.cpp; sourceTree = "<group>"; };
+		198077722E5CA69800CB501E /* idevice.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = idevice.cpp; sourceTree = "<group>"; };
+		198077732E5CA69800CB501E /* location_simulation.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = location_simulation.cpp; sourceTree = "<group>"; };
+		198077742E5CA69800CB501E /* lockdown.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = lockdown.cpp; sourceTree = "<group>"; };
+		198077752E5CA69800CB501E /* pairing_file.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = pairing_file.cpp; sourceTree = "<group>"; };
+		198077762E5CA69800CB501E /* provider.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = provider.cpp; sourceTree = "<group>"; };
+		198077772E5CA69800CB501E /* remote_server.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = remote_server.cpp; sourceTree = "<group>"; };
+		198077782E5CA69800CB501E /* rsd.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = rsd.cpp; sourceTree = "<group>"; };
+		198077792E5CA69800CB501E /* tcp_callback_feeder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = tcp_callback_feeder.cpp; sourceTree = "<group>"; };
+		1980777A2E5CA69800CB501E /* usbmuxd.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = usbmuxd.cpp; sourceTree = "<group>"; };
+		1980778F2E5CA6C700CB501E /* libidevice++.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libidevice++.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		198077A32E5CA6FC00CB501E /* adapter_stream.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = adapter_stream.hpp; sourceTree = "<group>"; };
+		198077A42E5CA6FC00CB501E /* app_service.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = app_service.hpp; sourceTree = "<group>"; };
+		198077A52E5CA6FC00CB501E /* bindings.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = bindings.hpp; sourceTree = "<group>"; };
+		198077A62E5CA6FC00CB501E /* core_device_proxy.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = core_device_proxy.hpp; sourceTree = "<group>"; };
+		198077A72E5CA6FC00CB501E /* debug_proxy.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = debug_proxy.hpp; sourceTree = "<group>"; };
+		198077A82E5CA6FC00CB501E /* diagnosticsservice.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = diagnosticsservice.hpp; sourceTree = "<group>"; };
+		198077A92E5CA6FC00CB501E /* ffi.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = ffi.hpp; sourceTree = "<group>"; };
+		198077AA2E5CA6FC00CB501E /* idevice.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = idevice.hpp; sourceTree = "<group>"; };
+		198077AB2E5CA6FC00CB501E /* location_simulation.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = location_simulation.hpp; sourceTree = "<group>"; };
+		198077AC2E5CA6FC00CB501E /* lockdown.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = lockdown.hpp; sourceTree = "<group>"; };
+		198077AD2E5CA6FC00CB501E /* pairing_file.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = pairing_file.hpp; sourceTree = "<group>"; };
+		198077AE2E5CA6FC00CB501E /* provider.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = provider.hpp; sourceTree = "<group>"; };
+		198077AF2E5CA6FC00CB501E /* readwrite.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = readwrite.hpp; sourceTree = "<group>"; };
+		198077B02E5CA6FC00CB501E /* remote_server.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = remote_server.hpp; sourceTree = "<group>"; };
+		198077B12E5CA6FC00CB501E /* rsd.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = rsd.hpp; sourceTree = "<group>"; };
+		198077B22E5CA6FC00CB501E /* tcp_object_stack.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = tcp_object_stack.hpp; sourceTree = "<group>"; };
+		198077B32E5CA6FC00CB501E /* usbmuxd.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = usbmuxd.hpp; sourceTree = "<group>"; };
+		198077B52E5CA6FC00CB501E /* idevice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = idevice.h; sourceTree = "<group>"; };
+		198077DB2E5CC33000CB501E /* libidevice_ffi.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libidevice_ffi.a; path = "${DESTINATION_PATH}/libidevice_ffi.a"; sourceTree = "<group>"; };
+		198077E02E5CD49200CB501E /* xcode_build_rust.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = xcode_build_rust.sh; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1980778D2E5CA6C700CB501E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				198077DF2E5CCA2900CB501E /* libidevice_ffi.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		198077562E5CA62F00CB501E = {
+			isa = PBXGroup;
+			children = (
+				1980777B2E5CA69800CB501E /* src */,
+				198077612E5CA62F00CB501E /* Products */,
+				198077B62E5CA6FC00CB501E /* include */,
+				198077D92E5CC31100CB501E /* Frameworks */,
+				198077E02E5CD49200CB501E /* xcode_build_rust.sh */,
+			);
+			sourceTree = "<group>";
+		};
+		198077612E5CA62F00CB501E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1980778F2E5CA6C700CB501E /* libidevice++.a */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1980777B2E5CA69800CB501E /* src */ = {
+			isa = PBXGroup;
+			children = (
+				1980776C2E5CA69800CB501E /* adapter_stream.cpp */,
+				1980776D2E5CA69800CB501E /* app_service.cpp */,
+				1980776E2E5CA69800CB501E /* core_device.cpp */,
+				1980776F2E5CA69800CB501E /* debug_proxy.cpp */,
+				198077702E5CA69800CB501E /* diagnosticsservice.cpp */,
+				198077712E5CA69800CB501E /* ffi.cpp */,
+				198077722E5CA69800CB501E /* idevice.cpp */,
+				198077732E5CA69800CB501E /* location_simulation.cpp */,
+				198077742E5CA69800CB501E /* lockdown.cpp */,
+				198077752E5CA69800CB501E /* pairing_file.cpp */,
+				198077762E5CA69800CB501E /* provider.cpp */,
+				198077772E5CA69800CB501E /* remote_server.cpp */,
+				198077782E5CA69800CB501E /* rsd.cpp */,
+				198077792E5CA69800CB501E /* tcp_callback_feeder.cpp */,
+				1980777A2E5CA69800CB501E /* usbmuxd.cpp */,
+			);
+			path = src;
+			sourceTree = "<group>";
+		};
+		198077B42E5CA6FC00CB501E /* idevice++ */ = {
+			isa = PBXGroup;
+			children = (
+				198077A32E5CA6FC00CB501E /* adapter_stream.hpp */,
+				198077A42E5CA6FC00CB501E /* app_service.hpp */,
+				198077A52E5CA6FC00CB501E /* bindings.hpp */,
+				198077A62E5CA6FC00CB501E /* core_device_proxy.hpp */,
+				198077A72E5CA6FC00CB501E /* debug_proxy.hpp */,
+				198077A82E5CA6FC00CB501E /* diagnosticsservice.hpp */,
+				198077A92E5CA6FC00CB501E /* ffi.hpp */,
+				198077AA2E5CA6FC00CB501E /* idevice.hpp */,
+				198077AB2E5CA6FC00CB501E /* location_simulation.hpp */,
+				198077AC2E5CA6FC00CB501E /* lockdown.hpp */,
+				198077AD2E5CA6FC00CB501E /* pairing_file.hpp */,
+				198077AE2E5CA6FC00CB501E /* provider.hpp */,
+				198077AF2E5CA6FC00CB501E /* readwrite.hpp */,
+				198077B02E5CA6FC00CB501E /* remote_server.hpp */,
+				198077B12E5CA6FC00CB501E /* rsd.hpp */,
+				198077B22E5CA6FC00CB501E /* tcp_object_stack.hpp */,
+				198077B32E5CA6FC00CB501E /* usbmuxd.hpp */,
+				1914C7962E623CC2002EAB6E /* option.hpp */,
+				1914C7982E623CC8002EAB6E /* result.hpp */,
+			);
+			path = "idevice++";
+			sourceTree = "<group>";
+		};
+		198077B62E5CA6FC00CB501E /* include */ = {
+			isa = PBXGroup;
+			children = (
+				198077B42E5CA6FC00CB501E /* idevice++ */,
+				198077B52E5CA6FC00CB501E /* idevice.h */,
+			);
+			path = include;
+			sourceTree = "<group>";
+		};
+		198077D92E5CC31100CB501E /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				198077DB2E5CC33000CB501E /* libidevice_ffi.a */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXHeadersBuildPhase section */
+		1980778B2E5CA6C700CB501E /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				198077B72E5CA6FC00CB501E /* core_device_proxy.hpp in Headers */,
+				198077B82E5CA6FC00CB501E /* pairing_file.hpp in Headers */,
+				198077B92E5CA6FC00CB501E /* bindings.hpp in Headers */,
+				198077BA2E5CA6FC00CB501E /* diagnosticsservice.hpp in Headers */,
+				198077BB2E5CA6FC00CB501E /* idevice.h in Headers */,
+				198077BC2E5CA6FC00CB501E /* debug_proxy.hpp in Headers */,
+				198077BD2E5CA6FC00CB501E /* ffi.hpp in Headers */,
+				198077BE2E5CA6FC00CB501E /* rsd.hpp in Headers */,
+				198077BF2E5CA6FC00CB501E /* tcp_object_stack.hpp in Headers */,
+				198077C02E5CA6FC00CB501E /* remote_server.hpp in Headers */,
+				198077C12E5CA6FC00CB501E /* readwrite.hpp in Headers */,
+				198077C22E5CA6FC00CB501E /* location_simulation.hpp in Headers */,
+				198077C32E5CA6FC00CB501E /* adapter_stream.hpp in Headers */,
+				1914C7972E623CC2002EAB6E /* option.hpp in Headers */,
+				198077C42E5CA6FC00CB501E /* lockdown.hpp in Headers */,
+				198077C52E5CA6FC00CB501E /* usbmuxd.hpp in Headers */,
+				198077C62E5CA6FC00CB501E /* app_service.hpp in Headers */,
+				198077C72E5CA6FC00CB501E /* idevice.hpp in Headers */,
+				198077C82E5CA6FC00CB501E /* provider.hpp in Headers */,
+				1914C7992E623CC8002EAB6E /* result.hpp in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXHeadersBuildPhase section */
+
+/* Begin PBXNativeTarget section */
+		1980778E2E5CA6C700CB501E /* idevice++ */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 198077902E5CA6C700CB501E /* Build configuration list for PBXNativeTarget "idevice++" */;
+			buildPhases = (
+				198077E22E5CD4C900CB501E /* ShellScript */,
+				1980778B2E5CA6C700CB501E /* Headers */,
+				1980778C2E5CA6C700CB501E /* Sources */,
+				1980778D2E5CA6C700CB501E /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "idevice++";
+			packageProductDependencies = (
+			);
+			productName = "idevice++";
+			productReference = 1980778F2E5CA6C700CB501E /* libidevice++.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		198077572E5CA62F00CB501E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1640;
+				LastUpgradeCheck = 1640;
+				TargetAttributes = {
+					1980778E2E5CA6C700CB501E = {
+						CreatedOnToolsVersion = 16.4;
+					};
+				};
+			};
+			buildConfigurationList = 1980775A2E5CA62F00CB501E /* Build configuration list for PBXProject "idevice++" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 198077562E5CA62F00CB501E;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 198077612E5CA62F00CB501E /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1980778E2E5CA6C700CB501E /* idevice++ */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		198077E22E5CD4C900CB501E /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "#!/bin/sh\n./xcode_build_rust.sh\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1980778C2E5CA6C700CB501E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				198077932E5CA6EF00CB501E /* adapter_stream.cpp in Sources */,
+				198077942E5CA6EF00CB501E /* app_service.cpp in Sources */,
+				198077952E5CA6EF00CB501E /* core_device.cpp in Sources */,
+				198077962E5CA6EF00CB501E /* debug_proxy.cpp in Sources */,
+				198077972E5CA6EF00CB501E /* diagnosticsservice.cpp in Sources */,
+				198077982E5CA6EF00CB501E /* ffi.cpp in Sources */,
+				198077992E5CA6EF00CB501E /* idevice.cpp in Sources */,
+				1980779A2E5CA6EF00CB501E /* location_simulation.cpp in Sources */,
+				1980779B2E5CA6EF00CB501E /* lockdown.cpp in Sources */,
+				1980779C2E5CA6EF00CB501E /* pairing_file.cpp in Sources */,
+				1980779D2E5CA6EF00CB501E /* provider.cpp in Sources */,
+				1980779E2E5CA6EF00CB501E /* remote_server.cpp in Sources */,
+				1980779F2E5CA6EF00CB501E /* rsd.cpp in Sources */,
+				198077A02E5CA6EF00CB501E /* tcp_callback_feeder.cpp in Sources */,
+				198077A12E5CA6EF00CB501E /* usbmuxd.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		198077672E5CA63000CB501E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 4FW3Q8784L;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Debug;
+		};
+		198077682E5CA63000CB501E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 4FW3Q8784L;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Release;
+		};
+		198077912E5CA6C700CB501E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_WARN_SUSPICIOUS_IMPLICIT_CONVERSION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 4FW3Q8784L;
+				EXECUTABLE_PREFIX = lib;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = NO;
+				GCC_WARN_SIGN_COMPARE = YES;
+				GCC_WARN_UNKNOWN_PRAGMAS = YES;
+				GCC_WARN_UNUSED_LABEL = YES;
+				GCC_WARN_UNUSED_PARAMETER = YES;
+				LIBRARY_SEARCH_PATHS = (
+					"${TARGET_BUILD_DIR}/**",
+					"$(PROJECT_DIR)/${DESTINATION_PATH}",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.5;
+				OTHER_LDFLAGS = "-Wall";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator iphoneos iphonesimulator macosx watchos watchsimulator";
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2,3,4";
+			};
+			name = Debug;
+		};
+		198077922E5CA6C700CB501E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_WARN_SUSPICIOUS_IMPLICIT_CONVERSION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 4FW3Q8784L;
+				EXECUTABLE_PREFIX = lib;
+				GCC_WARN_INHIBIT_ALL_WARNINGS = NO;
+				GCC_WARN_SIGN_COMPARE = YES;
+				GCC_WARN_UNKNOWN_PRAGMAS = YES;
+				GCC_WARN_UNUSED_LABEL = YES;
+				GCC_WARN_UNUSED_PARAMETER = YES;
+				LIBRARY_SEARCH_PATHS = (
+					"${TARGET_BUILD_DIR}/**",
+					"$(PROJECT_DIR)/${DESTINATION_PATH}",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.5;
+				OTHER_LDFLAGS = "-Wall";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator iphoneos iphonesimulator macosx watchos watchsimulator";
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2,3,4";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1980775A2E5CA62F00CB501E /* Build configuration list for PBXProject "idevice++" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				198077672E5CA63000CB501E /* Debug */,
+				198077682E5CA63000CB501E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		198077902E5CA6C700CB501E /* Build configuration list for PBXNativeTarget "idevice++" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				198077912E5CA6C700CB501E /* Debug */,
+				198077922E5CA6C700CB501E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 198077572E5CA62F00CB501E /* Project object */;
+}

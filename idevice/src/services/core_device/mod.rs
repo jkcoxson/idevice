@@ -4,12 +4,16 @@
 use log::warn;
 
 use crate::{
-    xpc::{self, XPCObject},
     IdeviceError, ReadWrite, RemoteXpcClient,
+    xpc::{self, XPCObject},
 };
 
 mod app_service;
+mod diagnosticsservice;
+mod openstdiosocket;
 pub use app_service::*;
+pub use diagnosticsservice::*;
+pub use openstdiosocket::*;
 
 const CORE_SERVICE_VERSION: &str = "443.18";
 
@@ -17,26 +21,33 @@ pub struct CoreDeviceServiceClient<R: ReadWrite> {
     inner: RemoteXpcClient<R>,
 }
 
-impl<'a, R: ReadWrite + 'a> CoreDeviceServiceClient<R> {
+impl<R: ReadWrite> CoreDeviceServiceClient<R> {
     pub async fn new(inner: R) -> Result<Self, IdeviceError> {
         let mut client = RemoteXpcClient::new(inner).await?;
         client.do_handshake().await?;
         Ok(Self { inner: client })
     }
 
-    pub fn box_inner(self) -> CoreDeviceServiceClient<Box<dyn ReadWrite + 'a>> {
-        CoreDeviceServiceClient {
-            inner: self.inner.box_inner(),
-        }
+    pub async fn invoke_with_plist(
+        &mut self,
+        feature: impl Into<String>,
+        input: plist::Dictionary,
+    ) -> Result<plist::Value, IdeviceError> {
+        let input: XPCObject = plist::Value::Dictionary(input).into();
+        let input = input.to_dictionary().unwrap();
+        self.invoke(feature, Some(input)).await
     }
 
     pub async fn invoke(
         &mut self,
         feature: impl Into<String>,
-        input: Option<plist::Dictionary>,
+        input: Option<crate::xpc::Dictionary>,
     ) -> Result<plist::Value, IdeviceError> {
         let feature = feature.into();
-        let input = input.unwrap_or_default();
+        let input: crate::xpc::XPCObject = match input {
+            Some(i) => i.into(),
+            None => crate::xpc::Dictionary::new().into(),
+        };
 
         let mut req = xpc::Dictionary::new();
         req.insert(
@@ -56,10 +67,7 @@ impl<'a, R: ReadWrite + 'a> CoreDeviceServiceClient<R> {
             "CoreDevice.featureIdentifier".into(),
             XPCObject::String(feature),
         );
-        req.insert(
-            "CoreDevice.input".into(),
-            plist::Value::Dictionary(input).into(),
-        );
+        req.insert("CoreDevice.input".into(), input);
         req.insert(
             "CoreDevice.invocationIdentifier".into(),
             XPCObject::String(uuid::Uuid::new_v4().to_string()),

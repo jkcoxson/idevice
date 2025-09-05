@@ -62,10 +62,13 @@
 
 use std::{collections::HashMap, io::ErrorKind, net::IpAddr, path::Path, sync::Arc};
 
-use log::trace;
-use tokio::{io::AsyncWriteExt, sync::Mutex};
+use log::{debug, trace, warn};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::Mutex,
+};
 
-use crate::ReadWrite;
+use crate::{ReadWrite, tcp::packets::IpParseError};
 
 use super::packets::{Ipv4Packet, Ipv6Packet, ProtocolNumber, TcpFlags, TcpPacket};
 
@@ -121,6 +124,8 @@ pub struct Adapter {
     /// The states of the connections
     states: HashMap<u16, ConnectionState>, // host port by state
     dropped: Vec<u16>,
+    read_buf: [u8; 4096],
+    bytes_in_buf: usize,
 
     /// Optional PCAP file for packet logging
     pcap: Option<Arc<Mutex<tokio::fs::File>>>,
@@ -143,8 +148,17 @@ impl Adapter {
             peer_ip,
             states: HashMap::new(),
             dropped: Vec::new(),
+            read_buf: [0u8; 4096],
+            bytes_in_buf: 0,
             pcap: None,
         }
+    }
+
+    /// Wraps this handle in a new thread.
+    /// Streams from this handle will be thread safe, with data sent through channels.
+    /// The handle supports the trait for RSD provider.
+    pub fn to_async_handle(self) -> super::handle::AdapterHandle {
+        super::handle::AdapterHandle::new(self)
     }
 
     /// Initiates a TCP connection to the specified port.
@@ -191,6 +205,7 @@ impl Adapter {
 
         // Wait for the syn ack
         self.states.insert(host_port, state);
+        let start_time = std::time::Instant::now();
         loop {
             self.process_tcp_packet().await?;
             if let Some(s) = self.states.get(&host_port) {
@@ -199,9 +214,15 @@ impl Adapter {
                         break;
                     }
                     ConnectionStatus::Error(e) => {
-                        return Err(std::io::Error::new(e, "failed to connect"))
+                        return Err(std::io::Error::new(e, "failed to connect"));
                     }
                     ConnectionStatus::WaitingForSyn => {
+                        if start_time.elapsed() > std::time::Duration::from_secs(5) {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::TimedOut,
+                                "didn't syn in time",
+                            ));
+                        }
                         continue;
                     }
                 }
@@ -229,7 +250,7 @@ impl Adapter {
         file.write_all(&0_i32.to_le_bytes()).await?; // timezone
         file.write_all(&0_u32.to_le_bytes()).await?; // accuracy
         file.write_all(&(u16::MAX as u32).to_le_bytes()).await?; // snaplen
-                                                                 // https://www.tcpdump.org/linktypes.html
+        // https://www.tcpdump.org/linktypes.html
         file.write_all(&101_u32.to_le_bytes()).await?; // link type
 
         self.pcap = Some(Arc::new(Mutex::new(file)));
@@ -435,6 +456,19 @@ impl Adapter {
         }
     }
 
+    pub(crate) fn uncache_all(&mut self, host_port: u16) -> Result<Vec<u8>, std::io::Error> {
+        if let Some(state) = self.states.get_mut(&host_port) {
+            let res = state.read_buffer[..].to_vec();
+            state.read_buffer.clear();
+            Ok(res)
+        } else {
+            Err(std::io::Error::new(
+                ErrorKind::NotConnected,
+                "not connected",
+            ))
+        }
+    }
+
     pub(crate) fn cache_read(
         &mut self,
         payload: &[u8],
@@ -498,66 +532,108 @@ impl Adapter {
     async fn read_ip_packet(&mut self) -> Result<Vec<u8>, std::io::Error> {
         self.write_buffer_flush().await?;
         Ok(loop {
-            match self.host_ip {
-                IpAddr::V4(_) => {
-                    let packet = Ipv4Packet::from_reader(&mut self.peer, &self.pcap).await?;
-                    trace!("IPv4 packet: {packet:#?}");
-                    if packet.protocol == 6 {
-                        break packet.payload;
-                    }
+            // try the data we already have
+            match Ipv6Packet::parse(&self.read_buf[..self.bytes_in_buf], &self.pcap) {
+                IpParseError::Ok {
+                    packet,
+                    bytes_consumed,
+                } => {
+                    // And remove it from the buffer by shifting the remaining bytes
+                    self.read_buf
+                        .copy_within(bytes_consumed..self.bytes_in_buf, 0);
+                    self.bytes_in_buf -= bytes_consumed;
+                    break packet.payload;
                 }
-                IpAddr::V6(_) => {
-                    let packet = Ipv6Packet::from_reader(&mut self.peer, &self.pcap).await?;
-                    trace!("IPv6 packet: {packet:#?}");
-                    if packet.next_header == 6 {
-                        break packet.payload;
-                    }
+                IpParseError::NotEnough => {
+                    // Buffer doesn't have a full packet, wait for the next read
+                }
+                IpParseError::Invalid => {
+                    // Corrupted data, close the connection
+                    return Err(std::io::Error::new(
+                        ErrorKind::InvalidData,
+                        "invalid IPv6 parse",
+                    ));
                 }
             }
+            // go get  more
+            let s = self
+                .peer
+                .read(&mut self.read_buf[self.bytes_in_buf..])
+                .await?;
+
+            self.bytes_in_buf += s;
         })
     }
 
-    async fn process_tcp_packet(&mut self) -> Result<(), std::io::Error> {
-        loop {
-            let ip_packet = self.read_ip_packet().await?;
-            let res = TcpPacket::parse(&ip_packet)?;
-            let mut ack_me = None;
-            if let Some(state) = self.states.get_mut(&res.destination_port) {
-                if state.peer_seq > res.sequence_number {
-                    // ignore retransmission
-                    continue;
-                }
+    pub(crate) async fn process_tcp_packet(&mut self) -> Result<(), std::io::Error> {
+        tokio::select! {
+            ip_packet = self.read_ip_packet() => {
+                let ip_packet = ip_packet?;
+                self.process_tcp_packet_from_payload(&ip_packet).await
+            }
+            _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => {
+                Ok(())
+            }
+        }
+    }
 
-                state.peer_seq = res.sequence_number + res.payload.len() as u32;
-                state.ack = res.sequence_number
-                    + if res.payload.is_empty() && state.status != ConnectionStatus::Connected {
-                        1
-                    } else {
-                        res.payload.len() as u32
-                    };
-                if res.flags.psh || !res.payload.is_empty() {
-                    ack_me = Some(res.destination_port);
-                    state.read_buffer.extend(res.payload);
-                }
-                if res.flags.rst {
-                    state.status = ConnectionStatus::Error(ErrorKind::ConnectionReset);
-                }
-                if res.flags.fin {
-                    ack_me = Some(res.destination_port);
-                    state.status = ConnectionStatus::Error(ErrorKind::ConnectionReset);
-                }
-                if res.flags.syn && res.flags.ack {
-                    ack_me = Some(res.destination_port);
-                    state.seq = state.seq.wrapping_add(1);
-                    state.status = ConnectionStatus::Connected;
-                }
+    pub(crate) async fn process_tcp_packet_from_payload(
+        &mut self,
+        payload: &[u8],
+    ) -> Result<(), std::io::Error> {
+        let res = TcpPacket::parse(payload)?;
+        let mut ack_me = None;
+
+        if let Some(state) = self.states.get(&res.destination_port) {
+            // A keep-alive probe: ACK set, no payload, and seq == RCV.NXT - 1
+            let is_keepalive = res.flags.ack
+                && res.payload.is_empty()
+                && res.sequence_number.wrapping_add(1) == state.ack;
+
+            if is_keepalive {
+                // Don't update any seq/ack state; just ACK what we already expect.
+                debug!("responding to keep-alive probe");
+                let port = res.destination_port;
+                self.ack(port).await?;
+                return Ok(());
+            }
+        }
+
+        if let Some(state) = self.states.get_mut(&res.destination_port) {
+            if state.peer_seq > res.sequence_number {
+                // ignore retransmission
+                return Ok(());
             }
 
-            // we have to ack outside of the mutable state borrow
-            if let Some(a) = ack_me {
-                self.ack(a).await?;
+            state.peer_seq = res.sequence_number + res.payload.len() as u32;
+            state.ack = res.sequence_number
+                + if res.payload.is_empty() && state.status != ConnectionStatus::Connected {
+                    1
+                } else {
+                    res.payload.len() as u32
+                };
+            if res.flags.psh || !res.payload.is_empty() {
+                ack_me = Some(res.destination_port);
+                state.read_buffer.extend(res.payload);
             }
-            break;
+            if res.flags.rst {
+                warn!("stream rst");
+                state.status = ConnectionStatus::Error(ErrorKind::ConnectionReset);
+            }
+            if res.flags.fin {
+                ack_me = Some(res.destination_port);
+                state.status = ConnectionStatus::Error(ErrorKind::UnexpectedEof);
+            }
+            if res.flags.syn && res.flags.ack {
+                ack_me = Some(res.destination_port);
+                state.seq = state.seq.wrapping_add(1);
+                state.status = ConnectionStatus::Connected;
+            }
+        }
+
+        // we have to ack outside of the mutable state borrow
+        if let Some(a) = ack_me {
+            self.ack(a).await?;
         }
         Ok(())
     }

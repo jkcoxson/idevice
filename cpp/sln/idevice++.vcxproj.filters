@@ -1,0 +1,129 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Header Files\idevice++">
+      <UniqueIdentifier>{b4e9aee7-7e94-4e5f-b443-09677e8d69c2}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\adapter_stream.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\app_service.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\core_device.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\debug_proxy.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\diagnosticsservice.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ffi.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\idevice.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\location_simulation.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\lockdown.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\pairing_file.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\provider.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\remote_server.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\rsd.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\tcp_callback_feeder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\usbmuxd.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\include\idevice++\adapter_stream.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\app_service.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\bindings.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\core_device_proxy.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\debug_proxy.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\diagnosticsservice.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\ffi.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\idevice.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\location_simulation.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\lockdown.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\pairing_file.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\provider.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\readwrite.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\remote_server.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\rsd.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\tcp_object_stack.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\usbmuxd.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\ffi\idevice.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\option.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\result.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

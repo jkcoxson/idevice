@@ -39,6 +39,8 @@ pub mod rsd;
 pub mod springboardservices;
 #[cfg(feature = "syslog_relay")]
 pub mod syslog_relay;
+#[cfg(feature = "tunnel_tcp_stack")]
+pub mod tcp_object_stack;
 #[cfg(feature = "usbmuxd")]
 pub mod usbmuxd;
 pub mod util;
@@ -53,6 +55,9 @@ use std::{
     ptr::null_mut,
 };
 use tokio::runtime::{self, Runtime};
+
+#[cfg(unix)]
+use crate::util::{idevice_sockaddr, idevice_socklen_t};
 
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
     runtime::Builder::new_multi_thread()
@@ -72,6 +77,10 @@ pub struct ReadWriteOpaque {
 /// Opaque C-compatible handle to an Idevice connection
 pub struct IdeviceHandle(pub Idevice);
 pub struct IdeviceSocketHandle(IdeviceSocket);
+
+/// Stub to avoid header problems
+#[allow(non_camel_case_types)]
+pub type plist_t = *mut std::ffi::c_void;
 
 // https://github.com/mozilla/cbindgen/issues/539
 #[allow(non_camel_case_types, unused)]
@@ -132,22 +141,25 @@ pub unsafe extern "C" fn idevice_new(
 /// `addr` must be a valid sockaddr
 /// `label` must be a valid null-terminated C string
 /// `idevice` must be a valid, non-null pointer to a location where the handle will be stored
+#[cfg(unix)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn idevice_new_tcp_socket(
-    addr: *const libc::sockaddr,
-    addr_len: libc::socklen_t,
+    addr: *const idevice_sockaddr,
+    addr_len: idevice_socklen_t,
     label: *const c_char,
     idevice: *mut *mut IdeviceHandle,
 ) -> *mut IdeviceFfiError {
-    if addr.is_null() {
-        log::error!("socket addr null pointer");
+    use crate::util::SockAddr;
+
+    if addr.is_null() || label.is_null() || idevice.is_null() {
+        log::error!("null pointer(s) to idevice_new_tcp_socket");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
+    let addr = addr as *const SockAddr;
 
-    // Convert C string to Rust string
     let label = match unsafe { CStr::from_ptr(label).to_str() } {
         Ok(s) => s,
-        Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
     };
 
     let addr = match util::c_socket_to_rust(addr, addr_len) {
@@ -155,9 +167,10 @@ pub unsafe extern "C" fn idevice_new_tcp_socket(
         Err(e) => return ffi_err!(e),
     };
 
-    let device: Result<idevice::Idevice, idevice::IdeviceError> = RUNTIME.block_on(async move {
-        Ok(idevice::Idevice::new(
-            Box::new(tokio::net::TcpStream::connect(addr).await?),
+    let device = RUNTIME.block_on(async move {
+        let stream = tokio::net::TcpStream::connect(addr).await?;
+        Ok::<idevice::Idevice, idevice::IdeviceError>(idevice::Idevice::new(
+            Box::new(stream),
             label,
         ))
     });
@@ -166,7 +179,7 @@ pub unsafe extern "C" fn idevice_new_tcp_socket(
         Ok(dev) => {
             let boxed = Box::new(IdeviceHandle(dev));
             unsafe { *idevice = Box::into_raw(boxed) };
-            null_mut()
+            std::ptr::null_mut()
         }
         Err(e) => ffi_err!(e),
     }
@@ -302,5 +315,20 @@ pub unsafe extern "C" fn idevice_free(idevice: *mut IdeviceHandle) {
 pub unsafe extern "C" fn idevice_string_free(string: *mut c_char) {
     if !string.is_null() {
         let _ = unsafe { CString::from_raw(string) };
+    }
+}
+
+/// Frees data allocated by this library
+///
+/// # Arguments
+/// * [`data`] - The data to free
+///
+/// # Safety
+/// `data` must be a valid pointer to data that was allocated by this library,
+/// or NULL (in which case this function does nothing)
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_data_free(data: *mut u8, len: usize) {
+    if !data.is_null() {
+        let _ = unsafe { std::slice::from_raw_parts(data, len) };
     }
 }
