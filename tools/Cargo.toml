@@ -125,6 +125,11 @@ path = "src/pcapd.rs"
 name = "preboard"
 path = "src/preboard.rs"
 
+
+[[bin]]
+name = "screen_shot"
+path = "src/screen_shot.rs"
+
 [dependencies]
 idevice = { path = "../idevice", features = ["full"], default-features = false }
 tokio = { version = "1.43", features = ["full"] }

@@ -392,19 +392,26 @@ impl Message {
     /// # Errors
     /// * Various IdeviceError variants for IO and parsing failures
     pub async fn from_reader<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Self, IdeviceError> {
-        let mut buf = [0u8; 32];
-        reader.read_exact(&mut buf).await?;
 
-        let mheader = MessageHeader {
-            magic: u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]),
-            header_len: u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]),
-            fragment_id: u16::from_le_bytes([buf[8], buf[9]]),
-            fragment_count: u16::from_le_bytes([buf[10], buf[11]]),
-            length: u32::from_le_bytes([buf[12], buf[13], buf[14], buf[15]]),
-            identifier: u32::from_le_bytes([buf[16], buf[17], buf[18], buf[19]]),
-            conversation_index: u32::from_le_bytes([buf[20], buf[21], buf[22], buf[23]]),
-            channel: u32::from_le_bytes([buf[24], buf[25], buf[26], buf[27]]),
-            expects_reply: u32::from_le_bytes([buf[28], buf[29], buf[30], buf[31]]) == 1,
+        let mheader = loop {
+            let mut buf = [0u8; 32];
+            reader.read_exact(&mut buf).await?;
+            let mheader = MessageHeader {
+                magic: u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]),
+                header_len: u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]),
+                fragment_id: u16::from_le_bytes([buf[8], buf[9]]),
+                fragment_count: u16::from_le_bytes([buf[10], buf[11]]),
+                length: u32::from_le_bytes([buf[12], buf[13], buf[14], buf[15]]),
+                identifier: u32::from_le_bytes([buf[16], buf[17], buf[18], buf[19]]),
+                conversation_index: u32::from_le_bytes([buf[20], buf[21], buf[22], buf[23]]),
+                channel: u32::from_le_bytes([buf[24], buf[25], buf[26], buf[27]]),
+                expects_reply: u32::from_le_bytes([buf[28], buf[29], buf[30], buf[31]]) == 1,
+            };
+            if mheader.fragment_count > 1 && mheader.fragment_id == 0 {
+                println!("when reading multiple message fragments, the first fragment contains only a message header.");
+                continue;
+            }
+            break mheader;
         };
 
         let mut buf = [0u8; 16];
@@ -417,7 +424,6 @@ impl Message {
                 buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15],
             ]),
         };
-
         let aux = if pheader.aux_length > 0 {
             let mut buf = vec![0u8; pheader.aux_length as usize];
             reader.read_exact(&mut buf).await?;
@@ -428,7 +434,6 @@ impl Message {
 
         let mut buf = vec![0u8; (pheader.total_length - pheader.aux_length as u64) as usize];
         reader.read_exact(&mut buf).await?;
-
         let data = if buf.is_empty() {
             None
         } else {
