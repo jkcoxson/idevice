@@ -79,11 +79,13 @@ async fn main() {
             .expect("Failed to connect");
     ts_client.read_message(0).await.expect("no read??");
 
-    let mut ts_client =
-        idevice::dvt::screen_shot::ScreenShotClient::new(&mut ts_client)
-            .await
-            .expect("Unable to get channel for take screenshot");
-    let res = ts_client.take_screenshot().await.expect("Failed to take screenshot");
+    let mut ts_client = idevice::dvt::screen_shot::ScreenShotClient::new(&mut ts_client)
+        .await
+        .expect("Unable to get channel for take screenshot");
+    let res = ts_client
+        .take_screenshot()
+        .await
+        .expect("Failed to take screenshot");
 
     match fs::write(output_path, &res) {
         Ok(_) => println!("Screenshot saved to: {}", output_path),
