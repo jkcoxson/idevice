@@ -8,10 +8,7 @@ use plist::Value;
 
 use crate::{
     IdeviceError, ReadWrite,
-    dvt::{
-        message::AuxValue,
-        remote_server::{Channel, RemoteServerClient},
-    },
+    dvt::remote_server::{Channel, RemoteServerClient},
     obf,
 };
 
