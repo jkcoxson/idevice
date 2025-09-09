@@ -16,19 +16,19 @@ use crate::{
 ///
 /// Provides methods for take screnn_shot through the
 /// instruments protocol. Each instance maintains its own communication channel.
-pub struct ScreenShotClient<'a, R: ReadWrite> {
+pub struct ScreenshotClient<'a, R: ReadWrite> {
     /// The underlying channel for communication
     channel: Channel<'a, R>,
 }
 
-impl<'a, R: ReadWrite> ScreenShotClient<'a, R> {
-    /// Creates a new ScreenShotClient
+impl<'a, R: ReadWrite> ScreenshotClient<'a, R> {
+    /// Creates a new ScreenshotClient
     ///
     /// # Arguments
     /// * `client` - The base RemoteServerClient to use
     ///
     /// # Returns
-    /// * `Ok(ScreenShotClient)` - Connected client instance
+    /// * `Ok(ScreenshotClient)` - Connected client instance
     /// * `Err(IdeviceError)` - If channel creation fails
     ///
     /// # Errors
@@ -41,10 +41,7 @@ impl<'a, R: ReadWrite> ScreenShotClient<'a, R> {
         Ok(Self { channel })
     }
 
-    /// take screenshot from the device
-    ///
-    /// # Arguments
-    ///
+    /// Take screenshot from the device
     ///
     /// # Returns
     /// * `Ok(Vec<u8>)` - the bytes of the screenshot
@@ -59,7 +56,6 @@ impl<'a, R: ReadWrite> ScreenShotClient<'a, R> {
         self.channel.call_method(Some(method), None, true).await?;
 
         let msg = self.channel.read_message().await?;
-        println!("takeScreenshot: over");
         match msg.data {
             Some(Value::Data(data)) => Ok(data),
             _ => Err(IdeviceError::UnexpectedResponse),

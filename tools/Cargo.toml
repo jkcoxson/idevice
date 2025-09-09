@@ -127,8 +127,8 @@ path = "src/preboard.rs"
 
 
 [[bin]]
-name = "screen_shot"
-path = "src/screen_shot.rs"
+name = "screenshot"
+path = "src/screenshot.rs"
 
 [dependencies]
 idevice = { path = "../idevice", features = ["full"], default-features = false }

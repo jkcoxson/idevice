@@ -9,7 +9,7 @@ pub mod location_simulation;
 pub mod message;
 pub mod process_control;
 pub mod remote_server;
-pub mod screen_shot;
+pub mod screenshot;
 
 impl RsdService for remote_server::RemoteServerClient<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
