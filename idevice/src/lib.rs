@@ -714,9 +714,6 @@ pub enum IdeviceError {
     #[error("canceled by user")]
     CanceledByUser = -66,
 
-    #[error("canceled by user")]
-    CanceledByUser = -66,
-
     #[cfg(feature = "installation_proxy")]
     #[error("malformed package archive: {0}")]
     MalformedPackageArchive(#[from] async_zip::error::ZipError) = -67,
@@ -874,8 +871,6 @@ impl IdeviceError {
             IdeviceError::UnsupportedWatchKey => -63,
             IdeviceError::MalformedCommand => -64,
             IdeviceError::IntegerOverflow => -65,
-            IdeviceError::CanceledByUser => -66,
-
             IdeviceError::CanceledByUser => -66,
 
             #[cfg(feature = "installation_proxy")]

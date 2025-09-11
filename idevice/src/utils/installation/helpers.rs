@@ -13,8 +13,7 @@ use crate::{
 
 pub const PUBLIC_STAGING: &str = "PublicStaging";
 
-// Folder for IPCC packages. IPCC packages needs to be uploaded as a folder
-pub const IPCC_REMOTE_FOLDER: &str = "idevice.ipcc";
+pub const IPCC_REMOTE_FILE: &str = "idevice.ipcc";
 
 pub const IPA_REMOTE_FILE: &str = "idevice.ipa";
 
@@ -38,7 +37,7 @@ pub enum PackageType {
 impl PackageType {
     pub fn get_remote_file(&self) -> Result<&'static str, IdeviceError> {
         match self {
-            Self::Ipcc => Ok(IPCC_REMOTE_FOLDER),
+            Self::Ipcc => Ok(IPCC_REMOTE_FILE),
             Self::Ipa(_) => Ok(IPA_REMOTE_FILE),
             Self::Unknown => Err(IdeviceError::InstallationProxyOperationFailed(
                 "invalid package".into(),
