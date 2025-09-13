@@ -45,3 +45,4 @@ pub mod rsd;
 pub mod springboardservices;
 #[cfg(feature = "syslog_relay")]
 pub mod syslog_relay;
+pub mod screenshot;
