@@ -74,10 +74,12 @@ async fn main() {
 
         // Make the connection to RemoteXPC
         let mut handshake = RsdHandshake::new(stream).await.unwrap();
-        let mut ts_client =
-            idevice::dvt::remote_server::RemoteServerClient::connect_rsd(&mut adapter, &mut handshake)
-                .await
-                .expect("Failed to connect");
+        let mut ts_client = idevice::dvt::remote_server::RemoteServerClient::connect_rsd(
+            &mut adapter,
+            &mut handshake,
+        )
+        .await
+        .expect("Failed to connect");
         ts_client.read_message(0).await.expect("no read??");
 
         let mut ts_client = idevice::dvt::screenshot::ScreenshotClient::new(&mut ts_client)
@@ -87,23 +89,20 @@ async fn main() {
             .take_screenshot()
             .await
             .expect("Failed to take screenshot");
-
-
     } else {
         let mut screenshot_client = match ScreenshotService::connect(&*provider).await {
             Ok(client) => client,
             Err(e) => {
-                eprintln!("Unable to connect to Screenshot service: {e} Ensure Developer Disk Image is mounted.");
+                eprintln!(
+                    "Unable to connect to Screenshot service: {e} Ensure Developer Disk Image is mounted."
+                );
                 return;
             }
         };
         res = screenshot_client.take_screenshot().await.unwrap();
-
     }
     match fs::write(output_path, &res) {
         Ok(_) => println!("Screenshot saved to: {}", output_path),
         Err(e) => eprintln!("Failed to write screenshot to file: {}", e),
     }
-
-
 }

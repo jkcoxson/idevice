@@ -3,11 +3,10 @@
 //! Provides functionality for interacting with the screenshot service on iOS devices below ios17,
 //! which allows take screenshot
 
-use std::borrow::Cow;
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 use log::{debug, warn};
+use std::borrow::Cow;
 use tokio::io::AsyncReadExt;
-use crate::{Idevice, IdeviceService, obf, IdeviceError};
-use plist::Dictionary;
 pub struct ScreenshotService {
     /// Underlying device connection
     pub idevice: Idevice,
@@ -85,13 +84,13 @@ impl ScreenshotService {
     pub async fn take_screenshot(&mut self) -> Result<Vec<u8>, IdeviceError> {
         // Send DLMessageTakeScreenshot
 
-        let messageType_dict = crate::plist!(dict {
+        let message_type_dict = crate::plist!(dict {
             "MessageType": "ScreenShotRequest"
         });
 
         let out = vec![
             plist::Value::String("DLMessageProcessMessage".into()),
-            plist::Value::Dictionary(messageType_dict),
+            plist::Value::Dictionary(message_type_dict),
         ];
         self.send_dl_array(out).await?;
 
@@ -102,7 +101,9 @@ impl ScreenshotService {
             return Err(IdeviceError::UnexpectedResponse);
         }
 
-        if let plist::Value::Array(arr) = &value && arr.len() == 2 {
+        if let plist::Value::Array(arr) = &value
+            && arr.len() == 2
+        {
             if let Some(plist::Value::Dictionary(dict)) = arr.get(1) {
                 if let Some(plist::Value::Data(data)) = dict.get("ScreenShotData") {
                     Ok(data.clone())
@@ -119,8 +120,4 @@ impl ScreenshotService {
             Err(IdeviceError::UnexpectedResponse)
         }
     }
-
-
 }
-
-
