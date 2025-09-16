@@ -1,7 +1,7 @@
-//! iOS Mobile screenshot Service Client
+//! iOS screenshotr service client
 //!
-//! Provides functionality for interacting with the screenshot service on iOS devices below ios17,
-//! which allows take screenshot
+//! Provides functionality for interacting with the screenshot service on iOS devices below iOS 17,
+//! which allows taking screenshots.
 
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 use log::{debug, warn};

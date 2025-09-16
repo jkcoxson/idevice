@@ -90,6 +90,7 @@ preboard_service = []
 obfuscate = ["dep:obfstr"]
 restore_service = []
 rsd = ["xpc"]
+screenshotr = []
 syslog_relay = ["dep:bytes"]
 tcp = ["tokio/net"]
 tunnel_tcp_stack = [

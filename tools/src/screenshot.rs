@@ -2,7 +2,7 @@ use clap::{Arg, Command};
 use idevice::{IdeviceService, RsdService, core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake};
 use std::fs;
 
-use idevice::screenshot::ScreenshotService;
+use idevice::screenshotr::ScreenshotService;
 
 mod common;
 
@@ -94,7 +94,7 @@ async fn main() {
             Ok(client) => client,
             Err(e) => {
                 eprintln!(
-                    "Unable to connect to Screenshot service: {e} Ensure Developer Disk Image is mounted."
+                    "Unable to connect to screenshotr service: {e} Ensure Developer Disk Image is mounted."
                 );
                 return;
             }

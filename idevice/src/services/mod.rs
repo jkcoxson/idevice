@@ -41,7 +41,8 @@ pub mod preboard_service;
 pub mod restore_service;
 #[cfg(feature = "rsd")]
 pub mod rsd;
-pub mod screenshot;
+#[cfg(feature = "screenshotr")]
+pub mod screenshotr;
 #[cfg(feature = "springboardservices")]
 pub mod springboardservices;
 #[cfg(feature = "syslog_relay")]
