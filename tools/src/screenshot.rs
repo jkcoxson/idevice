@@ -64,8 +64,8 @@ async fn main() {
                 return;
             }
         };
-    let mut res: Vec<u8> = Vec::new();
-    if let Ok(proxy) = CoreDeviceProxy::connect(&*provider).await {
+
+    let res = if let Ok(proxy) = CoreDeviceProxy::connect(&*provider).await {
         let rsd_port = proxy.handshake.server_rsd_port;
 
         let adapter = proxy.create_software_tunnel().expect("no software tunnel");
@@ -85,10 +85,10 @@ async fn main() {
         let mut ts_client = idevice::dvt::screenshot::ScreenshotClient::new(&mut ts_client)
             .await
             .expect("Unable to get channel for take screenshot");
-        res = ts_client
+        ts_client
             .take_screenshot()
             .await
-            .expect("Failed to take screenshot");
+            .expect("Failed to take screenshot")
     } else {
         let mut screenshot_client = match ScreenshotService::connect(&*provider).await {
             Ok(client) => client,
@@ -99,9 +99,10 @@ async fn main() {
                 return;
             }
         };
-        res = screenshot_client.take_screenshot().await.unwrap();
-    }
-    match fs::write(output_path, &res) {
+        screenshot_client.take_screenshot().await.unwrap()
+    };
+
+    match fs::write(output_path, res) {
         Ok(_) => println!("Screenshot saved to: {}", output_path),
         Err(e) => eprintln!("Failed to write screenshot to file: {}", e),
     }

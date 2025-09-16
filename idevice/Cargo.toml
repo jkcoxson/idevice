@@ -81,11 +81,11 @@ dvt = ["dep:byteorder", "dep:ns-keyed-archive"]
 heartbeat = ["tokio/macros", "tokio/time"]
 house_arrest = ["afc"]
 installation_proxy = [
-  "dep:async_zip", 
+  "dep:async_zip",
   "dep:futures",
-  "async_zip/tokio", 
+  "async_zip/tokio",
   "async_zip/deflate",
-  "tokio/fs"
+  "tokio/fs",
 ]
 springboardservices = []
 misagent = []
@@ -135,6 +135,7 @@ full = [
   "preboard_service",
   "restore_service",
   "rsd",
+  "screenshotr",
   "springboardservices",
   "syslog_relay",
   "tcp",
