@@ -86,11 +86,12 @@ where
 
             let info_plist: plist::Value = plist::from_bytes(&info_plist_bytes)?;
 
-            if let Some(dict) = info_plist.as_dictionary() {
-                if let Some(bundle_id) = dict.get("CFBundleIdentifier").and_then(|v| v.as_string())
-                {
-                    return Ok(bundle_id.to_string());
-                }
+            if let Some(bundle_id) = info_plist
+                .as_dictionary()
+                .and_then(|dict| dict.get("CFBundleIdentifier"))
+                .and_then(|v| v.as_string())
+            {
+                return Ok(bundle_id.to_string());
             }
         }
     }
