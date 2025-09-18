@@ -1,5 +1,7 @@
 // Jackson Coxson
 
+use std::io::SeekFrom;
+
 use crate::IdeviceError;
 
 use super::{
@@ -19,6 +21,74 @@ pub struct FileDescriptor<'a> {
 }
 
 impl FileDescriptor<'_> {
+    /// Returns the current cursor position for the file
+    pub async fn seek_tell(&mut self) -> Result<u64, IdeviceError> {
+        let header_payload = self.fd.to_le_bytes().to_vec();
+
+        let header_len = header_payload.len() as u64 + AfcPacketHeader::LEN;
+        let header = AfcPacketHeader {
+            magic: super::MAGIC,
+            entire_len: header_len,
+            header_payload_len: header_len,
+            packet_num: self.client.package_number,
+            operation: AfcOpcode::FileTell,
+        };
+
+        self.client.package_number += 1;
+
+        let packet = AfcPacket {
+            header,
+            header_payload,
+            payload: Vec::new(),
+        };
+
+        self.client.send(packet).await?;
+
+        let res = self.client.read().await?;
+
+        if res.header_payload.len() < 8 {
+            return Err(IdeviceError::UnexpectedResponse);
+        }
+
+        let cur_pos = u64::from_le_bytes(res.header_payload[..8].try_into().unwrap());
+
+        Ok(cur_pos)
+    }
+
+    pub async fn seek(&mut self, pos: SeekFrom) -> Result<(), IdeviceError> {
+        let (offset, whence) = match pos {
+            SeekFrom::Start(off) => (off as i64, 0),
+            SeekFrom::Current(off) => (off, 1),
+            SeekFrom::End(off) => (off, 2),
+        };
+
+        let mut header_payload = Vec::new();
+        header_payload.extend(self.fd.to_le_bytes());
+        header_payload.extend((whence as u64).to_le_bytes());
+        header_payload.extend(offset.to_le_bytes());
+
+        let header_len = header_payload.len() as u64 + AfcPacketHeader::LEN;
+        let header = AfcPacketHeader {
+            magic: super::MAGIC,
+            entire_len: header_len,
+            header_payload_len: header_len,
+            packet_num: self.client.package_number,
+            operation: AfcOpcode::FileSeek,
+        };
+        self.client.package_number += 1;
+
+        let packet = AfcPacket {
+            header,
+            header_payload,
+            payload: Vec::new(),
+        };
+
+        self.client.send(packet).await?;
+        self.client.read().await?;
+
+        Ok(())
+    }
+
     /// Closes the file descriptor
     pub async fn close(self) -> Result<(), IdeviceError> {
         let header_payload = self.fd.to_le_bytes().to_vec();
@@ -49,8 +119,10 @@ impl FileDescriptor<'_> {
     /// # Returns
     /// A vector containing the file's data
     pub async fn read(&mut self) -> Result<Vec<u8>, IdeviceError> {
-        // Get the file size first
-        let mut bytes_left = self.client.get_file_info(&self.path).await?.size;
+        let seek_pos = self.seek_tell().await? as usize;
+
+        // Get the file size minus if the file is seeked to some position
+        let mut bytes_left = self.client.get_file_info(&self.path).await?.size - seek_pos;
         let mut collected_bytes = Vec::with_capacity(bytes_left);
 
         while bytes_left > 0 {
