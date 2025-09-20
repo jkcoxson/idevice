@@ -2,8 +2,13 @@
 // Just lists apps for now
 
 use clap::{Arg, Command};
-use idevice::{IdeviceService, RsdService, core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake};
+use idevice::{
+    IdeviceService, RsdService, core_device_proxy::CoreDeviceProxy,
+    rsd::RsdHandshake,
+};
 
+use idevice::dvt::location_simulation::LocationSimulationClient;
+use idevice::services::simulate_location::LocationSimulationService;
 mod common;
 
 #[tokio::main]
@@ -63,65 +68,103 @@ async fn main() {
                 return;
             }
         };
-    let proxy = CoreDeviceProxy::connect(&*provider)
+
+    if let Ok(proxy) = CoreDeviceProxy::connect(&*provider).await {
+        let rsd_port = proxy.handshake.server_rsd_port;
+
+        let adapter = proxy.create_software_tunnel().expect("no software tunnel");
+        let mut adapter = adapter.to_async_handle();
+        let stream = adapter.connect(rsd_port).await.expect("no RSD connect");
+
+        // Make the connection to RemoteXPC
+        let mut handshake = RsdHandshake::new(stream).await.unwrap();
+
+        let mut ls_client = idevice::dvt::remote_server::RemoteServerClient::connect_rsd(
+            &mut adapter,
+            &mut handshake,
+        )
         .await
-        .expect("no core proxy");
-    let rsd_port = proxy.handshake.server_rsd_port;
-
-    let adapter = proxy.create_software_tunnel().expect("no software tunnel");
-    let mut adapter = adapter.to_async_handle();
-    let stream = adapter.connect(rsd_port).await.expect("no RSD connect");
-
-    // Make the connection to RemoteXPC
-    let mut handshake = RsdHandshake::new(stream).await.unwrap();
-
-    let mut ls_client =
-        idevice::dvt::remote_server::RemoteServerClient::connect_rsd(&mut adapter, &mut handshake)
-            .await
-            .expect("Failed to connect");
-    ls_client.read_message(0).await.expect("no read??");
-
-    let mut ls_client =
-        idevice::dvt::location_simulation::LocationSimulationClient::new(&mut ls_client)
+        .expect("Failed to connect");
+        ls_client.read_message(0).await.expect("no read??");
+        let mut ls_client = LocationSimulationClient::new(&mut ls_client)
             .await
             .expect("Unable to get channel for location simulation");
-
-    if matches.subcommand_matches("clear").is_some() {
-        ls_client.clear().await.expect("Unable to clear");
-        println!("Location cleared!");
-    } else if let Some(matches) = matches.subcommand_matches("set") {
-        let latitude: &String = match matches.get_one("latitude") {
-            Some(l) => l,
-            None => {
-                eprintln!("No latitude passed! Pass -h for help");
-                return;
-            }
-        };
-        let latitude: f64 = latitude.parse().expect("Failed to parse as float");
-        let longitude: &String = match matches.get_one("longitude") {
-            Some(l) => l,
-            None => {
-                eprintln!("No longitude passed! Pass -h for help");
-                return;
-            }
-        };
-        let longitude: f64 = longitude.parse().expect("Failed to parse as float");
-        ls_client
-            .set(latitude, longitude)
-            .await
-            .expect("Failed to set location");
-
-        println!("Location set!");
-        println!("Press ctrl-c to stop");
-        loop {
+        if matches.subcommand_matches("clear").is_some() {
+            ls_client.clear().await.expect("Unable to clear");
+            println!("Location cleared!");
+        } else if let Some(matches) = matches.subcommand_matches("set") {
+            let latitude: &String = match matches.get_one("latitude") {
+                Some(l) => l,
+                None => {
+                    eprintln!("No latitude passed! Pass -h for help");
+                    return;
+                }
+            };
+            let latitude: f64 = latitude.parse().expect("Failed to parse as float");
+            let longitude: &String = match matches.get_one("longitude") {
+                Some(l) => l,
+                None => {
+                    eprintln!("No longitude passed! Pass -h for help");
+                    return;
+                }
+            };
+            let longitude: f64 = longitude.parse().expect("Failed to parse as float");
             ls_client
                 .set(latitude, longitude)
                 .await
                 .expect("Failed to set location");
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+            println!("Location set!");
+            println!("Press ctrl-c to stop");
+            loop {
+                ls_client
+                    .set(latitude, longitude)
+                    .await
+                    .expect("Failed to set location");
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        } else {
+            eprintln!("Invalid usage, pass -h for help");
         }
     } else {
-        eprintln!("Invalid usage, pass -h for help");
-    }
+        let mut location_client = match LocationSimulationService::connect(&*provider).await {
+            Ok(client) => client,
+            Err(e) => {
+                eprintln!(
+                    "Unable to connect to simulate_location service: {e} Ensure Developer Disk Image is mounted."
+                );
+                return;
+            }
+        };
+        if matches.subcommand_matches("clear").is_some() {
+            location_client.clear().await.expect("Unable to clear");
+            println!("Location cleared!");
+        } else if let Some(matches) = matches.subcommand_matches("set") {
+            let latitude: &String = match matches.get_one("latitude") {
+                Some(l) => l,
+                None => {
+                    eprintln!("No latitude passed! Pass -h for help");
+                    return;
+                }
+            };
+
+            let longitude: &String = match matches.get_one("longitude") {
+                Some(l) => l,
+                None => {
+                    eprintln!("No longitude passed! Pass -h for help");
+                    return;
+                }
+            };
+            location_client
+                .set(latitude, longitude)
+                .await
+                .expect("Failed to set location");
+
+            println!("Location set!");
+        } else {
+            eprintln!("Invalid usage, pass -h for help");
+        }
+    };
+
     return;
 }
