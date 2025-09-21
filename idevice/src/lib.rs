@@ -692,7 +692,10 @@ pub enum IdeviceError {
     #[error("failed to parse bytes as valid utf8")]
     Utf8Error = -56,
 
-    #[cfg(feature = "debug_proxy")]
+    #[cfg(any(
+        feature = "debug_proxy",
+        all(feature = "afc", feature = "installation_proxy")
+    ))]
     #[error("invalid argument passed")]
     InvalidArgument = -57,
 
@@ -861,7 +864,10 @@ impl IdeviceError {
             IdeviceError::NotEnoughBytes(_, _) => -55,
             IdeviceError::Utf8Error => -56,
 
-            #[cfg(feature = "debug_proxy")]
+            #[cfg(any(
+                feature = "debug_proxy",
+                all(feature = "afc", feature = "installation_proxy")
+            ))]
             IdeviceError::InvalidArgument => -57,
 
             IdeviceError::UnknownErrorType(_) => -59,
