@@ -125,10 +125,13 @@ path = "src/pcapd.rs"
 name = "preboard"
 path = "src/preboard.rs"
 
-
 [[bin]]
 name = "screenshot"
 path = "src/screenshot.rs"
+
+[[bin]]
+name = "activation"
+path = "src/activation.rs"
 
 [dependencies]
 idevice = { path = "../idevice", features = ["full"], default-features = false }

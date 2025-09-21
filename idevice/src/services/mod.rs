@@ -29,6 +29,8 @@ pub mod lockdown;
 pub mod misagent;
 #[cfg(feature = "mobile_image_mounter")]
 pub mod mobile_image_mounter;
+#[cfg(feature = "mobileactivationd")]
+pub mod mobileactivationd;
 #[cfg(feature = "mobilebackup2")]
 pub mod mobilebackup2;
 #[cfg(feature = "syslog_relay")]
