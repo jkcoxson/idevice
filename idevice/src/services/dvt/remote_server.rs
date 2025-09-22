@@ -201,6 +201,11 @@ impl<R: ReadWrite> RemoteServerClient<R> {
 
         let message = Message::new(mheader, pheader, aux, data);
         debug!("Sending message: {message:#?}");
+        for byte in message.serialize() {
+            print!("{:02x} ", byte);
+        }
+        println!();
+
         self.idevice.write_all(&message.serialize()).await?;
         self.idevice.flush().await?;
 
