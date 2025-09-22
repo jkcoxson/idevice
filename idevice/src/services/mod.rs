@@ -47,3 +47,6 @@ pub mod screenshotr;
 pub mod springboardservices;
 #[cfg(feature = "syslog_relay")]
 pub mod syslog_relay;
+
+#[cfg(feature = "location_simulation")]
+pub mod simulate_location;
