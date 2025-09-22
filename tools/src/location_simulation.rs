@@ -2,10 +2,7 @@
 // Just lists apps for now
 
 use clap::{Arg, Command};
-use idevice::{
-    IdeviceService, RsdService, core_device_proxy::CoreDeviceProxy,
-    rsd::RsdHandshake,
-};
+use idevice::{IdeviceService, RsdService, core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake};
 
 use idevice::dvt::location_simulation::LocationSimulationClient;
 use idevice::services::simulate_location::LocationSimulationService;
