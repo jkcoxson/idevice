@@ -82,7 +82,7 @@ async fn main() {
     // We'll ask usbmuxd for a device
     let mut usbmuxd = UsbmuxdConnection::default()
         .await
-        .expect("Unable to connect to usbmxud")
+        .expect("Unable to connect to usbmuxd");
     let devs = usbmuxd.get_devices().unwrap();
     if devs.is_empty() {
         eprintln!("No devices connected!");
@@ -119,12 +119,12 @@ async fn main() {
 }
 ```
 
-More examples are in the ``tools`` crate and in the crate documentation.
+More examples are in the [`tools`](tools/) crate and in the crate documentation.
 
 ## FFI
 
 For use in other languages, a small FFI crate has been created to start exposing
-idevice. Example C programs can be found in this repository.
+idevice. Example C programs can be found in the [`ffi/examples`](ffi/examples/) directory.
 
 ## Version Policy
 
