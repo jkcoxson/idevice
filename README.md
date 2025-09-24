@@ -7,6 +7,7 @@ this library interfaces with lockdownd and usbmuxd to perform actions
 on an iOS device that a Mac normally would.
 
 For help and information, join the [idevice Discord](https://discord.gg/qtgv6QtYbV)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/jkcoxson/idevice)
 
 ## State
 
