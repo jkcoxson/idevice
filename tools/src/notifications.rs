@@ -1,8 +1,7 @@
+//  Monitor memory and app notifications
+
 use clap::{Arg, Command};
 use idevice::{IdeviceService, RsdService, core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake};
-use std::fs;
-use futures_util::StreamExt;
-
 mod common;
 
 #[tokio::main]
@@ -46,7 +45,6 @@ async fn main() {
     let host = matches.get_one::<String>("host");
     let pairing_file = matches.get_one::<String>("pairing_file");
 
-
     let provider =
         match common::get_provider(udid, host, pairing_file, "notifications-jkcoxson").await {
             Ok(p) => p,
@@ -62,29 +60,39 @@ async fn main() {
     let rsd_port = proxy.handshake.server_rsd_port;
 
     let adapter = proxy.create_software_tunnel().expect("no software tunnel");
+
     let mut adapter = adapter.to_async_handle();
     let stream = adapter.connect(rsd_port).await.expect("no RSD connect");
 
     // Make the connection to RemoteXPC
     let mut handshake = RsdHandshake::new(stream).await.unwrap();
-    let mut ts_client = idevice::dvt::remote_server::RemoteServerClient::connect_rsd(
-        &mut adapter,
-        &mut handshake,
-    )
-        .await
-        .expect("Failed to connect");
+    let mut ts_client =
+        idevice::dvt::remote_server::RemoteServerClient::connect_rsd(&mut adapter, &mut handshake)
+            .await
+            .expect("Failed to connect");
     ts_client.read_message(0).await.expect("no read??");
-    let mut notification_client = idevice::dvt::notifications::NotificationsClient::new(&mut ts_client)
-        .await
-        .expect("Unable to get channel for notifications");
+    let mut notification_client =
+        idevice::dvt::notifications::NotificationsClient::new(&mut ts_client)
+            .await
+            .expect("Unable to get channel for notifications");
     notification_client
         .start_notifications()
         .await
         .expect("Failed to start notifications");
 
-    loop {
-        let message = ts_client.read_message(1).await.expect("no read??");
-        println!("{message:#?}");
+    // Handle Ctrl+C gracefully
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {
+            println!("\nReceived Ctrl+C, stopping notifications...");
+            if let Err(e) = notification_client.stop_notifications().await {
+                eprintln!("Failed to stop notifications: {}", e);
+            }
+            println!("Notifications stopped successfully.");
+        }
+        result = notification_client.print_notifications() => {
+            if let Err(e) = result {
+                eprintln!("Failed to print notifications: {}", e);
+            }
+        }
     }
-
 }
