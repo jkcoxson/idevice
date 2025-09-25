@@ -2,6 +2,7 @@
 
 #include <idevice++/mobile_image_mounter.hpp>
 #include <vector>
+#include <cstring>
 
 namespace IdeviceFFI {
 
