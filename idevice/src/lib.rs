@@ -720,6 +720,9 @@ pub enum IdeviceError {
     #[cfg(feature = "installation_proxy")]
     #[error("malformed package archive: {0}")]
     MalformedPackageArchive(#[from] async_zip::error::ZipError) = -67,
+
+    #[error("Developer mode is not enabled")]
+    DeveloperModeNotEnabled = -68,
 }
 
 impl IdeviceError {
@@ -734,6 +737,8 @@ impl IdeviceError {
     fn from_device_error_type(e: &str, context: &plist::Dictionary) -> Option<Self> {
         if e.contains("NSDebugDescription=Canceled by user.") {
             return Some(Self::CanceledByUser);
+        } else if e.contains("Developer mode is not enabled.") {
+            return Some(Self::DeveloperModeNotEnabled);
         }
         match e {
             "GetProhibited" => Some(Self::GetProhibited),
@@ -881,6 +886,7 @@ impl IdeviceError {
 
             #[cfg(feature = "installation_proxy")]
             IdeviceError::MalformedPackageArchive(_) => -67,
+            IdeviceError::DeveloperModeNotEnabled => -68,
         }
     }
 }
