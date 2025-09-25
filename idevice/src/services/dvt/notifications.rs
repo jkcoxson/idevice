@@ -10,11 +10,12 @@ use crate::{
     },
     obf,
 };
+use log::warn;
 use plist::Value;
 
 #[derive(Debug)]
 pub struct NotificationInfo {
-    type_notification: String,
+    notification_type: String,
     mach_absolute_time: i64,
     exec_name: String,
     app_name: String,
@@ -66,11 +67,11 @@ impl<'a, R: ReadWrite> NotificationsClient<'a, R> {
         Ok(())
     }
 
-    /// print the applicaitons and memory notifications
-    pub async fn get_notifications(&mut self) -> Result<NotificationInfo, IdeviceError> {
+    /// Reads the next notification from the service
+    pub async fn get_notification(&mut self) -> Result<NotificationInfo, IdeviceError> {
         let message = self.channel.read_message().await?;
         let mut notification = NotificationInfo {
-            type_notification: "".to_string(),
+            notification_type: "".to_string(),
             mach_absolute_time: 0,
             exec_name: String::new(),
             app_name: String::new(),
@@ -83,7 +84,7 @@ impl<'a, R: ReadWrite> NotificationsClient<'a, R> {
                     AuxValue::Array(a) => match ns_keyed_archive::decode::from_bytes(&a) {
                         Ok(archive) => {
                             if let Some(dict) = archive.into_dictionary() {
-                                for (key, value) in dict.iter() {
+                                for (key, value) in dict.into_iter() {
                                     match key.as_str() {
                                         "mach_absolute_time" => {
                                             if let Value::Integer(time) = value {
@@ -93,12 +94,12 @@ impl<'a, R: ReadWrite> NotificationsClient<'a, R> {
                                         }
                                         "execName" => {
                                             if let Value::String(name) = value {
-                                                notification.exec_name = name.clone();
+                                                notification.exec_name = name;
                                             }
                                         }
                                         "appName" => {
                                             if let Value::String(name) = value {
-                                                notification.app_name = name.clone();
+                                                notification.app_name = name;
                                             }
                                         }
                                         "pid" => {
@@ -109,34 +110,33 @@ impl<'a, R: ReadWrite> NotificationsClient<'a, R> {
                                         }
                                         "state_description" => {
                                             if let Value::String(desc) = value {
-                                                notification.state_description = desc.clone();
+                                                notification.state_description = desc;
                                             }
                                         }
                                         _ => {
-                                            println!("Unknown key: {} = {:?}", key, value);
+                                            warn!("Unknown notificaton key: {} = {:?}", key, value);
                                         }
                                     }
                                 }
                             }
                         }
                         Err(e) => {
-                            println!("Failed to decode archive: {:?}", e);
+                            warn!("Failed to decode archive: {:?}", e);
                         }
                     },
                     _ => {
-                        println!("Non-array aux value: {:?}", v);
+                        warn!("Non-array aux value: {:?}", v);
                     }
                 }
             }
         }
 
-        let data = match message.data {
-            Some(Value::String(data)) => Some(data),
-            _ => None,
-        };
-        notification.type_notification = data.unwrap();
-
-        Ok(notification)
+        if let Some(Value::String(data)) = message.data {
+            notification.notification_type = data;
+            Ok(notification)
+        } else {
+            Err(IdeviceError::UnexpectedResponse)
+        }
     }
 
     /// set the applicaitons and memory notifications disable

@@ -89,7 +89,7 @@ async fn main() {
             }
 
             // Branch 2: Wait for the next batch of notifications.
-            result = notification_client.get_notifications() => {
+            result = notification_client.get_notification() => {
                 if let Err(e) = result {
                     eprintln!("Failed to get notifications: {}", e);
                 } else {
