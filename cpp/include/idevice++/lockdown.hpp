@@ -1,4 +1,3 @@
-
 #pragma once
 #include <cstdint>
 #include <idevice++/bindings.hpp>
