@@ -81,17 +81,20 @@ async fn main() {
         .expect("Failed to start notifications");
 
     // Handle Ctrl+C gracefully
-    tokio::select! {
-        _ = tokio::signal::ctrl_c() => {
-            println!("\nReceived Ctrl+C, stopping notifications...");
-            if let Err(e) = notification_client.stop_notifications().await {
-                eprintln!("Failed to stop notifications: {}", e);
+    loop {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                println!("\nShutdown signal received, exiting.");
+                break;
             }
-            println!("Notifications stopped successfully.");
-        }
-        result = notification_client.print_notifications() => {
-            if let Err(e) = result {
-                eprintln!("Failed to print notifications: {}", e);
+
+            // Branch 2: Wait for the next batch of notifications.
+            result = notification_client.get_notifications() => {
+                if let Err(e) = result {
+                    eprintln!("Failed to get notifications: {}", e);
+                } else {
+                    println!("Received notifications: {:#?}", result.unwrap());
+                }
             }
         }
     }

@@ -13,7 +13,8 @@ use crate::{
 use plist::Value;
 
 #[derive(Debug)]
-struct NotificationInfo {
+pub struct NotificationInfo {
+    type_notification: String,
     mach_absolute_time: i64,
     exec_name: String,
     app_name: String,
@@ -66,75 +67,76 @@ impl<'a, R: ReadWrite> NotificationsClient<'a, R> {
     }
 
     /// print the applicaitons and memory notifications
-    pub async fn print_notifications(&mut self) -> Result<(), IdeviceError> {
-        loop {
-            let message = self.channel.read_message().await?;
-            let mut notification = NotificationInfo {
-                mach_absolute_time: 0,
-                exec_name: String::new(),
-                app_name: String::new(),
-                pid: 0,
-                state_description: String::new(),
-            };
-            if let Some(aux) = message.aux {
-                for v in aux.values {
-                    match v {
-                        AuxValue::Array(a) => match ns_keyed_archive::decode::from_bytes(&a) {
-                            Ok(archive) => {
-                                if let Some(dict) = archive.into_dictionary() {
-                                    for (key, value) in dict.iter() {
-                                        match key.as_str() {
-                                            "mach_absolute_time" => {
-                                                if let Value::Integer(time) = value {
-                                                    notification.mach_absolute_time =
-                                                        time.as_signed().unwrap_or(0);
-                                                }
+    pub async fn get_notifications(&mut self) -> Result<NotificationInfo, IdeviceError> {
+        let message = self.channel.read_message().await?;
+        let mut notification = NotificationInfo {
+            type_notification: "".to_string(),
+            mach_absolute_time: 0,
+            exec_name: String::new(),
+            app_name: String::new(),
+            pid: 0,
+            state_description: String::new(),
+        };
+        if let Some(aux) = message.aux {
+            for v in aux.values {
+                match v {
+                    AuxValue::Array(a) => match ns_keyed_archive::decode::from_bytes(&a) {
+                        Ok(archive) => {
+                            if let Some(dict) = archive.into_dictionary() {
+                                for (key, value) in dict.iter() {
+                                    match key.as_str() {
+                                        "mach_absolute_time" => {
+                                            if let Value::Integer(time) = value {
+                                                notification.mach_absolute_time =
+                                                    time.as_signed().unwrap_or(0);
                                             }
-                                            "execName" => {
-                                                if let Value::String(name) = value {
-                                                    notification.exec_name = name.clone();
-                                                }
+                                        }
+                                        "execName" => {
+                                            if let Value::String(name) = value {
+                                                notification.exec_name = name.clone();
                                             }
-                                            "appName" => {
-                                                if let Value::String(name) = value {
-                                                    notification.app_name = name.clone();
-                                                }
+                                        }
+                                        "appName" => {
+                                            if let Value::String(name) = value {
+                                                notification.app_name = name.clone();
                                             }
-                                            "pid" => {
-                                                if let Value::Integer(pid) = value {
-                                                    notification.pid =
-                                                        pid.as_unsigned().unwrap_or(0) as u32;
-                                                }
+                                        }
+                                        "pid" => {
+                                            if let Value::Integer(pid) = value {
+                                                notification.pid =
+                                                    pid.as_unsigned().unwrap_or(0) as u32;
                                             }
-                                            "state_description" => {
-                                                if let Value::String(desc) = value {
-                                                    notification.state_description = desc.clone();
-                                                }
+                                        }
+                                        "state_description" => {
+                                            if let Value::String(desc) = value {
+                                                notification.state_description = desc.clone();
                                             }
-                                            _ => {
-                                                println!("Unknown key: {} = {:?}", key, value);
-                                            }
+                                        }
+                                        _ => {
+                                            println!("Unknown key: {} = {:?}", key, value);
                                         }
                                     }
                                 }
                             }
-                            Err(e) => {
-                                println!("Failed to decode archive: {:?}", e);
-                            }
-                        },
-                        _ => {
-                            println!("Non-array aux value: {:?}", v);
                         }
+                        Err(e) => {
+                            println!("Failed to decode archive: {:?}", e);
+                        }
+                    },
+                    _ => {
+                        println!("Non-array aux value: {:?}", v);
                     }
                 }
             }
-
-            let data = match message.data {
-                Some(Value::String(data)) => Some(data),
-                _ => None,
-            };
-            println!("{:#?}", (data.unwrap(), notification));
         }
+
+        let data = match message.data {
+            Some(Value::String(data)) => Some(data),
+            _ => None,
+        };
+        notification.type_notification = data.unwrap();
+
+        Ok(notification)
     }
 
     /// set the applicaitons and memory notifications disable
