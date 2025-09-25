@@ -7,6 +7,7 @@ use crate::{Idevice, IdeviceError, ReadWrite, RsdService, obf};
 #[cfg(feature = "location_simulation")]
 pub mod location_simulation;
 pub mod message;
+pub mod notifications;
 pub mod process_control;
 pub mod remote_server;
 pub mod screenshot;

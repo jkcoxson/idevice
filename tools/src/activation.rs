@@ -2,8 +2,7 @@
 
 use clap::{Arg, Command};
 use idevice::{
-    IdeviceService, amfi::AmfiClient, lockdown::LockdownClient,
-    mobileactivationd::MobileActivationdClient,
+    IdeviceService, lockdown::LockdownClient, mobileactivationd::MobileActivationdClient,
 };
 
 mod common;

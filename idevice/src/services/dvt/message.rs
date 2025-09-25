@@ -405,7 +405,9 @@ impl Message {
                 length: u32::from_le_bytes([buf[12], buf[13], buf[14], buf[15]]),
                 identifier: u32::from_le_bytes([buf[16], buf[17], buf[18], buf[19]]),
                 conversation_index: u32::from_le_bytes([buf[20], buf[21], buf[22], buf[23]]),
-                channel: u32::from_le_bytes([buf[24], buf[25], buf[26], buf[27]]),
+                //treat both as the negative and positive representation of the channel code in the response
+                // the same when performing fragmentation
+                channel: i32::abs(i32::from_le_bytes([buf[24], buf[25], buf[26], buf[27]])) as u32,
                 expects_reply: u32::from_le_bytes([buf[28], buf[29], buf[30], buf[31]]) == 1,
             };
             if header.fragment_count > 1 && header.fragment_id == 0 {
