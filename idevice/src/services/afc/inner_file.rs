@@ -21,6 +21,16 @@ fn chunk_number(n: usize, chunk_size: usize) -> impl Iterator<Item = usize> {
         .map(move |i| (n - i).min(chunk_size))
 }
 
+// Used to descripe what the future returns
+pub(crate) enum PendingResult {
+    // writing
+    Empty,
+    // seeking
+    SeekPos(u64),
+    // reading
+    Bytes(Vec<u8>),
+}
+
 /// Handle for an open file on the device.
 /// Call close before dropping
 pub(crate) struct InnerFileDescriptor<'a> {
@@ -28,12 +38,7 @@ pub(crate) struct InnerFileDescriptor<'a> {
     pub(crate) fd: u64,
     pub(crate) path: String,
 
-    pub(crate) pending_read_fut: Option<BoxFuture<'a, Result<Vec<u8>, IdeviceError>>>,
-
-    pub(crate) pending_write_data: Option<Vec<u8>>,
-    pub(crate) pending_write_fut: Option<BoxFuture<'a, Result<(), IdeviceError>>>,
-
-    pub(crate) pending_seek_fut: Option<BoxFuture<'a, Result<u64, IdeviceError>>>,
+    pub(crate) pending_fut: Option<BoxFuture<'a, Result<PendingResult, IdeviceError>>>,
 
     pub(crate) _m: std::marker::PhantomPinned,
 }
@@ -44,10 +49,7 @@ impl<'a> InnerFileDescriptor<'a> {
             client,
             fd,
             path,
-            pending_read_fut: None,
-            pending_write_data: None,
-            pending_write_fut: None,
-            pending_seek_fut: None,
+            pending_fut: None,
             _m: std::marker::PhantomPinned,
         })
     }
@@ -197,9 +199,14 @@ impl InnerFileDescriptor<'_> {
         unsafe {
             let this = self.as_mut().get_unchecked_mut() as *mut InnerFileDescriptor;
 
-            let fut = Some(Pin::new_unchecked(&mut *this).read_n(buf_rem).boxed());
+            let fut = Some(
+                Pin::new_unchecked(&mut *this)
+                    .read_n(buf_rem)
+                    .map(|r| r.map(|b| PendingResult::Bytes(b)))
+                    .boxed(),
+            );
 
-            (&mut *this).pending_read_fut = fut;
+            (&mut *this).pending_fut = fut;
         }
     }
 
@@ -207,25 +214,30 @@ impl InnerFileDescriptor<'_> {
         unsafe {
             let this = self.as_mut().get_unchecked_mut() as *mut InnerFileDescriptor;
 
-            let fut = Some(Pin::new_unchecked(&mut *this).seek(position).boxed());
+            let fut = Some(
+                Pin::new_unchecked(&mut *this)
+                    .seek(position)
+                    .map(|r| r.map(|seek_pos| PendingResult::SeekPos(seek_pos)))
+                    .boxed(),
+            );
 
-            (&mut *this).pending_seek_fut = fut;
+            (&mut *this).pending_fut = fut;
         }
     }
 
-    fn store_pending_write(mut self: Pin<&mut Self>, buf: &[u8]) {
+    fn store_pending_write(mut self: Pin<&mut Self>, buf: &'_ [u8]) {
         unsafe {
             let this = self.as_mut().get_unchecked_mut();
 
-            this.pending_write_data = Some(buf.to_vec());
-
             let this = this as *mut InnerFileDescriptor;
 
-            let buf = (&*this).pending_write_data.as_ref().unwrap();
+            // move the entire buffer into the future so we don't have to store it somewhere
+            let pined_this = Pin::new_unchecked(&mut *this);
+            let buf = buf.to_vec();
+            let fut =
+                async move { pined_this.write(&buf).await.map(|_| PendingResult::Empty) }.boxed();
 
-            let fut = Some(Pin::new_unchecked(&mut *this).write(buf).boxed());
-
-            (&mut *this).pending_write_fut = fut;
+            (&mut *this).pending_fut = Some(fut);
         }
     }
 }
@@ -234,23 +246,35 @@ impl<'a> InnerFileDescriptor<'a> {
     fn get_or_init_read_fut(
         mut self: Pin<&mut Self>,
         buf_rem: usize,
-    ) -> &mut BoxFuture<'a, Result<Vec<u8>, IdeviceError>> {
-        if self.as_ref().pending_read_fut.is_none() {
+    ) -> &mut BoxFuture<'a, Result<PendingResult, IdeviceError>> {
+        if self.as_ref().pending_fut.is_none() {
             self.as_mut().store_pending_read(buf_rem);
         }
 
-        unsafe { self.get_unchecked_mut().pending_read_fut.as_mut().unwrap() }
+        unsafe { self.get_unchecked_mut().pending_fut.as_mut().unwrap() }
     }
 
     fn get_or_init_write_fut(
         mut self: Pin<&mut Self>,
         buf: &'_ [u8],
-    ) -> &mut BoxFuture<'a, Result<(), IdeviceError>> {
-        if self.as_ref().pending_write_fut.is_none() {
+    ) -> &mut BoxFuture<'a, Result<PendingResult, IdeviceError>> {
+        if self.as_ref().pending_fut.is_none() {
             self.as_mut().store_pending_write(buf);
         }
 
-        unsafe { self.get_unchecked_mut().pending_write_fut.as_mut().unwrap() }
+        unsafe { self.get_unchecked_mut().pending_fut.as_mut().unwrap() }
+    }
+
+    fn get_seek_fut(
+        self: Pin<&mut Self>,
+    ) -> Option<&mut BoxFuture<'a, Result<PendingResult, IdeviceError>>> {
+        unsafe { self.get_unchecked_mut().pending_fut.as_mut() }
+    }
+
+    fn remove_pending_fut(mut self: Pin<&mut Self>) {
+        unsafe {
+            self.as_mut().get_unchecked_mut().pending_fut.take();
+        }
     }
 }
 
@@ -263,13 +287,13 @@ impl AsyncRead for InnerFileDescriptor<'_> {
         let contents = {
             let read_func = self.as_mut().get_or_init_read_fut(buf.remaining());
             match std::task::ready!(read_func.as_mut().poll(cx)) {
-                Ok(c) => {
-                    unsafe {
-                        self.as_mut().get_unchecked_mut().pending_read_fut.take();
-                    }
+                Ok(PendingResult::Bytes(c)) => {
+                    self.as_mut().remove_pending_fut();
                     c
                 }
                 Err(e) => return std::task::Poll::Ready(Err(std::io::Error::other(e.to_string()))),
+
+                _ => unreachable!("a non read future was stored, this shouldn't happen"),
             }
         };
 
@@ -288,11 +312,7 @@ impl AsyncWrite for InnerFileDescriptor<'_> {
         let write_func = self.as_mut().get_or_init_write_fut(buf);
 
         match std::task::ready!(write_func.as_mut().poll(cx)) {
-            Ok(()) => unsafe {
-                let this = self.get_unchecked_mut();
-                this.pending_write_fut.take();
-                this.pending_write_data.take();
-            },
+            Ok(_) => self.as_mut().remove_pending_fut(),
             Err(e) => {
                 println!("error: {e}");
                 return std::task::Poll::Ready(Err(std::io::Error::other(e.to_string())));
@@ -328,22 +348,20 @@ impl AsyncSeek for InnerFileDescriptor<'_> {
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<std::io::Result<u64>> {
-        let fut = if self.pending_seek_fut.is_some() {
-            unsafe {
-                let this = self.as_mut().get_unchecked_mut();
-                this.pending_seek_fut.as_mut().unwrap()
-            }
+        let fut = if let Some(f) = self.as_mut().get_seek_fut() {
+            f
         } else {
             // tokio run the `poll_complete` before the `start_seek` to ensure no seek in progress
             return std::task::Poll::Ready(Ok(0));
         };
 
         match std::task::ready!(fut.as_mut().poll(cx)) {
-            Ok(pos) => unsafe {
-                self.as_mut().get_unchecked_mut().pending_seek_fut.take();
+            Ok(PendingResult::SeekPos(pos)) => {
+                self.as_mut().remove_pending_fut();
                 std::task::Poll::Ready(Ok(pos))
-            },
+            }
             Err(e) => std::task::Poll::Ready(Err(std::io::Error::other(e.to_string()))),
+            _ => unreachable!("a non seek future was stored, this shouldn't happen"),
         }
     }
 }
