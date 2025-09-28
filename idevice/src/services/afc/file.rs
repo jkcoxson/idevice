@@ -1,133 +1,100 @@
 // Jackson Coxson
 
-use std::io::SeekFrom;
+use std::{io::SeekFrom, pin::Pin};
 
+use tokio::io::{AsyncRead, AsyncSeek, AsyncWrite};
+
+use super::inner_file::InnerFileDescriptor;
 use crate::IdeviceError;
 
-use super::{
-    opcode::AfcOpcode,
-    packet::{AfcPacket, AfcPacketHeader},
-};
+use super::{opcode::AfcOpcode, packet::AfcPacket};
 
-/// Maximum transfer size for file operations (64KB)
-const MAX_TRANSFER: u64 = 64 * 1024; // this is what go-ios uses
-
-/// Handle for an open file on the device.
-/// Call close before dropping
 pub struct FileDescriptor<'a> {
-    pub(crate) client: &'a mut super::AfcClient,
-    pub(crate) fd: u64,
-    pub(crate) path: String,
+    inner: Pin<Box<InnerFileDescriptor<'a>>>,
 }
 
-impl FileDescriptor<'_> {
-    /// Generic helper to send an AFC packet and read the response
-    async fn send_packet(
-        &mut self,
-        opcode: AfcOpcode,
-        header_payload: Vec<u8>,
-        payload: Vec<u8>,
-    ) -> Result<AfcPacket, IdeviceError> {
-        let header_len = header_payload.len() as u64 + AfcPacketHeader::LEN;
-        let header = AfcPacketHeader {
-            magic: super::MAGIC,
-            entire_len: header_len + payload.len() as u64,
-            header_payload_len: header_len,
-            packet_num: self.client.package_number,
-            operation: opcode,
-        };
-        self.client.package_number += 1;
-
-        let packet = AfcPacket {
-            header,
-            header_payload,
-            payload,
-        };
-
-        self.client.send(packet).await?;
-        self.client.read().await
+impl<'a> FileDescriptor<'a> {
+    pub(crate) fn new(inner: Pin<Box<InnerFileDescriptor<'a>>>) -> Self {
+        Self { inner }
     }
-
+}
+impl FileDescriptor<'_> {
     /// Returns the current cursor position for the file
     pub async fn seek_tell(&mut self) -> Result<u64, IdeviceError> {
-        let header_payload = self.fd.to_le_bytes().to_vec();
-        let res = self
-            .send_packet(AfcOpcode::FileTell, header_payload, Vec::new())
-            .await?;
-
-        let cur_pos = res
-            .header_payload
-            .get(..8)
-            .ok_or(IdeviceError::UnexpectedResponse)?
-            .try_into()
-            .map(u64::from_le_bytes)
-            .map_err(|_| IdeviceError::UnexpectedResponse)?;
-
-        Ok(cur_pos)
-    }
-
-    /// Moves the file cursor
-    pub async fn seek(&mut self, pos: SeekFrom) -> Result<(), IdeviceError> {
-        let (offset, whence) = match pos {
-            SeekFrom::Start(off) => (off as i64, 0),
-            SeekFrom::Current(off) => (off, 1),
-            SeekFrom::End(off) => (off, 2),
-        };
-
-        let mut header_payload = Vec::new();
-        header_payload.extend(self.fd.to_le_bytes());
-        header_payload.extend((whence as u64).to_le_bytes());
-        header_payload.extend(offset.to_le_bytes());
-
-        self.send_packet(AfcOpcode::FileSeek, header_payload, Vec::new())
-            .await?;
-
-        Ok(())
+        self.inner.as_mut().seek_tell().await
     }
 
     /// Closes the file descriptor
-    pub async fn close(mut self) -> Result<(), IdeviceError> {
-        let header_payload = self.fd.to_le_bytes().to_vec();
-
-        self.send_packet(AfcOpcode::FileClose, header_payload, Vec::new())
-            .await?;
-        Ok(())
+    pub async fn close(&mut self) -> Result<(), IdeviceError> {
+        self.inner.as_mut().close().await
     }
 
     /// Reads the entire contents of the file
     ///
     /// # Returns
     /// A vector containing the file's data
-    pub async fn read(&mut self) -> Result<Vec<u8>, IdeviceError> {
-        let seek_pos = self.seek_tell().await? as usize;
-        let file_info = self.client.get_file_info(&self.path).await?;
-        let mut bytes_left = file_info.size.saturating_sub(seek_pos);
-        let mut collected_bytes = Vec::with_capacity(bytes_left);
-
-        while bytes_left > 0 {
-            let mut header_payload = self.fd.to_le_bytes().to_vec();
-            header_payload.extend_from_slice(&MAX_TRANSFER.to_le_bytes());
-            let res = self
-                .send_packet(AfcOpcode::Read, header_payload, Vec::new())
-                .await?;
-
-            bytes_left -= res.payload.len();
-            collected_bytes.extend(res.payload);
-        }
-
-        Ok(collected_bytes)
+    pub async fn read_entire(&mut self) -> Result<Vec<u8>, IdeviceError> {
+        self.inner.as_mut().read().await
     }
 
     /// Writes data to the file
     ///
     /// # Arguments
     /// * `bytes` - Data to write to the file
-    pub async fn write(&mut self, bytes: &[u8]) -> Result<(), IdeviceError> {
-        for chunk in bytes.chunks(MAX_TRANSFER as usize) {
-            let header_payload = self.fd.to_le_bytes().to_vec();
-            self.send_packet(AfcOpcode::Write, header_payload, chunk.to_vec())
-                .await?;
-        }
-        Ok(())
+    pub async fn write_entire(&mut self, bytes: &[u8]) -> Result<(), IdeviceError> {
+        self.inner.as_mut().write(bytes).await
+    }
+}
+
+impl AsyncRead for FileDescriptor<'_> {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let inner = self.inner.as_mut();
+        inner.poll_read(cx, buf)
+    }
+}
+
+impl AsyncWrite for FileDescriptor<'_> {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<Result<usize, std::io::Error>> {
+        let inner = self.inner.as_mut();
+        inner.poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), std::io::Error>> {
+        let inner = self.inner.as_mut();
+        inner.poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), std::io::Error>> {
+        let inner = self.inner.as_mut();
+        inner.poll_shutdown(cx)
+    }
+}
+
+impl AsyncSeek for FileDescriptor<'_> {
+    fn start_seek(mut self: Pin<&mut Self>, position: SeekFrom) -> std::io::Result<()> {
+        let this = self.inner.as_mut();
+        this.start_seek(position)
+    }
+
+    fn poll_complete(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<u64>> {
+        let this = self.inner.as_mut();
+        this.poll_complete(cx)
     }
 }

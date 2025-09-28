@@ -8,6 +8,7 @@ use idevice::{
     afc::{AfcClient, opcode::AfcFopenMode},
     house_arrest::HouseArrestClient,
 };
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 mod common;
 
@@ -154,7 +155,7 @@ async fn main() {
             .await
             .expect("Failed to open");
 
-        let res = file.read().await.expect("Failed to read");
+        let res = file.read_entire().await.expect("Failed to read");
         tokio::fs::write(save, res)
             .await
             .expect("Failed to write to file");
@@ -168,7 +169,9 @@ async fn main() {
             .await
             .expect("Failed to open");
 
-        file.write(&bytes).await.expect("Failed to upload bytes");
+        file.write_entire(&bytes)
+            .await
+            .expect("Failed to upload bytes");
     } else if let Some(matches) = matches.subcommand_matches("remove") {
         let path = matches.get_one::<String>("path").expect("No path passed");
         afc_client.remove(path).await.expect("Failed to remove");
