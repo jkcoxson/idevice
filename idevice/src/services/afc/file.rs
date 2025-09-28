@@ -23,8 +23,8 @@ impl FileDescriptor<'_> {
     }
 
     /// Closes the file descriptor
-    pub async fn close(mut self) -> Result<(), IdeviceError> {
-        self.inner.as_mut().close().await
+    pub async fn close(self) -> Result<(), IdeviceError> {
+        self.inner.close().await
     }
 
     /// Reads the entire contents of the file

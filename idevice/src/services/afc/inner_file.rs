@@ -126,10 +126,11 @@ impl InnerFileDescriptor<'_> {
     }
 
     /// Closes the file descriptor
-    pub async fn close(self: Pin<&mut Self>) -> Result<(), IdeviceError> {
+    pub async fn close(mut self: Pin<Box<Self>>) -> Result<(), IdeviceError> {
         let header_payload = self.fd.to_le_bytes().to_vec();
 
-        self.send_packet(AfcOpcode::FileClose, header_payload, Vec::new())
+        self.as_mut()
+            .send_packet(AfcOpcode::FileClose, header_payload, Vec::new())
             .await?;
         Ok(())
     }
