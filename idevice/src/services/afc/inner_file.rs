@@ -203,7 +203,7 @@ impl InnerFileDescriptor<'_> {
             let fut = Some(
                 Pin::new_unchecked(&mut *this)
                     .read_n(buf_rem)
-                    .map(|r| r.map(|b| PendingResult::Bytes(b)))
+                    .map(|r| r.map(PendingResult::Bytes))
                     .boxed(),
             );
 
@@ -218,7 +218,7 @@ impl InnerFileDescriptor<'_> {
             let fut = Some(
                 Pin::new_unchecked(&mut *this)
                     .seek(position)
-                    .map(|r| r.map(|seek_pos| PendingResult::SeekPos(seek_pos)))
+                    .map(|r| r.map(PendingResult::SeekPos))
                     .boxed(),
             );
 
