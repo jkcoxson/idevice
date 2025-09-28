@@ -7,8 +7,6 @@ use tokio::io::{AsyncRead, AsyncSeek, AsyncWrite};
 use super::inner_file::InnerFileDescriptor;
 use crate::IdeviceError;
 
-use super::{opcode::AfcOpcode, packet::AfcPacket};
-
 pub struct FileDescriptor<'a> {
     inner: Pin<Box<InnerFileDescriptor<'a>>>,
 }
@@ -25,7 +23,7 @@ impl FileDescriptor<'_> {
     }
 
     /// Closes the file descriptor
-    pub async fn close(&mut self) -> Result<(), IdeviceError> {
+    pub async fn close(mut self) -> Result<(), IdeviceError> {
         self.inner.as_mut().close().await
     }
 

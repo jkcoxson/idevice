@@ -1,6 +1,6 @@
 // Jackson Coxson
 
-use std::{fmt::Debug, io::SeekFrom, pin::Pin};
+use std::{io::SeekFrom, pin::Pin};
 
 use futures::{FutureExt, future::BoxFuture};
 use tokio::io::{AsyncRead, AsyncSeek, AsyncWrite};
@@ -109,10 +109,12 @@ impl InnerFileDescriptor<'_> {
             SeekFrom::End(off) => (off, 2),
         };
 
-        let mut header_payload = Vec::new();
-        header_payload.extend(self.fd.to_le_bytes());
-        header_payload.extend((whence as u64).to_le_bytes());
-        header_payload.extend(offset.to_le_bytes());
+        let header_payload = [
+            self.fd.to_le_bytes(),
+            (whence as u64).to_le_bytes(),
+            offset.to_le_bytes(),
+        ]
+        .concat();
 
         self.as_mut()
             .send_packet(AfcOpcode::FileSeek, header_payload, Vec::new())
@@ -140,8 +142,7 @@ impl InnerFileDescriptor<'_> {
         let mut collected_bytes = Vec::with_capacity(n);
 
         for chunk in chunk_number(n, MAX_TRANSFER as usize) {
-            let mut header_payload = self.fd.to_le_bytes().to_vec();
-            header_payload.extend_from_slice(&chunk.to_le_bytes());
+            let header_payload = [self.fd.to_le_bytes(), chunk.to_le_bytes()].concat();
             let res = self
                 .as_mut()
                 .send_packet(AfcOpcode::Read, header_payload, Vec::new())
@@ -220,33 +221,37 @@ impl InnerFileDescriptor<'_> {
 
             let this = this as *mut InnerFileDescriptor;
 
-            let buf = (&mut *this).pending_write_data.as_ref().unwrap();
+            let buf = (&*this).pending_write_data.as_ref().unwrap();
 
             let fut = Some(Pin::new_unchecked(&mut *this).write(buf).boxed());
 
             (&mut *this).pending_write_fut = fut;
         }
     }
+}
 
-    // fn get_or_init_read_fut(
-    //     &mut self,
-    //     buf_rem: usize,
-    // ) -> &mut BoxFuture<'_, Result<Vec<u8>, IdeviceError>> {
-    //     if self.pending_read_fut.is_none() {
-    //         self.pending_read_fut = Some(Box::pin(self.read_n(buf_rem)));
-    //     }
-    //     self.pending_read_fut.as_mut().unwrap()
-    // }
-    //
-    // fn get_or_init_write_fut<'a>(
-    //     &'a mut self,
-    //     buf: &'_ [u8],
-    // ) -> &'a mut BoxFuture<'a, Result<(), IdeviceError>> {
-    //     if self.pending_write_fut.is_none() {
-    //         self.store_pending_write(buf);
-    //     }
-    //     self.pending_write_fut.as_mut().unwrap()
-    // }
+impl<'a> InnerFileDescriptor<'a> {
+    fn get_or_init_read_fut(
+        mut self: Pin<&mut Self>,
+        buf_rem: usize,
+    ) -> &mut BoxFuture<'a, Result<Vec<u8>, IdeviceError>> {
+        if self.as_ref().pending_read_fut.is_none() {
+            self.as_mut().store_pending_read(buf_rem);
+        }
+
+        unsafe { self.get_unchecked_mut().pending_read_fut.as_mut().unwrap() }
+    }
+
+    fn get_or_init_write_fut(
+        mut self: Pin<&mut Self>,
+        buf: &'_ [u8],
+    ) -> &mut BoxFuture<'a, Result<(), IdeviceError>> {
+        if self.as_ref().pending_write_fut.is_none() {
+            self.as_mut().store_pending_write(buf);
+        }
+
+        unsafe { self.get_unchecked_mut().pending_write_fut.as_mut().unwrap() }
+    }
 }
 
 impl AsyncRead for InnerFileDescriptor<'_> {
@@ -256,20 +261,7 @@ impl AsyncRead for InnerFileDescriptor<'_> {
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
         let contents = {
-            let read_func = if self.as_ref().pending_read_fut.is_some() {
-                unsafe {
-                    let this = self.as_mut().get_unchecked_mut();
-                    this.pending_read_fut.as_mut().unwrap()
-                }
-            } else {
-                unsafe {
-                    self.as_mut().store_pending_read(buf.remaining());
-                    let this = self.as_mut().get_unchecked_mut();
-
-                    this.pending_read_fut.as_mut().unwrap()
-                }
-            };
-
+            let read_func = self.as_mut().get_or_init_read_fut(buf.remaining());
             match std::task::ready!(read_func.as_mut().poll(cx)) {
                 Ok(c) => {
                     unsafe {
@@ -293,19 +285,7 @@ impl AsyncWrite for InnerFileDescriptor<'_> {
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> std::task::Poll<Result<usize, std::io::Error>> {
-        let write_func = if self.as_ref().pending_write_fut.is_some() {
-            unsafe {
-                let this = self.as_mut().get_unchecked_mut();
-                this.pending_write_fut.as_mut().unwrap()
-            }
-        } else {
-            unsafe {
-                self.as_mut().store_pending_write(buf);
-
-                let this = self.as_mut().get_unchecked_mut();
-                this.pending_write_fut.as_mut().unwrap()
-            }
-        };
+        let write_func = self.as_mut().get_or_init_write_fut(buf);
 
         match std::task::ready!(write_func.as_mut().poll(cx)) {
             Ok(()) => unsafe {
@@ -338,7 +318,7 @@ impl AsyncWrite for InnerFileDescriptor<'_> {
 }
 
 impl AsyncSeek for InnerFileDescriptor<'_> {
-    fn start_seek(mut self: Pin<&mut Self>, position: SeekFrom) -> std::io::Result<()> {
+    fn start_seek(self: Pin<&mut Self>, position: SeekFrom) -> std::io::Result<()> {
         self.store_pending_seek(position);
 
         Ok(())

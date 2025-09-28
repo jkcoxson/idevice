@@ -8,7 +8,6 @@ use idevice::{
     afc::{AfcClient, opcode::AfcFopenMode},
     house_arrest::HouseArrestClient,
 };
-use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 mod common;
 
