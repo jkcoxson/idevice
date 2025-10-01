@@ -4,7 +4,6 @@
 #include <idevice++/ffi.hpp>
 #include <idevice++/heartbeat.hpp>
 #include <idevice++/provider.hpp>
-#include <sys/_types/_u_int64_t.h>
 
 namespace IdeviceFFI {
 
