@@ -1,12 +1,15 @@
 # idevice
 
-A Rust library for interacting with iOS services.
+A pure Rust library for interacting with iOS services.
 Inspired by [libimobiledevice](https://github.com/libimobiledevice/libimobiledevice)
-and [pymobiledevice3](https://github.com/doronz88/pymobiledevice3),
-this library interfaces with lockdownd and usbmuxd to perform actions
+[pymobiledevice3](https://github.com/doronz88/pymobiledevice3),
+and [go-ios](https://github.com/danielpaulus/go-ios)
+this library interfaces with lockdownd, usbmuxd, and RSD to perform actions
 on an iOS device that a Mac normally would.
 
 For help and information, join the [idevice Discord](https://discord.gg/qtgv6QtYbV)
+
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/jkcoxson/idevice)
 
 ## State
 
@@ -16,6 +19,25 @@ Pin your `Cargo.toml` to a specific version to avoid breakage.
 This library is in development and research stage.
 Releases are being published to crates.io for use in other projects,
 but the API and feature-set are far from final or even planned.
+
+## Why use this?
+
+libimobiledevice is a groundbreaking library. Unfortunately, it hasn't
+been seriously updated in a long time, and does not support many modern
+iOS features.
+
+Libraries such as pymobiledevice3 and go-ios have popped up to fill that
+gap, but both lacked the support I needed for embedding into applications
+and server programs. Python requires an interpreter, and Go's current
+ability to be embedded in other languages is lacking.
+
+This library is currently used in popular apps such as
+[StikDebug](https://github.com/StephenDev0/StikDebug),
+[CrossCode](https://github.com/nab138/CrossCode)
+and
+[Protokolle](https://github.com/khcrysalis/Protokolle).
+``idevice`` has proven there is a need. It's currently deployed on tens of
+thousands of devices, all across the world.
 
 ## Features
 
@@ -81,7 +103,7 @@ async fn main() {
     // We'll ask usbmuxd for a device
     let mut usbmuxd = UsbmuxdConnection::default()
         .await
-        .expect("Unable to connect to usbmxud")
+        .expect("Unable to connect to usbmuxd");
     let devs = usbmuxd.get_devices().unwrap();
     if devs.is_empty() {
         eprintln!("No devices connected!");
@@ -118,23 +140,43 @@ async fn main() {
 }
 ```
 
-More examples are in the ``tools`` crate and in the crate documentation.
+More examples are in the [`tools`](tools/) crate and in the crate documentation.
 
 ## FFI
 
 For use in other languages, a small FFI crate has been created to start exposing
-idevice. Example C programs can be found in this repository.
+idevice. Example C programs can be found in the [`ffi/examples`](ffi/examples/) directory.
 
-## Version Policy
+### C++
 
-As Apple prohibits downgrading to older versions, this library will
-not keep compatibility for older versions than the current stable release.
+"Hey wait a second, there's a lot of C++ code in this library!!"
+C++ bindings have been made for many of idevice's features. This allows smooth
+and safer usage in C++ and Swift codebases.
 
-## Developer Disk Images
+## Technical Explanation
 
-doronz88 is kind enough to maintain a [repo](https://github.com/doronz88/DeveloperDiskImage)
-for disk images and personalized images.
-On MacOS, you can find them at ``~/Library/Developer/DeveloperDiskImages``.
+There are so many layers and protocols in this library, many stacked on top of
+one another. It's difficult to describe the magnitude that is Apple's interfaces.
+
+I would recommend reading the DeepWiki explanations and overviews to get an idea
+of how this library and their associated protocols work. But a general overview is:
+
+### Lockdown
+
+1. A lockdown service is accessible via a port given by lockdown
+1. Lockdown is accessible by USB or TCP via TLS
+1. USB is accessible via usbmuxd
+1. usbmuxd is accessed through a unix socket
+1. That Unix socket has its own protocol
+
+### RemoteXPC/RSD
+
+1. An RSD service is discovered through a RemoteXPC handshake response
+1. RemoteXPC is transferred over non-compliant HTTP/2
+1. That HTTP/2 is accessed through an NCM USB interface or CoreDeviceProxy
+1. CoreDeviceProxy is a lockdown service, see above
+
+This doesn't even touch RPPairing, which is still a mystery as of writing.
 
 ## License
 

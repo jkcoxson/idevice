@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <cstdio>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -113,6 +114,34 @@ template <typename T> class Option {
     }
     template <typename F> T unwrap_or_else(F&& f) && {
         return has_ ? std::move(*ptr()) : static_cast<T>(f());
+    }
+
+    T expect(const char* message) && {
+        if (is_none()) {
+            std::fprintf(stderr, "Fatal (expect) error: %s\n", message);
+            std::terminate();
+        }
+        T tmp = std::move(*ptr());
+        reset();
+        return tmp;
+    }
+
+    // Returns a mutable reference from an lvalue Result
+    T& expect(const char* message) & {
+        if (is_none()) {
+            std::fprintf(stderr, "Fatal (expect) error: %s\n", message);
+            std::terminate();
+        }
+        return *ptr();
+    }
+
+    // Returns a const reference from a const lvalue Result
+    const T& expect(const char* message) const& {
+        if (is_none()) {
+            std::fprintf(stderr, "Fatal (expect) error: %s\n", message);
+            std::terminate();
+        }
+        return *ptr();
     }
 
     // map

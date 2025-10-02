@@ -7,7 +7,6 @@ use idevice::{
 };
 
 mod common;
-mod pcap;
 
 #[tokio::main]
 async fn main() {

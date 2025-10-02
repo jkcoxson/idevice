@@ -692,31 +692,15 @@ pub enum IdeviceError {
     #[error("failed to parse bytes as valid utf8")]
     Utf8Error = -56,
 
-    #[cfg(feature = "debug_proxy")]
+    #[cfg(any(
+        feature = "debug_proxy",
+        all(feature = "afc", feature = "installation_proxy")
+    ))]
     #[error("invalid argument passed")]
     InvalidArgument = -57,
 
     #[error("unknown error `{0}` returned from device")]
     UnknownErrorType(String) = -59,
-
-    #[cfg(feature = "remote_pairing")]
-    #[error("could not parse as JSON")]
-    JsonParseFailed(#[from] json::Error) = -67,
-
-    #[cfg(feature = "remote_pairing")]
-    #[error("unknown TLV type: {0}")]
-    UnknownTlv(u8) = -68,
-
-    #[cfg(feature = "remote_pairing")]
-    #[error("malformed TLV")]
-    MalformedTlv = -69,
-
-    #[error("failed to decode base64 string")]
-    Base64Decode(#[from] base64::DecodeError) = -70,
-
-    #[cfg(feature = "remote_pairing")]
-    #[error("pair verify failed")]
-    PairVerifyFailed = -71,
 
     #[error("invalid arguments were passed")]
     FfiInvalidArg = -60,
@@ -732,6 +716,32 @@ pub enum IdeviceError {
     IntegerOverflow = -65,
     #[error("canceled by user")]
     CanceledByUser = -66,
+
+    #[cfg(feature = "installation_proxy")]
+    #[error("malformed package archive: {0}")]
+    MalformedPackageArchive(#[from] async_zip::error::ZipError) = -67,
+
+    #[error("Developer mode is not enabled")]
+    DeveloperModeNotEnabled = -68,
+
+    #[cfg(feature = "remote_pairing")]
+    #[error("could not parse as JSON")]
+    JsonParseFailed(#[from] json::Error) = -69,
+
+    #[cfg(feature = "remote_pairing")]
+    #[error("unknown TLV type: {0}")]
+    UnknownTlv(u8) = -70,
+
+    #[cfg(feature = "remote_pairing")]
+    #[error("malformed TLV")]
+    MalformedTlv = -71,
+
+    #[error("failed to decode base64 string")]
+    Base64Decode(#[from] base64::DecodeError) = -72,
+
+    #[cfg(feature = "remote_pairing")]
+    #[error("pair verify failed")]
+    PairVerifyFailed = -73,
 }
 
 impl IdeviceError {
@@ -746,6 +756,8 @@ impl IdeviceError {
     fn from_device_error_type(e: &str, context: &plist::Dictionary) -> Option<Self> {
         if e.contains("NSDebugDescription=Canceled by user.") {
             return Some(Self::CanceledByUser);
+        } else if e.contains("Developer mode is not enabled.") {
+            return Some(Self::DeveloperModeNotEnabled);
         }
         match e {
             "GetProhibited" => Some(Self::GetProhibited),
@@ -876,7 +888,10 @@ impl IdeviceError {
             IdeviceError::NotEnoughBytes(_, _) => -55,
             IdeviceError::Utf8Error => -56,
 
-            #[cfg(feature = "debug_proxy")]
+            #[cfg(any(
+                feature = "debug_proxy",
+                all(feature = "afc", feature = "installation_proxy")
+            ))]
             IdeviceError::InvalidArgument => -57,
 
             IdeviceError::UnknownErrorType(_) => -59,
@@ -888,15 +903,18 @@ impl IdeviceError {
             IdeviceError::IntegerOverflow => -65,
             IdeviceError::CanceledByUser => -66,
 
+            #[cfg(feature = "installation_proxy")]
+            IdeviceError::MalformedPackageArchive(_) => -67,
+            IdeviceError::DeveloperModeNotEnabled => -68,
             #[cfg(feature = "remote_pairing")]
-            IdeviceError::JsonParseFailed(_) => -67,
+            IdeviceError::JsonParseFailed(_) => -69,
             #[cfg(feature = "remote_pairing")]
-            IdeviceError::UnknownTlv(_) => -68,
+            IdeviceError::UnknownTlv(_) => -70,
             #[cfg(feature = "remote_pairing")]
-            IdeviceError::MalformedTlv => -69,
-            IdeviceError::Base64Decode(_) => -70,
+            IdeviceError::MalformedTlv => -71,
+            IdeviceError::Base64Decode(_) => -72,
             #[cfg(feature = "remote_pairing")]
-            IdeviceError::PairVerifyFailed => -71,
+            IdeviceError::PairVerifyFailed => -73,
         }
     }
 }

@@ -25,7 +25,7 @@ pub struct InstallationProxyClientHandle(pub InstallationProxyClient);
 /// `provider` must be a valid pointer to a handle allocated by this library
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn installation_proxy_connect_tcp(
+pub unsafe extern "C" fn installation_proxy_connect(
     provider: *mut IdeviceProviderHandle,
     client: *mut *mut InstallationProxyClientHandle,
 ) -> *mut IdeviceFfiError {
