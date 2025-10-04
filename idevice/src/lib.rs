@@ -4,7 +4,7 @@
 #[cfg(feature = "pair")]
 mod ca;
 pub mod pairing_file;
-mod plist_macro;
+pub mod plist_macro;
 pub mod provider;
 mod sni;
 #[cfg(feature = "tunnel_tcp_stack")]
