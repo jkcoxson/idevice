@@ -1,4 +1,5 @@
 use idevice::bt_packet_logger::BtPacketKind;
+use log::warn;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 // Classic PCAP (big-endian) global header for DLT_BLUETOOTH_HCI_H4_WITH_PHDR (201)
@@ -40,6 +41,7 @@ pub async fn write_pcap_record<W: AsyncWrite + Unpin>(
 ) -> std::io::Result<()> {
     // Prepend 4-byte direction flag to the packet body
     let Some(dir) = dir_flag(kind) else {
+        warn!("Unknown H4 packet type: {kind:?}");
         return Ok(());
     };
     let cap_len = 4u32 + h4_payload.len() as u32;

@@ -5,7 +5,7 @@
 use std::pin::Pin;
 
 use futures::Stream;
-use log::{debug, warn};
+use log::warn;
 
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
@@ -147,13 +147,6 @@ impl BtPacketLoggerClient {
                 let (hdr, off) = BtHeader::parse(&frame).ok_or(IdeviceError::UnexpectedResponse)?;
                 let kind = BtPacketKind::from_byte(frame[off]);
                 let payload = &frame[off + 1..];
-
-                // soft advisory check
-                let advisory = hdr.length as usize;
-                let actual = 1 + payload.len();
-                if advisory != actual {
-                    debug!("BTPacketLogger advisory length {} != actual {}", advisory, actual);
-                }
 
                 // make H4 buffer
                 let mut h4 = Vec::with_capacity(1 + payload.len());
