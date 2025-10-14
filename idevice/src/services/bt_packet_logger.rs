@@ -110,16 +110,6 @@ impl BtPacketLoggerClient {
         let kind = BtPacketKind::from_byte(frame[off]);
         let payload = &frame[off + 1..]; // whatever remains
 
-        // Optional soft check of advisory header.length
-        let advisory = hdr.length as usize;
-        let actual = 1 + payload.len(); // kind + payload
-        if advisory != actual {
-            debug!(
-                "BTPacketLogger advisory length {} != actual {}, proceeding",
-                advisory, actual
-            );
-        }
-
         // Build H4 buffer (prepend type byte)
         let mut h4 = Vec::with_capacity(1 + payload.len());
         if let Some(t) = kind.h4_type() {
