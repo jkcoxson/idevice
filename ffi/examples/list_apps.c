@@ -42,7 +42,7 @@ int main() {
 
   // Connect to installation proxy
   InstallationProxyClientHandle *client = NULL;
-  err = installation_proxy_connect_tcp(provider, &client);
+  err = installation_proxy_connect(provider, &client);
   if (err != NULL) {
     fprintf(stderr, "Failed to connect to installation proxy: [%d] %s",
             err->code, err->message);

@@ -179,7 +179,7 @@ int main(int argc, char **argv) {
 
   // Connect to installation proxy
   InstallationProxyClientHandle *instproxy_client = NULL;
-  err = installation_proxy_connect_tcp(provider, &instproxy_client);
+  err = installation_proxy_connect(provider, &instproxy_client);
   if (err != NULL) {
     fprintf(stderr, "Failed to connect to installation proxy: [%d] %s",
             err->code, err->message);
