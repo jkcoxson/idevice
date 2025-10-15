@@ -3,7 +3,6 @@
 #include <cstring>
 #include <idevice++/bindings.hpp>
 #include <idevice++/installation_proxy.hpp>
-#include <sys/_types/_u_int64_t.h>
 #include <vector>
 
 namespace IdeviceFFI {
