@@ -24,6 +24,8 @@ pub mod heartbeat;
 pub mod house_arrest;
 #[cfg(feature = "installation_proxy")]
 pub mod installation_proxy;
+#[cfg(feature = "installcoordination_proxy")]
+pub mod installcoordination_proxy;
 pub mod lockdown;
 #[cfg(feature = "misagent")]
 pub mod misagent;
@@ -45,10 +47,9 @@ pub mod restore_service;
 pub mod rsd;
 #[cfg(feature = "screenshotr")]
 pub mod screenshotr;
+#[cfg(feature = "location_simulation")]
+pub mod simulate_location;
 #[cfg(feature = "springboardservices")]
 pub mod springboardservices;
 #[cfg(feature = "syslog_relay")]
 pub mod syslog_relay;
-
-#[cfg(feature = "location_simulation")]
-pub mod simulate_location;

@@ -87,6 +87,7 @@ installation_proxy = [
   "async_zip/deflate",
   "tokio/fs",
 ]
+installcoordination_proxy = []
 springboardservices = []
 misagent = []
 mobile_image_mounter = ["dep:sha2"]
@@ -127,6 +128,7 @@ full = [
   "heartbeat",
   "house_arrest",
   "installation_proxy",
+  "installcoordination_proxy",
   "location_simulation",
   "misagent",
   "mobile_image_mounter",

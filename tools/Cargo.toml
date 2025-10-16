@@ -138,6 +138,11 @@ path = "src/activation.rs"
 name = "notifications"
 path = "src/notifications.rs"
 
+
+[[bin]]
+name = "installcoordination_proxy"
+path = "src/installcoordination_proxy.rs"
+
 [dependencies]
 idevice = { path = "../idevice", features = ["full"], default-features = false }
 tokio = { version = "1.43", features = ["full"] }
