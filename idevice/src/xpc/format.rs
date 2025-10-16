@@ -99,7 +99,7 @@ impl TryFrom<u32> for XPCType {
 
 pub type Dictionary = IndexMap<String, XPCObject>;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum XPCObject {
     Bool(bool),
     Dictionary(Dictionary),

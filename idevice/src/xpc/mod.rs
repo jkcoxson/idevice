@@ -9,6 +9,7 @@ use crate::{IdeviceError, ReadWrite};
 
 mod format;
 mod http2;
+pub mod xpc_macro;
 
 use format::XPCFlag;
 pub use format::{Dictionary, XPCMessage, XPCObject};
