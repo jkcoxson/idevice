@@ -5,7 +5,6 @@
 
 use log::error;
 use plist::Value;
-use serde::{Deserialize, Serialize};
 
 use crate::{Idevice, IdeviceError, IdeviceService, obf, pairing_file};
 
@@ -46,15 +45,6 @@ impl IdeviceService for LockdownClient {
     async fn from_stream(idevice: Idevice) -> Result<Self, crate::IdeviceError> {
         Ok(Self::new(idevice))
     }
-}
-
-/// Internal structure for lockdown protocol requests
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-struct LockdownRequest {
-    label: String,
-    key: Option<String>,
-    request: String,
 }
 
 impl LockdownClient {
