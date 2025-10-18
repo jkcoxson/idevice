@@ -130,4 +130,25 @@ impl FileDescriptor<'_> {
         }
         Ok(())
     }
+
+    pub async fn write_with_callback<Fut, S>(
+        &mut self,
+        bytes: &[u8],
+        callback: impl Fn(((usize, usize), S)) -> Fut,
+        state: S,
+    ) -> Result<(), IdeviceError>
+    where
+        Fut: std::future::Future<Output = ()>,
+        S: Clone,
+    {
+        let chunks = bytes.chunks(MAX_TRANSFER as usize);
+        let chunks_len = chunks.len();
+        for (i, chunk) in chunks.enumerate() {
+            let header_payload = self.fd.to_le_bytes().to_vec();
+            self.send_packet(AfcOpcode::Write, header_payload, chunk.to_vec())
+                .await?;
+            callback(((i, chunks_len), state.clone())).await;
+        }
+        Ok(())
+    }
 }
