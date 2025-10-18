@@ -118,6 +118,35 @@ impl FileDescriptor<'_> {
         Ok(collected_bytes)
     }
 
+    pub async fn read_with_callback<Fut, S>(
+        &mut self,
+        callback: impl Fn(((usize, usize), S)) -> Fut,
+        state: S,
+    ) -> Result<Vec<u8>, IdeviceError>
+    where
+        Fut: std::future::Future<Output = ()>,
+        S: Clone,
+    {
+        let seek_pos = self.seek_tell().await? as usize;
+        let file_info = self.client.get_file_info(&self.path).await?;
+        let mut bytes_left = file_info.size.saturating_sub(seek_pos);
+        let mut collected_bytes = Vec::with_capacity(bytes_left);
+
+        while bytes_left > 0 {
+            let mut header_payload = self.fd.to_le_bytes().to_vec();
+            header_payload.extend_from_slice(&MAX_TRANSFER.to_le_bytes());
+            let res = self
+                .send_packet(AfcOpcode::Read, header_payload, Vec::new())
+                .await?;
+
+            bytes_left -= res.payload.len();
+            collected_bytes.extend(res.payload);
+            callback(((file_info.size - bytes_left, file_info.size), state.clone())).await;
+        }
+
+        Ok(collected_bytes)
+    }
+
     /// Writes data to the file
     ///
     /// # Arguments
