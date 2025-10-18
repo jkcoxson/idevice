@@ -2,7 +2,7 @@
 name = "idevice"
 description = "A Rust library to interact with services on iOS devices."
 authors = ["Jackson Coxson"]
-version = "0.1.44"
+version = "0.1.45"
 edition = "2024"
 license = "MIT"
 documentation = "https://docs.rs/idevice"
