@@ -15,6 +15,7 @@ use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 pub mod errors;
 pub mod file;
+mod inner_file;
 pub mod opcode;
 pub mod packet;
 
@@ -408,11 +409,9 @@ impl AfcClient {
             return Err(IdeviceError::UnexpectedResponse);
         }
         let fd = u64::from_le_bytes(res.header_payload[..8].try_into().unwrap());
-        Ok(FileDescriptor {
-            client: self,
-            fd,
-            path,
-        })
+        Ok(FileDescriptor::new(inner_file::InnerFileDescriptor::new(
+            self, fd, path,
+        )))
     }
 
     /// Creates a hard or symbolic link
