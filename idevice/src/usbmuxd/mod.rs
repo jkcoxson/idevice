@@ -10,7 +10,7 @@ use std::{
 };
 
 #[cfg(not(unix))]
-use std::net::SocketAddrV4;
+use std::net::{Ipv4Addr, SocketAddrV4};
 
 use futures::Stream;
 use log::{debug, warn};
