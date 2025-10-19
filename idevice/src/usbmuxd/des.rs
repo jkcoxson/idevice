@@ -1,6 +1,14 @@
 // Jackson Coxson
 
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+use log::{debug, warn};
 use serde::Deserialize;
+
+use crate::{
+    IdeviceError,
+    usbmuxd::{Connection, UsbmuxdDevice},
+};
 
 #[derive(Deserialize)]
 pub struct ListDevicesResponse {
@@ -24,4 +32,70 @@ pub struct DevicePropertiesResponse {
     pub network_address: Option<plist::Data>,
     #[serde(rename = "SerialNumber")]
     pub serial_number: String,
+}
+
+impl DeviceListResponse {
+    pub fn into_usbmuxd_dev(self) -> Result<UsbmuxdDevice, IdeviceError> {
+        self.try_into()
+    }
+}
+
+impl TryFrom<DeviceListResponse> for UsbmuxdDevice {
+    type Error = IdeviceError;
+
+    fn try_from(dev: DeviceListResponse) -> Result<Self, Self::Error> {
+        let connection_type = match dev.properties.connection_type.as_str() {
+            "Network" => {
+                if let Some(addr) = dev.properties.network_address {
+                    let addr = &Into::<Vec<u8>>::into(addr);
+                    if addr.len() < 8 {
+                        warn!("Device address bytes len < 8");
+                        return Err(IdeviceError::UnexpectedResponse);
+                    }
+
+                    match addr[0] {
+                        0x02 => {
+                            // IPv4
+                            Connection::Network(IpAddr::V4(Ipv4Addr::new(
+                                addr[4], addr[5], addr[6], addr[7],
+                            )))
+                        }
+                        0x1E => {
+                            // IPv6
+                            if addr.len() < 24 {
+                                warn!("IPv6 address is less than 24 bytes");
+                                return Err(IdeviceError::UnexpectedResponse);
+                            }
+
+                            Connection::Network(IpAddr::V6(Ipv6Addr::new(
+                                u16::from_be_bytes([addr[8], addr[9]]),
+                                u16::from_be_bytes([addr[10], addr[11]]),
+                                u16::from_be_bytes([addr[12], addr[13]]),
+                                u16::from_be_bytes([addr[14], addr[15]]),
+                                u16::from_be_bytes([addr[16], addr[17]]),
+                                u16::from_be_bytes([addr[18], addr[19]]),
+                                u16::from_be_bytes([addr[20], addr[21]]),
+                                u16::from_be_bytes([addr[22], addr[23]]),
+                            )))
+                        }
+                        _ => {
+                            warn!("Unknown IP address protocol: {:02X}", addr[0]);
+                            Connection::Unknown(format!("Network {:02X}", addr[0]))
+                        }
+                    }
+                } else {
+                    warn!("Device is network attached, but has no network info");
+                    return Err(IdeviceError::UnexpectedResponse);
+                }
+            }
+            "USB" => Connection::Usb,
+            _ => Connection::Unknown(dev.properties.connection_type),
+        };
+        debug!("Connection type: {connection_type:?}");
+        Ok(UsbmuxdDevice {
+            connection_type,
+            udid: dev.properties.serial_number,
+            device_id: dev.device_id,
+        })
+    }
 }
