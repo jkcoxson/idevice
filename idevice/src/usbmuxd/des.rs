@@ -78,6 +78,31 @@ impl TryFrom<DeviceListResponse> for UsbmuxdDevice {
                                 u16::from_be_bytes([addr[22], addr[23]]),
                             )))
                         }
+                        0x1C => {
+                            if addr.len() < 28 {
+                                warn!("IPv6 sockaddr_in6 data too short (len {})", addr.len());
+                                return Err(IdeviceError::UnexpectedResponse);
+                            }
+                            if addr[1] == 0x1E {
+                                // IPv6 address starts at offset 8 in sockaddr_in6
+                                Connection::Network(IpAddr::V6(Ipv6Addr::new(
+                                    u16::from_be_bytes([addr[8], addr[9]]),
+                                    u16::from_be_bytes([addr[10], addr[11]]),
+                                    u16::from_be_bytes([addr[12], addr[13]]),
+                                    u16::from_be_bytes([addr[14], addr[15]]),
+                                    u16::from_be_bytes([addr[16], addr[17]]),
+                                    u16::from_be_bytes([addr[18], addr[19]]),
+                                    u16::from_be_bytes([addr[20], addr[21]]),
+                                    u16::from_be_bytes([addr[22], addr[23]]),
+                                )))
+                            } else {
+                                warn!(
+                                    "Expected IPv6 family (0x1E) but got {:02X} for length 0x1C",
+                                    addr[1]
+                                );
+                                Connection::Unknown(format!("Network {:02X}", addr[1]))
+                            }
+                        }
                         _ => {
                             warn!("Unknown IP address protocol: {:02X}", addr[0]);
                             Connection::Unknown(format!("Network {:02X}", addr[0]))
