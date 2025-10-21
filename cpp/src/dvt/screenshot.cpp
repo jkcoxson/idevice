@@ -13,11 +13,11 @@ Result<ScreenshotClient, FfiError> ScreenshotClient::create(RemoteServer& server
     return Ok(ScreenshotClient::adopt(out));
 }
 
-Result<std::vector<uint8_t>, FfiError> ScreenshotClient::capture() {
+Result<std::vector<uint8_t>, FfiError> ScreenshotClient::take_screenshot() {
     uint8_t* data = nullptr;
     size_t   len  = 0;
 
-    FfiError e(::screenshot_client_clear(handle_.get(), &data, &len));
+    FfiError e(::screenshot_client_take_screenshot(handle_.get(), &data, &len));
     if (e) {
         return Err(e);
     }

@@ -28,7 +28,7 @@ class ScreenshotClient {
     /// Captures a screenshot and returns it as a PNG buffer.
     ///
     /// On success, returns a vector containing PNG-encoded bytes.
-    Result<std::vector<uint8_t>, FfiError>    capture();
+    Result<std::vector<uint8_t>, FfiError>    take_screenshot();
 
     ~ScreenshotClient() noexcept                               = default;
     ScreenshotClient(ScreenshotClient&&) noexcept              = default;

@@ -88,7 +88,7 @@ int main(int argc, char** argv) {
         [](FfiError e) -> ScreenshotClient { die("failed to create ScreenshotClient", e); });
 
     // 9) Capture screenshot
-    auto buf = ss.capture().unwrap_or_else(
+    auto buf = ss.take_screenshot().unwrap_or_else(
         [](FfiError e) -> std::vector<uint8_t> { die("failed to capture screenshot", e); });
 
     // 10) Write PNG file

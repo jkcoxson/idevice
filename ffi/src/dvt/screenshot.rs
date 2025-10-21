@@ -86,7 +86,7 @@ pub unsafe extern "C" fn screenshot_client_free(handle: *mut ScreenshotClientHan
 /// - `data` and `len` must be valid writable pointers.
 /// - The data returned through `*data` must be freed by the caller with `idevice_data_free`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn screenshot_client_clear(
+pub unsafe extern "C" fn screenshot_client_take_screenshot(
     handle: *mut ScreenshotClientHandle<'static>,
     data: *mut *mut u8,
     len: *mut usize,
