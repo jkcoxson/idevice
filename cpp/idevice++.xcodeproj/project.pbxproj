@@ -7,81 +7,101 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		1914C7972E623CC2002EAB6E /* option.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 1914C7962E623CC2002EAB6E /* option.hpp */; };
-		1914C7992E623CC8002EAB6E /* result.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 1914C7982E623CC8002EAB6E /* result.hpp */; };
-		198077932E5CA6EF00CB501E /* adapter_stream.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1980776C2E5CA69800CB501E /* adapter_stream.cpp */; };
-		198077942E5CA6EF00CB501E /* app_service.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1980776D2E5CA69800CB501E /* app_service.cpp */; };
-		198077952E5CA6EF00CB501E /* core_device.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1980776E2E5CA69800CB501E /* core_device.cpp */; };
-		198077962E5CA6EF00CB501E /* debug_proxy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1980776F2E5CA69800CB501E /* debug_proxy.cpp */; };
-		198077972E5CA6EF00CB501E /* diagnosticsservice.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077702E5CA69800CB501E /* diagnosticsservice.cpp */; };
-		198077982E5CA6EF00CB501E /* ffi.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077712E5CA69800CB501E /* ffi.cpp */; };
-		198077992E5CA6EF00CB501E /* idevice.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077722E5CA69800CB501E /* idevice.cpp */; };
-		1980779A2E5CA6EF00CB501E /* location_simulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077732E5CA69800CB501E /* location_simulation.cpp */; };
-		1980779B2E5CA6EF00CB501E /* lockdown.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077742E5CA69800CB501E /* lockdown.cpp */; };
-		1980779C2E5CA6EF00CB501E /* pairing_file.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077752E5CA69800CB501E /* pairing_file.cpp */; };
-		1980779D2E5CA6EF00CB501E /* provider.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077762E5CA69800CB501E /* provider.cpp */; };
-		1980779E2E5CA6EF00CB501E /* remote_server.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077772E5CA69800CB501E /* remote_server.cpp */; };
-		1980779F2E5CA6EF00CB501E /* rsd.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077782E5CA69800CB501E /* rsd.cpp */; };
-		198077A02E5CA6EF00CB501E /* tcp_callback_feeder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 198077792E5CA69800CB501E /* tcp_callback_feeder.cpp */; };
-		198077A12E5CA6EF00CB501E /* usbmuxd.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1980777A2E5CA69800CB501E /* usbmuxd.cpp */; };
-		198077B72E5CA6FC00CB501E /* core_device_proxy.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077A62E5CA6FC00CB501E /* core_device_proxy.hpp */; };
-		198077B82E5CA6FC00CB501E /* pairing_file.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077AD2E5CA6FC00CB501E /* pairing_file.hpp */; };
-		198077B92E5CA6FC00CB501E /* bindings.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077A52E5CA6FC00CB501E /* bindings.hpp */; };
-		198077BA2E5CA6FC00CB501E /* diagnosticsservice.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077A82E5CA6FC00CB501E /* diagnosticsservice.hpp */; };
-		198077BB2E5CA6FC00CB501E /* idevice.h in Headers */ = {isa = PBXBuildFile; fileRef = 198077B52E5CA6FC00CB501E /* idevice.h */; };
-		198077BC2E5CA6FC00CB501E /* debug_proxy.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077A72E5CA6FC00CB501E /* debug_proxy.hpp */; };
-		198077BD2E5CA6FC00CB501E /* ffi.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077A92E5CA6FC00CB501E /* ffi.hpp */; };
-		198077BE2E5CA6FC00CB501E /* rsd.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077B12E5CA6FC00CB501E /* rsd.hpp */; };
-		198077BF2E5CA6FC00CB501E /* tcp_object_stack.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077B22E5CA6FC00CB501E /* tcp_object_stack.hpp */; };
-		198077C02E5CA6FC00CB501E /* remote_server.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077B02E5CA6FC00CB501E /* remote_server.hpp */; };
-		198077C12E5CA6FC00CB501E /* readwrite.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077AF2E5CA6FC00CB501E /* readwrite.hpp */; };
-		198077C22E5CA6FC00CB501E /* location_simulation.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077AB2E5CA6FC00CB501E /* location_simulation.hpp */; };
-		198077C32E5CA6FC00CB501E /* adapter_stream.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077A32E5CA6FC00CB501E /* adapter_stream.hpp */; };
-		198077C42E5CA6FC00CB501E /* lockdown.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077AC2E5CA6FC00CB501E /* lockdown.hpp */; };
-		198077C52E5CA6FC00CB501E /* usbmuxd.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077B32E5CA6FC00CB501E /* usbmuxd.hpp */; };
-		198077C62E5CA6FC00CB501E /* app_service.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077A42E5CA6FC00CB501E /* app_service.hpp */; };
-		198077C72E5CA6FC00CB501E /* idevice.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077AA2E5CA6FC00CB501E /* idevice.hpp */; };
-		198077C82E5CA6FC00CB501E /* provider.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 198077AE2E5CA6FC00CB501E /* provider.hpp */; };
+		196C57452EA7F5DC00188F4B /* location_simulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56B42EA7F53000188F4B /* location_simulation.cpp */; };
+		196C57462EA7F5DC00188F4B /* process_control.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56B52EA7F53000188F4B /* process_control.cpp */; };
+		196C57472EA7F5DC00188F4B /* remote_server.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56B62EA7F53000188F4B /* remote_server.cpp */; };
+		196C57482EA7F5DC00188F4B /* screenshot.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56B72EA7F53000188F4B /* screenshot.cpp */; };
+		196C57492EA7F5DC00188F4B /* adapter_stream.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56B92EA7F53000188F4B /* adapter_stream.cpp */; };
+		196C574A2EA7F5DC00188F4B /* app_service.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56BA2EA7F53000188F4B /* app_service.cpp */; };
+		196C574B2EA7F5DC00188F4B /* core_device.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56BB2EA7F53000188F4B /* core_device.cpp */; };
+		196C574C2EA7F5DC00188F4B /* debug_proxy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56BC2EA7F53000188F4B /* debug_proxy.cpp */; };
+		196C574D2EA7F5DC00188F4B /* diagnosticsservice.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56BD2EA7F53000188F4B /* diagnosticsservice.cpp */; };
+		196C574E2EA7F5DC00188F4B /* ffi.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56BE2EA7F53000188F4B /* ffi.cpp */; };
+		196C574F2EA7F5DC00188F4B /* heartbeat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56BF2EA7F53000188F4B /* heartbeat.cpp */; };
+		196C57502EA7F5DC00188F4B /* idevice.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56C02EA7F53000188F4B /* idevice.cpp */; };
+		196C57512EA7F5DC00188F4B /* installation_proxy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56C12EA7F53000188F4B /* installation_proxy.cpp */; };
+		196C57522EA7F5DC00188F4B /* lockdown.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56C22EA7F53000188F4B /* lockdown.cpp */; };
+		196C57532EA7F5DC00188F4B /* mobile_image_mounter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56C32EA7F53000188F4B /* mobile_image_mounter.cpp */; };
+		196C57542EA7F5DC00188F4B /* pairing_file.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56C42EA7F53000188F4B /* pairing_file.cpp */; };
+		196C57552EA7F5DC00188F4B /* provider.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56C52EA7F53000188F4B /* provider.cpp */; };
+		196C57562EA7F5DC00188F4B /* rsd.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56C62EA7F53000188F4B /* rsd.cpp */; };
+		196C57572EA7F5DC00188F4B /* tcp_callback_feeder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56C72EA7F53000188F4B /* tcp_callback_feeder.cpp */; };
+		196C57582EA7F5DC00188F4B /* usbmuxd.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56C82EA7F53000188F4B /* usbmuxd.cpp */; };
+		196C57592EA7F5F400188F4B /* location_simulation.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56DE2EA7F54900188F4B /* location_simulation.hpp */; };
+		196C575A2EA7F5F400188F4B /* process_control.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56DF2EA7F54900188F4B /* process_control.hpp */; };
+		196C575B2EA7F5F400188F4B /* remote_server.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56E02EA7F54900188F4B /* remote_server.hpp */; };
+		196C575C2EA7F5F400188F4B /* screenshot.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56E12EA7F54900188F4B /* screenshot.hpp */; };
+		196C575D2EA7F5F400188F4B /* adapter_stream.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56E32EA7F54900188F4B /* adapter_stream.hpp */; };
+		196C575E2EA7F5F400188F4B /* app_service.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56E42EA7F54900188F4B /* app_service.hpp */; };
+		196C575F2EA7F5F400188F4B /* bindings.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56E52EA7F54900188F4B /* bindings.hpp */; };
+		196C57602EA7F5F400188F4B /* core_device_proxy.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56E62EA7F54900188F4B /* core_device_proxy.hpp */; };
+		196C57612EA7F5F400188F4B /* debug_proxy.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56E72EA7F54900188F4B /* debug_proxy.hpp */; };
+		196C57622EA7F5F400188F4B /* diagnosticsservice.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56E82EA7F54900188F4B /* diagnosticsservice.hpp */; };
+		196C57632EA7F5F400188F4B /* ffi.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56E92EA7F54900188F4B /* ffi.hpp */; };
+		196C57642EA7F5F400188F4B /* heartbeat.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56EA2EA7F54900188F4B /* heartbeat.hpp */; };
+		196C57652EA7F5F400188F4B /* idevice.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56EB2EA7F54900188F4B /* idevice.hpp */; };
+		196C57662EA7F5F400188F4B /* installation_proxy.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56EC2EA7F54900188F4B /* installation_proxy.hpp */; };
+		196C57672EA7F5F400188F4B /* lockdown.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56ED2EA7F54900188F4B /* lockdown.hpp */; };
+		196C57682EA7F5F400188F4B /* mobile_image_mounter.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56EE2EA7F54900188F4B /* mobile_image_mounter.hpp */; };
+		196C57692EA7F5F400188F4B /* option.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56EF2EA7F54900188F4B /* option.hpp */; };
+		196C576A2EA7F5F400188F4B /* pairing_file.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56F02EA7F54900188F4B /* pairing_file.hpp */; };
+		196C576B2EA7F5F400188F4B /* provider.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56F12EA7F54900188F4B /* provider.hpp */; };
+		196C576C2EA7F5F400188F4B /* readwrite.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56F22EA7F54900188F4B /* readwrite.hpp */; };
+		196C576D2EA7F5F400188F4B /* result.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56F32EA7F54900188F4B /* result.hpp */; };
+		196C576E2EA7F5F400188F4B /* rsd.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56F42EA7F54900188F4B /* rsd.hpp */; };
+		196C576F2EA7F5F400188F4B /* tcp_object_stack.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56F52EA7F54900188F4B /* tcp_object_stack.hpp */; };
+		196C57702EA7F5F400188F4B /* usbmuxd.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56F62EA7F54900188F4B /* usbmuxd.hpp */; };
+		196C57712EA7F5F400188F4B /* idevice.h in Headers */ = {isa = PBXBuildFile; fileRef = 196C56F82EA7F54900188F4B /* idevice.h */; };
 		198077DF2E5CCA2900CB501E /* libidevice_ffi.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 198077DB2E5CC33000CB501E /* libidevice_ffi.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		1914C7962E623CC2002EAB6E /* option.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = option.hpp; sourceTree = "<group>"; };
-		1914C7982E623CC8002EAB6E /* result.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = result.hpp; sourceTree = "<group>"; };
-		1980776C2E5CA69800CB501E /* adapter_stream.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = adapter_stream.cpp; sourceTree = "<group>"; };
-		1980776D2E5CA69800CB501E /* app_service.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = app_service.cpp; sourceTree = "<group>"; };
-		1980776E2E5CA69800CB501E /* core_device.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = core_device.cpp; sourceTree = "<group>"; };
-		1980776F2E5CA69800CB501E /* debug_proxy.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = debug_proxy.cpp; sourceTree = "<group>"; };
-		198077702E5CA69800CB501E /* diagnosticsservice.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = diagnosticsservice.cpp; sourceTree = "<group>"; };
-		198077712E5CA69800CB501E /* ffi.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ffi.cpp; sourceTree = "<group>"; };
-		198077722E5CA69800CB501E /* idevice.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = idevice.cpp; sourceTree = "<group>"; };
-		198077732E5CA69800CB501E /* location_simulation.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = location_simulation.cpp; sourceTree = "<group>"; };
-		198077742E5CA69800CB501E /* lockdown.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = lockdown.cpp; sourceTree = "<group>"; };
-		198077752E5CA69800CB501E /* pairing_file.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = pairing_file.cpp; sourceTree = "<group>"; };
-		198077762E5CA69800CB501E /* provider.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = provider.cpp; sourceTree = "<group>"; };
-		198077772E5CA69800CB501E /* remote_server.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = remote_server.cpp; sourceTree = "<group>"; };
-		198077782E5CA69800CB501E /* rsd.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = rsd.cpp; sourceTree = "<group>"; };
-		198077792E5CA69800CB501E /* tcp_callback_feeder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = tcp_callback_feeder.cpp; sourceTree = "<group>"; };
-		1980777A2E5CA69800CB501E /* usbmuxd.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = usbmuxd.cpp; sourceTree = "<group>"; };
+		196C56B42EA7F53000188F4B /* location_simulation.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = location_simulation.cpp; sourceTree = "<group>"; };
+		196C56B52EA7F53000188F4B /* process_control.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = process_control.cpp; sourceTree = "<group>"; };
+		196C56B62EA7F53000188F4B /* remote_server.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = remote_server.cpp; sourceTree = "<group>"; };
+		196C56B72EA7F53000188F4B /* screenshot.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = screenshot.cpp; sourceTree = "<group>"; };
+		196C56B92EA7F53000188F4B /* adapter_stream.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = adapter_stream.cpp; sourceTree = "<group>"; };
+		196C56BA2EA7F53000188F4B /* app_service.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = app_service.cpp; sourceTree = "<group>"; };
+		196C56BB2EA7F53000188F4B /* core_device.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = core_device.cpp; sourceTree = "<group>"; };
+		196C56BC2EA7F53000188F4B /* debug_proxy.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = debug_proxy.cpp; sourceTree = "<group>"; };
+		196C56BD2EA7F53000188F4B /* diagnosticsservice.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = diagnosticsservice.cpp; sourceTree = "<group>"; };
+		196C56BE2EA7F53000188F4B /* ffi.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ffi.cpp; sourceTree = "<group>"; };
+		196C56BF2EA7F53000188F4B /* heartbeat.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = heartbeat.cpp; sourceTree = "<group>"; };
+		196C56C02EA7F53000188F4B /* idevice.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = idevice.cpp; sourceTree = "<group>"; };
+		196C56C12EA7F53000188F4B /* installation_proxy.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = installation_proxy.cpp; sourceTree = "<group>"; };
+		196C56C22EA7F53000188F4B /* lockdown.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = lockdown.cpp; sourceTree = "<group>"; };
+		196C56C32EA7F53000188F4B /* mobile_image_mounter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = mobile_image_mounter.cpp; sourceTree = "<group>"; };
+		196C56C42EA7F53000188F4B /* pairing_file.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = pairing_file.cpp; sourceTree = "<group>"; };
+		196C56C52EA7F53000188F4B /* provider.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = provider.cpp; sourceTree = "<group>"; };
+		196C56C62EA7F53000188F4B /* rsd.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = rsd.cpp; sourceTree = "<group>"; };
+		196C56C72EA7F53000188F4B /* tcp_callback_feeder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = tcp_callback_feeder.cpp; sourceTree = "<group>"; };
+		196C56C82EA7F53000188F4B /* usbmuxd.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = usbmuxd.cpp; sourceTree = "<group>"; };
+		196C56DE2EA7F54900188F4B /* location_simulation.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = location_simulation.hpp; sourceTree = "<group>"; };
+		196C56DF2EA7F54900188F4B /* process_control.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = process_control.hpp; sourceTree = "<group>"; };
+		196C56E02EA7F54900188F4B /* remote_server.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = remote_server.hpp; sourceTree = "<group>"; };
+		196C56E12EA7F54900188F4B /* screenshot.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = screenshot.hpp; sourceTree = "<group>"; };
+		196C56E32EA7F54900188F4B /* adapter_stream.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = adapter_stream.hpp; sourceTree = "<group>"; };
+		196C56E42EA7F54900188F4B /* app_service.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = app_service.hpp; sourceTree = "<group>"; };
+		196C56E52EA7F54900188F4B /* bindings.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = bindings.hpp; sourceTree = "<group>"; };
+		196C56E62EA7F54900188F4B /* core_device_proxy.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = core_device_proxy.hpp; sourceTree = "<group>"; };
+		196C56E72EA7F54900188F4B /* debug_proxy.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = debug_proxy.hpp; sourceTree = "<group>"; };
+		196C56E82EA7F54900188F4B /* diagnosticsservice.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = diagnosticsservice.hpp; sourceTree = "<group>"; };
+		196C56E92EA7F54900188F4B /* ffi.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = ffi.hpp; sourceTree = "<group>"; };
+		196C56EA2EA7F54900188F4B /* heartbeat.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = heartbeat.hpp; sourceTree = "<group>"; };
+		196C56EB2EA7F54900188F4B /* idevice.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = idevice.hpp; sourceTree = "<group>"; };
+		196C56EC2EA7F54900188F4B /* installation_proxy.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = installation_proxy.hpp; sourceTree = "<group>"; };
+		196C56ED2EA7F54900188F4B /* lockdown.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = lockdown.hpp; sourceTree = "<group>"; };
+		196C56EE2EA7F54900188F4B /* mobile_image_mounter.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = mobile_image_mounter.hpp; sourceTree = "<group>"; };
+		196C56EF2EA7F54900188F4B /* option.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = option.hpp; sourceTree = "<group>"; };
+		196C56F02EA7F54900188F4B /* pairing_file.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = pairing_file.hpp; sourceTree = "<group>"; };
+		196C56F12EA7F54900188F4B /* provider.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = provider.hpp; sourceTree = "<group>"; };
+		196C56F22EA7F54900188F4B /* readwrite.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = readwrite.hpp; sourceTree = "<group>"; };
+		196C56F32EA7F54900188F4B /* result.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = result.hpp; sourceTree = "<group>"; };
+		196C56F42EA7F54900188F4B /* rsd.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = rsd.hpp; sourceTree = "<group>"; };
+		196C56F52EA7F54900188F4B /* tcp_object_stack.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = tcp_object_stack.hpp; sourceTree = "<group>"; };
+		196C56F62EA7F54900188F4B /* usbmuxd.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = usbmuxd.hpp; sourceTree = "<group>"; };
+		196C56F82EA7F54900188F4B /* idevice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = idevice.h; sourceTree = "<group>"; };
 		1980778F2E5CA6C700CB501E /* libidevice++.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libidevice++.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		198077A32E5CA6FC00CB501E /* adapter_stream.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = adapter_stream.hpp; sourceTree = "<group>"; };
-		198077A42E5CA6FC00CB501E /* app_service.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = app_service.hpp; sourceTree = "<group>"; };
-		198077A52E5CA6FC00CB501E /* bindings.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = bindings.hpp; sourceTree = "<group>"; };
-		198077A62E5CA6FC00CB501E /* core_device_proxy.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = core_device_proxy.hpp; sourceTree = "<group>"; };
-		198077A72E5CA6FC00CB501E /* debug_proxy.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = debug_proxy.hpp; sourceTree = "<group>"; };
-		198077A82E5CA6FC00CB501E /* diagnosticsservice.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = diagnosticsservice.hpp; sourceTree = "<group>"; };
-		198077A92E5CA6FC00CB501E /* ffi.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = ffi.hpp; sourceTree = "<group>"; };
-		198077AA2E5CA6FC00CB501E /* idevice.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = idevice.hpp; sourceTree = "<group>"; };
-		198077AB2E5CA6FC00CB501E /* location_simulation.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = location_simulation.hpp; sourceTree = "<group>"; };
-		198077AC2E5CA6FC00CB501E /* lockdown.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = lockdown.hpp; sourceTree = "<group>"; };
-		198077AD2E5CA6FC00CB501E /* pairing_file.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = pairing_file.hpp; sourceTree = "<group>"; };
-		198077AE2E5CA6FC00CB501E /* provider.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = provider.hpp; sourceTree = "<group>"; };
-		198077AF2E5CA6FC00CB501E /* readwrite.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = readwrite.hpp; sourceTree = "<group>"; };
-		198077B02E5CA6FC00CB501E /* remote_server.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = remote_server.hpp; sourceTree = "<group>"; };
-		198077B12E5CA6FC00CB501E /* rsd.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = rsd.hpp; sourceTree = "<group>"; };
-		198077B22E5CA6FC00CB501E /* tcp_object_stack.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = tcp_object_stack.hpp; sourceTree = "<group>"; };
-		198077B32E5CA6FC00CB501E /* usbmuxd.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = usbmuxd.hpp; sourceTree = "<group>"; };
-		198077B52E5CA6FC00CB501E /* idevice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = idevice.h; sourceTree = "<group>"; };
 		198077DB2E5CC33000CB501E /* libidevice_ffi.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libidevice_ffi.a; path = "${DESTINATION_PATH}/libidevice_ffi.a"; sourceTree = "<group>"; };
 		198077E02E5CD49200CB501E /* xcode_build_rust.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = xcode_build_rust.sh; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -98,12 +118,95 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		196C56B82EA7F53000188F4B /* dvt */ = {
+			isa = PBXGroup;
+			children = (
+				196C56B42EA7F53000188F4B /* location_simulation.cpp */,
+				196C56B52EA7F53000188F4B /* process_control.cpp */,
+				196C56B62EA7F53000188F4B /* remote_server.cpp */,
+				196C56B72EA7F53000188F4B /* screenshot.cpp */,
+			);
+			path = dvt;
+			sourceTree = "<group>";
+		};
+		196C56C92EA7F53000188F4B /* src */ = {
+			isa = PBXGroup;
+			children = (
+				196C56B82EA7F53000188F4B /* dvt */,
+				196C56B92EA7F53000188F4B /* adapter_stream.cpp */,
+				196C56BA2EA7F53000188F4B /* app_service.cpp */,
+				196C56BB2EA7F53000188F4B /* core_device.cpp */,
+				196C56BC2EA7F53000188F4B /* debug_proxy.cpp */,
+				196C56BD2EA7F53000188F4B /* diagnosticsservice.cpp */,
+				196C56BE2EA7F53000188F4B /* ffi.cpp */,
+				196C56BF2EA7F53000188F4B /* heartbeat.cpp */,
+				196C56C02EA7F53000188F4B /* idevice.cpp */,
+				196C56C12EA7F53000188F4B /* installation_proxy.cpp */,
+				196C56C22EA7F53000188F4B /* lockdown.cpp */,
+				196C56C32EA7F53000188F4B /* mobile_image_mounter.cpp */,
+				196C56C42EA7F53000188F4B /* pairing_file.cpp */,
+				196C56C52EA7F53000188F4B /* provider.cpp */,
+				196C56C62EA7F53000188F4B /* rsd.cpp */,
+				196C56C72EA7F53000188F4B /* tcp_callback_feeder.cpp */,
+				196C56C82EA7F53000188F4B /* usbmuxd.cpp */,
+			);
+			path = src;
+			sourceTree = "<group>";
+		};
+		196C56E22EA7F54900188F4B /* dvt */ = {
+			isa = PBXGroup;
+			children = (
+				196C56DE2EA7F54900188F4B /* location_simulation.hpp */,
+				196C56DF2EA7F54900188F4B /* process_control.hpp */,
+				196C56E02EA7F54900188F4B /* remote_server.hpp */,
+				196C56E12EA7F54900188F4B /* screenshot.hpp */,
+			);
+			path = dvt;
+			sourceTree = "<group>";
+		};
+		196C56F72EA7F54900188F4B /* idevice++ */ = {
+			isa = PBXGroup;
+			children = (
+				196C56E22EA7F54900188F4B /* dvt */,
+				196C56E32EA7F54900188F4B /* adapter_stream.hpp */,
+				196C56E42EA7F54900188F4B /* app_service.hpp */,
+				196C56E52EA7F54900188F4B /* bindings.hpp */,
+				196C56E62EA7F54900188F4B /* core_device_proxy.hpp */,
+				196C56E72EA7F54900188F4B /* debug_proxy.hpp */,
+				196C56E82EA7F54900188F4B /* diagnosticsservice.hpp */,
+				196C56E92EA7F54900188F4B /* ffi.hpp */,
+				196C56EA2EA7F54900188F4B /* heartbeat.hpp */,
+				196C56EB2EA7F54900188F4B /* idevice.hpp */,
+				196C56EC2EA7F54900188F4B /* installation_proxy.hpp */,
+				196C56ED2EA7F54900188F4B /* lockdown.hpp */,
+				196C56EE2EA7F54900188F4B /* mobile_image_mounter.hpp */,
+				196C56EF2EA7F54900188F4B /* option.hpp */,
+				196C56F02EA7F54900188F4B /* pairing_file.hpp */,
+				196C56F12EA7F54900188F4B /* provider.hpp */,
+				196C56F22EA7F54900188F4B /* readwrite.hpp */,
+				196C56F32EA7F54900188F4B /* result.hpp */,
+				196C56F42EA7F54900188F4B /* rsd.hpp */,
+				196C56F52EA7F54900188F4B /* tcp_object_stack.hpp */,
+				196C56F62EA7F54900188F4B /* usbmuxd.hpp */,
+			);
+			path = "idevice++";
+			sourceTree = "<group>";
+		};
+		196C56F92EA7F54900188F4B /* include */ = {
+			isa = PBXGroup;
+			children = (
+				196C56F72EA7F54900188F4B /* idevice++ */,
+				196C56F82EA7F54900188F4B /* idevice.h */,
+			);
+			path = include;
+			sourceTree = "<group>";
+		};
 		198077562E5CA62F00CB501E = {
 			isa = PBXGroup;
 			children = (
-				1980777B2E5CA69800CB501E /* src */,
+				196C56C92EA7F53000188F4B /* src */,
+				196C56F92EA7F54900188F4B /* include */,
 				198077612E5CA62F00CB501E /* Products */,
-				198077B62E5CA6FC00CB501E /* include */,
 				198077D92E5CC31100CB501E /* Frameworks */,
 				198077E02E5CD49200CB501E /* xcode_build_rust.sh */,
 			);
@@ -115,63 +218,6 @@
 				1980778F2E5CA6C700CB501E /* libidevice++.a */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		1980777B2E5CA69800CB501E /* src */ = {
-			isa = PBXGroup;
-			children = (
-				1980776C2E5CA69800CB501E /* adapter_stream.cpp */,
-				1980776D2E5CA69800CB501E /* app_service.cpp */,
-				1980776E2E5CA69800CB501E /* core_device.cpp */,
-				1980776F2E5CA69800CB501E /* debug_proxy.cpp */,
-				198077702E5CA69800CB501E /* diagnosticsservice.cpp */,
-				198077712E5CA69800CB501E /* ffi.cpp */,
-				198077722E5CA69800CB501E /* idevice.cpp */,
-				198077732E5CA69800CB501E /* location_simulation.cpp */,
-				198077742E5CA69800CB501E /* lockdown.cpp */,
-				198077752E5CA69800CB501E /* pairing_file.cpp */,
-				198077762E5CA69800CB501E /* provider.cpp */,
-				198077772E5CA69800CB501E /* remote_server.cpp */,
-				198077782E5CA69800CB501E /* rsd.cpp */,
-				198077792E5CA69800CB501E /* tcp_callback_feeder.cpp */,
-				1980777A2E5CA69800CB501E /* usbmuxd.cpp */,
-			);
-			path = src;
-			sourceTree = "<group>";
-		};
-		198077B42E5CA6FC00CB501E /* idevice++ */ = {
-			isa = PBXGroup;
-			children = (
-				198077A32E5CA6FC00CB501E /* adapter_stream.hpp */,
-				198077A42E5CA6FC00CB501E /* app_service.hpp */,
-				198077A52E5CA6FC00CB501E /* bindings.hpp */,
-				198077A62E5CA6FC00CB501E /* core_device_proxy.hpp */,
-				198077A72E5CA6FC00CB501E /* debug_proxy.hpp */,
-				198077A82E5CA6FC00CB501E /* diagnosticsservice.hpp */,
-				198077A92E5CA6FC00CB501E /* ffi.hpp */,
-				198077AA2E5CA6FC00CB501E /* idevice.hpp */,
-				198077AB2E5CA6FC00CB501E /* location_simulation.hpp */,
-				198077AC2E5CA6FC00CB501E /* lockdown.hpp */,
-				198077AD2E5CA6FC00CB501E /* pairing_file.hpp */,
-				198077AE2E5CA6FC00CB501E /* provider.hpp */,
-				198077AF2E5CA6FC00CB501E /* readwrite.hpp */,
-				198077B02E5CA6FC00CB501E /* remote_server.hpp */,
-				198077B12E5CA6FC00CB501E /* rsd.hpp */,
-				198077B22E5CA6FC00CB501E /* tcp_object_stack.hpp */,
-				198077B32E5CA6FC00CB501E /* usbmuxd.hpp */,
-				1914C7962E623CC2002EAB6E /* option.hpp */,
-				1914C7982E623CC8002EAB6E /* result.hpp */,
-			);
-			path = "idevice++";
-			sourceTree = "<group>";
-		};
-		198077B62E5CA6FC00CB501E /* include */ = {
-			isa = PBXGroup;
-			children = (
-				198077B42E5CA6FC00CB501E /* idevice++ */,
-				198077B52E5CA6FC00CB501E /* idevice.h */,
-			);
-			path = include;
 			sourceTree = "<group>";
 		};
 		198077D92E5CC31100CB501E /* Frameworks */ = {
@@ -189,26 +235,31 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				198077B72E5CA6FC00CB501E /* core_device_proxy.hpp in Headers */,
-				198077B82E5CA6FC00CB501E /* pairing_file.hpp in Headers */,
-				198077B92E5CA6FC00CB501E /* bindings.hpp in Headers */,
-				198077BA2E5CA6FC00CB501E /* diagnosticsservice.hpp in Headers */,
-				198077BB2E5CA6FC00CB501E /* idevice.h in Headers */,
-				198077BC2E5CA6FC00CB501E /* debug_proxy.hpp in Headers */,
-				198077BD2E5CA6FC00CB501E /* ffi.hpp in Headers */,
-				198077BE2E5CA6FC00CB501E /* rsd.hpp in Headers */,
-				198077BF2E5CA6FC00CB501E /* tcp_object_stack.hpp in Headers */,
-				198077C02E5CA6FC00CB501E /* remote_server.hpp in Headers */,
-				198077C12E5CA6FC00CB501E /* readwrite.hpp in Headers */,
-				198077C22E5CA6FC00CB501E /* location_simulation.hpp in Headers */,
-				198077C32E5CA6FC00CB501E /* adapter_stream.hpp in Headers */,
-				1914C7972E623CC2002EAB6E /* option.hpp in Headers */,
-				198077C42E5CA6FC00CB501E /* lockdown.hpp in Headers */,
-				198077C52E5CA6FC00CB501E /* usbmuxd.hpp in Headers */,
-				198077C62E5CA6FC00CB501E /* app_service.hpp in Headers */,
-				198077C72E5CA6FC00CB501E /* idevice.hpp in Headers */,
-				198077C82E5CA6FC00CB501E /* provider.hpp in Headers */,
-				1914C7992E623CC8002EAB6E /* result.hpp in Headers */,
+				196C57592EA7F5F400188F4B /* location_simulation.hpp in Headers */,
+				196C575A2EA7F5F400188F4B /* process_control.hpp in Headers */,
+				196C575B2EA7F5F400188F4B /* remote_server.hpp in Headers */,
+				196C575C2EA7F5F400188F4B /* screenshot.hpp in Headers */,
+				196C575D2EA7F5F400188F4B /* adapter_stream.hpp in Headers */,
+				196C575E2EA7F5F400188F4B /* app_service.hpp in Headers */,
+				196C575F2EA7F5F400188F4B /* bindings.hpp in Headers */,
+				196C57602EA7F5F400188F4B /* core_device_proxy.hpp in Headers */,
+				196C57612EA7F5F400188F4B /* debug_proxy.hpp in Headers */,
+				196C57622EA7F5F400188F4B /* diagnosticsservice.hpp in Headers */,
+				196C57632EA7F5F400188F4B /* ffi.hpp in Headers */,
+				196C57642EA7F5F400188F4B /* heartbeat.hpp in Headers */,
+				196C57652EA7F5F400188F4B /* idevice.hpp in Headers */,
+				196C57662EA7F5F400188F4B /* installation_proxy.hpp in Headers */,
+				196C57672EA7F5F400188F4B /* lockdown.hpp in Headers */,
+				196C57682EA7F5F400188F4B /* mobile_image_mounter.hpp in Headers */,
+				196C57692EA7F5F400188F4B /* option.hpp in Headers */,
+				196C576A2EA7F5F400188F4B /* pairing_file.hpp in Headers */,
+				196C576B2EA7F5F400188F4B /* provider.hpp in Headers */,
+				196C576C2EA7F5F400188F4B /* readwrite.hpp in Headers */,
+				196C576D2EA7F5F400188F4B /* result.hpp in Headers */,
+				196C576E2EA7F5F400188F4B /* rsd.hpp in Headers */,
+				196C576F2EA7F5F400188F4B /* tcp_object_stack.hpp in Headers */,
+				196C57702EA7F5F400188F4B /* usbmuxd.hpp in Headers */,
+				196C57712EA7F5F400188F4B /* idevice.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -295,21 +346,26 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				198077932E5CA6EF00CB501E /* adapter_stream.cpp in Sources */,
-				198077942E5CA6EF00CB501E /* app_service.cpp in Sources */,
-				198077952E5CA6EF00CB501E /* core_device.cpp in Sources */,
-				198077962E5CA6EF00CB501E /* debug_proxy.cpp in Sources */,
-				198077972E5CA6EF00CB501E /* diagnosticsservice.cpp in Sources */,
-				198077982E5CA6EF00CB501E /* ffi.cpp in Sources */,
-				198077992E5CA6EF00CB501E /* idevice.cpp in Sources */,
-				1980779A2E5CA6EF00CB501E /* location_simulation.cpp in Sources */,
-				1980779B2E5CA6EF00CB501E /* lockdown.cpp in Sources */,
-				1980779C2E5CA6EF00CB501E /* pairing_file.cpp in Sources */,
-				1980779D2E5CA6EF00CB501E /* provider.cpp in Sources */,
-				1980779E2E5CA6EF00CB501E /* remote_server.cpp in Sources */,
-				1980779F2E5CA6EF00CB501E /* rsd.cpp in Sources */,
-				198077A02E5CA6EF00CB501E /* tcp_callback_feeder.cpp in Sources */,
-				198077A12E5CA6EF00CB501E /* usbmuxd.cpp in Sources */,
+				196C57452EA7F5DC00188F4B /* location_simulation.cpp in Sources */,
+				196C57462EA7F5DC00188F4B /* process_control.cpp in Sources */,
+				196C57472EA7F5DC00188F4B /* remote_server.cpp in Sources */,
+				196C57482EA7F5DC00188F4B /* screenshot.cpp in Sources */,
+				196C57492EA7F5DC00188F4B /* adapter_stream.cpp in Sources */,
+				196C574A2EA7F5DC00188F4B /* app_service.cpp in Sources */,
+				196C574B2EA7F5DC00188F4B /* core_device.cpp in Sources */,
+				196C574C2EA7F5DC00188F4B /* debug_proxy.cpp in Sources */,
+				196C574D2EA7F5DC00188F4B /* diagnosticsservice.cpp in Sources */,
+				196C574E2EA7F5DC00188F4B /* ffi.cpp in Sources */,
+				196C574F2EA7F5DC00188F4B /* heartbeat.cpp in Sources */,
+				196C57502EA7F5DC00188F4B /* idevice.cpp in Sources */,
+				196C57512EA7F5DC00188F4B /* installation_proxy.cpp in Sources */,
+				196C57522EA7F5DC00188F4B /* lockdown.cpp in Sources */,
+				196C57532EA7F5DC00188F4B /* mobile_image_mounter.cpp in Sources */,
+				196C57542EA7F5DC00188F4B /* pairing_file.cpp in Sources */,
+				196C57552EA7F5DC00188F4B /* provider.cpp in Sources */,
+				196C57562EA7F5DC00188F4B /* rsd.cpp in Sources */,
+				196C57572EA7F5DC00188F4B /* tcp_callback_feeder.cpp in Sources */,
+				196C57582EA7F5DC00188F4B /* usbmuxd.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -451,6 +507,7 @@
 				GCC_WARN_UNKNOWN_PRAGMAS = YES;
 				GCC_WARN_UNUSED_LABEL = YES;
 				GCC_WARN_UNUSED_PARAMETER = YES;
+				HEADER_SEARCH_PATHS = "include/**";
 				LIBRARY_SEARCH_PATHS = (
 					"${TARGET_BUILD_DIR}/**",
 					"$(PROJECT_DIR)/${DESTINATION_PATH}",
@@ -479,6 +536,7 @@
 				GCC_WARN_UNKNOWN_PRAGMAS = YES;
 				GCC_WARN_UNUSED_LABEL = YES;
 				GCC_WARN_UNUSED_PARAMETER = YES;
+				HEADER_SEARCH_PATHS = "include/**";
 				LIBRARY_SEARCH_PATHS = (
 					"${TARGET_BUILD_DIR}/**",
 					"$(PROJECT_DIR)/${DESTINATION_PATH}",
