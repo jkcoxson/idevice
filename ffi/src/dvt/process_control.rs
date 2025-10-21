@@ -8,7 +8,7 @@ use std::{
 use idevice::{ReadWrite, dvt::process_control::ProcessControlClient};
 use plist::{Dictionary, Value};
 
-use crate::{IdeviceFfiError, RUNTIME, ffi_err, remote_server::RemoteServerHandle};
+use crate::{IdeviceFfiError, RUNTIME, dvt::remote_server::RemoteServerHandle, ffi_err};
 
 /// Opaque handle to a ProcessControlClient
 pub struct ProcessControlHandle<'a>(pub ProcessControlClient<'a, Box<dyn ReadWrite>>);

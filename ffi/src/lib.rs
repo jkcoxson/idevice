@@ -12,13 +12,13 @@ pub mod core_device;
 pub mod core_device_proxy;
 #[cfg(feature = "debug_proxy")]
 pub mod debug_proxy;
+#[cfg(feature = "dvt")]
+pub mod dvt;
 mod errors;
 #[cfg(feature = "heartbeat")]
 pub mod heartbeat;
 #[cfg(feature = "installation_proxy")]
 pub mod installation_proxy;
-#[cfg(feature = "location_simulation")]
-pub mod location_simulation;
 pub mod lockdown;
 pub mod logging;
 #[cfg(feature = "misagent")]
@@ -28,11 +28,7 @@ pub mod mobile_image_mounter;
 #[cfg(feature = "syslog_relay")]
 pub mod os_trace_relay;
 mod pairing_file;
-#[cfg(feature = "dvt")]
-pub mod process_control;
 pub mod provider;
-#[cfg(feature = "dvt")]
-pub mod remote_server;
 #[cfg(feature = "xpc")]
 pub mod rsd;
 #[cfg(feature = "springboardservices")]

@@ -4,7 +4,7 @@ use std::ptr::null_mut;
 
 use idevice::{ReadWrite, dvt::location_simulation::LocationSimulationClient};
 
-use crate::{IdeviceFfiError, RUNTIME, ffi_err, remote_server::RemoteServerHandle};
+use crate::{IdeviceFfiError, RUNTIME, dvt::remote_server::RemoteServerHandle, ffi_err};
 
 /// Opaque handle to a ProcessControlClient
 pub struct LocationSimulationHandle<'a>(pub LocationSimulationClient<'a, Box<dyn ReadWrite>>);

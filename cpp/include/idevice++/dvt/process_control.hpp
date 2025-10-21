@@ -2,7 +2,7 @@
 
 #pragma once
 #include <idevice++/bindings.hpp>
-#include <idevice++/remote_server.hpp>
+#include <idevice++/dvt/remote_server.hpp>
 #include <idevice++/result.hpp>
 #include <memory>
 

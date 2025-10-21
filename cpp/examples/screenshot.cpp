@@ -1,13 +1,13 @@
 // Jackson Coxson
 
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <string>
-#include <thread>
 
 #include <idevice++/core_device_proxy.hpp>
-#include <idevice++/dvt/location_simulation.hpp>
 #include <idevice++/dvt/remote_server.hpp>
+#include <idevice++/dvt/screenshot.hpp>
 #include <idevice++/ffi.hpp>
 #include <idevice++/provider.hpp>
 #include <idevice++/readwrite.hpp>
@@ -24,22 +24,14 @@ static void die(const char* msg, const FfiError& e) {
 
 int main(int argc, char** argv) {
     // Usage:
-    //   simulate_location clear
-    //   simulate_location set <lat> <lon>
-    bool           do_clear = false;
-    Option<double> lat, lon;
-
-    if (argc == 2 && std::string(argv[1]) == "clear") {
-        do_clear = true;
-    } else if (argc == 4 && std::string(argv[1]) == "set") {
-        lat = std::stod(argv[2]);
-        lon = std::stod(argv[3]);
-    } else {
+    //   take_screenshot <output.png>
+    if (argc != 2) {
         std::cerr << "Usage:\n"
-                  << "  " << argv[0] << " clear\n"
-                  << "  " << argv[0] << " set <latitude> <longitude>\n";
+                  << "  " << argv[0] << " <output.png>\n";
         return 2;
     }
+
+    std::string out_path = argv[1];
 
     // 1) Connect to usbmuxd and pick first device
     auto mux     = UsbmuxdConnection::default_new(/*tag*/ 0).expect("failed to connect to usbmuxd");
@@ -64,9 +56,8 @@ int main(int argc, char** argv) {
 
     // 2) Provider via default usbmuxd addr
     auto              addr  = UsbmuxdAddr::default_new();
-
     const uint32_t    tag   = 0;
-    const std::string label = "app_service-jkcoxson";
+    const std::string label = "screenshot-client";
 
     auto              provider =
         Provider::usbmuxd_new(std::move(addr), tag, udid.unwrap(), mux_id.unwrap(), label)
@@ -89,26 +80,27 @@ int main(int argc, char** argv) {
     // 6) RSD handshake (consumes stream)
     auto rsd    = RsdHandshake::from_socket(std::move(stream)).expect("failed RSD handshake");
 
-    // 8) RemoteServer over RSD (borrows adapter + handshake)
-    auto rs  = RemoteServer::connect_rsd(adapter, rsd).expect("failed to connect to RemoteServer");
+    // 7) RemoteServer over RSD (borrows adapter + handshake)
+    auto rs = RemoteServer::connect_rsd(adapter, rsd).expect("failed to connect to RemoteServer");
 
-    // 9) LocationSimulation client (borrows RemoteServer)
-    auto sim = LocationSimulation::create(rs).expect("failed to create LocationSimulation client");
+    // 8) ScreenshotClient (borrows RemoteServer)
+    auto ss = ScreenshotClient::create(rs).unwrap_or_else(
+        [](FfiError e) -> ScreenshotClient { die("failed to create ScreenshotClient", e); });
 
-    if (do_clear) {
-        sim.clear().expect("clear failed");
-        std::cout << "Location cleared!\n";
-        return 0;
+    // 9) Capture screenshot
+    auto buf = ss.capture().unwrap_or_else(
+        [](FfiError e) -> std::vector<uint8_t> { die("failed to capture screenshot", e); });
+
+    // 10) Write PNG file
+    std::ofstream out(out_path, std::ios::binary);
+    if (!out.is_open()) {
+        std::cerr << "failed to open output file: " << out_path << "\n";
+        return 1;
     }
 
-    // set path
-    sim.set(lat.unwrap(), lon.unwrap()).expect("set failed");
-    std::cout << "Location set to (" << lat.unwrap() << ", " << lon.unwrap() << ")\n";
-    std::cout << "Press Ctrl-C to stop\n";
+    out.write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(buf.size()));
+    out.close();
 
-    // keep process alive like the Rust example
-    for (;;) {
-        sim.set(lat.unwrap(), lon.unwrap()).expect("set failed");
-        std::this_thread::sleep_for(std::chrono::seconds(3));
-    }
+    std::cout << "Screenshot saved to " << out_path << " (" << buf.size() << " bytes)\n";
+    return 0;
 }

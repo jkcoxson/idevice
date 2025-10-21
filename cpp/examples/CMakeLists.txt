@@ -32,8 +32,8 @@ endif()
 # ---- Build the C++ wrapper library -----------------------------------------
 
 # Collect your .cpps
-file(GLOB IDEVICE_CPP_SOURCES
-  ${IDEVICE_CPP_SRC_DIR}/*.cpp
+file(GLOB_RECURSE IDEVICE_CPP_SOURCES
+  "${IDEVICE_CPP_SRC_DIR}/*.cpp"
 )
 
 file(GLOB PLIST_CPP_SOURCES
