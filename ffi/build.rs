@@ -47,4 +47,7 @@ fn main() {
     f.write_all(b"\n\n\n").unwrap();
     f.write_all(&h.into_bytes())
         .expect("failed to append plist.h");
+
+    let f = std::fs::read_to_string("idevice.h").unwrap();
+    std::fs::write("../cpp/include/idevice.h", f).unwrap();
 }
