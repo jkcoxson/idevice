@@ -103,13 +103,37 @@ pub unsafe extern "C" fn adapter_pcap(
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn adapter_close(handle: *mut AdapterStreamHandle) -> *mut IdeviceFfiError {
+pub unsafe extern "C" fn adapter_stream_close(
+    handle: *mut AdapterStreamHandle,
+) -> *mut IdeviceFfiError {
     if handle.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let adapter = unsafe { &mut (*handle).0 };
     RUNTIME.block_on(async move { adapter.close() });
+
+    null_mut()
+}
+
+/// Stops the entire adapter TCP stack
+///
+/// # Arguments
+/// * [`handle`] - The adapter handle
+///
+/// # Returns
+/// Null on success, an IdeviceFfiError otherwise
+///
+/// # Safety
+/// `handle` must be a valid pointer to a handle allocated by this library
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn adapter_close(handle: *mut AdapterHandle) -> *mut IdeviceFfiError {
+    if handle.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let adapter = unsafe { &mut (*handle).0 };
+    RUNTIME.block_on(async move { adapter.close().await.ok() });
 
     null_mut()
 }

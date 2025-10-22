@@ -38,6 +38,7 @@ enum HandleMessage {
         path: PathBuf,
         res: oneshot::Sender<Result<(), std::io::Error>>,
     },
+    Die,
 }
 
 #[derive(Debug)]
@@ -90,6 +91,9 @@ impl AdapterHandle {
                                     res
                                 } => {
                                     res.send(adapter.pcap(path).await).ok();
+                                },
+                                HandleMessage::Die => {
+                                    break;
                                 }
                             },
                             Err(_) => {
@@ -217,6 +221,16 @@ impl AdapterHandle {
                 "adapter closed",
             )),
         }
+    }
+
+    pub async fn close(&mut self) -> Result<(), std::io::Error> {
+        if self.sender.send(HandleMessage::Die).is_err() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NetworkUnreachable,
+                "adapter closed",
+            ));
+        }
+        Ok(())
     }
 }
 
