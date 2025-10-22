@@ -48,6 +48,7 @@ use idevice::{Idevice, IdeviceSocket, ReadWrite};
 use once_cell::sync::Lazy;
 use std::{
     ffi::{CStr, CString, c_char},
+    os::fd::FromRawFd,
     ptr::null_mut,
 };
 use tokio::runtime::{self, Runtime};
@@ -116,6 +117,46 @@ pub unsafe extern "C" fn idevice_new(
 
     // Create new Idevice instance
     let dev = Idevice::new((*socket_box).0, c_str);
+    let boxed = Box::new(IdeviceHandle(dev));
+    unsafe { *idevice = Box::into_raw(boxed) };
+
+    null_mut()
+}
+
+/// Creates an Idevice object from a socket file descriptor
+///
+/// # Safety
+/// The socket FD must be valid.
+/// The pointers must be valid and non-null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_from_fd(
+    fd: i32,
+    label: *const c_char,
+    idevice: *mut *mut IdeviceHandle,
+) -> *mut IdeviceFfiError {
+    if label.is_null() || idevice.is_null() || fd == 0 {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    // Get socket ownership
+    let fd = unsafe { libc::dup(fd) };
+    let socket = unsafe { std::net::TcpStream::from_raw_fd(fd) };
+    if let Err(e) = socket.set_nonblocking(true) {
+        return ffi_err!(e);
+    }
+    let socket = match RUNTIME.block_on(async move { tokio::net::TcpStream::from_std(socket) }) {
+        Ok(s) => s,
+        Err(e) => return ffi_err!(e),
+    };
+
+    // Convert C string to Rust string
+    let c_str = match unsafe { CStr::from_ptr(label).to_str() } {
+        Ok(s) => s,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
+    };
+
+    // Create new Idevice instance
+    let dev = Idevice::new(Box::new(socket), c_str);
     let boxed = Box::new(IdeviceHandle(dev));
     unsafe { *idevice = Box::into_raw(boxed) };
 

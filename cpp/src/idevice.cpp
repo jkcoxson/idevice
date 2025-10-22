@@ -13,6 +13,15 @@ Result<Idevice, FfiError> Idevice::create(IdeviceSocketHandle* socket, const std
     return Ok(Idevice(h));
 }
 
+Result<Idevice, FfiError> Idevice::from_fd(int fd, const std::string& label) {
+    IdeviceHandle* h = nullptr;
+    FfiError       e(idevice_from_fd(fd, label.c_str(), &h));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(Idevice(h));
+}
+
 Result<Idevice, FfiError>
 Idevice::create_tcp(const sockaddr* addr, socklen_t addr_len, const std::string& label) {
     IdeviceHandle* h = nullptr;
