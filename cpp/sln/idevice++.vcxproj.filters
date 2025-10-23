@@ -18,53 +18,21 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\adapter_stream.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\app_service.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\core_device.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\debug_proxy.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\diagnosticsservice.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\ffi.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\idevice.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\location_simulation.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\lockdown.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\pairing_file.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\provider.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\remote_server.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\rsd.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\tcp_callback_feeder.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\usbmuxd.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
+    <ClInclude Include="..\..\ffi\idevice.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\dvt\location_simulation.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\dvt\process_control.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\dvt\remote_server.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\dvt\screenshot.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
     <ClInclude Include="..\include\idevice++\adapter_stream.hpp">
       <Filter>Header Files\idevice++</Filter>
     </ClInclude>
@@ -86,13 +54,22 @@
     <ClInclude Include="..\include\idevice++\ffi.hpp">
       <Filter>Header Files\idevice++</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\idevice++\heartbeat.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
     <ClInclude Include="..\include\idevice++\idevice.hpp">
       <Filter>Header Files\idevice++</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\idevice++\location_simulation.hpp">
+    <ClInclude Include="..\include\idevice++\installation_proxy.hpp">
       <Filter>Header Files\idevice++</Filter>
     </ClInclude>
     <ClInclude Include="..\include\idevice++\lockdown.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\mobile_image_mounter.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\option.hpp">
       <Filter>Header Files\idevice++</Filter>
     </ClInclude>
     <ClInclude Include="..\include\idevice++\pairing_file.hpp">
@@ -104,7 +81,7 @@
     <ClInclude Include="..\include\idevice++\readwrite.hpp">
       <Filter>Header Files\idevice++</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\idevice++\remote_server.hpp">
+    <ClInclude Include="..\include\idevice++\result.hpp">
       <Filter>Header Files\idevice++</Filter>
     </ClInclude>
     <ClInclude Include="..\include\idevice++\rsd.hpp">
@@ -116,14 +93,67 @@
     <ClInclude Include="..\include\idevice++\usbmuxd.hpp">
       <Filter>Header Files\idevice++</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\ffi\idevice.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\idevice++\option.hpp">
-      <Filter>Header Files\idevice++</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\idevice++\result.hpp">
-      <Filter>Header Files\idevice++</Filter>
-    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\adapter_stream.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\app_service.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\core_device.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\debug_proxy.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\diagnosticsservice.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\ffi.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\heartbeat.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\idevice.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\installation_proxy.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\lockdown.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\mobile_image_mounter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\pairing_file.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\provider.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\rsd.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\tcp_callback_feeder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\usbmuxd.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dvt\location_simulation.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dvt\process_control.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dvt\remote_server.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dvt\screenshot.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
