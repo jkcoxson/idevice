@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 
+#include <idevice++/bindings.hpp>
 #include <idevice++/core_device_proxy.hpp>
 #include <idevice++/dvt/remote_server.hpp>
 #include <idevice++/dvt/screenshot.hpp>
@@ -23,6 +24,7 @@ static void die(const char* msg, const FfiError& e) {
 }
 
 int main(int argc, char** argv) {
+    idevice_init_logger(Debug, Disabled, NULL);
     // Usage:
     //   take_screenshot <output.png>
     if (argc != 2) {
