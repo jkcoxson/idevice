@@ -128,6 +128,7 @@ pub unsafe extern "C" fn idevice_new(
 /// # Safety
 /// The socket FD must be valid.
 /// The pointers must be valid and non-null.
+#[cfg(unix)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn idevice_from_fd(
     fd: i32,

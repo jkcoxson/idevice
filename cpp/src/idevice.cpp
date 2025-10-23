@@ -13,6 +13,7 @@ Result<Idevice, FfiError> Idevice::create(IdeviceSocketHandle* socket, const std
     return Ok(Idevice(h));
 }
 
+#if defined(__unix__) || defined(__APPLE__)
 Result<Idevice, FfiError> Idevice::from_fd(int fd, const std::string& label) {
     IdeviceHandle* h = nullptr;
     FfiError       e(idevice_from_fd(fd, label.c_str(), &h));
@@ -21,6 +22,7 @@ Result<Idevice, FfiError> Idevice::from_fd(int fd, const std::string& label) {
     }
     return Ok(Idevice(h));
 }
+#endif
 
 Result<Idevice, FfiError>
 Idevice::create_tcp(const sockaddr* addr, socklen_t addr_len, const std::string& label) {
