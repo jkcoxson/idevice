@@ -48,7 +48,6 @@ use idevice::{Idevice, IdeviceSocket, ReadWrite};
 use once_cell::sync::Lazy;
 use std::{
     ffi::{CStr, CString, c_char},
-    os::fd::FromRawFd,
     ptr::null_mut,
 };
 use tokio::runtime::{self, Runtime};
@@ -141,7 +140,7 @@ pub unsafe extern "C" fn idevice_from_fd(
 
     // Get socket ownership
     let fd = unsafe { libc::dup(fd) };
-    let socket = unsafe { std::net::TcpStream::from_raw_fd(fd) };
+    let socket = unsafe { <std::net::TcpStream as std::os::fd::FromRawFd>::from_raw_fd(fd) };
     if let Err(e) = socket.set_nonblocking(true) {
         return ffi_err!(e);
     }
