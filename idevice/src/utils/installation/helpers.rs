@@ -142,7 +142,7 @@ pub async fn afc_upload_file<F: AsRef<[u8]>>(
     remote_path: &str,
 ) -> Result<(), IdeviceError> {
     let mut fd = afc.open(remote_path, AfcFopenMode::WrOnly).await?;
-    fd.write(file.as_ref()).await?;
+    fd.write_entire(file.as_ref()).await?;
     fd.close().await
 }
 
