@@ -9,7 +9,7 @@ use idevice::{
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     let matches = Command::new("pair")
         .about("Pair with the device")

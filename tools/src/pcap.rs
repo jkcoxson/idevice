@@ -1,6 +1,6 @@
 use idevice::bt_packet_logger::BtPacketKind;
-use log::warn;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tracing::warn;
 
 // Classic PCAP (big-endian) global header for DLT_BLUETOOTH_HCI_H4_WITH_PHDR (201)
 const PCAP_GLOBAL_HEADER_BE: [u8; 24] = [

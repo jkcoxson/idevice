@@ -26,7 +26,7 @@ pub unsafe extern "C" fn amfi_connect(
     client: *mut *mut AmfiClientHandle,
 ) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
@@ -171,7 +171,7 @@ pub unsafe extern "C" fn amfi_accept_developer_mode(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn amfi_client_free(handle: *mut AmfiClientHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing AmfiClient handle");
+        tracing::debug!("Freeing AmfiClient handle");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }

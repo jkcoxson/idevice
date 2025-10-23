@@ -2,8 +2,8 @@
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use log::{debug, warn};
 use serde::Deserialize;
+use tracing::{debug, warn};
 
 use crate::{
     IdeviceError,

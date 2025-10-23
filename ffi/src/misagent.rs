@@ -28,7 +28,7 @@ pub unsafe extern "C" fn misagent_connect(
     client: *mut *mut MisagentClientHandle,
 ) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
@@ -218,7 +218,7 @@ pub unsafe extern "C" fn misagent_free_profiles(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn misagent_client_free(handle: *mut MisagentClientHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing misagent_client");
+        tracing::debug!("Freeing misagent_client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }

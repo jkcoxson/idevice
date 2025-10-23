@@ -1,6 +1,6 @@
 // Jackson Coxson
 
-use log::debug;
+use tracing::debug;
 
 use crate::{Idevice, IdeviceError};
 

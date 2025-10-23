@@ -5,8 +5,8 @@ use std::{
 };
 
 use indexmap::IndexMap;
-use log::{debug, warn};
 use serde::{Deserialize, Serialize};
+use tracing::{debug, warn};
 
 use crate::IdeviceError;
 

@@ -1,7 +1,7 @@
 // Jackson Coxson
 // Ported from pymobiledevice3
 
-use log::warn;
+use tracing::warn;
 
 use crate::{
     IdeviceError, ReadWrite, RemoteXpcClient,

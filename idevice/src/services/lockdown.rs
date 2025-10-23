@@ -3,8 +3,8 @@
 //! Provides functionality for interacting with the lockdown service on iOS devices,
 //! which is the primary service for device management and service discovery.
 
-use log::error;
 use plist::Value;
+use tracing::error;
 
 use crate::{Idevice, IdeviceError, IdeviceService, obf, pairing_file};
 
@@ -256,7 +256,7 @@ impl LockdownClient {
         let pub_key = match pub_key.as_data().map(|x| x.to_vec()) {
             Some(p) => p,
             None => {
-                log::warn!("Did not get public key data response");
+                tracing::warn!("Did not get public key data response");
                 return Err(IdeviceError::UnexpectedResponse);
             }
         };
@@ -265,7 +265,7 @@ impl LockdownClient {
         let wifi_mac = match wifi_mac.as_string() {
             Some(w) => w,
             None => {
-                log::warn!("Did not get WiFiAddress string");
+                tracing::warn!("Did not get WiFiAddress string");
                 return Err(IdeviceError::UnexpectedResponse);
             }
         };

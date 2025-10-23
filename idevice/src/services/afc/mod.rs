@@ -7,9 +7,9 @@ use std::collections::HashMap;
 
 use errors::AfcError;
 use file::FileDescriptor;
-use log::warn;
 use opcode::{AfcFopenMode, AfcOpcode};
 use packet::{AfcPacket, AfcPacketHeader};
+use tracing::warn;
 
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
@@ -508,7 +508,7 @@ impl AfcClient {
         let res = AfcPacket::read(&mut self.idevice).await?;
         if res.header.operation == AfcOpcode::Status {
             if res.header_payload.len() < 8 {
-                log::error!("AFC returned error opcode, but not a code");
+                tracing::error!("AFC returned error opcode, but not a code");
                 return Err(IdeviceError::UnexpectedResponse);
             }
             let code = u64::from_le_bytes(res.header_payload[..8].try_into().unwrap());

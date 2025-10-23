@@ -15,7 +15,7 @@ use idevice::{
     IdeviceError,
     usbmuxd::{UsbmuxdAddr, UsbmuxdConnection, UsbmuxdDevice, UsbmuxdListenEvent},
 };
-use log::error;
+use tracing::error;
 
 pub struct UsbmuxdConnectionHandle(pub UsbmuxdConnection);
 pub struct UsbmuxdAddrHandle(pub UsbmuxdAddr);
@@ -132,7 +132,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_default_connection(
     let addr = match UsbmuxdAddr::from_env_var() {
         Ok(a) => a,
         Err(e) => {
-            log::error!("Invalid address set: {e:?}");
+            tracing::error!("Invalid address set: {e:?}");
             return ffi_err!(IdeviceError::FfiInvalidArg);
         }
     };

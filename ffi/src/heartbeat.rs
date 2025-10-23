@@ -28,7 +28,7 @@ pub unsafe extern "C" fn heartbeat_connect(
     client: *mut *mut HeartbeatClientHandle,
 ) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
@@ -150,7 +150,7 @@ pub unsafe extern "C" fn heartbeat_get_marco(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn heartbeat_client_free(handle: *mut HeartbeatClientHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing installation_proxy_client");
+        tracing::debug!("Freeing installation_proxy_client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }

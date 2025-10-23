@@ -32,7 +32,7 @@ pub unsafe extern "C" fn core_device_proxy_connect(
     client: *mut *mut CoreDeviceProxyHandle,
 ) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
@@ -192,7 +192,7 @@ pub unsafe extern "C" fn core_device_proxy_get_client_parameters(
     netmask: *mut *mut c_char,
 ) -> *mut IdeviceFfiError {
     if handle.is_null() {
-        log::error!("Passed null handle");
+        tracing::error!("Passed null handle");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
@@ -333,7 +333,7 @@ pub unsafe extern "C" fn core_device_proxy_create_tcp_adapter(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn core_device_proxy_free(handle: *mut CoreDeviceProxyHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing core_device_proxy");
+        tracing::debug!("Freeing core_device_proxy");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }
@@ -349,7 +349,7 @@ pub unsafe extern "C" fn core_device_proxy_free(handle: *mut CoreDeviceProxyHand
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn adapter_free(handle: *mut AdapterHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing adapter");
+        tracing::debug!("Freeing adapter");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }

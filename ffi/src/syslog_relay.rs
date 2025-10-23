@@ -23,7 +23,7 @@ pub unsafe extern "C" fn syslog_relay_connect_tcp(
     client: *mut *mut SyslogRelayClientHandle,
 ) -> *mut IdeviceFfiError {
     if provider.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
@@ -58,7 +58,7 @@ pub unsafe extern "C" fn syslog_relay_connect_tcp(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn syslog_relay_client_free(handle: *mut SyslogRelayClientHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing syslog relay client");
+        tracing::debug!("Freeing syslog relay client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }
@@ -96,7 +96,7 @@ pub unsafe extern "C" fn syslog_relay_next(
                     null_mut()
                 }
                 Err(_) => {
-                    log::error!("Failed to convert log message to C string");
+                    tracing::error!("Failed to convert log message to C string");
                     ffi_err!(IdeviceError::FfiInvalidString)
                 }
             }

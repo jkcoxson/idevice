@@ -7,7 +7,7 @@ use std::ptr::null_mut;
 use futures::{Stream, StreamExt};
 use idevice::core_device::DiagnostisServiceClient;
 use idevice::{IdeviceError, ReadWrite, RsdService};
-use log::debug;
+use tracing::debug;
 
 use crate::core_device_proxy::AdapterHandle;
 use crate::rsd::RsdHandshakeHandle;

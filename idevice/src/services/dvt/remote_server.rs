@@ -51,8 +51,8 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use log::{debug, warn};
 use tokio::io::AsyncWriteExt;
+use tracing::{debug, warn};
 
 use crate::{
     IdeviceError, ReadWrite,

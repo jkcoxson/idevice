@@ -30,7 +30,7 @@ pub unsafe extern "C" fn image_mounter_connect(
     client: *mut *mut ImageMounterHandle,
 ) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
@@ -90,7 +90,7 @@ pub unsafe extern "C" fn image_mounter_new(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn image_mounter_free(handle: *mut ImageMounterHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing image_mounter_client");
+        tracing::debug!("Freeing image_mounter_client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }

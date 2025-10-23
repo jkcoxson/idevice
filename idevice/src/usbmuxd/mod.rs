@@ -13,8 +13,8 @@ use std::{
 use std::net::{Ipv4Addr, SocketAddrV4};
 
 use futures::Stream;
-use log::{debug, warn};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tracing::{debug, warn};
 
 use crate::{
     Idevice, IdeviceError, ReadWrite, pairing_file::PairingFile, provider::UsbmuxdProvider,

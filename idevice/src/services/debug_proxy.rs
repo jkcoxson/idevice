@@ -4,9 +4,9 @@
 //! GDB Remote Serial Protocol as documented at:
 //! https://sourceware.org/gdb/current/onlinedocs/gdb.html/Packets.html#Packets
 
-use log::debug;
 use std::fmt::Write;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tracing::debug;
 
 use crate::{IdeviceError, ReadWrite, RsdService, obf};
 

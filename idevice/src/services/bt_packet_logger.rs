@@ -5,7 +5,7 @@
 use std::pin::Pin;
 
 use futures::Stream;
-use log::warn;
+use tracing::warn;
 
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 

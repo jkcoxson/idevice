@@ -8,7 +8,7 @@ mod common;
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     let matches = Command::new("core_device_proxy_tun")
         .about("Start a tunnel")

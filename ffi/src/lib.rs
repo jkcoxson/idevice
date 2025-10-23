@@ -189,7 +189,7 @@ pub unsafe extern "C" fn idevice_new_tcp_socket(
     use crate::util::SockAddr;
 
     if addr.is_null() || label.is_null() || idevice.is_null() {
-        log::error!("null pointer(s) to idevice_new_tcp_socket");
+        tracing::error!("null pointer(s) to idevice_new_tcp_socket");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
     let addr = addr as *const SockAddr;

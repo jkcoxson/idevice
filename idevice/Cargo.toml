@@ -24,8 +24,7 @@ serde = { version = "1", features = ["derive"] }
 ns-keyed-archive = { version = "0.1.4", optional = true }
 
 thiserror = { version = "2" }
-log = { version = "0.4" }
-env_logger = { version = "0.11" }
+tracing = { version = "0.1.41" }
 base64 = { version = "0.22" }
 
 indexmap = { version = "2.11", features = ["serde"], optional = true }

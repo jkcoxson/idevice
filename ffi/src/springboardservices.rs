@@ -30,7 +30,7 @@ pub unsafe extern "C" fn springboard_services_connect(
     client: *mut *mut SpringBoardServicesClientHandle,
 ) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
@@ -103,7 +103,7 @@ pub unsafe extern "C" fn springboard_services_get_icon(
     out_result_len: *mut libc::size_t,
 ) -> *mut IdeviceFfiError {
     if client.is_null() || out_result.is_null() || out_result_len.is_null() {
-        log::error!("Invalid arguments: {client:?}, {out_result:?}");
+        tracing::error!("Invalid arguments: {client:?}, {out_result:?}");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
     let client = unsafe { &mut *client };
@@ -145,7 +145,7 @@ pub unsafe extern "C" fn springboard_services_get_icon(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn springboard_services_free(handle: *mut SpringBoardServicesClientHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing springboard_services_client");
+        tracing::debug!("Freeing springboard_services_client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }

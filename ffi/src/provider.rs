@@ -70,7 +70,7 @@ pub unsafe extern "C" fn idevice_tcp_provider_new(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn idevice_provider_free(provider: *mut IdeviceProviderHandle) {
     if !provider.is_null() {
-        log::debug!("Freeing provider");
+        tracing::debug!("Freeing provider");
         unsafe { drop(Box::from_raw(provider)) };
     }
 }
@@ -109,7 +109,7 @@ pub unsafe extern "C" fn usbmuxd_provider_new(
     let udid = match unsafe { CStr::from_ptr(udid) }.to_str() {
         Ok(u) => u.to_string(),
         Err(e) => {
-            log::error!("Invalid UDID string: {e:?}");
+            tracing::error!("Invalid UDID string: {e:?}");
             return ffi_err!(IdeviceError::FfiInvalidString);
         }
     };
@@ -117,7 +117,7 @@ pub unsafe extern "C" fn usbmuxd_provider_new(
     let label = match unsafe { CStr::from_ptr(label) }.to_str() {
         Ok(l) => l.to_string(),
         Err(e) => {
-            log::error!("Invalid label string: {e:?}");
+            tracing::error!("Invalid label string: {e:?}");
             return ffi_err!(IdeviceError::FfiInvalidArg);
         }
     };

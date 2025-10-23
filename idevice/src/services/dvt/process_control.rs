@@ -34,8 +34,8 @@
 //! }
 //! ```
 
-use log::warn;
 use plist::{Dictionary, Value};
+use tracing::warn;
 
 use crate::{IdeviceError, ReadWrite, dvt::message::AuxValue, obf};
 

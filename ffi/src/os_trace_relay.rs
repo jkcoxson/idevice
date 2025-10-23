@@ -46,7 +46,7 @@ pub unsafe extern "C" fn os_trace_relay_connect(
     client: *mut *mut OsTraceRelayClientHandle,
 ) -> *mut IdeviceFfiError {
     if provider.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
@@ -78,7 +78,7 @@ pub unsafe extern "C" fn os_trace_relay_connect(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn os_trace_relay_free(handle: *mut OsTraceRelayClientHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing os trace relay client");
+        tracing::debug!("Freeing os trace relay client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }
@@ -102,7 +102,7 @@ pub unsafe extern "C" fn os_trace_relay_start_trace(
     pid: *const u32,
 ) -> *mut IdeviceFfiError {
     if receiver.is_null() || client.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
@@ -137,7 +137,7 @@ pub unsafe extern "C" fn os_trace_relay_start_trace(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn os_trace_relay_receiver_free(handle: *mut OsTraceRelayReceiverHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing syslog relay client");
+        tracing::debug!("Freeing syslog relay client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }
@@ -186,7 +186,7 @@ pub unsafe extern "C" fn os_trace_relay_next(
     log: *mut *mut OsTraceLog,
 ) -> *mut IdeviceFfiError {
     if client.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 

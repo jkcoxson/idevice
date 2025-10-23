@@ -3,7 +3,7 @@
 use async_stream::try_stream;
 use futures::Stream;
 use http2::Setting;
-use log::debug;
+use tracing::debug;
 
 use crate::{IdeviceError, ReadWrite};
 

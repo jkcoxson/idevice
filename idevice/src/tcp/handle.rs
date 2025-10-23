@@ -8,12 +8,12 @@ use std::{collections::HashMap, path::PathBuf, sync::Mutex, task::Poll};
 
 use crossfire::{AsyncRx, MTx, Tx, mpsc, spsc, stream::AsyncStream};
 use futures::{StreamExt, stream::FuturesUnordered};
-use log::trace;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::oneshot,
     time::timeout,
 };
+use tracing::trace;
 
 use crate::tcp::adapter::ConnectionStatus;
 

@@ -26,7 +26,6 @@ pub use services::*;
 #[cfg(feature = "xpc")]
 pub use xpc::RemoteXpcClient;
 
-use log::{debug, error, trace};
 use provider::{IdeviceProvider, RsdProvider};
 use rustls::{crypto::CryptoProvider, pki_types::ServerName};
 use std::{
@@ -35,6 +34,7 @@ use std::{
 };
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tracing::{debug, error, trace};
 
 pub use util::{pretty_print_dictionary, pretty_print_plist};
 
@@ -389,7 +389,7 @@ impl Idevice {
                     }
                 }
                 _ => {
-                    log::error!("Error is not a string or integer from read_plist: {e:?}");
+                    tracing::error!("Error is not a string or integer from read_plist: {e:?}");
                     return Err(IdeviceError::UnexpectedResponse);
                 }
             };
@@ -488,7 +488,7 @@ impl Idevice {
                     // My sanity while debugging the workspace crates are more important.
 
                     debug!("Using ring crypto backend, because both were passed");
-                    log::warn!("Both ring && aws-lc are selected as idevice crypto backends!");
+                    tracing::warn!("Both ring && aws-lc are selected as idevice crypto backends!");
                     rustls::crypto::ring::default_provider()
                 }
             };
@@ -497,7 +497,7 @@ impl Idevice {
                 // For whatever reason, getting the default provider will return None on iOS at
                 // random. Installing the default provider a second time will return an error, so
                 // we will log it but not propogate it. An issue should be opened with rustls.
-                log::error!("Failed to set crypto provider: {e:?}");
+                tracing::error!("Failed to set crypto provider: {e:?}");
             }
         }
         let config = sni::create_client_config(pairing_file)?;

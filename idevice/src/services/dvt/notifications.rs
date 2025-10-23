@@ -10,8 +10,8 @@ use crate::{
     },
     obf,
 };
-use log::warn;
 use plist::Value;
+use tracing::warn;
 
 #[derive(Debug)]
 pub struct NotificationInfo {

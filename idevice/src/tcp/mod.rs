@@ -5,8 +5,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use log::trace;
 use tokio::io::AsyncWriteExt;
+use tracing::trace;
 
 use crate::{ReadWrite, provider::RsdProvider};
 
@@ -158,8 +158,6 @@ mod tests {
 
     #[tokio::test]
     async fn local_tcp() {
-        env_logger::init();
-
         let our_ip = Ipv6Addr::from_str("fd12:3456:789a::1").unwrap();
         let their_ip = Ipv6Addr::from_str("fd12:3456:789a::2").unwrap();
         let dev = DeviceBuilder::new()

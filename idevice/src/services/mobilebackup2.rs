@@ -3,12 +3,12 @@
 //! Provides functionality for interacting with the mobilebackup2 service on iOS devices,
 //! which allows creating, restoring, and managing device backups.
 
-use log::{debug, warn};
 use plist::Dictionary;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
 use tokio::io::AsyncReadExt;
+use tracing::{debug, warn};
 
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 

@@ -30,7 +30,7 @@ pub unsafe extern "C" fn lockdownd_connect(
     client: *mut *mut LockdowndClientHandle,
 ) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
@@ -232,7 +232,7 @@ pub unsafe extern "C" fn lockdownd_get_value(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lockdownd_client_free(handle: *mut LockdowndClientHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing lockdownd_client");
+        tracing::debug!("Freeing lockdownd_client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }

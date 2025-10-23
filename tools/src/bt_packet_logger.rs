@@ -12,7 +12,7 @@ mod pcap;
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     let matches = Command::new("amfi")
         .about("Capture Bluetooth packets")

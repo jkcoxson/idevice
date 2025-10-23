@@ -6,7 +6,7 @@ use idevice::usbmuxd::UsbmuxdConnection;
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     let mut muxer = UsbmuxdConnection::default().await.unwrap();
     let res = muxer.get_devices().await.unwrap();

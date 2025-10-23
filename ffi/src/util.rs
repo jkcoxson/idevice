@@ -48,7 +48,7 @@ pub(crate) fn c_socket_to_rust(
     addr_len: SockLen,
 ) -> Result<SocketAddr, IdeviceError> {
     if addr.is_null() {
-        log::error!("null sockaddr");
+        tracing::error!("null sockaddr");
         return invalid_arg();
     }
 
@@ -59,7 +59,7 @@ pub(crate) fn c_socket_to_rust(
         match family as i32 {
             libc::AF_INET => {
                 if (addr_len as usize) < std::mem::size_of::<sockaddr_in>() {
-                    log::error!("Invalid sockaddr_in size");
+                    tracing::error!("Invalid sockaddr_in size");
                     return invalid_arg();
                 }
                 let a = &*(addr as *const sockaddr_in);
@@ -69,7 +69,7 @@ pub(crate) fn c_socket_to_rust(
             }
             libc::AF_INET6 => {
                 if (addr_len as usize) < std::mem::size_of::<sockaddr_in6>() {
-                    log::error!("Invalid sockaddr_in6 size");
+                    tracing::error!("Invalid sockaddr_in6 size");
                     return invalid_arg();
                 }
                 let a = &*(addr as *const sockaddr_in6);
@@ -83,7 +83,7 @@ pub(crate) fn c_socket_to_rust(
                 )))
             }
             _ => {
-                log::error!(
+                tracing::error!(
                     "Unsupported socket address family: {}",
                     (*addr).sa_family as i32
                 );
@@ -95,7 +95,7 @@ pub(crate) fn c_socket_to_rust(
         match family {
             AF_INET => {
                 if (addr_len as usize) < std::mem::size_of::<sockaddr_in>() {
-                    log::error!("Invalid SOCKADDR_IN size");
+                    tracing::error!("Invalid SOCKADDR_IN size");
                     return invalid_arg();
                 }
                 let a = &*(addr as *const sockaddr_in);
@@ -107,7 +107,7 @@ pub(crate) fn c_socket_to_rust(
             }
             AF_INET6 => {
                 if (addr_len as usize) < std::mem::size_of::<sockaddr_in6>() {
-                    log::error!("Invalid SOCKADDR_IN6 size");
+                    tracing::error!("Invalid SOCKADDR_IN6 size");
                     return invalid_arg();
                 }
                 let a = &*(addr as *const sockaddr_in6);
@@ -124,7 +124,7 @@ pub(crate) fn c_socket_to_rust(
                 )))
             }
             _ => {
-                log::error!("Unsupported socket address family: {}", (*addr).sa_family);
+                tracing::error!("Unsupported socket address family: {}", (*addr).sa_family);
                 invalid_arg()
             }
         }
@@ -133,7 +133,7 @@ pub(crate) fn c_socket_to_rust(
 
 pub(crate) fn c_addr_to_rust(addr: *const SockAddr) -> Result<IpAddr, IdeviceError> {
     if addr.is_null() {
-        log::error!("null sockaddr");
+        tracing::error!("null sockaddr");
         return invalid_arg();
     }
 
@@ -157,7 +157,7 @@ pub(crate) fn c_addr_to_rust(addr: *const SockAddr) -> Result<IpAddr, IdeviceErr
                 Ok(IpAddr::V6(Ipv6Addr::from(a.sin6_addr.s6_addr)))
             }
             _ => {
-                log::error!(
+                tracing::error!(
                     "Unsupported socket address family: {}",
                     (*addr).sa_family as i32
                 );
@@ -178,7 +178,7 @@ pub(crate) fn c_addr_to_rust(addr: *const SockAddr) -> Result<IpAddr, IdeviceErr
                 Ok(IpAddr::V6(Ipv6Addr::from(bytes)))
             }
             _ => {
-                log::error!("Unsupported socket address family: {}", (*addr).sa_family);
+                tracing::error!("Unsupported socket address family: {}", (*addr).sa_family);
                 invalid_arg()
             }
         }

@@ -47,7 +47,7 @@ pub unsafe extern "C" fn adapter_connect(
             null_mut()
         }
         Err(e) => {
-            log::error!("Adapter connect failed: {e}");
+            tracing::error!("Adapter connect failed: {e}");
             ffi_err!(e)
         }
     }
@@ -86,7 +86,7 @@ pub unsafe extern "C" fn adapter_pcap(
     match res {
         Ok(_) => null_mut(),
         Err(e) => {
-            log::error!("Adapter pcap failed: {e}");
+            tracing::error!("Adapter pcap failed: {e}");
             ffi_err!(e)
         }
     }
@@ -169,7 +169,7 @@ pub unsafe extern "C" fn adapter_send(
     match res {
         Ok(_) => null_mut(),
         Err(e) => {
-            log::error!("Adapter send failed: {e}");
+            tracing::error!("Adapter send failed: {e}");
             ffi_err!(e)
         }
     }
@@ -223,7 +223,7 @@ pub unsafe extern "C" fn adapter_recv(
             null_mut()
         }
         Err(e) => {
-            log::error!("Adapter recv failed: {e}");
+            tracing::error!("Adapter recv failed: {e}");
             ffi_err!(e)
         }
     }
