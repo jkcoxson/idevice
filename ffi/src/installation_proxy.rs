@@ -8,7 +8,9 @@ use idevice::{
 };
 use plist_ffi::{PlistWrapper, plist_t};
 
-use crate::{IdeviceFfiError, IdeviceHandle, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
+use crate::{
+    IdeviceFfiError, IdeviceHandle, ffi_err, provider::IdeviceProviderHandle, run_sync_local,
+};
 
 pub struct InstallationProxyClientHandle(pub InstallationProxyClient);
 
@@ -34,7 +36,7 @@ pub unsafe extern "C" fn installation_proxy_connect(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<InstallationProxyClient, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<InstallationProxyClient, IdeviceError> = run_sync_local(async move {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
         InstallationProxyClient::connect(provider_ref).await
     });
@@ -134,7 +136,7 @@ pub unsafe extern "C" fn installation_proxy_get_apps(
         )
     };
 
-    let res: Result<Vec<plist_t>, IdeviceError> = RUNTIME.block_on(async {
+    let res: Result<Vec<plist_t>, IdeviceError> = run_sync_local(async {
         client.0.get_apps(app_type, bundle_ids).await.map(|apps| {
             apps.into_values()
                 .map(|v| PlistWrapper::new_node(v).into_ptr())
@@ -210,7 +212,7 @@ pub unsafe extern "C" fn installation_proxy_install(
     }
     .map(|x| x.borrow_self().clone());
 
-    let res = RUNTIME.block_on(async {
+    let res = run_sync_local(async {
         unsafe { &mut *client }
             .0
             .install(package_path, options)
@@ -261,7 +263,7 @@ pub unsafe extern "C" fn installation_proxy_install_with_callback(
     }
     .map(|x| x.borrow_self().clone());
 
-    let res = RUNTIME.block_on(async {
+    let res = run_sync_local(async {
         let callback_wrapper = |(progress, context)| async move {
             callback(progress, context);
         };
@@ -312,7 +314,7 @@ pub unsafe extern "C" fn installation_proxy_upgrade(
     }
     .map(|x| x.borrow_self().clone());
 
-    let res = RUNTIME.block_on(async {
+    let res = run_sync_local(async {
         unsafe { &mut *client }
             .0
             .upgrade(package_path, options)
@@ -363,7 +365,7 @@ pub unsafe extern "C" fn installation_proxy_upgrade_with_callback(
     }
     .map(|x| x.borrow_self().clone());
 
-    let res = RUNTIME.block_on(async {
+    let res = run_sync_local(async {
         let callback_wrapper = |(progress, context)| async move {
             callback(progress, context);
         };
@@ -414,7 +416,7 @@ pub unsafe extern "C" fn installation_proxy_uninstall(
     }
     .map(|x| x.borrow_self().clone());
 
-    let res = RUNTIME.block_on(async {
+    let res = run_sync_local(async {
         unsafe { &mut *client }
             .0
             .uninstall(bundle_id, options)
@@ -465,7 +467,7 @@ pub unsafe extern "C" fn installation_proxy_uninstall_with_callback(
     }
     .map(|x| x.borrow_self().clone());
 
-    let res = RUNTIME.block_on(async {
+    let res = run_sync_local(async {
         let callback_wrapper = |(progress, context)| async move {
             callback(progress, context);
         };
@@ -527,7 +529,7 @@ pub unsafe extern "C" fn installation_proxy_check_capabilities_match(
     }
     .map(|x| x.borrow_self().clone());
 
-    let res = RUNTIME.block_on(async {
+    let res = run_sync_local(async {
         unsafe { &mut *client }
             .0
             .check_capabilities_match(capabilities, options)
@@ -577,7 +579,7 @@ pub unsafe extern "C" fn installation_proxy_browse(
     }
     .map(|x| x.borrow_self().clone());
 
-    let res: Result<Vec<plist_t>, IdeviceError> = RUNTIME.block_on(async {
+    let res: Result<Vec<plist_t>, IdeviceError> = run_sync_local(async {
         unsafe { &mut *client }.0.browse(options).await.map(|apps| {
             apps.into_iter()
                 .map(|v| PlistWrapper::new_node(v).into_ptr())

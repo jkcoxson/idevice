@@ -7,7 +7,7 @@ use std::{ffi::CStr, ptr::null_mut};
 
 use crate::util::{SockAddr, idevice_sockaddr};
 use crate::{IdeviceFfiError, ffi_err, usbmuxd::UsbmuxdAddrHandle, util};
-use crate::{IdevicePairingFile, RUNTIME};
+use crate::{IdevicePairingFile, run_sync};
 
 pub struct IdeviceProviderHandle(pub Box<dyn IdeviceProvider>);
 
@@ -156,7 +156,7 @@ pub unsafe extern "C" fn idevice_provider_get_pairing_file(
 ) -> *mut IdeviceFfiError {
     let provider = unsafe { &mut *provider };
 
-    let res = RUNTIME.block_on(async move { provider.0.get_pairing_file().await });
+    let res = run_sync(async move { provider.0.get_pairing_file().await });
     match res {
         Ok(pf) => {
             let pf = Box::new(IdevicePairingFile(pf));

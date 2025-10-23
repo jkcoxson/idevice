@@ -14,7 +14,7 @@ use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
 };
 
-use crate::{IdeviceFfiError, RUNTIME, core_device_proxy::AdapterHandle, ffi_err};
+use crate::{IdeviceFfiError, core_device_proxy::AdapterHandle, ffi_err, run_sync, run_sync_local};
 
 pub struct TcpFeedObject {
     sender: Arc<Mutex<OwnedWriteHalf>>,
@@ -63,7 +63,7 @@ pub unsafe extern "C" fn idevice_tcp_stack_into_sync_objects(
         }
     };
 
-    let res = RUNTIME.block_on(async {
+    let res = run_sync(async {
         let mut port = 4000;
         loop {
             if port > 4050 {
@@ -105,7 +105,7 @@ pub unsafe extern "C" fn idevice_tcp_stack_into_sync_objects(
     let eat_object = TcpEatObject { receiver: r };
 
     // we must be inside the runtime for the inner function to spawn threads
-    let new_adapter = RUNTIME.block_on(async {
+    let new_adapter = run_sync_local(async {
         idevice::tcp::adapter::Adapter::new(Box::new(stream), our_ip, their_ip).to_async_handle()
     });
     // this object can now be used with the rest of the idevice FFI library
@@ -133,7 +133,7 @@ pub unsafe extern "C" fn idevice_tcp_feed_object_write(
     }
     let object = unsafe { &mut *object };
     let data = unsafe { std::slice::from_raw_parts(data, len) };
-    RUNTIME.block_on(async move {
+    run_sync_local(async move {
         let mut lock = object.sender.lock().await;
         match lock.write_all(data).await {
             Ok(_) => {
@@ -163,7 +163,7 @@ pub unsafe extern "C" fn idevice_tcp_eat_object_read(
 ) -> *mut IdeviceFfiError {
     let object = unsafe { &mut *object };
     let mut buf = [0; 2048];
-    RUNTIME.block_on(async {
+    run_sync_local(async {
         let lock = object.receiver.lock().await;
         match lock.try_read(&mut buf) {
             Ok(size) => {

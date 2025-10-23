@@ -8,7 +8,10 @@ use idevice::{
     springboardservices::SpringBoardServicesClient,
 };
 
-use crate::{IdeviceFfiError, IdeviceHandle, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
+use crate::{
+    IdeviceFfiError, IdeviceHandle, ffi_err, provider::IdeviceProviderHandle, run_sync,
+    run_sync_local,
+};
 
 pub struct SpringBoardServicesClientHandle(pub SpringBoardServicesClient);
 
@@ -34,7 +37,7 @@ pub unsafe extern "C" fn springboard_services_connect(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<SpringBoardServicesClient, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<SpringBoardServicesClient, IdeviceError> = run_sync_local(async move {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
         SpringBoardServicesClient::connect(provider_ref).await
     });
@@ -115,7 +118,7 @@ pub unsafe extern "C" fn springboard_services_get_icon(
     };
 
     let res: Result<Vec<u8>, IdeviceError> =
-        RUNTIME.block_on(async { client.0.get_icon_pngdata(bundle_id).await });
+        run_sync(async { client.0.get_icon_pngdata(bundle_id).await });
 
     match res {
         Ok(r) => {

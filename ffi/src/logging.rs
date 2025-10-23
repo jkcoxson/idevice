@@ -7,7 +7,8 @@ use std::{
 };
 
 use tracing::Level;
-use tracing_subscriber::{EnvFilter, Layer, fmt::writer::BoxMakeWriter};
+use tracing_appender::non_blocking;
+use tracing_subscriber::{EnvFilter, Layer};
 use tracing_subscriber::{Registry, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[repr(C)]
@@ -58,6 +59,10 @@ impl IdeviceLogLevel {
 
 // ensures we only init once
 static INIT: Once = Once::new();
+static mut GUARDS: Option<(
+    Option<tracing_appender::non_blocking::WorkerGuard>,
+    Option<tracing_appender::non_blocking::WorkerGuard>,
+)> = None;
 
 /// Initializes the global logger
 ///
@@ -76,18 +81,23 @@ pub unsafe extern "C" fn idevice_init_logger(
         let file_filter = file_level.as_filter();
 
         let mut layers = Vec::new();
+        let mut console_guard = None;
+        let mut file_guard = None;
 
-        // Console layer
+        // ---- Console layer ----
         if console_level != IdeviceLogLevel::Disabled {
+            let (non_blocking, guard) = non_blocking(std::io::stdout());
+            console_guard = Some(guard);
             let console_layer = fmt::layer()
-                .with_writer(std::io::stdout)
+                .with_writer(non_blocking)
                 .with_ansi(true)
                 .with_target(false)
+                .with_target(true)
                 .with_filter(EnvFilter::new(console_filter));
             layers.push(console_layer.boxed());
         }
 
-        // File layer
+        // ---- File layer ----
         if !file_path.is_null() && file_level != IdeviceLogLevel::Disabled {
             let path = match unsafe { CStr::from_ptr(file_path).to_str() } {
                 Ok(p) => p,
@@ -97,28 +107,33 @@ pub unsafe extern "C" fn idevice_init_logger(
                 }
             };
 
-            let file = match File::create(path) {
-                Ok(f) => f,
+            match File::create(path) {
+                Ok(f) => {
+                    let (non_blocking, guard) = non_blocking(f);
+                    file_guard = Some(guard);
+                    let file_layer = fmt::layer()
+                        .with_writer(non_blocking)
+                        .with_ansi(false)
+                        .with_target(false)
+                        .with_filter(EnvFilter::new(file_filter));
+                    layers.push(file_layer.boxed());
+                }
                 Err(_) => {
                     init_result = IdeviceLoggerError::FileError;
                     return;
                 }
             };
-
-            let file_layer = fmt::layer()
-                .with_writer(BoxMakeWriter::new(file))
-                .with_ansi(false)
-                .with_target(false)
-                .with_filter(EnvFilter::new(file_filter));
-            layers.push(file_layer.boxed());
         }
 
-        // Compose and set as global subscriber
+        // Keep guards alive (otherwise background threads die)
+        unsafe {
+            GUARDS = Some((console_guard, file_guard));
+        }
+
         let subscriber = Registry::default().with(layers);
         subscriber.init();
     });
 
-    // If it was already initialized, Once won't run again
     if !INIT.is_completed() {
         IdeviceLoggerError::AlreadyInitialized
     } else {

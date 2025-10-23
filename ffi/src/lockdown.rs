@@ -6,8 +6,8 @@ use idevice::{IdeviceError, IdeviceService, lockdown::LockdownClient, provider::
 use plist_ffi::plist_t;
 
 use crate::{
-    IdeviceFfiError, IdeviceHandle, IdevicePairingFile, RUNTIME, ffi_err,
-    provider::IdeviceProviderHandle,
+    IdeviceFfiError, IdeviceHandle, IdevicePairingFile, ffi_err, provider::IdeviceProviderHandle,
+    run_sync_local,
 };
 
 pub struct LockdowndClientHandle(pub LockdownClient);
@@ -34,7 +34,7 @@ pub unsafe extern "C" fn lockdownd_connect(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<LockdownClient, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<LockdownClient, IdeviceError> = run_sync_local(async move {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
         LockdownClient::connect(provider_ref).await
     });
@@ -97,7 +97,7 @@ pub unsafe extern "C" fn lockdownd_start_session(
     client: *mut LockdowndClientHandle,
     pairing_file: *mut IdevicePairingFile,
 ) -> *mut IdeviceFfiError {
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         let pairing_file_ref = unsafe { &(*pairing_file).0 };
 
@@ -140,7 +140,7 @@ pub unsafe extern "C" fn lockdownd_start_service(
         .to_string_lossy()
         .into_owned();
 
-    let res: Result<(u16, bool), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(u16, bool), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.start_service(identifier).await
     });
@@ -205,7 +205,7 @@ pub unsafe extern "C" fn lockdownd_get_value(
         })
     };
 
-    let res: Result<plist::Value, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<plist::Value, IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.get_value(value, domain).await
     });

@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    IdeviceFfiError, IdeviceHandle, IdevicePairingFile, RUNTIME, ffi_err,
+    IdeviceFfiError, IdeviceHandle, IdevicePairingFile, ffi_err, run_sync, run_sync_local,
     util::{SockAddr, c_socket_to_rust, idevice_sockaddr, idevice_socklen_t},
 };
 use futures::{Stream, StreamExt};
@@ -57,7 +57,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_tcp_connection(
         Err(e) => return ffi_err!(e),
     };
 
-    let res = RUNTIME.block_on(async move {
+    let res = run_sync(async move {
         let stream = tokio::net::TcpStream::connect(addr).await?;
         Ok::<_, IdeviceError>(UsbmuxdConnection::new(Box::new(stream), tag))
     });
@@ -96,7 +96,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_unix_socket_connection(
         Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
-    let res: Result<UsbmuxdConnection, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<UsbmuxdConnection, IdeviceError> = run_sync(async move {
         let stream = tokio::net::UnixStream::connect(addr).await?;
         Ok(UsbmuxdConnection::new(Box::new(stream), tag))
     });
@@ -138,7 +138,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_default_connection(
     };
 
     let res: Result<UsbmuxdConnection, IdeviceError> =
-        RUNTIME.block_on(async move { addr.connect(tag).await });
+        run_sync(async move { addr.connect(tag).await });
 
     match res {
         Ok(r) => {
@@ -176,7 +176,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_get_devices(
     }
     let conn = unsafe { &mut (*usbmuxd_conn).0 };
 
-    let res = RUNTIME.block_on(async { conn.get_devices().await });
+    let res = run_sync(async { conn.get_devices().await });
 
     match res {
         Ok(device_vec) => {
@@ -244,7 +244,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_connect_to_device(
         }
     };
 
-    let res = RUNTIME.block_on(async move { conn.connect_to_device(device_id, port, label).await });
+    let res = run_sync(async move { conn.connect_to_device(device_id, port, label).await });
 
     match res {
         Ok(device_conn) => {
@@ -292,7 +292,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_get_pair_record(
         }
     };
 
-    let res = RUNTIME.block_on(async { conn.get_pair_record(udid_str).await });
+    let res = run_sync(async { conn.get_pair_record(udid_str).await });
 
     match res {
         Ok(pf) => {
@@ -344,7 +344,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_save_pair_record(
         }
     };
 
-    let res = RUNTIME.block_on(async {
+    let res = run_sync_local(async {
         conn.save_pair_record(device_id, udid_str, pair_record)
             .await
     });
@@ -371,7 +371,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_listen(
     }
     let conn = unsafe { &mut (*usbmuxd_conn).0 };
 
-    let res = RUNTIME.block_on(async { conn.listen().await });
+    let res = run_sync_local(async { conn.listen().await });
 
     match res {
         Ok(s) => {
@@ -425,7 +425,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_listener_next(
     }
     let stream = unsafe { &mut (*stream_handle).0 };
 
-    let res = RUNTIME.block_on(async { stream.next().await });
+    let res = run_sync_local(async { stream.next().await });
 
     match res {
         Some(res) => match res {
@@ -477,7 +477,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_get_buid(
     }
     let conn = unsafe { &mut (*usbmuxd_conn).0 };
 
-    let res = RUNTIME.block_on(async { conn.get_buid().await });
+    let res = run_sync(async { conn.get_buid().await });
 
     match res {
         Ok(buid_str) => match CString::new(buid_str) {

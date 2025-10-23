@@ -8,7 +8,10 @@ use idevice::{
     provider::IdeviceProvider,
 };
 
-use crate::{IdeviceFfiError, IdeviceHandle, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
+use crate::{
+    IdeviceFfiError, IdeviceHandle, LOCAL_RUNTIME, ffi_err, provider::IdeviceProviderHandle,
+    run_sync, run_sync_local,
+};
 
 pub struct AfcClientHandle(pub AfcClient);
 
@@ -34,7 +37,7 @@ pub unsafe extern "C" fn afc_client_connect(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res = RUNTIME.block_on(async {
+    let res = run_sync_local(async {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
 
         AfcClient::connect(provider_ref).await
@@ -122,7 +125,7 @@ pub unsafe extern "C" fn afc_list_directory(
     // Use to_string_lossy to handle non-UTF8 paths
     let path = path_cstr.to_string_lossy();
 
-    let res: Result<Vec<String>, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<Vec<String>, IdeviceError> = run_sync_local(async move {
         // SAFETY: We're assuming client is a valid pointer here
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.list_dir(&path.to_string()).await
@@ -194,7 +197,7 @@ pub unsafe extern "C" fn afc_make_directory(
         Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.mk_dir(path).await
     });
@@ -246,7 +249,7 @@ pub unsafe extern "C" fn afc_get_file_info(
         Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
-    let res: Result<FileInfo, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<FileInfo, IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.get_file_info(path).await
     });
@@ -331,7 +334,7 @@ pub unsafe extern "C" fn afc_get_device_info(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<DeviceInfo, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<DeviceInfo, IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.get_device_info().await
     });
@@ -395,7 +398,7 @@ pub unsafe extern "C" fn afc_remove_path(
         Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.remove(path).await
     });
@@ -433,7 +436,7 @@ pub unsafe extern "C" fn afc_remove_path_and_contents(
         Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.remove_all(path).await
     });
@@ -506,7 +509,7 @@ pub unsafe extern "C" fn afc_file_open(
 
     let mode = mode.into();
 
-    let res: Result<*mut AfcFileHandle, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<*mut AfcFileHandle, IdeviceError> = LOCAL_RUNTIME.block_on(async move {
         let client_ref = unsafe { &mut (*client).0 };
         let result = client_ref.open(path, mode).await;
         match result {
@@ -544,7 +547,7 @@ pub unsafe extern "C" fn afc_file_close(handle: *mut AfcFileHandle) -> *mut Idev
     }
 
     let fd = unsafe { Box::from_raw(handle as *mut idevice::afc::file::FileDescriptor) };
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move { fd.close().await });
+    let res: Result<(), IdeviceError> = run_sync(async move { fd.close().await });
 
     match res {
         Ok(_) => null_mut(),
@@ -575,7 +578,7 @@ pub unsafe extern "C" fn afc_file_read(
     }
 
     let fd = unsafe { &mut *(handle as *mut idevice::afc::file::FileDescriptor) };
-    let res: Result<Vec<u8>, IdeviceError> = RUNTIME.block_on(async move { fd.read().await });
+    let res: Result<Vec<u8>, IdeviceError> = run_sync(async move { fd.read().await });
 
     match res {
         Ok(bytes) => {
@@ -617,7 +620,7 @@ pub unsafe extern "C" fn afc_file_write(
     let fd = unsafe { &mut *(handle as *mut idevice::afc::file::FileDescriptor) };
     let data_slice = unsafe { std::slice::from_raw_parts(data, length) };
 
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move { fd.write(data_slice).await });
+    let res: Result<(), IdeviceError> = run_sync(async move { fd.write(data_slice).await });
 
     match res {
         Ok(_) => null_mut(),
@@ -674,7 +677,7 @@ pub unsafe extern "C" fn afc_make_link(
         AfcLinkType::Symbolic => idevice::afc::opcode::LinkType::Symlink,
     };
 
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.link(target, source, link_type).await
     });
@@ -720,7 +723,7 @@ pub unsafe extern "C" fn afc_rename_path(
         Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.rename(source, target).await
     });

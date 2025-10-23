@@ -55,13 +55,46 @@ use tokio::runtime::{self, Runtime};
 #[cfg(unix)]
 use crate::util::{idevice_sockaddr, idevice_socklen_t};
 
-static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
+static GLOBAL_RUNTIME: Lazy<Runtime> = Lazy::new(|| {
     runtime::Builder::new_multi_thread()
         .enable_io()
         .enable_time()
         .build()
         .unwrap()
 });
+
+static LOCAL_RUNTIME: Lazy<Runtime> = Lazy::new(|| {
+    runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+});
+
+/// Spawn the future on the global runtime and block current (FFI) thread until result.
+/// F and R must be Send + 'static.
+pub fn run_sync<F, R>(fut: F) -> R
+where
+    F: std::future::Future<Output = R> + Send + 'static,
+    R: Send + 'static,
+{
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+
+    GLOBAL_RUNTIME.handle().spawn(async move {
+        let res = fut.await;
+        // best-effort send; ignore if receiver dropped
+        let _ = tx.send(res);
+    });
+
+    rx.recv().expect("runtime worker panicked")
+}
+
+pub fn run_sync_local<F, R>(fut: F) -> R
+where
+    F: std::future::Future<Output = R>,
+    R: 'static,
+{
+    LOCAL_RUNTIME.block_on(fut)
+}
 
 pub const LOCKDOWN_PORT: u16 = 62078;
 
@@ -144,7 +177,7 @@ pub unsafe extern "C" fn idevice_from_fd(
     if let Err(e) = socket.set_nonblocking(true) {
         return ffi_err!(e);
     }
-    let socket = match RUNTIME.block_on(async move { tokio::net::TcpStream::from_std(socket) }) {
+    let socket = match run_sync(async move { tokio::net::TcpStream::from_std(socket) }) {
         Ok(s) => s,
         Err(e) => return ffi_err!(e),
     };
@@ -204,7 +237,7 @@ pub unsafe extern "C" fn idevice_new_tcp_socket(
         Err(e) => return ffi_err!(e),
     };
 
-    let device = RUNTIME.block_on(async move {
+    let device = run_sync(async move {
         let stream = tokio::net::TcpStream::connect(addr).await?;
         Ok::<idevice::Idevice, idevice::IdeviceError>(idevice::Idevice::new(
             Box::new(stream),
@@ -247,7 +280,7 @@ pub unsafe extern "C" fn idevice_get_type(
     let dev = unsafe { &mut (*idevice).0 };
 
     // Run the get_type method in the runtime
-    let result = RUNTIME.block_on(async { dev.get_type().await });
+    let result = run_sync(async { dev.get_type().await });
 
     match result {
         Ok(type_str) => match CString::new(type_str) {
@@ -281,7 +314,7 @@ pub unsafe extern "C" fn idevice_rsd_checkin(idevice: *mut IdeviceHandle) -> *mu
     let dev = unsafe { &mut (*idevice).0 };
 
     // Run the rsd_checkin method in the runtime
-    let result = RUNTIME.block_on(async { dev.rsd_checkin().await });
+    let result = run_sync(async { dev.rsd_checkin().await });
 
     match result {
         Ok(_) => null_mut(),
@@ -317,7 +350,7 @@ pub unsafe extern "C" fn idevice_start_session(
     let pf = unsafe { &(*pairing_file).0 };
 
     // Run the start_session method in the runtime
-    let result = RUNTIME.block_on(async { dev.start_session(pf).await });
+    let result = run_sync(async { dev.start_session(pf).await });
 
     match result {
         Ok(_) => null_mut(),

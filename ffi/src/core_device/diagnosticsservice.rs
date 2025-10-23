@@ -11,7 +11,7 @@ use tracing::debug;
 
 use crate::core_device_proxy::AdapterHandle;
 use crate::rsd::RsdHandshakeHandle;
-use crate::{IdeviceFfiError, RUNTIME, ReadWriteOpaque, ffi_err};
+use crate::{IdeviceFfiError, ReadWriteOpaque, ffi_err, run_sync, run_sync_local};
 
 /// Opaque handle to an AppServiceClient
 pub struct DiagnosticsServiceHandle(pub DiagnostisServiceClient<Box<dyn ReadWrite>>);
@@ -43,7 +43,7 @@ pub unsafe extern "C" fn diagnostics_service_connect_rsd(
     }
 
     let res: Result<DiagnostisServiceClient<Box<dyn ReadWrite>>, IdeviceError> =
-        RUNTIME.block_on(async move {
+        run_sync_local(async move {
             let provider_ref = unsafe { &mut (*provider).0 };
             let handshake_ref = unsafe { &mut (*handshake).0 };
             debug!(
@@ -87,8 +87,8 @@ pub unsafe extern "C" fn diagnostics_service_new(
     }
 
     let socket = unsafe { Box::from_raw(socket) };
-    let res = RUNTIME
-        .block_on(async move { DiagnostisServiceClient::from_stream(socket.inner.unwrap()).await });
+    let res =
+        run_sync(async move { DiagnostisServiceClient::from_stream(socket.inner.unwrap()).await });
 
     match res {
         Ok(client) => {
@@ -134,7 +134,7 @@ pub unsafe extern "C" fn diagnostics_service_capture_sysdiagnose(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
     let handle = unsafe { &mut *handle };
-    let res = RUNTIME.block_on(async move { handle.0.capture_sysdiagnose(dry_run).await });
+    let res = run_sync_local(async move { handle.0.capture_sysdiagnose(dry_run).await });
     match res {
         Ok(res) => {
             let filename = CString::new(res.preferred_filename).unwrap();
@@ -172,7 +172,7 @@ pub unsafe extern "C" fn sysdiagnose_stream_next(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
     let handle = unsafe { &mut *handle };
-    let res = RUNTIME.block_on(async move { handle.0.next().await });
+    let res = run_sync_local(async move { handle.0.next().await });
     match res {
         Some(Ok(res)) => {
             let mut res = res.into_boxed_slice();

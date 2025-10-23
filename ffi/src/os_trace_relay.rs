@@ -5,7 +5,8 @@ use idevice::{
     IdeviceError, IdeviceService, os_trace_relay::OsTraceRelayClient, provider::IdeviceProvider,
 };
 
-use crate::{IdeviceFfiError, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
+use crate::run_sync_local;
+use crate::{IdeviceFfiError, ffi_err, provider::IdeviceProviderHandle};
 
 pub struct OsTraceRelayClientHandle(pub OsTraceRelayClient);
 pub struct OsTraceRelayReceiverHandle(pub idevice::os_trace_relay::OsTraceRelayReceiver);
@@ -50,7 +51,7 @@ pub unsafe extern "C" fn os_trace_relay_connect(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<OsTraceRelayClient, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<OsTraceRelayClient, IdeviceError> = run_sync_local(async move {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
         OsTraceRelayClient::connect(provider_ref).await
     });
@@ -114,7 +115,7 @@ pub unsafe extern "C" fn os_trace_relay_start_trace(
 
     let client_owned = unsafe { Box::from_raw(client) };
 
-    let res = RUNTIME.block_on(async { client_owned.0.start_trace(pid_option).await });
+    let res = run_sync_local(async { client_owned.0.start_trace(pid_option).await });
 
     match res {
         Ok(relay) => {
@@ -158,7 +159,7 @@ pub unsafe extern "C" fn os_trace_relay_get_pid_list(
     client: *mut OsTraceRelayClientHandle,
     list: *mut *mut Vec<u64>,
 ) -> *mut IdeviceFfiError {
-    let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.get_pid_list().await });
+    let res = run_sync_local(async { unsafe { &mut *client }.0.get_pid_list().await });
 
     match res {
         Ok(r) => {
@@ -190,7 +191,7 @@ pub unsafe extern "C" fn os_trace_relay_next(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.next().await });
+    let res = run_sync_local(async { unsafe { &mut *client }.0.next().await });
 
     match res {
         Ok(r) => {

@@ -7,7 +7,7 @@ use idevice::tcp::handle::StreamHandle;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::core_device_proxy::AdapterHandle;
-use crate::{IdeviceFfiError, RUNTIME, ReadWriteOpaque, ffi_err};
+use crate::{IdeviceFfiError, ReadWriteOpaque, ffi_err, run_sync};
 
 pub struct AdapterStreamHandle(pub StreamHandle);
 
@@ -36,7 +36,7 @@ pub unsafe extern "C" fn adapter_connect(
     }
 
     let adapter = unsafe { &mut (*adapter_handle).0 };
-    let res = RUNTIME.block_on(async move { adapter.connect(port).await });
+    let res = run_sync(async move { adapter.connect(port).await });
 
     match res {
         Ok(r) => {
@@ -81,7 +81,7 @@ pub unsafe extern "C" fn adapter_pcap(
         Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
     };
 
-    let res = RUNTIME.block_on(async move { adapter.pcap(path_str).await });
+    let res = run_sync(async move { adapter.pcap(path_str).await });
 
     match res {
         Ok(_) => null_mut(),
@@ -111,7 +111,7 @@ pub unsafe extern "C" fn adapter_stream_close(
     }
 
     let adapter = unsafe { &mut (*handle).0 };
-    RUNTIME.block_on(async move { adapter.close() });
+    run_sync(async move { adapter.close() });
 
     null_mut()
 }
@@ -133,7 +133,7 @@ pub unsafe extern "C" fn adapter_close(handle: *mut AdapterHandle) -> *mut Idevi
     }
 
     let adapter = unsafe { &mut (*handle).0 };
-    RUNTIME.block_on(async move { adapter.close().await.ok() });
+    run_sync(async move { adapter.close().await.ok() });
 
     null_mut()
 }
@@ -164,7 +164,7 @@ pub unsafe extern "C" fn adapter_send(
     let adapter = unsafe { &mut (*handle).0 };
     let data_slice = unsafe { std::slice::from_raw_parts(data, length) };
 
-    let res = RUNTIME.block_on(async move { adapter.write_all(data_slice).await });
+    let res = run_sync(async move { adapter.write_all(data_slice).await });
 
     match res {
         Ok(_) => null_mut(),
@@ -202,7 +202,7 @@ pub unsafe extern "C" fn adapter_recv(
     }
 
     let adapter = unsafe { &mut (*handle).0 };
-    let res: Result<Vec<u8>, std::io::Error> = RUNTIME.block_on(async move {
+    let res: Result<Vec<u8>, std::io::Error> = run_sync(async move {
         let mut buf = [0; 2048];
         let res = adapter.read(&mut buf).await?;
         Ok(buf[..res].to_vec())

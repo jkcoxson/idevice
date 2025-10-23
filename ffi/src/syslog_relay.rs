@@ -4,7 +4,7 @@ use idevice::{
     IdeviceError, IdeviceService, provider::IdeviceProvider, syslog_relay::SyslogRelayClient,
 };
 
-use crate::{IdeviceFfiError, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
+use crate::{IdeviceFfiError, ffi_err, provider::IdeviceProviderHandle, run_sync_local};
 
 pub struct SyslogRelayClientHandle(pub SyslogRelayClient);
 
@@ -27,7 +27,7 @@ pub unsafe extern "C" fn syslog_relay_connect_tcp(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<SyslogRelayClient, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<SyslogRelayClient, IdeviceError> = run_sync_local(async move {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
         SyslogRelayClient::connect(provider_ref).await
     });
@@ -81,7 +81,7 @@ pub unsafe extern "C" fn syslog_relay_next(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.next().await });
+    let res = run_sync_local(async { unsafe { &mut *client }.0.next().await });
 
     match res {
         Ok(log) => {

@@ -4,7 +4,7 @@ use std::ptr::null_mut;
 
 use idevice::{ReadWrite, dvt::screenshot::ScreenshotClient};
 
-use crate::{IdeviceFfiError, RUNTIME, dvt::remote_server::RemoteServerHandle, ffi_err};
+use crate::{IdeviceFfiError, dvt::remote_server::RemoteServerHandle, ffi_err, run_sync};
 
 /// An opaque FFI handle for a [`ScreenshotClient`].
 ///
@@ -36,7 +36,7 @@ pub unsafe extern "C" fn screenshot_client_new(
     }
 
     let server = unsafe { &mut (*server).0 };
-    let res = RUNTIME.block_on(async move { ScreenshotClient::new(server).await });
+    let res = run_sync(async move { ScreenshotClient::new(server).await });
 
     match res {
         Ok(client) => {
@@ -96,7 +96,7 @@ pub unsafe extern "C" fn screenshot_client_take_screenshot(
     }
 
     let client = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move { client.take_screenshot().await });
+    let res = run_sync(async move { client.take_screenshot().await });
 
     match res {
         Ok(r) => {

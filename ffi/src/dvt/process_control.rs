@@ -8,7 +8,7 @@ use std::{
 use idevice::{ReadWrite, dvt::process_control::ProcessControlClient};
 use plist::{Dictionary, Value};
 
-use crate::{IdeviceFfiError, RUNTIME, dvt::remote_server::RemoteServerHandle, ffi_err};
+use crate::{IdeviceFfiError, dvt::remote_server::RemoteServerHandle, ffi_err, run_sync};
 
 /// Opaque handle to a ProcessControlClient
 pub struct ProcessControlHandle<'a>(pub ProcessControlClient<'a, Box<dyn ReadWrite>>);
@@ -35,7 +35,7 @@ pub unsafe extern "C" fn process_control_new(
     }
 
     let server = unsafe { &mut (*server).0 };
-    let res = RUNTIME.block_on(async move { ProcessControlClient::new(server).await });
+    let res = run_sync(async move { ProcessControlClient::new(server).await });
 
     match res {
         Ok(client) => {
@@ -128,7 +128,7 @@ pub unsafe extern "C" fn process_control_launch_app(
     }
 
     let client = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move {
+    let res = run_sync(async move {
         client
             .launch_app(
                 bundle_id,
@@ -170,7 +170,7 @@ pub unsafe extern "C" fn process_control_kill_app(
     }
 
     let client = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move { client.kill_app(pid).await });
+    let res = run_sync(async move { client.kill_app(pid).await });
 
     match res {
         Ok(_) => null_mut(),
@@ -199,7 +199,7 @@ pub unsafe extern "C" fn process_control_disable_memory_limit(
     }
 
     let client = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move { client.disable_memory_limit(pid).await });
+    let res = run_sync(async move { client.disable_memory_limit(pid).await });
 
     match res {
         Ok(_) => null_mut(),
