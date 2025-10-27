@@ -3,12 +3,13 @@
 use async_stream::try_stream;
 use futures::Stream;
 use http2::Setting;
-use log::debug;
+use tracing::debug;
 
 use crate::{IdeviceError, ReadWrite};
 
 mod format;
 mod http2;
+pub mod xpc_macro;
 
 use format::XPCFlag;
 pub use format::{Dictionary, XPCMessage, XPCObject};

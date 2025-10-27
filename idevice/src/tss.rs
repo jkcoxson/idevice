@@ -5,8 +5,8 @@
 //! - Apply restore request rules for device-specific parameters
 //! - Handle cryptographic signing operations
 
-use log::{debug, warn};
 use plist::Value;
+use tracing::{debug, warn};
 
 use crate::{IdeviceError, util::plist_to_xml_bytes};
 

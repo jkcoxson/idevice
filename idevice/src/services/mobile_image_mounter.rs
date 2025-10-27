@@ -7,7 +7,7 @@
 //!
 //! Handles the complete workflow from uploading images to mounting them with proper signatures.
 
-use log::debug;
+use tracing::debug;
 
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 use sha2::{Digest, Sha384};
@@ -145,7 +145,7 @@ impl ImageMounter {
         let image_size = match u64::try_from(image.len()) {
             Ok(i) => i,
             Err(e) => {
-                log::error!("Could not parse image size as u64: {e:?}");
+                tracing::error!("Could not parse image size as u64: {e:?}");
                 return Err(IdeviceError::UnexpectedResponse);
             }
         };
@@ -162,7 +162,7 @@ impl ImageMounter {
         match res.get("Status") {
             Some(plist::Value::String(s)) => {
                 if s.as_str() != "ReceiveBytesAck" {
-                    log::error!("Received bad response to SendBytes: {s:?}");
+                    tracing::error!("Received bad response to SendBytes: {s:?}");
                     return Err(IdeviceError::UnexpectedResponse);
                 }
             }
@@ -178,7 +178,7 @@ impl ImageMounter {
         match res.get("Status") {
             Some(plist::Value::String(s)) => {
                 if s.as_str() != "Complete" {
-                    log::error!("Image send failure: {s:?}");
+                    tracing::error!("Image send failure: {s:?}");
                     return Err(IdeviceError::UnexpectedResponse);
                 }
             }
@@ -221,7 +221,7 @@ impl ImageMounter {
         match res.get("Status") {
             Some(plist::Value::String(s)) => {
                 if s.as_str() != "Complete" {
-                    log::error!("Image send failure: {s:?}");
+                    tracing::error!("Image send failure: {s:?}");
                     return Err(IdeviceError::UnexpectedResponse);
                 }
             }
@@ -537,7 +537,7 @@ impl ImageMounter {
         build_manifest: &plist::Dictionary,
         unique_chip_id: u64,
     ) -> Result<Vec<u8>, IdeviceError> {
-        use log::{debug, warn};
+        use tracing::{debug, warn};
 
         let mut request = TSSRequest::new();
 

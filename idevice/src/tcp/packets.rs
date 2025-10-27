@@ -6,11 +6,11 @@ use std::{
     sync::Arc,
 };
 
-use log::debug;
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
     sync::Mutex,
 };
+use tracing::debug;
 
 pub enum ProtocolNumber {
     Tcp = 6,

@@ -4,7 +4,7 @@ use std::ptr::null_mut;
 
 use crate::core_device_proxy::AdapterHandle;
 use crate::rsd::RsdHandshakeHandle;
-use crate::{IdeviceFfiError, RUNTIME, ReadWriteOpaque, ffi_err};
+use crate::{IdeviceFfiError, ReadWriteOpaque, ffi_err, run_sync, run_sync_local};
 use idevice::dvt::remote_server::RemoteServerClient;
 use idevice::{IdeviceError, ReadWrite, RsdService};
 
@@ -37,7 +37,7 @@ pub unsafe extern "C" fn remote_server_new(
 
     let res: Result<RemoteServerClient<Box<dyn ReadWrite>>, IdeviceError> =
         match wrapper.inner.take() {
-            Some(stream) => RUNTIME.block_on(async move {
+            Some(stream) => run_sync(async move {
                 let mut client = RemoteServerClient::new(stream);
                 client.read_message(0).await?;
                 Ok(client)
@@ -77,7 +77,7 @@ pub unsafe extern "C" fn remote_server_connect_rsd(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
     let res: Result<RemoteServerClient<Box<dyn ReadWrite>>, IdeviceError> =
-        RUNTIME.block_on(async move {
+        run_sync_local(async move {
             let provider_ref = unsafe { &mut (*provider).0 };
             let handshake_ref = unsafe { &mut (*handshake).0 };
 

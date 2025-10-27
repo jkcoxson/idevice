@@ -6,7 +6,9 @@ use idevice::{
     IdeviceError, IdeviceService, heartbeat::HeartbeatClient, provider::IdeviceProvider,
 };
 
-use crate::{IdeviceFfiError, IdeviceHandle, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
+use crate::{
+    IdeviceFfiError, IdeviceHandle, ffi_err, provider::IdeviceProviderHandle, run_sync_local,
+};
 
 pub struct HeartbeatClientHandle(pub HeartbeatClient);
 
@@ -28,11 +30,11 @@ pub unsafe extern "C" fn heartbeat_connect(
     client: *mut *mut HeartbeatClientHandle,
 ) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<HeartbeatClient, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<HeartbeatClient, IdeviceError> = run_sync_local(async move {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
         // Connect using the reference
         HeartbeatClient::connect(provider_ref).await
@@ -95,7 +97,7 @@ pub unsafe extern "C" fn heartbeat_send_polo(
     if client.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.send_polo().await
     });
@@ -126,7 +128,7 @@ pub unsafe extern "C" fn heartbeat_get_marco(
     if client.is_null() || new_interval.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
-    let res: Result<u64, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<u64, IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.get_marco(interval).await
     });
@@ -150,7 +152,7 @@ pub unsafe extern "C" fn heartbeat_get_marco(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn heartbeat_client_free(handle: *mut HeartbeatClientHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing installation_proxy_client");
+        tracing::debug!("Freeing installation_proxy_client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }

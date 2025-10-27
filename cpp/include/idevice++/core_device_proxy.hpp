@@ -53,6 +53,14 @@ class Adapter {
         return Ok(ReadWrite::adopt(s));
     }
 
+    Result<void, FfiError> close() {
+        FfiError e(::adapter_close(handle_.get()));
+        if (e) {
+            return Err(e);
+        }
+        return Ok();
+    }
+
   private:
     explicit Adapter(AdapterHandle* h) noexcept : handle_(h) {}
     AdapterPtr handle_{};

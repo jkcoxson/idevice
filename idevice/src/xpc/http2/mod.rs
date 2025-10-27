@@ -1,9 +1,9 @@
 // Jackson Coxson
 
 use frame::HttpFrame;
-use log::{debug, warn};
 use std::collections::{HashMap, VecDeque};
 use tokio::io::AsyncWriteExt;
+use tracing::{debug, warn};
 
 use crate::{IdeviceError, ReadWrite};
 

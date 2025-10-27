@@ -32,6 +32,9 @@ using IdevicePtr = std::unique_ptr<IdeviceHandle, FnDeleter<IdeviceHandle, idevi
 class Idevice {
   public:
     static Result<Idevice, FfiError> create(IdeviceSocketHandle* socket, const std::string& label);
+#if defined(__unix__) || defined(__APPLE__)
+    static Result<Idevice, FfiError> from_fd(int fd, const std::string& label);
+#endif
 
     static Result<Idevice, FfiError>
     create_tcp(const sockaddr* addr, socklen_t addr_len, const std::string& label);

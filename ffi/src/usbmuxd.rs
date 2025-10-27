@@ -2,22 +2,27 @@
 
 use std::{
     ffi::{CStr, CString, c_char},
+    pin::Pin,
     ptr::null_mut,
 };
 
 use crate::{
-    IdeviceFfiError, IdeviceHandle, IdevicePairingFile, RUNTIME, ffi_err,
+    IdeviceFfiError, IdeviceHandle, IdevicePairingFile, ffi_err, run_sync, run_sync_local,
     util::{SockAddr, c_socket_to_rust, idevice_sockaddr, idevice_socklen_t},
 };
+use futures::{Stream, StreamExt};
 use idevice::{
     IdeviceError,
-    usbmuxd::{UsbmuxdAddr, UsbmuxdConnection, UsbmuxdDevice},
+    usbmuxd::{UsbmuxdAddr, UsbmuxdConnection, UsbmuxdDevice, UsbmuxdListenEvent},
 };
-use log::error;
+use tracing::error;
 
 pub struct UsbmuxdConnectionHandle(pub UsbmuxdConnection);
 pub struct UsbmuxdAddrHandle(pub UsbmuxdAddr);
 pub struct UsbmuxdDeviceHandle(pub UsbmuxdDevice);
+pub struct UsbmuxdListenerHandle<'a>(
+    Pin<Box<dyn Stream<Item = Result<UsbmuxdListenEvent, IdeviceError>> + 'a>>,
+);
 
 /// Connects to a usbmuxd instance over TCP
 ///
@@ -52,7 +57,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_tcp_connection(
         Err(e) => return ffi_err!(e),
     };
 
-    let res = RUNTIME.block_on(async move {
+    let res = run_sync(async move {
         let stream = tokio::net::TcpStream::connect(addr).await?;
         Ok::<_, IdeviceError>(UsbmuxdConnection::new(Box::new(stream), tag))
     });
@@ -91,7 +96,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_unix_socket_connection(
         Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
-    let res: Result<UsbmuxdConnection, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<UsbmuxdConnection, IdeviceError> = run_sync(async move {
         let stream = tokio::net::UnixStream::connect(addr).await?;
         Ok(UsbmuxdConnection::new(Box::new(stream), tag))
     });
@@ -127,13 +132,13 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_default_connection(
     let addr = match UsbmuxdAddr::from_env_var() {
         Ok(a) => a,
         Err(e) => {
-            log::error!("Invalid address set: {e:?}");
+            tracing::error!("Invalid address set: {e:?}");
             return ffi_err!(IdeviceError::FfiInvalidArg);
         }
     };
 
     let res: Result<UsbmuxdConnection, IdeviceError> =
-        RUNTIME.block_on(async move { addr.connect(tag).await });
+        run_sync(async move { addr.connect(tag).await });
 
     match res {
         Ok(r) => {
@@ -171,7 +176,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_get_devices(
     }
     let conn = unsafe { &mut (*usbmuxd_conn).0 };
 
-    let res = RUNTIME.block_on(async { conn.get_devices().await });
+    let res = run_sync(async { conn.get_devices().await });
 
     match res {
         Ok(device_vec) => {
@@ -239,7 +244,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_connect_to_device(
         }
     };
 
-    let res = RUNTIME.block_on(async move { conn.connect_to_device(device_id, port, label).await });
+    let res = run_sync(async move { conn.connect_to_device(device_id, port, label).await });
 
     match res {
         Ok(device_conn) => {
@@ -287,7 +292,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_get_pair_record(
         }
     };
 
-    let res = RUNTIME.block_on(async { conn.get_pair_record(udid_str).await });
+    let res = run_sync(async { conn.get_pair_record(udid_str).await });
 
     match res {
         Ok(pf) => {
@@ -298,6 +303,153 @@ pub unsafe extern "C" fn idevice_usbmuxd_get_pair_record(
             null_mut()
         }
         Err(e) => ffi_err!(e),
+    }
+}
+
+/// Saves the pairing record for a given device UDID.
+///
+/// # Arguments
+/// * `usbmuxd_conn` - A valid connection to usbmuxd.
+/// * `device_id` - The muxer ID for the device
+/// * `udid` - The UDID of the device.
+/// * `pair_record` - The bytes of the pairing record plist to save
+/// * `pair_record_len` - the length of the pairing record bytes
+///
+/// # Returns
+/// An `IdeviceFfiError` on error, `null` on success.
+///
+/// # Safety
+/// * `usbmuxd_conn` must be a valid pointer.
+/// * `udid` must be a valid, null-terminated C string.
+/// * `pair_record` must be a valid, non-null pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_usbmuxd_save_pair_record(
+    usbmuxd_conn: *mut UsbmuxdConnectionHandle,
+    device_id: u32,
+    udid: *const c_char,
+    pair_record: *mut u8,
+    pair_record_len: usize,
+) -> *mut IdeviceFfiError {
+    if usbmuxd_conn.is_null() || pair_record.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let conn = unsafe { &mut (*usbmuxd_conn).0 };
+    let pair_record =
+        unsafe { std::slice::from_raw_parts_mut(pair_record, pair_record_len) }.to_vec();
+
+    let udid_str = unsafe {
+        match CStr::from_ptr(udid).to_str() {
+            Ok(s) => s,
+            Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
+        }
+    };
+
+    let res = run_sync_local(async {
+        conn.save_pair_record(device_id, udid_str, pair_record)
+            .await
+    });
+
+    match res {
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Listens on the socket for connections and disconnections
+///
+/// # Safety
+/// Pass valid pointers. Free the stream with ``idevice_usbmuxd_listener_handle_free``.
+/// The stream must outlive the usbmuxd connection, and the usbmuxd connection cannot
+/// be used for other requests.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_usbmuxd_listen(
+    usbmuxd_conn: *mut UsbmuxdConnectionHandle,
+    stream_handle: *mut *mut UsbmuxdListenerHandle,
+) -> *mut IdeviceFfiError {
+    if usbmuxd_conn.is_null() || stream_handle.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let conn = unsafe { &mut (*usbmuxd_conn).0 };
+
+    let res = run_sync_local(async { conn.listen().await });
+
+    match res {
+        Ok(s) => {
+            unsafe { *stream_handle = Box::into_raw(Box::new(UsbmuxdListenerHandle(s))) };
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Frees a stream created by ``listen`` or does nothing on null
+///
+/// # Safety
+/// Pass a valid pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_usbmuxd_listener_handle_free(
+    stream_handle: *mut UsbmuxdListenerHandle,
+) {
+    if stream_handle.is_null() {
+        return;
+    }
+    let _ = unsafe { Box::from_raw(stream_handle) };
+}
+
+/// Gets the next event from the stream.
+/// Connect will be set to true if the event is a connection event,
+/// and the connection_device will be filled with the device information.
+/// If connection is false, the mux ID of the device will be filled.
+///
+/// # Arguments
+/// * `stream_handle` - The handle to the stream returned by listen
+/// * `connect` - The bool that will be set
+/// * `connection_device` - The pointer that will be filled on a connect event
+/// * `disconnection_id` - The mux ID that will be set on a disconnect event
+///
+/// # Safety
+/// Pass valid pointers
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_usbmuxd_listener_next(
+    stream_handle: *mut UsbmuxdListenerHandle,
+    connect: *mut bool,
+    connection_device: *mut *mut UsbmuxdDeviceHandle,
+    disconnection_id: *mut u32,
+) -> *mut IdeviceFfiError {
+    if stream_handle.is_null()
+        || connect.is_null()
+        || connection_device.is_null()
+        || disconnection_id.is_null()
+    {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let stream = unsafe { &mut (*stream_handle).0 };
+
+    let res = run_sync_local(async { stream.next().await });
+
+    match res {
+        Some(res) => match res {
+            Ok(s) => {
+                match s {
+                    UsbmuxdListenEvent::Connected(usbmuxd_device) => {
+                        unsafe { *connect = true };
+                        unsafe {
+                            *connection_device =
+                                Box::into_raw(Box::new(UsbmuxdDeviceHandle(usbmuxd_device)))
+                        };
+                    }
+                    UsbmuxdListenEvent::Disconnected(id) => unsafe { *disconnection_id = id },
+                }
+                null_mut()
+            }
+            Err(e) => ffi_err!(e),
+        },
+        None => {
+            ffi_err!(IdeviceError::Socket(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "end of stream"
+            )))
+        }
     }
 }
 
@@ -325,7 +477,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_get_buid(
     }
     let conn = unsafe { &mut (*usbmuxd_conn).0 };
 
-    let res = RUNTIME.block_on(async { conn.get_buid().await });
+    let res = run_sync(async { conn.get_buid().await });
 
     match res {
         Ok(buid_str) => match CString::new(buid_str) {

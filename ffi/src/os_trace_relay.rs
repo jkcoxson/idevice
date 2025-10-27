@@ -5,7 +5,8 @@ use idevice::{
     IdeviceError, IdeviceService, os_trace_relay::OsTraceRelayClient, provider::IdeviceProvider,
 };
 
-use crate::{IdeviceFfiError, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
+use crate::run_sync_local;
+use crate::{IdeviceFfiError, ffi_err, provider::IdeviceProviderHandle};
 
 pub struct OsTraceRelayClientHandle(pub OsTraceRelayClient);
 pub struct OsTraceRelayReceiverHandle(pub idevice::os_trace_relay::OsTraceRelayReceiver);
@@ -46,11 +47,11 @@ pub unsafe extern "C" fn os_trace_relay_connect(
     client: *mut *mut OsTraceRelayClientHandle,
 ) -> *mut IdeviceFfiError {
     if provider.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<OsTraceRelayClient, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<OsTraceRelayClient, IdeviceError> = run_sync_local(async move {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
         OsTraceRelayClient::connect(provider_ref).await
     });
@@ -78,7 +79,7 @@ pub unsafe extern "C" fn os_trace_relay_connect(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn os_trace_relay_free(handle: *mut OsTraceRelayClientHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing os trace relay client");
+        tracing::debug!("Freeing os trace relay client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }
@@ -102,7 +103,7 @@ pub unsafe extern "C" fn os_trace_relay_start_trace(
     pid: *const u32,
 ) -> *mut IdeviceFfiError {
     if receiver.is_null() || client.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
@@ -114,7 +115,7 @@ pub unsafe extern "C" fn os_trace_relay_start_trace(
 
     let client_owned = unsafe { Box::from_raw(client) };
 
-    let res = RUNTIME.block_on(async { client_owned.0.start_trace(pid_option).await });
+    let res = run_sync_local(async { client_owned.0.start_trace(pid_option).await });
 
     match res {
         Ok(relay) => {
@@ -137,7 +138,7 @@ pub unsafe extern "C" fn os_trace_relay_start_trace(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn os_trace_relay_receiver_free(handle: *mut OsTraceRelayReceiverHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing syslog relay client");
+        tracing::debug!("Freeing syslog relay client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }
@@ -158,7 +159,7 @@ pub unsafe extern "C" fn os_trace_relay_get_pid_list(
     client: *mut OsTraceRelayClientHandle,
     list: *mut *mut Vec<u64>,
 ) -> *mut IdeviceFfiError {
-    let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.get_pid_list().await });
+    let res = run_sync_local(async { unsafe { &mut *client }.0.get_pid_list().await });
 
     match res {
         Ok(r) => {
@@ -186,11 +187,11 @@ pub unsafe extern "C" fn os_trace_relay_next(
     log: *mut *mut OsTraceLog,
 ) -> *mut IdeviceFfiError {
     if client.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.next().await });
+    let res = run_sync_local(async { unsafe { &mut *client }.0.next().await });
 
     match res {
         Ok(r) => {

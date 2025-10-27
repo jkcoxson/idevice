@@ -27,43 +27,53 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\adapter_stream.cpp" />
-    <ClCompile Include="..\src\app_service.cpp" />
-    <ClCompile Include="..\src\core_device.cpp" />
-    <ClCompile Include="..\src\debug_proxy.cpp" />
-    <ClCompile Include="..\src\diagnosticsservice.cpp" />
-    <ClCompile Include="..\src\ffi.cpp" />
-    <ClCompile Include="..\src\idevice.cpp" />
-    <ClCompile Include="..\src\location_simulation.cpp" />
-    <ClCompile Include="..\src\lockdown.cpp" />
-    <ClCompile Include="..\src\pairing_file.cpp" />
-    <ClCompile Include="..\src\provider.cpp" />
-    <ClCompile Include="..\src\remote_server.cpp" />
-    <ClCompile Include="..\src\rsd.cpp" />
-    <ClCompile Include="..\src\tcp_callback_feeder.cpp" />
-    <ClCompile Include="..\src\usbmuxd.cpp" />
-  </ItemGroup>
-  <ItemGroup>
+    <ClInclude Include="..\..\ffi\idevice.h" />
     <ClInclude Include="..\include\idevice++\adapter_stream.hpp" />
     <ClInclude Include="..\include\idevice++\app_service.hpp" />
     <ClInclude Include="..\include\idevice++\bindings.hpp" />
     <ClInclude Include="..\include\idevice++\core_device_proxy.hpp" />
     <ClInclude Include="..\include\idevice++\debug_proxy.hpp" />
     <ClInclude Include="..\include\idevice++\diagnosticsservice.hpp" />
+    <ClInclude Include="..\include\idevice++\dvt\location_simulation.hpp" />
+    <ClInclude Include="..\include\idevice++\dvt\process_control.hpp" />
+    <ClInclude Include="..\include\idevice++\dvt\remote_server.hpp" />
+    <ClInclude Include="..\include\idevice++\dvt\screenshot.hpp" />
     <ClInclude Include="..\include\idevice++\ffi.hpp" />
+    <ClInclude Include="..\include\idevice++\heartbeat.hpp" />
     <ClInclude Include="..\include\idevice++\idevice.hpp" />
-    <ClInclude Include="..\include\idevice++\location_simulation.hpp" />
+    <ClInclude Include="..\include\idevice++\installation_proxy.hpp" />
     <ClInclude Include="..\include\idevice++\lockdown.hpp" />
+    <ClInclude Include="..\include\idevice++\mobile_image_mounter.hpp" />
     <ClInclude Include="..\include\idevice++\option.hpp" />
     <ClInclude Include="..\include\idevice++\pairing_file.hpp" />
     <ClInclude Include="..\include\idevice++\provider.hpp" />
     <ClInclude Include="..\include\idevice++\readwrite.hpp" />
-    <ClInclude Include="..\include\idevice++\remote_server.hpp" />
     <ClInclude Include="..\include\idevice++\result.hpp" />
     <ClInclude Include="..\include\idevice++\rsd.hpp" />
     <ClInclude Include="..\include\idevice++\tcp_object_stack.hpp" />
     <ClInclude Include="..\include\idevice++\usbmuxd.hpp" />
-    <ClInclude Include="..\..\ffi\idevice.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\adapter_stream.cpp" />
+    <ClCompile Include="..\src\app_service.cpp" />
+    <ClCompile Include="..\src\core_device.cpp" />
+    <ClCompile Include="..\src\debug_proxy.cpp" />
+    <ClCompile Include="..\src\diagnosticsservice.cpp" />
+    <ClCompile Include="..\src\dvt\location_simulation.cpp" />
+    <ClCompile Include="..\src\dvt\process_control.cpp" />
+    <ClCompile Include="..\src\dvt\remote_server.cpp" />
+    <ClCompile Include="..\src\dvt\screenshot.cpp" />
+    <ClCompile Include="..\src\ffi.cpp" />
+    <ClCompile Include="..\src\heartbeat.cpp" />
+    <ClCompile Include="..\src\idevice.cpp" />
+    <ClCompile Include="..\src\installation_proxy.cpp" />
+    <ClCompile Include="..\src\lockdown.cpp" />
+    <ClCompile Include="..\src\mobile_image_mounter.cpp" />
+    <ClCompile Include="..\src\pairing_file.cpp" />
+    <ClCompile Include="..\src\provider.cpp" />
+    <ClCompile Include="..\src\rsd.cpp" />
+    <ClCompile Include="..\src\tcp_callback_feeder.cpp" />
+    <ClCompile Include="..\src\usbmuxd.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>

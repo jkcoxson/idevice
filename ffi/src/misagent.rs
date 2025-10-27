@@ -6,7 +6,7 @@ use std::ptr::null_mut;
 
 use idevice::{IdeviceError, IdeviceService, misagent::MisagentClient, provider::IdeviceProvider};
 
-use crate::{IdeviceFfiError, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
+use crate::{IdeviceFfiError, ffi_err, provider::IdeviceProviderHandle, run_sync_local};
 
 pub struct MisagentClientHandle(pub MisagentClient);
 
@@ -28,11 +28,11 @@ pub unsafe extern "C" fn misagent_connect(
     client: *mut *mut MisagentClientHandle,
 ) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<MisagentClient, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<MisagentClient, IdeviceError> = run_sync_local(async move {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
         MisagentClient::connect(provider_ref).await
     });
@@ -72,7 +72,7 @@ pub unsafe extern "C" fn misagent_install(
 
     let profile = unsafe { std::slice::from_raw_parts(profile_data, profile_len) }.to_vec();
 
-    let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.install(profile).await });
+    let res = run_sync_local(async { unsafe { &mut *client }.0.install(profile).await });
 
     match res {
         Ok(_) => null_mut(),
@@ -105,7 +105,7 @@ pub unsafe extern "C" fn misagent_remove(
         .to_string_lossy()
         .into_owned();
 
-    let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.remove(&id).await });
+    let res = run_sync_local(async { unsafe { &mut *client }.0.remove(&id).await });
 
     match res {
         Ok(_) => null_mut(),
@@ -143,7 +143,7 @@ pub unsafe extern "C" fn misagent_copy_all(
     }
 
     let res: Result<Vec<Vec<u8>>, IdeviceError> =
-        RUNTIME.block_on(async { unsafe { &mut *client }.0.copy_all().await });
+        run_sync_local(async { unsafe { &mut *client }.0.copy_all().await });
 
     match res {
         Ok(profiles) => {
@@ -218,7 +218,7 @@ pub unsafe extern "C" fn misagent_free_profiles(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn misagent_client_free(handle: *mut MisagentClientHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing misagent_client");
+        tracing::debug!("Freeing misagent_client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }

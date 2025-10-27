@@ -7,7 +7,7 @@ use idevice::tcp::handle::StreamHandle;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::core_device_proxy::AdapterHandle;
-use crate::{IdeviceFfiError, RUNTIME, ReadWriteOpaque, ffi_err};
+use crate::{IdeviceFfiError, ReadWriteOpaque, ffi_err, run_sync};
 
 pub struct AdapterStreamHandle(pub StreamHandle);
 
@@ -36,7 +36,7 @@ pub unsafe extern "C" fn adapter_connect(
     }
 
     let adapter = unsafe { &mut (*adapter_handle).0 };
-    let res = RUNTIME.block_on(async move { adapter.connect(port).await });
+    let res = run_sync(async move { adapter.connect(port).await });
 
     match res {
         Ok(r) => {
@@ -47,7 +47,7 @@ pub unsafe extern "C" fn adapter_connect(
             null_mut()
         }
         Err(e) => {
-            log::error!("Adapter connect failed: {e}");
+            tracing::error!("Adapter connect failed: {e}");
             ffi_err!(e)
         }
     }
@@ -81,12 +81,12 @@ pub unsafe extern "C" fn adapter_pcap(
         Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
     };
 
-    let res = RUNTIME.block_on(async move { adapter.pcap(path_str).await });
+    let res = run_sync(async move { adapter.pcap(path_str).await });
 
     match res {
         Ok(_) => null_mut(),
         Err(e) => {
-            log::error!("Adapter pcap failed: {e}");
+            tracing::error!("Adapter pcap failed: {e}");
             ffi_err!(e)
         }
     }
@@ -103,13 +103,37 @@ pub unsafe extern "C" fn adapter_pcap(
 /// # Safety
 /// `handle` must be a valid pointer to a handle allocated by this library
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn adapter_close(handle: *mut AdapterStreamHandle) -> *mut IdeviceFfiError {
+pub unsafe extern "C" fn adapter_stream_close(
+    handle: *mut AdapterStreamHandle,
+) -> *mut IdeviceFfiError {
     if handle.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let adapter = unsafe { &mut (*handle).0 };
-    RUNTIME.block_on(async move { adapter.close() });
+    run_sync(async move { adapter.close() });
+
+    null_mut()
+}
+
+/// Stops the entire adapter TCP stack
+///
+/// # Arguments
+/// * [`handle`] - The adapter handle
+///
+/// # Returns
+/// Null on success, an IdeviceFfiError otherwise
+///
+/// # Safety
+/// `handle` must be a valid pointer to a handle allocated by this library
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn adapter_close(handle: *mut AdapterHandle) -> *mut IdeviceFfiError {
+    if handle.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let adapter = unsafe { &mut (*handle).0 };
+    run_sync(async move { adapter.close().await.ok() });
 
     null_mut()
 }
@@ -140,12 +164,12 @@ pub unsafe extern "C" fn adapter_send(
     let adapter = unsafe { &mut (*handle).0 };
     let data_slice = unsafe { std::slice::from_raw_parts(data, length) };
 
-    let res = RUNTIME.block_on(async move { adapter.write_all(data_slice).await });
+    let res = run_sync(async move { adapter.write_all(data_slice).await });
 
     match res {
         Ok(_) => null_mut(),
         Err(e) => {
-            log::error!("Adapter send failed: {e}");
+            tracing::error!("Adapter send failed: {e}");
             ffi_err!(e)
         }
     }
@@ -178,7 +202,7 @@ pub unsafe extern "C" fn adapter_recv(
     }
 
     let adapter = unsafe { &mut (*handle).0 };
-    let res: Result<Vec<u8>, std::io::Error> = RUNTIME.block_on(async move {
+    let res: Result<Vec<u8>, std::io::Error> = run_sync(async move {
         let mut buf = [0; 2048];
         let res = adapter.read(&mut buf).await?;
         Ok(buf[..res].to_vec())
@@ -199,7 +223,7 @@ pub unsafe extern "C" fn adapter_recv(
             null_mut()
         }
         Err(e) => {
-            log::error!("Adapter recv failed: {e}");
+            tracing::error!("Adapter recv failed: {e}");
             ffi_err!(e)
         }
     }

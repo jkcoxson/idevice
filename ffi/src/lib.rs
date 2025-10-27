@@ -12,13 +12,13 @@ pub mod core_device;
 pub mod core_device_proxy;
 #[cfg(feature = "debug_proxy")]
 pub mod debug_proxy;
+#[cfg(feature = "dvt")]
+pub mod dvt;
 mod errors;
 #[cfg(feature = "heartbeat")]
 pub mod heartbeat;
 #[cfg(feature = "installation_proxy")]
 pub mod installation_proxy;
-#[cfg(feature = "location_simulation")]
-pub mod location_simulation;
 pub mod lockdown;
 pub mod logging;
 #[cfg(feature = "misagent")]
@@ -28,11 +28,7 @@ pub mod mobile_image_mounter;
 #[cfg(feature = "syslog_relay")]
 pub mod os_trace_relay;
 mod pairing_file;
-#[cfg(feature = "dvt")]
-pub mod process_control;
 pub mod provider;
-#[cfg(feature = "dvt")]
-pub mod remote_server;
 #[cfg(feature = "xpc")]
 pub mod rsd;
 #[cfg(feature = "springboardservices")]
@@ -59,13 +55,46 @@ use tokio::runtime::{self, Runtime};
 #[cfg(unix)]
 use crate::util::{idevice_sockaddr, idevice_socklen_t};
 
-static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
+static GLOBAL_RUNTIME: Lazy<Runtime> = Lazy::new(|| {
     runtime::Builder::new_multi_thread()
         .enable_io()
         .enable_time()
         .build()
         .unwrap()
 });
+
+static LOCAL_RUNTIME: Lazy<Runtime> = Lazy::new(|| {
+    runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+});
+
+/// Spawn the future on the global runtime and block current (FFI) thread until result.
+/// F and R must be Send + 'static.
+pub fn run_sync<F, R>(fut: F) -> R
+where
+    F: std::future::Future<Output = R> + Send + 'static,
+    R: Send + 'static,
+{
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+
+    GLOBAL_RUNTIME.handle().spawn(async move {
+        let res = fut.await;
+        // best-effort send; ignore if receiver dropped
+        let _ = tx.send(res);
+    });
+
+    rx.recv().expect("runtime worker panicked")
+}
+
+pub fn run_sync_local<F, R>(fut: F) -> R
+where
+    F: std::future::Future<Output = R>,
+    R: 'static,
+{
+    LOCAL_RUNTIME.block_on(fut)
+}
 
 pub const LOCKDOWN_PORT: u16 = 62078;
 
@@ -126,6 +155,47 @@ pub unsafe extern "C" fn idevice_new(
     null_mut()
 }
 
+/// Creates an Idevice object from a socket file descriptor
+///
+/// # Safety
+/// The socket FD must be valid.
+/// The pointers must be valid and non-null.
+#[cfg(unix)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_from_fd(
+    fd: i32,
+    label: *const c_char,
+    idevice: *mut *mut IdeviceHandle,
+) -> *mut IdeviceFfiError {
+    if label.is_null() || idevice.is_null() || fd == 0 {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    // Get socket ownership
+    let fd = unsafe { libc::dup(fd) };
+    let socket = unsafe { <std::net::TcpStream as std::os::fd::FromRawFd>::from_raw_fd(fd) };
+    if let Err(e) = socket.set_nonblocking(true) {
+        return ffi_err!(e);
+    }
+    let socket = match run_sync(async move { tokio::net::TcpStream::from_std(socket) }) {
+        Ok(s) => s,
+        Err(e) => return ffi_err!(e),
+    };
+
+    // Convert C string to Rust string
+    let c_str = match unsafe { CStr::from_ptr(label).to_str() } {
+        Ok(s) => s,
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
+    };
+
+    // Create new Idevice instance
+    let dev = Idevice::new(Box::new(socket), c_str);
+    let boxed = Box::new(IdeviceHandle(dev));
+    unsafe { *idevice = Box::into_raw(boxed) };
+
+    null_mut()
+}
+
 /// Creates a new Idevice connection
 ///
 /// # Arguments
@@ -152,7 +222,7 @@ pub unsafe extern "C" fn idevice_new_tcp_socket(
     use crate::util::SockAddr;
 
     if addr.is_null() || label.is_null() || idevice.is_null() {
-        log::error!("null pointer(s) to idevice_new_tcp_socket");
+        tracing::error!("null pointer(s) to idevice_new_tcp_socket");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
     let addr = addr as *const SockAddr;
@@ -167,7 +237,7 @@ pub unsafe extern "C" fn idevice_new_tcp_socket(
         Err(e) => return ffi_err!(e),
     };
 
-    let device = RUNTIME.block_on(async move {
+    let device = run_sync(async move {
         let stream = tokio::net::TcpStream::connect(addr).await?;
         Ok::<idevice::Idevice, idevice::IdeviceError>(idevice::Idevice::new(
             Box::new(stream),
@@ -210,7 +280,7 @@ pub unsafe extern "C" fn idevice_get_type(
     let dev = unsafe { &mut (*idevice).0 };
 
     // Run the get_type method in the runtime
-    let result = RUNTIME.block_on(async { dev.get_type().await });
+    let result = run_sync(async { dev.get_type().await });
 
     match result {
         Ok(type_str) => match CString::new(type_str) {
@@ -244,7 +314,7 @@ pub unsafe extern "C" fn idevice_rsd_checkin(idevice: *mut IdeviceHandle) -> *mu
     let dev = unsafe { &mut (*idevice).0 };
 
     // Run the rsd_checkin method in the runtime
-    let result = RUNTIME.block_on(async { dev.rsd_checkin().await });
+    let result = run_sync(async { dev.rsd_checkin().await });
 
     match result {
         Ok(_) => null_mut(),
@@ -280,7 +350,7 @@ pub unsafe extern "C" fn idevice_start_session(
     let pf = unsafe { &(*pairing_file).0 };
 
     // Run the start_session method in the runtime
-    let result = RUNTIME.block_on(async { dev.start_session(pf).await });
+    let result = run_sync(async { dev.start_session(pf).await });
 
     match result {
         Ok(_) => null_mut(),

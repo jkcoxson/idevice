@@ -7,7 +7,7 @@ use std::ptr::{self, null_mut};
 
 use idevice::rsd::RsdHandshake;
 
-use crate::{IdeviceFfiError, RUNTIME, ReadWriteOpaque, ffi_err};
+use crate::{IdeviceFfiError, ReadWriteOpaque, ffi_err, run_sync};
 
 /// Opaque handle to an RsdHandshake
 #[derive(Clone)]
@@ -66,7 +66,7 @@ pub unsafe extern "C" fn rsd_handshake_new(
     let wrapper = unsafe { &mut *socket };
 
     let res = match wrapper.inner.take() {
-        Some(mut w) => RUNTIME.block_on(async move { RsdHandshake::new(w.as_mut()).await }),
+        Some(mut w) => run_sync(async move { RsdHandshake::new(w.as_mut()).await }),
         None => {
             return ffi_err!(IdeviceError::FfiInvalidArg);
         }

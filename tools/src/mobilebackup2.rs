@@ -15,7 +15,7 @@ mod common;
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     let matches = Command::new("mobilebackup2")
         .about("Mobile Backup 2 tool for iOS devices")

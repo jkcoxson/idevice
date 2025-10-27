@@ -10,7 +10,7 @@ mod common;
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
 
     let matches = Command::new("restore_service")
         .about("Interact with the Restore Service service")

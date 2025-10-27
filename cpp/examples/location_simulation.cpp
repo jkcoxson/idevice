@@ -6,11 +6,11 @@
 #include <thread>
 
 #include <idevice++/core_device_proxy.hpp>
+#include <idevice++/dvt/location_simulation.hpp>
+#include <idevice++/dvt/remote_server.hpp>
 #include <idevice++/ffi.hpp>
-#include <idevice++/location_simulation.hpp>
 #include <idevice++/provider.hpp>
 #include <idevice++/readwrite.hpp>
-#include <idevice++/remote_server.hpp>
 #include <idevice++/rsd.hpp>
 #include <idevice++/usbmuxd.hpp>
 

@@ -5,9 +5,9 @@
 
 use std::{collections::HashMap, net::SocketAddr};
 
-use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tracing::warn;
 
 use crate::IdeviceError;
 

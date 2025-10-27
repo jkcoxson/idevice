@@ -4,18 +4,21 @@
 //! connections to iOS devices over USB and network and pairing files
 
 use std::{
-    net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{AddrParseError, IpAddr, SocketAddr},
+    pin::Pin,
     str::FromStr,
 };
 
 #[cfg(not(unix))]
-use std::net::SocketAddrV4;
+use std::net::{Ipv4Addr, SocketAddrV4};
 
-use log::{debug, warn};
+use futures::Stream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tracing::{debug, warn};
 
 use crate::{
     Idevice, IdeviceError, ReadWrite, pairing_file::PairingFile, provider::UsbmuxdProvider,
+    usbmuxd::des::DeviceListResponse,
 };
 
 mod des;
@@ -41,6 +44,14 @@ pub struct UsbmuxdDevice {
     pub udid: String,
     /// usbmuxd-assigned device ID
     pub device_id: u32,
+}
+
+/// Listen events from the socket
+#[derive(Debug, Clone)]
+pub enum UsbmuxdListenEvent {
+    Connected(UsbmuxdDevice),
+    /// The mux ID
+    Disconnected(u32),
 }
 
 /// Active connection to the usbmuxd service
@@ -187,62 +198,11 @@ impl UsbmuxdConnection {
         let res = plist::to_value(&res)?;
         let res = plist::from_value::<des::ListDevicesResponse>(&res)?;
 
-        let mut devs = Vec::new();
-        for dev in res.device_list {
-            let connection_type = match dev.properties.connection_type.as_str() {
-                "Network" => {
-                    if let Some(addr) = dev.properties.network_address {
-                        let addr = &Into::<Vec<u8>>::into(addr);
-                        if addr.len() < 8 {
-                            warn!("Device address bytes len < 8");
-                            return Err(IdeviceError::UnexpectedResponse);
-                        }
-
-                        match addr[0] {
-                            0x02 => {
-                                // IPv4
-                                Connection::Network(IpAddr::V4(Ipv4Addr::new(
-                                    addr[4], addr[5], addr[6], addr[7],
-                                )))
-                            }
-                            0x1E => {
-                                // IPv6
-                                if addr.len() < 24 {
-                                    warn!("IPv6 address is less than 24 bytes");
-                                    return Err(IdeviceError::UnexpectedResponse);
-                                }
-
-                                Connection::Network(IpAddr::V6(Ipv6Addr::new(
-                                    u16::from_be_bytes([addr[8], addr[9]]),
-                                    u16::from_be_bytes([addr[10], addr[11]]),
-                                    u16::from_be_bytes([addr[12], addr[13]]),
-                                    u16::from_be_bytes([addr[14], addr[15]]),
-                                    u16::from_be_bytes([addr[16], addr[17]]),
-                                    u16::from_be_bytes([addr[18], addr[19]]),
-                                    u16::from_be_bytes([addr[20], addr[21]]),
-                                    u16::from_be_bytes([addr[22], addr[23]]),
-                                )))
-                            }
-                            _ => {
-                                warn!("Unknown IP address protocol: {:02X}", addr[0]);
-                                Connection::Unknown(format!("Network {:02X}", addr[0]))
-                            }
-                        }
-                    } else {
-                        warn!("Device is network attached, but has no network info");
-                        return Err(IdeviceError::UnexpectedResponse);
-                    }
-                }
-                "USB" => Connection::Usb,
-                _ => Connection::Unknown(dev.properties.connection_type),
-            };
-            debug!("Connection type: {connection_type:?}");
-            devs.push(UsbmuxdDevice {
-                connection_type,
-                udid: dev.properties.serial_number,
-                device_id: dev.device_id,
-            })
-        }
+        let devs = res
+            .device_list
+            .into_iter()
+            .flat_map(|x| x.into_usbmuxd_dev())
+            .collect::<Vec<UsbmuxdDevice>>();
 
         Ok(devs)
     }
@@ -358,6 +318,90 @@ impl UsbmuxdConnection {
         match res.get("Number").and_then(|x| x.as_unsigned_integer()) {
             Some(0) => Ok(()),
             _ => Err(IdeviceError::UnexpectedResponse),
+        }
+    }
+
+    pub async fn listen<'a>(
+        &'a mut self,
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<UsbmuxdListenEvent, IdeviceError>> + 'a>>,
+        IdeviceError,
+    > {
+        let req = crate::plist!(dict {
+            "MessageType": "Listen",
+        });
+        self.write_plist(req).await?;
+
+        // First, read the handshake response to confirm the "Listen" request was successful
+        let res = self.read_plist().await?;
+        match res.get("Number").and_then(|x| x.as_unsigned_integer()) {
+            Some(0) => {
+                // Success, now create the stream
+                let stream = futures::stream::try_unfold(self, |conn| async move {
+                    // This loop is to skip non-Attach/Detach messages
+                    loop {
+                        // Read the next packet. This will propagate IO errors.
+                        let msg = conn.read_plist().await?;
+
+                        if let Some(plist::Value::String(s)) = msg.get("MessageType") {
+                            match s.as_str() {
+                                "Attached" => {
+                                    if let Ok(props) = plist::from_value::<DeviceListResponse>(
+                                        &plist::Value::Dictionary(msg),
+                                    ) {
+                                        let dev: UsbmuxdDevice = match props.into_usbmuxd_dev() {
+                                            Ok(d) => d,
+                                            Err(e) => {
+                                                warn!(
+                                                    "Failed to convert props into usbmuxd device: {e:?}"
+                                                );
+                                                continue;
+                                            }
+                                        };
+
+                                        let res = UsbmuxdListenEvent::Connected(dev);
+
+                                        // Yield the device and the next state
+                                        return Ok(Some((res, conn)));
+                                    } else {
+                                        warn!(
+                                            "Received malformed message during listen (no device props and ID)"
+                                        );
+                                    }
+                                }
+                                "Detached" => {
+                                    // Log it and continue the loop to wait for the next message
+                                    if let Some(id) =
+                                        msg.get("DeviceID").and_then(|v| v.as_unsigned_integer())
+                                    {
+                                        let res = UsbmuxdListenEvent::Disconnected(id as u32);
+                                        return Ok(Some((res, conn)));
+                                    } else {
+                                        debug!("Device detached (unknown ID)");
+                                    }
+                                    // Continue loop
+                                }
+                                _ => {
+                                    // Unexpected message type, log and continue
+                                    warn!("Received unexpected message type during listen: {}", s);
+                                    // Continue loop
+                                }
+                            }
+                        } else {
+                            // Malformed message, log and continue
+                            warn!("Received malformed message during listen (no MessageType)");
+                            // Continue loop
+                        }
+                    }
+                });
+
+                // Box and Pin the stream
+                Ok(Box::pin(stream))
+            }
+            _ => {
+                // "Listen" request failed
+                Err(IdeviceError::UnexpectedResponse)
+            }
         }
     }
 

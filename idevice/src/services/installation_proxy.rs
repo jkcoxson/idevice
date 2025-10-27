@@ -5,8 +5,8 @@
 
 use std::collections::HashMap;
 
-use log::warn;
 use plist::Dictionary;
+use tracing::warn;
 
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 

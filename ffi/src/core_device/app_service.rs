@@ -9,7 +9,7 @@ use idevice::{IdeviceError, ReadWrite, RsdService};
 
 use crate::core_device_proxy::AdapterHandle;
 use crate::rsd::RsdHandshakeHandle;
-use crate::{IdeviceFfiError, RUNTIME, ReadWriteOpaque, ffi_err};
+use crate::{IdeviceFfiError, ReadWriteOpaque, ffi_err, run_sync, run_sync_local};
 
 /// Opaque handle to an AppServiceClient
 pub struct AppServiceHandle(pub AppServiceClient<Box<dyn ReadWrite>>);
@@ -91,7 +91,7 @@ pub unsafe extern "C" fn app_service_connect_rsd(
     }
 
     let res: Result<AppServiceClient<Box<dyn ReadWrite>>, IdeviceError> =
-        RUNTIME.block_on(async move {
+        run_sync_local(async move {
             let provider_ref = unsafe { &mut (*provider).0 };
             let handshake_ref = unsafe { &mut (*handshake).0 };
 
@@ -130,7 +130,7 @@ pub unsafe extern "C" fn app_service_new(
     }
 
     let socket = unsafe { Box::from_raw(socket) };
-    let res = RUNTIME.block_on(async move { AppServiceClient::new(socket.inner.unwrap()).await });
+    let res = run_sync(async move { AppServiceClient::new(socket.inner.unwrap()).await });
 
     match res {
         Ok(client) => {
@@ -186,7 +186,7 @@ pub unsafe extern "C" fn app_service_list_apps(
     }
 
     let client = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move {
+    let res = run_sync(async move {
         client
             .list_apps(
                 app_clips != 0,
@@ -347,7 +347,7 @@ pub unsafe extern "C" fn app_service_launch_app(
     };
 
     let client = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move {
+    let res = run_sync(async move {
         client
             .launch_application(
                 bundle_id_str,
@@ -430,7 +430,7 @@ pub unsafe extern "C" fn app_service_list_processes(
     }
 
     let client = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move { client.list_processes().await });
+    let res = run_sync(async move { client.list_processes().await });
 
     match res {
         Ok(process_list) => {
@@ -513,7 +513,7 @@ pub unsafe extern "C" fn app_service_uninstall_app(
     };
 
     let client = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move { client.uninstall_app(bundle_id_str).await });
+    let res = run_sync(async move { client.uninstall_app(bundle_id_str).await });
 
     match res {
         Ok(_) => null_mut(),
@@ -546,7 +546,7 @@ pub unsafe extern "C" fn app_service_send_signal(
     }
 
     let client = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move { client.send_signal(pid, signal).await });
+    let res = run_sync(async move { client.send_signal(pid, signal).await });
 
     match res {
         Ok(signal_response) => {
@@ -628,7 +628,7 @@ pub unsafe extern "C" fn app_service_fetch_app_icon(
     };
 
     let client = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move {
+    let res = run_sync(async move {
         client
             .fetch_app_icon(bundle_id_str, width, height, scale, allow_placeholder != 0)
             .await

@@ -4,7 +4,7 @@ use idevice::{
     IdeviceError, IdeviceService, provider::IdeviceProvider, syslog_relay::SyslogRelayClient,
 };
 
-use crate::{IdeviceFfiError, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
+use crate::{IdeviceFfiError, ffi_err, provider::IdeviceProviderHandle, run_sync_local};
 
 pub struct SyslogRelayClientHandle(pub SyslogRelayClient);
 
@@ -23,11 +23,11 @@ pub unsafe extern "C" fn syslog_relay_connect_tcp(
     client: *mut *mut SyslogRelayClientHandle,
 ) -> *mut IdeviceFfiError {
     if provider.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<SyslogRelayClient, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<SyslogRelayClient, IdeviceError> = run_sync_local(async move {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
         SyslogRelayClient::connect(provider_ref).await
     });
@@ -58,7 +58,7 @@ pub unsafe extern "C" fn syslog_relay_connect_tcp(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn syslog_relay_client_free(handle: *mut SyslogRelayClientHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing syslog relay client");
+        tracing::debug!("Freeing syslog relay client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }
@@ -81,7 +81,7 @@ pub unsafe extern "C" fn syslog_relay_next(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res = RUNTIME.block_on(async { unsafe { &mut *client }.0.next().await });
+    let res = run_sync_local(async { unsafe { &mut *client }.0.next().await });
 
     match res {
         Ok(log) => {
@@ -96,7 +96,7 @@ pub unsafe extern "C" fn syslog_relay_next(
                     null_mut()
                 }
                 Err(_) => {
-                    log::error!("Failed to convert log message to C string");
+                    tracing::error!("Failed to convert log message to C string");
                     ffi_err!(IdeviceError::FfiInvalidString)
                 }
             }

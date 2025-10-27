@@ -35,7 +35,7 @@ macro_rules! ffi_err {
 
         let err: IdeviceError = $err.into();
         let code = err.code();
-        let msg = CString::new(err.to_string())
+        let msg = CString::new(format!("{:?}", err))
             .unwrap_or_else(|_| CString::new("invalid error").unwrap());
         let raw_msg = msg.into_raw();
 

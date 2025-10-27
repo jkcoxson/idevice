@@ -3,8 +3,8 @@
 
 use std::collections::HashMap;
 
-use log::{debug, warn};
 use serde::Deserialize;
+use tracing::{debug, warn};
 
 use crate::{IdeviceError, ReadWrite, RemoteXpcClient, provider::RsdProvider};
 

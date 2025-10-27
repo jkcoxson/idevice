@@ -7,7 +7,7 @@ use std::{ffi::CStr, ptr::null_mut};
 
 use crate::util::{SockAddr, idevice_sockaddr};
 use crate::{IdeviceFfiError, ffi_err, usbmuxd::UsbmuxdAddrHandle, util};
-use crate::{IdevicePairingFile, RUNTIME};
+use crate::{IdevicePairingFile, run_sync};
 
 pub struct IdeviceProviderHandle(pub Box<dyn IdeviceProvider>);
 
@@ -70,7 +70,7 @@ pub unsafe extern "C" fn idevice_tcp_provider_new(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn idevice_provider_free(provider: *mut IdeviceProviderHandle) {
     if !provider.is_null() {
-        log::debug!("Freeing provider");
+        tracing::debug!("Freeing provider");
         unsafe { drop(Box::from_raw(provider)) };
     }
 }
@@ -109,7 +109,7 @@ pub unsafe extern "C" fn usbmuxd_provider_new(
     let udid = match unsafe { CStr::from_ptr(udid) }.to_str() {
         Ok(u) => u.to_string(),
         Err(e) => {
-            log::error!("Invalid UDID string: {e:?}");
+            tracing::error!("Invalid UDID string: {e:?}");
             return ffi_err!(IdeviceError::FfiInvalidString);
         }
     };
@@ -117,7 +117,7 @@ pub unsafe extern "C" fn usbmuxd_provider_new(
     let label = match unsafe { CStr::from_ptr(label) }.to_str() {
         Ok(l) => l.to_string(),
         Err(e) => {
-            log::error!("Invalid label string: {e:?}");
+            tracing::error!("Invalid label string: {e:?}");
             return ffi_err!(IdeviceError::FfiInvalidArg);
         }
     };
@@ -156,7 +156,7 @@ pub unsafe extern "C" fn idevice_provider_get_pairing_file(
 ) -> *mut IdeviceFfiError {
     let provider = unsafe { &mut *provider };
 
-    let res = RUNTIME.block_on(async move { provider.0.get_pairing_file().await });
+    let res = run_sync(async move { provider.0.get_pairing_file().await });
     match res {
         Ok(pf) => {
             let pf = Box::new(IdevicePairingFile(pf));

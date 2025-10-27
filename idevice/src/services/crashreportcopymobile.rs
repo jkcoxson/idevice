@@ -7,7 +7,7 @@
 //! function to trigger a flush of crash logs from system storage into the
 //! crash reports directory by connecting to the `com.apple.crashreportmover` service.
 
-use log::{debug, warn};
+use tracing::{debug, warn};
 
 use crate::{Idevice, IdeviceError, IdeviceService, afc::AfcClient, lockdown::LockdownClient, obf};
 

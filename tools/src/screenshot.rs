@@ -8,7 +8,7 @@ mod common;
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
     let matches = Command::new("screen_shot")
         .about("take screenshot")
         .arg(
@@ -66,6 +66,7 @@ async fn main() {
         };
 
     let res = if let Ok(proxy) = CoreDeviceProxy::connect(&*provider).await {
+        println!("Using DVT over CoreDeviceProxy");
         let rsd_port = proxy.handshake.server_rsd_port;
 
         let adapter = proxy.create_software_tunnel().expect("no software tunnel");
@@ -90,6 +91,7 @@ async fn main() {
             .await
             .expect("Failed to take screenshot")
     } else {
+        println!("Using screenshotr");
         let mut screenshot_client = match ScreenshotService::connect(&*provider).await {
             Ok(client) => client,
             Err(e) => {

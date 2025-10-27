@@ -3,7 +3,7 @@
 use std::pin::Pin;
 
 use futures::Stream;
-use log::warn;
+use tracing::warn;
 
 use crate::{IdeviceError, ReadWrite, RsdService, obf};
 

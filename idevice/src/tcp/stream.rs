@@ -2,8 +2,8 @@
 
 use std::{future::Future, task::Poll};
 
-use log::trace;
 use tokio::io::{AsyncRead, AsyncWrite};
+use tracing::trace;
 
 use crate::tcp::adapter::ConnectionStatus;
 

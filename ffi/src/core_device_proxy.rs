@@ -9,7 +9,10 @@ use idevice::{
     IdeviceError, IdeviceService, core_device_proxy::CoreDeviceProxy, provider::IdeviceProvider,
 };
 
-use crate::{IdeviceFfiError, IdeviceHandle, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
+use crate::{
+    IdeviceFfiError, IdeviceHandle, ffi_err, provider::IdeviceProviderHandle, run_sync,
+    run_sync_local,
+};
 
 pub struct CoreDeviceProxyHandle(pub CoreDeviceProxy);
 pub struct AdapterHandle(pub idevice::tcp::handle::AdapterHandle);
@@ -32,11 +35,11 @@ pub unsafe extern "C" fn core_device_proxy_connect(
     client: *mut *mut CoreDeviceProxyHandle,
 ) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<CoreDeviceProxy, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<CoreDeviceProxy, IdeviceError> = run_sync_local(async move {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
 
         // Connect using the reference
@@ -76,7 +79,7 @@ pub unsafe extern "C" fn core_device_proxy_new(
     }
     let socket = unsafe { Box::from_raw(socket) }.0;
     let r: Result<CoreDeviceProxy, IdeviceError> =
-        RUNTIME.block_on(async move { CoreDeviceProxy::new(socket).await });
+        run_sync(async move { CoreDeviceProxy::new(socket).await });
     match r {
         Ok(r) => {
             let boxed = Box::new(CoreDeviceProxyHandle(r));
@@ -113,7 +116,7 @@ pub unsafe extern "C" fn core_device_proxy_send(
     let proxy = unsafe { &mut (*handle).0 };
     let data_slice = unsafe { std::slice::from_raw_parts(data, length) };
 
-    let res = RUNTIME.block_on(async move { proxy.send(data_slice).await });
+    let res = run_sync(async move { proxy.send(data_slice).await });
 
     match res {
         Ok(_) => null_mut(),
@@ -149,7 +152,7 @@ pub unsafe extern "C" fn core_device_proxy_recv(
 
     let proxy = unsafe { &mut (*handle).0 };
 
-    let res = RUNTIME.block_on(async move { proxy.recv().await });
+    let res = run_sync(async move { proxy.recv().await });
 
     match res {
         Ok(received_data) => {
@@ -192,7 +195,7 @@ pub unsafe extern "C" fn core_device_proxy_get_client_parameters(
     netmask: *mut *mut c_char,
 ) -> *mut IdeviceFfiError {
     if handle.is_null() {
-        log::error!("Passed null handle");
+        tracing::error!("Passed null handle");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
@@ -312,7 +315,7 @@ pub unsafe extern "C" fn core_device_proxy_create_tcp_adapter(
     match result {
         Ok(adapter_obj) => {
             // We have to run this in the RUNTIME since we're spawning a new thread
-            let adapter_handle = RUNTIME.block_on(async move { adapter_obj.to_async_handle() });
+            let adapter_handle = run_sync(async move { adapter_obj.to_async_handle() });
 
             let boxed = Box::new(AdapterHandle(adapter_handle));
             unsafe { *adapter = Box::into_raw(boxed) };
@@ -333,7 +336,7 @@ pub unsafe extern "C" fn core_device_proxy_create_tcp_adapter(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn core_device_proxy_free(handle: *mut CoreDeviceProxyHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing core_device_proxy");
+        tracing::debug!("Freeing core_device_proxy");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }
@@ -349,7 +352,7 @@ pub unsafe extern "C" fn core_device_proxy_free(handle: *mut CoreDeviceProxyHand
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn adapter_free(handle: *mut AdapterHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing adapter");
+        tracing::debug!("Freeing adapter");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }

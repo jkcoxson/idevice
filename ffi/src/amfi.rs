@@ -4,7 +4,9 @@ use std::ptr::null_mut;
 
 use idevice::{IdeviceError, IdeviceService, amfi::AmfiClient, provider::IdeviceProvider};
 
-use crate::{IdeviceFfiError, IdeviceHandle, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
+use crate::{
+    IdeviceFfiError, IdeviceHandle, ffi_err, provider::IdeviceProviderHandle, run_sync_local,
+};
 
 pub struct AmfiClientHandle(pub AmfiClient);
 
@@ -26,11 +28,11 @@ pub unsafe extern "C" fn amfi_connect(
     client: *mut *mut AmfiClientHandle,
 ) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<AmfiClient, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<AmfiClient, IdeviceError> = run_sync_local(async move {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
 
         // Connect using the reference
@@ -94,7 +96,7 @@ pub unsafe extern "C" fn amfi_reveal_developer_mode_option_in_ui(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.reveal_developer_mode_option_in_ui().await
     });
@@ -122,7 +124,7 @@ pub unsafe extern "C" fn amfi_enable_developer_mode(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.enable_developer_mode().await
     });
@@ -150,7 +152,7 @@ pub unsafe extern "C" fn amfi_accept_developer_mode(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.accept_developer_mode().await
     });
@@ -171,7 +173,7 @@ pub unsafe extern "C" fn amfi_accept_developer_mode(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn amfi_client_free(handle: *mut AmfiClientHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing AmfiClient handle");
+        tracing::debug!("Freeing AmfiClient handle");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }

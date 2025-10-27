@@ -8,7 +8,9 @@ use idevice::{
 use plist::Value;
 use plist_ffi::{PlistWrapper, plist_t};
 
-use crate::{IdeviceFfiError, IdeviceHandle, RUNTIME, ffi_err, provider::IdeviceProviderHandle};
+use crate::{
+    IdeviceFfiError, IdeviceHandle, ffi_err, provider::IdeviceProviderHandle, run_sync_local,
+};
 
 pub struct ImageMounterHandle(pub ImageMounter);
 
@@ -30,11 +32,11 @@ pub unsafe extern "C" fn image_mounter_connect(
     client: *mut *mut ImageMounterHandle,
 ) -> *mut IdeviceFfiError {
     if provider.is_null() || client.is_null() {
-        log::error!("Null pointer provided");
+        tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<ImageMounter, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<ImageMounter, IdeviceError> = run_sync_local(async move {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
         ImageMounter::connect(provider_ref).await
     });
@@ -90,7 +92,7 @@ pub unsafe extern "C" fn image_mounter_new(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn image_mounter_free(handle: *mut ImageMounterHandle) {
     if !handle.is_null() {
-        log::debug!("Freeing image_mounter_client");
+        tracing::debug!("Freeing image_mounter_client");
         let _ = unsafe { Box::from_raw(handle) };
     }
 }
@@ -114,7 +116,7 @@ pub unsafe extern "C" fn image_mounter_copy_devices(
     devices: *mut *mut plist_t,
     devices_len: *mut libc::size_t,
 ) -> *mut IdeviceFfiError {
-    let res: Result<Vec<Value>, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<Vec<Value>, IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.copy_devices().await
     });
@@ -171,7 +173,7 @@ pub unsafe extern "C" fn image_mounter_lookup_image(
         Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
-    let res: Result<Vec<u8>, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<Vec<u8>, IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.lookup_image(image_type).await
     });
@@ -228,7 +230,7 @@ pub unsafe extern "C" fn image_mounter_upload_image(
     let image_slice = unsafe { std::slice::from_raw_parts(image, image_len) };
     let signature_slice = unsafe { std::slice::from_raw_parts(signature, signature_len) };
 
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref
             .upload_image(image_type, image_slice, signature_slice.to_vec())
@@ -295,7 +297,7 @@ pub unsafe extern "C" fn image_mounter_mount_image(
         None
     };
 
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref
             .mount_image(
@@ -340,7 +342,7 @@ pub unsafe extern "C" fn image_mounter_unmount_image(
         Err(_) => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.unmount_image(mount_path).await
     });
@@ -372,7 +374,7 @@ pub unsafe extern "C" fn image_mounter_query_developer_mode_status(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let res: Result<bool, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<bool, IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.query_developer_mode_status().await
     });
@@ -415,7 +417,7 @@ pub unsafe extern "C" fn image_mounter_mount_developer(
     let image_slice = unsafe { std::slice::from_raw_parts(image, image_len) };
     let signature_slice = unsafe { std::slice::from_raw_parts(signature, signature_len) };
 
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref
             .mount_developer(image_slice, signature_slice.to_vec())
@@ -465,7 +467,7 @@ pub unsafe extern "C" fn image_mounter_query_personalization_manifest(
 
     let signature_slice = unsafe { std::slice::from_raw_parts(signature, signature_len) };
 
-    let res: Result<Vec<u8>, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<Vec<u8>, IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref
             .query_personalization_manifest(image_type, signature_slice.to_vec())
@@ -521,7 +523,7 @@ pub unsafe extern "C" fn image_mounter_query_nonce(
         None
     };
 
-    let res: Result<Vec<u8>, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<Vec<u8>, IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.query_nonce(image_type).await
     });
@@ -573,7 +575,7 @@ pub unsafe extern "C" fn image_mounter_query_personalization_identifiers(
         None
     };
 
-    let res: Result<plist::Dictionary, IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<plist::Dictionary, IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref
             .query_personalization_identifiers(image_type)
@@ -604,7 +606,7 @@ pub unsafe extern "C" fn image_mounter_query_personalization_identifiers(
 pub unsafe extern "C" fn image_mounter_roll_personalization_nonce(
     client: *mut ImageMounterHandle,
 ) -> *mut IdeviceFfiError {
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.roll_personalization_nonce().await
     });
@@ -629,7 +631,7 @@ pub unsafe extern "C" fn image_mounter_roll_personalization_nonce(
 pub unsafe extern "C" fn image_mounter_roll_cryptex_nonce(
     client: *mut ImageMounterHandle,
 ) -> *mut IdeviceFfiError {
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         client_ref.roll_cryptex_nonce().await
     });
@@ -692,7 +694,7 @@ pub unsafe extern "C" fn image_mounter_mount_personalized(
         None
     };
 
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
         client_ref
@@ -769,7 +771,7 @@ pub unsafe extern "C" fn image_mounter_mount_personalized_with_callback(
         None
     };
 
-    let res: Result<(), IdeviceError> = RUNTIME.block_on(async move {
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
 

@@ -61,7 +61,7 @@
 use plist::Value;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
-use crate::IdeviceError;
+use crate::{IdeviceError, pretty_print_plist};
 
 /// Message header containing metadata about the message
 ///
@@ -141,7 +141,7 @@ pub enum AuxValue {
 }
 
 /// Complete protocol message
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub struct Message {
     /// Message metadata header
     pub message_header: MessageHeader,
@@ -523,5 +523,16 @@ impl std::fmt::Debug for AuxValue {
             AuxValue::U32(n) => write!(f, "U32({n})"),
             AuxValue::I64(n) => write!(f, "I64({n})"),
         }
+    }
+}
+
+impl std::fmt::Debug for Message {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Message")
+            .field("message_header", &self.message_header)
+            .field("payload_header", &self.payload_header)
+            .field("aux", &self.aux)
+            .field("data", &self.data.as_ref().map(pretty_print_plist))
+            .finish()
     }
 }

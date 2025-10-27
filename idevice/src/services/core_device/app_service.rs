@@ -1,7 +1,7 @@
 // Jackson Coxson
 
-use log::warn;
 use serde::Deserialize;
+use tracing::warn;
 
 use crate::{IdeviceError, ReadWrite, RsdService, obf, xpc::XPCObject};
 

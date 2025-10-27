@@ -5,8 +5,8 @@ use std::{
 };
 
 use indexmap::IndexMap;
-use log::{debug, warn};
 use serde::{Deserialize, Serialize};
+use tracing::{debug, warn};
 
 use crate::IdeviceError;
 
@@ -15,6 +15,7 @@ use crate::IdeviceError;
 pub enum XPCFlag {
     AlwaysSet,
     DataFlag,
+    Reply,
     WantingReply,
     InitHandshake,
 
@@ -29,6 +30,7 @@ impl From<XPCFlag> for u32 {
         match value {
             XPCFlag::AlwaysSet => 0x00000001,
             XPCFlag::DataFlag => 0x00000100,
+            XPCFlag::Reply => 0x00020000,
             XPCFlag::WantingReply => 0x00010000,
             XPCFlag::InitHandshake => 0x00400000,
             XPCFlag::FileTxStreamRequest => 0x00100000,
@@ -60,6 +62,7 @@ impl PartialEq for XPCFlag {
 
 #[repr(u32)]
 pub enum XPCType {
+    Null = 0x00001000,
     Bool = 0x00002000,
     Dictionary = 0x0000f000,
     Array = 0x0000e000,
@@ -81,6 +84,7 @@ impl TryFrom<u32> for XPCType {
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
+            0x00001000 => Ok(Self::Null),
             0x00002000 => Ok(Self::Bool),
             0x0000f000 => Ok(Self::Dictionary),
             0x0000e000 => Ok(Self::Array),
@@ -99,8 +103,9 @@ impl TryFrom<u32> for XPCType {
 
 pub type Dictionary = IndexMap<String, XPCObject>;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum XPCObject {
+    Null,
     Bool(bool),
     Dictionary(Dictionary),
     Array(Vec<XPCObject>),
@@ -146,6 +151,7 @@ impl From<plist::Value> for XPCObject {
 impl XPCObject {
     pub fn to_plist(&self) -> plist::Value {
         match self {
+            Self::Null => plist::Value::String("".into()),
             Self::Bool(v) => plist::Value::Boolean(*v),
             Self::Uuid(uuid) => plist::Value::String(uuid.to_string()),
             Self::Double(f) => plist::Value::Real(*f),
@@ -181,6 +187,7 @@ impl XPCObject {
 
     fn encode_object(&self, buf: &mut Vec<u8>) -> Result<(), IdeviceError> {
         match self {
+            XPCObject::Null => buf.extend_from_slice(&(XPCType::Null as u32).to_le_bytes()),
             XPCObject::Bool(val) => {
                 buf.extend_from_slice(&(XPCType::Bool as u32).to_le_bytes());
                 buf.push(if *val { 1 } else { 0 });
@@ -288,6 +295,7 @@ impl XPCObject {
         let xpc_type = u32::from_le_bytes(buf_32);
         let xpc_type: XPCType = xpc_type.try_into()?;
         match xpc_type {
+            XPCType::Null => Ok(XPCObject::Null),
             XPCType::Dictionary => {
                 let mut ret = IndexMap::new();
 
@@ -559,12 +567,15 @@ impl std::fmt::Debug for XPCMessage {
         if self.flags & 0x00010000 != 0 {
             parts.push("WantingReply".to_string());
         }
+        if self.flags & 0x00020000 != 0 {
+            parts.push("Reply".to_string());
+        }
         if self.flags & 0x00400000 != 0 {
             parts.push("InitHandshake".to_string());
         }
 
         // Check for any unknown bits (not covered by known flags)
-        let known_mask = 0x00000001 | 0x00000100 | 0x00010000 | 0x00400000;
+        let known_mask = 0x00000001 | 0x00000100 | 0x00010000 | 0x00020000 | 0x00400000;
         let custom_bits = self.flags & !known_mask;
         if custom_bits != 0 {
             parts.push(format!("Custom(0x{custom_bits:08X})"));

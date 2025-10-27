@@ -3,7 +3,7 @@
 //! Provides functionality for interacting with the misagent service on iOS devices,
 //! which manages provisioning profiles and certificates.
 
-use log::warn;
+use tracing::warn;
 
 use crate::{Idevice, IdeviceError, IdeviceService, RsdService, obf};
 

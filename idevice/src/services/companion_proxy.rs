@@ -1,6 +1,6 @@
 //! Companion Proxy is Apple's bridge to connect to the Apple Watch
 
-use log::warn;
+use tracing::warn;
 
 use crate::{Idevice, IdeviceError, IdeviceService, RsdService, obf};
 

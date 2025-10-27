@@ -9,7 +9,7 @@ use idevice::{IdeviceError, ReadWrite, RsdService};
 
 use crate::core_device_proxy::AdapterHandle;
 use crate::rsd::RsdHandshakeHandle;
-use crate::{IdeviceFfiError, RUNTIME, ReadWriteOpaque, ffi_err};
+use crate::{IdeviceFfiError, ReadWriteOpaque, ffi_err, run_sync, run_sync_local};
 
 /// Opaque handle to a DebugProxyClient
 pub struct DebugProxyHandle(pub DebugProxyClient<Box<dyn ReadWrite>>);
@@ -136,7 +136,7 @@ pub unsafe extern "C" fn debug_proxy_connect_rsd(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
     let res: Result<DebugProxyClient<Box<dyn ReadWrite>>, IdeviceError> =
-        RUNTIME.block_on(async move {
+        run_sync_local(async move {
             let provider_ref = unsafe { &mut (*provider).0 };
             let handshake_ref = unsafe { &mut (*handshake).0 };
 
@@ -241,7 +241,7 @@ pub unsafe extern "C" fn debug_proxy_send_command(
         },
     };
 
-    let res = RUNTIME.block_on(async move { client.send_command(cmd).await });
+    let res = run_sync(async move { client.send_command(cmd).await });
 
     match res {
         Ok(Some(r)) => {
@@ -282,7 +282,7 @@ pub unsafe extern "C" fn debug_proxy_read_response(
     }
 
     let client = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move { client.read_response().await });
+    let res = run_sync(async move { client.read_response().await });
 
     match res {
         Ok(Some(r)) => {
@@ -326,7 +326,7 @@ pub unsafe extern "C" fn debug_proxy_send_raw(
 
     let client = unsafe { &mut (*handle).0 };
     let data_slice = unsafe { std::slice::from_raw_parts(data, len) };
-    let res = RUNTIME.block_on(async move { client.send_raw(data_slice).await });
+    let res = run_sync(async move { client.send_raw(data_slice).await });
 
     match res {
         Ok(_) => null_mut(),
@@ -358,7 +358,7 @@ pub unsafe extern "C" fn debug_proxy_read(
     }
 
     let client = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move { client.read(len).await });
+    let res = run_sync(async move { client.read(len).await });
 
     match res {
         Ok(r) => {
@@ -416,7 +416,7 @@ pub unsafe extern "C" fn debug_proxy_set_argv(
             .collect()
     };
 
-    let res = RUNTIME.block_on(async move { client.set_argv(argv_vec).await });
+    let res = run_sync(async move { client.set_argv(argv_vec).await });
 
     match res {
         Ok(r) => {
@@ -450,7 +450,7 @@ pub unsafe extern "C" fn debug_proxy_send_ack(
     }
 
     let client = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move { client.send_ack().await });
+    let res = run_sync(async move { client.send_ack().await });
 
     match res {
         Ok(_) => null_mut(),
@@ -477,7 +477,7 @@ pub unsafe extern "C" fn debug_proxy_send_nack(
     }
 
     let client = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move { client.send_noack().await });
+    let res = run_sync(async move { client.send_noack().await });
 
     match res {
         Ok(_) => null_mut(),

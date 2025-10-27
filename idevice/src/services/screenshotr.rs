@@ -4,9 +4,9 @@
 //! which allows taking screenshots.
 
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
-use log::{debug, warn};
 use std::borrow::Cow;
 use tokio::io::AsyncReadExt;
+use tracing::{debug, warn};
 pub struct ScreenshotService {
     /// Underlying device connection
     pub idevice: Idevice,

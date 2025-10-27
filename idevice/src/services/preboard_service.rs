@@ -44,11 +44,11 @@ impl PreboardServiceClient {
         let res = self.idevice.read_plist().await?;
         if let Some(res) = res.get("ShowDialog").and_then(|x| x.as_boolean()) {
             if !res {
-                log::warn!("ShowDialog is not true");
+                tracing::warn!("ShowDialog is not true");
                 return Err(IdeviceError::UnexpectedResponse);
             }
         } else {
-            log::warn!("No ShowDialog in response from service");
+            tracing::warn!("No ShowDialog in response from service");
             return Err(IdeviceError::UnexpectedResponse);
         }
 

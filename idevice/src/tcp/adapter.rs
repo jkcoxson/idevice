@@ -62,11 +62,11 @@
 
 use std::{collections::HashMap, io::ErrorKind, net::IpAddr, path::Path, sync::Arc};
 
-use log::{debug, trace, warn};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::Mutex,
 };
+use tracing::{debug, trace, warn};
 
 use crate::{ReadWrite, tcp::packets::IpParseError};
 

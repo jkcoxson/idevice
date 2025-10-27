@@ -8,12 +8,12 @@ use std::{collections::HashMap, path::PathBuf, sync::Mutex, task::Poll};
 
 use crossfire::{AsyncRx, MTx, Tx, mpsc, spsc, stream::AsyncStream};
 use futures::{StreamExt, stream::FuturesUnordered};
-use log::trace;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::oneshot,
     time::timeout,
 };
+use tracing::trace;
 
 use crate::tcp::adapter::ConnectionStatus;
 
@@ -38,6 +38,7 @@ enum HandleMessage {
         path: PathBuf,
         res: oneshot::Sender<Result<(), std::io::Error>>,
     },
+    Die,
 }
 
 #[derive(Debug)]
@@ -90,6 +91,9 @@ impl AdapterHandle {
                                     res
                                 } => {
                                     res.send(adapter.pcap(path).await).ok();
+                                },
+                                HandleMessage::Die => {
+                                    break;
                                 }
                             },
                             Err(_) => {
@@ -217,6 +221,16 @@ impl AdapterHandle {
                 "adapter closed",
             )),
         }
+    }
+
+    pub async fn close(&mut self) -> Result<(), std::io::Error> {
+        if self.sender.send(HandleMessage::Die).is_err() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NetworkUnreachable,
+                "adapter closed",
+            ));
+        }
+        Ok(())
     }
 }
 

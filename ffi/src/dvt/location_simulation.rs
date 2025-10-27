@@ -4,7 +4,7 @@ use std::ptr::null_mut;
 
 use idevice::{ReadWrite, dvt::location_simulation::LocationSimulationClient};
 
-use crate::{IdeviceFfiError, RUNTIME, ffi_err, remote_server::RemoteServerHandle};
+use crate::{IdeviceFfiError, dvt::remote_server::RemoteServerHandle, ffi_err, run_sync};
 
 /// Opaque handle to a ProcessControlClient
 pub struct LocationSimulationHandle<'a>(pub LocationSimulationClient<'a, Box<dyn ReadWrite>>);
@@ -31,7 +31,7 @@ pub unsafe extern "C" fn location_simulation_new(
     }
 
     let server = unsafe { &mut (*server).0 };
-    let res = RUNTIME.block_on(async move { LocationSimulationClient::new(server).await });
+    let res = run_sync(async move { LocationSimulationClient::new(server).await });
 
     match res {
         Ok(client) => {
@@ -76,7 +76,7 @@ pub unsafe extern "C" fn location_simulation_clear(
     }
 
     let client = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move { client.clear().await });
+    let res = run_sync(async move { client.clear().await });
 
     match res {
         Ok(_) => null_mut(),
@@ -107,7 +107,7 @@ pub unsafe extern "C" fn location_simulation_set(
     }
 
     let client = unsafe { &mut (*handle).0 };
-    let res = RUNTIME.block_on(async move { client.set(latitude, longitude).await });
+    let res = run_sync(async move { client.set(latitude, longitude).await });
 
     match res {
         Ok(_) => null_mut(),

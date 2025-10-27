@@ -138,11 +138,16 @@ path = "src/activation.rs"
 name = "notifications"
 path = "src/notifications.rs"
 
+
+[[bin]]
+name = "installcoordination_proxy"
+path = "src/installcoordination_proxy.rs"
+
 [dependencies]
 idevice = { path = "../idevice", features = ["full"], default-features = false }
 tokio = { version = "1.43", features = ["full"] }
-log = { version = "0.4" }
-env_logger = { version = "0.11" }
+tracing = { version = "0.1.41" }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # tun-rs = { version = "1.5", features = ["async"] }
 sha2 = { version = "0.10" }
 ureq = { version = "3" }
