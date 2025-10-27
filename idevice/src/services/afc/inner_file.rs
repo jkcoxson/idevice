@@ -201,6 +201,7 @@ impl InnerFileDescriptor<'_> {
             let this = self.as_mut().get_unchecked_mut() as *mut InnerFileDescriptor;
 
             let fut = Some(
+                // SAFETY: we already know that self is pinned
                 Pin::new_unchecked(&mut *this)
                     .read_n(buf_rem)
                     .map(|r| r.map(PendingResult::Bytes))
@@ -313,11 +314,13 @@ impl AsyncWrite for InnerFileDescriptor<'_> {
         let write_func = self.as_mut().get_or_init_write_fut(buf);
 
         match std::task::ready!(write_func.as_mut().poll(cx)) {
-            Ok(_) => self.as_mut().remove_pending_fut(),
+            Ok(PendingResult::Empty) => self.as_mut().remove_pending_fut(),
             Err(e) => {
                 println!("error: {e}");
                 return std::task::Poll::Ready(Err(std::io::Error::other(e.to_string())));
             }
+
+            _ => unreachable!("a non write future was stored, this shouldn't happen"),
         }
 
         std::task::Poll::Ready(Ok(buf.len()))
@@ -349,10 +352,8 @@ impl AsyncSeek for InnerFileDescriptor<'_> {
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<std::io::Result<u64>> {
-        let fut = if let Some(f) = self.as_mut().get_seek_fut() {
-            f
-        } else {
-            // tokio run the `poll_complete` before the `start_seek` to ensure no seek in progress
+        let Some(fut) = self.as_mut().get_seek_fut() else {
+            // tokio runs the `poll_complete` before the `start_seek` to ensure no previous seek is in progress
             return std::task::Poll::Ready(Ok(0));
         };
 
@@ -399,21 +400,57 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn write_and_read_large_file() {
+        let mut client = make_client().await;
+        let path = "/tmp/large_file.txt";
+        let data = vec![b'x'; 10_000_000]; // 10mb
+
+        {
+            let mut file = client.open(path, AfcFopenMode::WrOnly).await.unwrap();
+            file.write_all(&data).await.unwrap();
+        }
+
+        let mut file = client.open(path, AfcFopenMode::RdOnly).await.unwrap();
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).await.unwrap();
+        assert_eq!(buf.len(), data.len());
+
+        drop(file);
+        client.remove(path).await.unwrap();
+    }
+
+    #[should_panic]
+    #[tokio::test]
     async fn panic_safety() {
         let mut client = make_client().await;
-        let result = std::panic::AssertUnwindSafe(async {
-            client.list_dir("/invalid").await.unwrap();
-        })
-        .catch_unwind()
-        .await;
-        assert!(result.is_err()); // should panic safely
+        client.list_dir("/invalid").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn file_seek_and_append() {
+        let mut client = make_client().await;
+        let path = "/tmp/seek_append.txt";
+
+        let mut f = client.open(path, AfcFopenMode::WrOnly).await.unwrap();
+        f.write_all(b"start").await.unwrap();
+        f.seek(std::io::SeekFrom::Start(0)).await.unwrap();
+        f.write_all(b"over").await.unwrap();
+        drop(f);
+
+        let mut f = client.open(path, AfcFopenMode::RdOnly).await.unwrap();
+        let mut buf = Vec::new();
+        f.read_to_end(&mut buf).await.unwrap();
+        assert_eq!(&buf, b"overt"); // “over” overwrites start
+
+        drop(f);
+        client.remove(path).await.unwrap();
     }
 
     #[tokio::test]
     async fn borrow_check_works() {
         let mut client = make_client().await;
         let fut = client.list_dir("/Downloads");
-        // This line should fail to compile if uncommented:
+        // // This line should fail to compile if uncommented:
         // let fut2 = client.list_dir("/bar");
         fut.await.unwrap();
     }
@@ -421,7 +458,7 @@ mod tests {
     #[tokio::test]
     async fn not_send_across_threads() {
         let mut client = make_client().await;
-        // This should fail to compile if uncommented:
+        // // This should fail to compile if uncommented:
         // tokio::spawn(async move { client.list_dir("/").await });
         let _ = client.list_dir("/").await;
     }
@@ -439,7 +476,6 @@ mod tests {
         {
             let mut file = client.open(path, AfcFopenMode::WrOnly).await.unwrap();
             file.write_all(contents).await.unwrap();
-            file.flush().await.unwrap();
         }
 
         {
@@ -465,7 +501,6 @@ mod tests {
             file.write_all(data.as_bytes()).await.unwrap();
         }
 
-        file.flush().await.unwrap();
         drop(file);
 
         let mut file = client.open(path, AfcFopenMode::RdOnly).await.unwrap();
@@ -494,7 +529,6 @@ mod tests {
         {
             let mut file = client.open(path, AfcFopenMode::WrOnly).await.unwrap();
             file.write_all(contents).await.unwrap();
-            file.flush().await.unwrap();
         }
 
         let mut file = client.open(path, AfcFopenMode::RdOnly).await.unwrap();
@@ -672,7 +706,6 @@ mod tests {
         // Write some data
         let data = b"hello world";
         file.write_all(data).await.expect("failed to write");
-        file.flush().await.expect("failed to flush");
 
         // Seek back to start
         file.seek(std::io::SeekFrom::Start(0))
@@ -687,7 +720,6 @@ mod tests {
         // Write again at end
         file.seek(std::io::SeekFrom::End(0)).await.unwrap();
         file.write_all(b"!").await.unwrap();
-        file.flush().await.unwrap();
 
         // Verify new content
         file.seek(std::io::SeekFrom::Start(0)).await.unwrap();
