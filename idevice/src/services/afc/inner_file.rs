@@ -366,3 +366,348 @@ impl AsyncSeek for InnerFileDescriptor<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+
+    use crate::usbmuxd::{UsbmuxdAddr, UsbmuxdConnection};
+
+    use super::super::*;
+    use super::*;
+
+    async fn make_client() -> super::super::AfcClient {
+        let mut u = UsbmuxdConnection::default()
+            .await
+            .expect("failed to connect to usbmuxd");
+        let d = u
+            .get_devices()
+            .await
+            .expect("no devices")
+            .into_iter()
+            .next()
+            .expect("no devices connected")
+            .to_provider(UsbmuxdAddr::default(), "idevice_afc_file_inner_tests");
+
+        let mut ac = AfcClient::connect(&d)
+            .await
+            .expect("failed to connect to afc");
+        ac.mk_dir("/tmp").await.unwrap();
+        ac
+    }
+
+    #[tokio::test]
+    async fn panic_safety() {
+        let mut client = make_client().await;
+        let result = std::panic::AssertUnwindSafe(async {
+            client.list_dir("/invalid").await.unwrap();
+        })
+        .catch_unwind()
+        .await;
+        assert!(result.is_err()); // should panic safely
+    }
+
+    #[tokio::test]
+    async fn borrow_check_works() {
+        let mut client = make_client().await;
+        let fut = client.list_dir("/Downloads");
+        // This line should fail to compile if uncommented:
+        // let fut2 = client.list_dir("/bar");
+        fut.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn not_send_across_threads() {
+        let mut client = make_client().await;
+        // This should fail to compile if uncommented:
+        // tokio::spawn(async move { client.list_dir("/").await });
+        let _ = client.list_dir("/").await;
+    }
+
+    #[tokio::test]
+    async fn write_and_read_roundtrip() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let mut client = make_client().await;
+
+        // Create a test file in /tmp (AFC should allow this)
+        let path = "/tmp/afc_test_file.txt";
+        let contents = b"hello async afc world";
+
+        {
+            let mut file = client.open(path, AfcFopenMode::WrOnly).await.unwrap();
+            file.write_all(contents).await.unwrap();
+            file.flush().await.unwrap();
+        }
+
+        {
+            let mut file = client.open(path, AfcFopenMode::RdOnly).await.unwrap();
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf).await.unwrap();
+            assert_eq!(buf, contents);
+        }
+
+        client.remove(path).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn write_multiple_chunks() {
+        use tokio::io::AsyncWriteExt;
+
+        let mut client = make_client().await;
+        let path = "/tmp/afc_chunk_test.txt";
+        let mut file = client.open(path, AfcFopenMode::WrOnly).await.unwrap();
+
+        for i in 0..10 {
+            let data = format!("chunk{}\n", i);
+            file.write_all(data.as_bytes()).await.unwrap();
+        }
+
+        file.flush().await.unwrap();
+        drop(file);
+
+        let mut file = client.open(path, AfcFopenMode::RdOnly).await.unwrap();
+        let mut buf = Vec::new();
+        tokio::io::AsyncReadExt::read_to_end(&mut file, &mut buf)
+            .await
+            .unwrap();
+        let s = String::from_utf8_lossy(&buf);
+
+        for i in 0..10 {
+            assert!(s.contains(&format!("chunk{}", i)));
+        }
+        drop(file);
+
+        client.remove(path).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn read_partial_and_resume() {
+        use tokio::io::AsyncReadExt;
+
+        let mut client = make_client().await;
+        let path = "/tmp/afc_partial_read.txt";
+        let contents = b"abcdefghijklmnopqrstuvwxyz";
+
+        {
+            let mut file = client.open(path, AfcFopenMode::WrOnly).await.unwrap();
+            file.write_all(contents).await.unwrap();
+            file.flush().await.unwrap();
+        }
+
+        let mut file = client.open(path, AfcFopenMode::RdOnly).await.unwrap();
+        let mut buf = [0u8; 5];
+        let n = file.read(&mut buf).await.unwrap();
+        assert_eq!(&buf[..n], b"abcde");
+
+        let mut rest = Vec::new();
+        file.read_to_end(&mut rest).await.unwrap();
+        assert_eq!(rest, b"fghijklmnopqrstuvwxyz");
+        drop(file);
+
+        client.remove(path).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn zero_length_file() {
+        use tokio::io::AsyncReadExt;
+
+        let mut client = make_client().await;
+        let path = "/tmp/afc_empty.txt";
+
+        {
+            let _ = client.open(path, AfcFopenMode::WrOnly).await.unwrap();
+        }
+
+        let mut file = client.open(path, AfcFopenMode::RdOnly).await.unwrap();
+        let mut buf = Vec::new();
+        let n = file.read_to_end(&mut buf).await.unwrap();
+        assert_eq!(n, 0);
+        drop(file);
+
+        client.remove(path).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn write_then_append() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let mut client = make_client().await;
+        let path = "/tmp/afc_append.txt";
+
+        {
+            let mut file = client.open(path, AfcFopenMode::WrOnly).await.unwrap();
+            file.write_all(b"first\n").await.unwrap();
+            file.flush().await.unwrap();
+        }
+
+        {
+            let mut file = client.open(path, AfcFopenMode::Append).await.unwrap();
+            file.write_all(b"second\n").await.unwrap();
+            file.flush().await.unwrap();
+        }
+
+        let mut file = client.open(path, AfcFopenMode::RdOnly).await.unwrap();
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).await.unwrap();
+
+        assert_eq!(String::from_utf8_lossy(&buf), "first\nsecond\n");
+        drop(file);
+
+        client.remove(path).await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_file_access_should_not_ub() {
+        use std::sync::Arc;
+        use tokio::task;
+
+        let client = Arc::new(tokio::sync::Mutex::new(make_client().await));
+        let path = "/tmp/afc_threaded.txt";
+
+        let tasks: Vec<_> = (0..10)
+            .map(|i| {
+                let client = Arc::clone(&client);
+                task::spawn(async move {
+                    let mut guard = client.lock().await;
+                    let mut f = guard.open(path, AfcFopenMode::Append).await.unwrap();
+                    f.write_all(format!("{}\n", i).as_bytes()).await.unwrap();
+                    f.flush().await.unwrap();
+                })
+            })
+            .collect();
+
+        for t in tasks {
+            let _ = t.await;
+        }
+
+        let mut guard = client.lock().await;
+        let mut f = guard.open(path, AfcFopenMode::RdOnly).await.unwrap();
+        let mut buf = Vec::new();
+        tokio::io::AsyncReadExt::read_to_end(&mut f, &mut buf)
+            .await
+            .unwrap();
+        let s = String::from_utf8_lossy(&buf);
+        for i in 0..10 {
+            assert!(s.contains(&i.to_string()));
+        }
+        drop(f);
+        guard.remove(path).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn panic_during_write_does_not_leak() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static COUNT: AtomicUsize = AtomicUsize::new(0);
+
+        let mut client = make_client().await;
+        let path = "/tmp/afc_panic.txt";
+
+        let result = std::panic::AssertUnwindSafe(async {
+            let _f = client.open(path, AfcFopenMode::WrOnly).await.unwrap();
+            COUNT.fetch_add(1, Ordering::SeqCst);
+            panic!("simulate crash mid-write");
+        })
+        .catch_unwind()
+        .await;
+
+        assert!(result.is_err());
+        // Reopen to ensure no handles leaked
+        let _ = client.open(path, AfcFopenMode::WrOnly).await.unwrap();
+        assert_eq!(COUNT.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn open_close_stress() {
+        let mut client = make_client().await;
+        let path = "/tmp/afc_stress.txt";
+
+        for _ in 0..100 {
+            let mut f = client.open(path, AfcFopenMode::WrOnly).await.unwrap();
+            f.write_all(b"hi").await.unwrap();
+            drop(f);
+        }
+
+        // Make sure handle cleanup didn’t break internal state
+        client.remove(path).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn concurrent_access_stress() {
+        let client = Arc::new(tokio::sync::Mutex::new(make_client().await));
+
+        let mut handles = vec![];
+        for i in 0..10 {
+            let client = client.clone();
+            handles.push(tokio::spawn(async move {
+                let mut client = client.lock().await;
+                let path = format!("/tmp/testfile_{}", i);
+                client.mk_dir(&path).await.ok();
+                let _ = client.list_dir("/tmp").await;
+                client.remove(&path).await.ok();
+            }));
+        }
+
+        for h in handles {
+            let _ = h.await;
+        }
+    }
+
+    #[tokio::test]
+    async fn read_write_mode_works() {
+        let mut client = make_client().await;
+
+        // Clean up from previous runs
+        let _ = client.remove("/tmp/rw_test.txt").await;
+
+        // Open for read/write
+        let mut file = client
+            .open("/tmp/rw_test.txt", AfcFopenMode::Rw)
+            .await
+            .expect("failed to open file in rw mode");
+
+        // Write some data
+        let data = b"hello world";
+        file.write_all(data).await.expect("failed to write");
+        file.flush().await.expect("failed to flush");
+
+        // Seek back to start
+        file.seek(std::io::SeekFrom::Start(0))
+            .await
+            .expect("seek failed");
+
+        // Read it back
+        let mut buf = vec![0u8; data.len()];
+        file.read_exact(&mut buf).await.expect("failed to read");
+        assert_eq!(&buf, data);
+
+        // Write again at end
+        file.seek(std::io::SeekFrom::End(0)).await.unwrap();
+        file.write_all(b"!").await.unwrap();
+        file.flush().await.unwrap();
+
+        // Verify new content
+        file.seek(std::io::SeekFrom::Start(0)).await.unwrap();
+        let mut final_buf = Vec::new();
+        file.read_to_end(&mut final_buf).await.unwrap();
+        assert_eq!(&final_buf, b"hello world!");
+
+        file.close().await.expect("failed to close");
+
+        // Double check via list/read
+        let contents = client
+            .open("/tmp/rw_test.txt", AfcFopenMode::RdOnly)
+            .await
+            .unwrap()
+            .read_entire()
+            .await
+            .unwrap();
+        assert_eq!(contents, b"hello world!");
+
+        // Clean up
+        client.remove("/tmp/rw_test.txt").await.unwrap();
+    }
+}
