@@ -578,7 +578,7 @@ pub unsafe extern "C" fn afc_file_read(
     }
 
     let fd = unsafe { &mut *(handle as *mut idevice::afc::file::FileDescriptor) };
-    let res: Result<Vec<u8>, IdeviceError> = run_sync(async move { fd.read().await });
+    let res: Result<Vec<u8>, IdeviceError> = run_sync(async move { fd.read_entire().await });
 
     match res {
         Ok(bytes) => {
@@ -620,7 +620,7 @@ pub unsafe extern "C" fn afc_file_write(
     let fd = unsafe { &mut *(handle as *mut idevice::afc::file::FileDescriptor) };
     let data_slice = unsafe { std::slice::from_raw_parts(data, length) };
 
-    let res: Result<(), IdeviceError> = run_sync(async move { fd.write(data_slice).await });
+    let res: Result<(), IdeviceError> = run_sync(async move { fd.write_entire(data_slice).await });
 
     match res {
         Ok(_) => null_mut(),
