@@ -81,4 +81,4 @@ cbindgen = "0.29.0"
 ureq = "3"
 
 [lib]
-crate-type = ["staticlib", "cdylib"]
+crate-type = ["staticlib", "cdylib", "rlib"]
