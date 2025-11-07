@@ -111,7 +111,7 @@ tunnel_tcp_stack = [
 ]
 tss = ["dep:uuid", "dep:reqwest"]
 tunneld = ["dep:serde_json", "dep:json", "dep:reqwest"]
-usbmuxd = ["tokio/net"]
+usbmuxd = ["tokio/net", "dep:futures"]
 xpc = ["dep:indexmap", "dep:uuid", "dep:async-stream"]
 full = [
   "afc",
