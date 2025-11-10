@@ -744,7 +744,7 @@ pub unsafe extern "C" fn afc_rename_path(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn afc_file_read_data_free(data: *mut u8, length: libc::size_t) {
     if !data.is_null() {
-        let boxed = unsafe { Box::from_raw(std::slice::from_raw_parts_mut(data, length)) };
+        let boxed = unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(data, length)) };
         drop(boxed);
     }
 }

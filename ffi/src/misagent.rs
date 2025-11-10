@@ -199,7 +199,7 @@ pub unsafe extern "C" fn misagent_free_profiles(
 
     for (ptr, len) in profiles.iter_mut().zip(lens.iter()) {
         if !ptr.is_null() {
-            let _ = unsafe { Box::from_raw(std::slice::from_raw_parts_mut(*ptr, *len)) };
+            let _ = unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(*ptr, *len)) };
         }
     }
 
