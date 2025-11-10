@@ -303,14 +303,12 @@ impl UsbmuxdConnection {
     /// * `pair_record` - a serialized plist of the pair record
     pub async fn save_pair_record(
         &mut self,
-        device_id: u32,
         udid: &str,
         pair_record: Vec<u8>,
     ) -> Result<(), IdeviceError> {
         let req = crate::plist!(dict {
             "MessageType": "SavePairRecord",
             "PairRecordData": pair_record,
-            "DeviceID": device_id,
             "PairRecordID": udid,
         });
         self.write_plist(req).await?;

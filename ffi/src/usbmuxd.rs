@@ -325,7 +325,6 @@ pub unsafe extern "C" fn idevice_usbmuxd_get_pair_record(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn idevice_usbmuxd_save_pair_record(
     usbmuxd_conn: *mut UsbmuxdConnectionHandle,
-    device_id: u32,
     udid: *const c_char,
     pair_record: *mut u8,
     pair_record_len: usize,
@@ -344,10 +343,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_save_pair_record(
         }
     };
 
-    let res = run_sync_local(async {
-        conn.save_pair_record(device_id, udid_str, pair_record)
-            .await
-    });
+    let res = run_sync_local(async { conn.save_pair_record(udid_str, pair_record).await });
 
     match res {
         Ok(_) => null_mut(),

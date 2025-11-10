@@ -80,7 +80,7 @@ async fn main() {
     println!("{}", String::from_utf8(pairing_file.clone()).unwrap());
 
     // Save with usbmuxd
-    u.save_pair_record(dev.device_id, &dev.udid, pairing_file)
+    u.save_pair_record(&dev.udid, pairing_file)
         .await
         .expect("no save");
 }
