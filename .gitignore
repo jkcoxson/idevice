@@ -22,3 +22,5 @@ xcuserdata
 ._*
 *.vcxproj.user
 .vs
+
+/keys
