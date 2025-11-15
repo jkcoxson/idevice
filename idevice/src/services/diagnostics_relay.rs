@@ -3,6 +3,7 @@
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 /// Client for interacting with the Diagnostics Relay
+#[derive(Debug)]
 pub struct DiagnosticsRelayClient {
     /// The underlying device connection with established service
     pub idevice: Idevice,

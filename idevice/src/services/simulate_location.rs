@@ -1,5 +1,6 @@
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
+#[derive(Debug)]
 pub struct LocationSimulationService {
     idevice: Idevice,
 }

@@ -23,6 +23,7 @@ pub mod packet;
 pub const MAGIC: u64 = 0x4141504c36414643;
 
 /// Client for interacting with the AFC service on iOS devices
+#[derive(Debug)]
 pub struct AfcClient {
     /// The underlying iDevice connection
     pub idevice: Idevice,

@@ -13,6 +13,7 @@ const ETHERNET_HEADER: &[u8] = &[
 
 /// Client for interacting with the pcapd service on the device.
 /// Note that this service only works over USB or through RSD.
+#[derive(Debug)]
 pub struct PcapdClient {
     /// The underlying device connection with established service
     pub idevice: Idevice,
@@ -220,6 +221,7 @@ impl<'a> ByteReader<'a> {
 }
 
 /// A writer for creating `.pcap` files from DevicePackets without external dependencies.
+#[derive(Debug)]
 pub struct PcapFileWriter<W: AsyncWrite + Unpin> {
     writer: W,
 }

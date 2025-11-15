@@ -45,6 +45,7 @@ use super::remote_server::{Channel, RemoteServerClient};
 ///
 /// Provides methods for launching, killing, and managing processes through the
 /// instruments protocol. Each instance maintains its own communication channel.
+#[derive(Debug)]
 pub struct ProcessControlClient<'a, R: ReadWrite> {
     /// The underlying channel for communication
     channel: Channel<'a, R>,

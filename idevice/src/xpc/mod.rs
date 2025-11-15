@@ -17,6 +17,7 @@ pub use format::{Dictionary, XPCMessage, XPCObject};
 const ROOT_CHANNEL: u32 = 1;
 const REPLY_CHANNEL: u32 = 3;
 
+#[derive(Debug)]
 pub struct RemoteXpcClient<R: ReadWrite> {
     h2_client: http2::Http2Client<R>,
     root_id: u64,

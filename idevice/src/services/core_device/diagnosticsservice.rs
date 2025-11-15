@@ -19,6 +19,7 @@ impl RsdService for DiagnostisServiceClient<Box<dyn ReadWrite>> {
     }
 }
 
+#[derive(Debug)]
 pub struct DiagnostisServiceClient<R: ReadWrite> {
     inner: super::CoreDeviceServiceClient<R>,
 }
@@ -68,5 +69,14 @@ impl<R: ReadWrite> DiagnostisServiceClient<R> {
             warn!("Did not get expected responses from RemoteXPC");
             Err(IdeviceError::UnexpectedResponse)
         }
+    }
+}
+
+impl std::fmt::Debug for SysdiagnoseResponse<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SysdiagnoseResponse")
+            .field("preferred_filename", &self.preferred_filename)
+            .field("expected_length", &self.expected_length)
+            .finish()
     }
 }

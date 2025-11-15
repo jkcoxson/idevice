@@ -6,6 +6,7 @@ use tracing::warn;
 use crate::{IdeviceError, ReadWrite, RemoteXpcClient, RsdService, obf};
 
 /// Client for interacting with the Restore Service
+#[derive(Debug)]
 pub struct RestoreServiceClient {
     /// The underlying device connection with established Restore Service service
     pub stream: RemoteXpcClient<Box<dyn ReadWrite>>,

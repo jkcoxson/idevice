@@ -66,6 +66,7 @@ pub const INSTRUMENTS_MESSAGE_TYPE: u32 = 2;
 ///
 /// Manages multiple communication channels and handles message serialization/deserialization.
 /// Each channel operates independently and maintains its own message queue.
+#[derive(Debug)]
 pub struct RemoteServerClient<R: ReadWrite> {
     /// The underlying device connection
     idevice: R,
@@ -80,6 +81,7 @@ pub struct RemoteServerClient<R: ReadWrite> {
 /// Handle to a specific communication channel
 ///
 /// Provides channel-specific operations for use on the remote server client.
+#[derive(Debug)]
 pub struct Channel<'a, R: ReadWrite> {
     /// Reference to parent client
     client: &'a mut RemoteServerClient<R>,

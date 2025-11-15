@@ -1,4 +1,6 @@
 #![doc = include_str!("../README.md")]
+#![warn(missing_debug_implementations)]
+#![warn(missing_copy_implementations)]
 // Jackson Coxson
 
 #[cfg(feature = "pair")]
@@ -128,6 +130,7 @@ pub type IdeviceSocket = Box<dyn ReadWrite>;
 ///
 /// Manages the connection socket and provides methods for common device operations
 /// and message exchange.
+#[derive(Debug)]
 pub struct Idevice {
     /// The underlying connection socket, boxed for dynamic dispatch
     socket: Option<Box<dyn ReadWrite>>,

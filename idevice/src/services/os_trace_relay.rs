@@ -10,6 +10,7 @@ use tokio::io::AsyncWriteExt;
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 /// Client for interacting with the iOS device OsTraceRelay service
+#[derive(Debug)]
 pub struct OsTraceRelayClient {
     /// The underlying device connection with established OsTraceRelay service
     pub idevice: Idevice,
@@ -27,6 +28,7 @@ impl IdeviceService for OsTraceRelayClient {
 }
 
 /// An initialized client for receiving logs
+#[derive(Debug)]
 pub struct OsTraceRelayReceiver {
     inner: OsTraceRelayClient,
 }
@@ -48,7 +50,7 @@ pub struct SyslogLabel {
     pub category: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Copy)]
 pub enum LogLevel {
     Notice = 0,
     Info = 1,

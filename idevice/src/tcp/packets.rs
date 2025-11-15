@@ -12,6 +12,7 @@ use tokio::{
 };
 use tracing::debug;
 
+#[derive(Clone, Copy, Debug)]
 pub enum ProtocolNumber {
     Tcp = 6,
 }

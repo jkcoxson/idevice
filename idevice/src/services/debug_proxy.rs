@@ -27,6 +27,7 @@ impl RsdService for DebugProxyClient<Box<dyn ReadWrite>> {
 ///
 /// Implements the GDB Remote Serial Protocol for communicating with debugserver
 /// on iOS devices. Handles packet formatting, checksums, and acknowledgments.
+#[derive(Debug)]
 pub struct DebugProxyClient<R: ReadWrite> {
     /// The underlying socket connection to debugproxy
     pub socket: R,
@@ -38,6 +39,7 @@ pub struct DebugProxyClient<R: ReadWrite> {
 ///
 /// Commands follow the GDB Remote Serial Protocol format:
 /// $<command>[<hex-encoded args>]#<checksum>
+#[derive(Debug)]
 pub struct DebugserverCommand {
     /// The command name (e.g. "qSupported", "vCont")
     pub name: String,

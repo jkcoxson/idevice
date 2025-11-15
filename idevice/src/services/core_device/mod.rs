@@ -17,6 +17,7 @@ pub use openstdiosocket::*;
 
 const CORE_SERVICE_VERSION: &str = "443.18";
 
+#[derive(Debug)]
 pub struct CoreDeviceServiceClient<R: ReadWrite> {
     inner: RemoteXpcClient<R>,
 }

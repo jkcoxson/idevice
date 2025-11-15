@@ -12,6 +12,7 @@ pub use frame::Setting;
 
 const HTTP2_MAGIC: &[u8] = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".as_bytes();
 
+#[derive(Debug)]
 pub struct Http2Client<R: ReadWrite> {
     inner: R,
     cache: HashMap<u32, VecDeque<Vec<u8>>>,

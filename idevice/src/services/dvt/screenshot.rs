@@ -16,6 +16,7 @@ use crate::{
 ///
 /// Provides methods for take screnn_shot through the
 /// instruments protocol. Each instance maintains its own communication channel.
+#[derive(Debug)]
 pub struct ScreenshotClient<'a, R: ReadWrite> {
     /// The underlying channel for communication
     channel: Channel<'a, R>,

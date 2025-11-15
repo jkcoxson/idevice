@@ -12,6 +12,7 @@ use crate::{Idevice, IdeviceError, IdeviceService, obf};
 /// Note that a running heartbeat client is required to access other services on the device.
 /// Implements the standard "Marco-Polo" protocol
 /// where the host sends "Polo" in response to the device's "Marco".
+#[derive(Debug)]
 pub struct HeartbeatClient {
     /// The underlying device connection with established heartbeat service
     pub idevice: Idevice,

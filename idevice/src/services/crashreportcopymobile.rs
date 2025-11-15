@@ -15,6 +15,7 @@ use crate::{Idevice, IdeviceError, IdeviceService, afc::AfcClient, lockdown::Loc
 ///
 /// This client wraps access to the `com.apple.crashreportcopymobile` service,
 /// which exposes crash logs through the Apple File Conduit (AFC).
+#[derive(Debug)]
 pub struct CrashReportCopyMobileClient {
     /// The underlying AFC client connected to the crash logs directory.
     pub afc_client: AfcClient,

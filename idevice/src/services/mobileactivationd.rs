@@ -6,6 +6,7 @@ use plist::Dictionary;
 
 use crate::{Idevice, IdeviceError, IdeviceService, lockdown::LockdownClient, obf};
 
+#[derive(Debug)]
 pub struct MobileActivationdClient<'a> {
     provider: &'a dyn crate::provider::IdeviceProvider,
 }

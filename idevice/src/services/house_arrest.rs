@@ -12,6 +12,7 @@ use super::afc::AfcClient;
 ///
 /// HouseArrest is used to expose the container or Documents directory of an app to a host machine
 /// over AFC (Apple File Conduit).
+#[derive(Debug)]
 pub struct HouseArrestClient {
     /// The underlying device connection with the HouseArrest service
     pub idevice: Idevice,
