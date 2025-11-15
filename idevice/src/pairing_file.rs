@@ -5,7 +5,13 @@
 
 use std::path::Path;
 
+#[cfg(feature = "openssl")]
+use openssl::{
+    pkey::{PKey, Private},
+    x509::X509,
+};
 use plist::Data;
+#[cfg(feature = "rustls")]
 use rustls::pki_types::{CertificateDer, pem::PemObject};
 use serde::{Deserialize, Serialize};
 use tracing::warn;
@@ -14,6 +20,7 @@ use tracing::warn;
 ///
 /// Contains all cryptographic materials and identifiers needed for secure communication
 /// with an iOS device, including certificates, private keys, and device identifiers.
+#[cfg(feature = "rustls")]
 #[derive(Clone, Debug)]
 pub struct PairingFile {
     /// Device's certificate in DER format
@@ -35,6 +42,21 @@ pub struct PairingFile {
     /// Device's WiFi MAC address
     pub wifi_mac_address: String,
     /// Device's Unique Device Identifier (optional)
+    pub udid: Option<String>,
+}
+
+#[cfg(all(feature = "openssl", not(feature = "rustls")))]
+#[derive(Clone, Debug)]
+pub struct PairingFile {
+    pub device_certificate: X509,
+    pub host_private_key: PKey<Private>,
+    pub host_certificate: X509,
+    pub root_private_key: PKey<Private>,
+    pub root_certificate: X509,
+    pub system_buid: String,
+    pub host_id: String,
+    pub escrow_bag: Vec<u8>,
+    pub wifi_mac_address: String,
     pub udid: Option<String>,
 }
 
@@ -133,6 +155,7 @@ impl PairingFile {
     ///
     /// # Errors
     /// Returns `IdeviceError` if serialization fails
+    #[cfg(feature = "rustls")]
     pub fn serialize(self) -> Result<Vec<u8>, crate::IdeviceError> {
         let raw = RawPairingFile::from(self);
 
@@ -140,8 +163,18 @@ impl PairingFile {
         plist::to_writer_xml(&mut buf, &raw)?;
         Ok(buf)
     }
+
+    #[cfg(all(feature = "openssl", not(feature = "rustls")))]
+    pub fn serialize(self) -> Result<Vec<u8>, crate::IdeviceError> {
+        let raw = RawPairingFile::try_from(self)?;
+
+        let mut buf = Vec::new();
+        plist::to_writer_xml(&mut buf, &raw)?;
+        Ok(buf)
+    }
 }
 
+#[cfg(feature = "rustls")]
 impl TryFrom<RawPairingFile> for PairingFile {
     type Error = rustls::pki_types::pem::Error;
 
@@ -171,6 +204,30 @@ impl TryFrom<RawPairingFile> for PairingFile {
             host_certificate: CertificateDer::from_pem_slice(&host_certificate_pem)?,
             root_private_key: root_private_key_data,
             root_certificate: CertificateDer::from_pem_slice(&root_certificate_pem)?,
+            system_buid: value.system_buid,
+            host_id: value.host_id,
+            escrow_bag: value.escrow_bag.into(),
+            wifi_mac_address: value.wifi_mac_address,
+            udid: value.udid,
+        })
+    }
+}
+
+#[cfg(all(feature = "openssl", not(feature = "rustls")))]
+impl TryFrom<RawPairingFile> for PairingFile {
+    type Error = openssl::error::ErrorStack;
+
+    fn try_from(value: RawPairingFile) -> Result<Self, Self::Error> {
+        Ok(Self {
+            device_certificate: X509::from_pem(&Into::<Vec<u8>>::into(value.device_certificate))?,
+            host_private_key: PKey::private_key_from_pem(&Into::<Vec<u8>>::into(
+                value.host_private_key,
+            ))?,
+            host_certificate: X509::from_pem(&Into::<Vec<u8>>::into(value.host_certificate))?,
+            root_private_key: PKey::private_key_from_pem(&Into::<Vec<u8>>::into(
+                value.root_private_key,
+            ))?,
+            root_certificate: X509::from_pem(&Into::<Vec<u8>>::into(value.root_certificate))?,
             system_buid: value.system_buid,
             host_id: value.host_id,
             escrow_bag: value.escrow_bag.into(),

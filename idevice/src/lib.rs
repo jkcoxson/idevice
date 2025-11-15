@@ -1,11 +1,12 @@
 #![doc = include_str!("../README.md")]
 // Jackson Coxson
 
-#[cfg(feature = "pair")]
+#[cfg(all(feature = "pair", feature = "rustls"))]
 mod ca;
 pub mod pairing_file;
 pub mod plist_macro;
 pub mod provider;
+#[cfg(feature = "rustls")]
 mod sni;
 #[cfg(feature = "tunnel_tcp_stack")]
 pub mod tcp;
@@ -27,6 +28,7 @@ pub use services::*;
 pub use xpc::RemoteXpcClient;
 
 use provider::{IdeviceProvider, RsdProvider};
+#[cfg(feature = "rustls")]
 use rustls::{crypto::CryptoProvider, pki_types::ServerName};
 use std::{
     io::{self, BufWriter},
@@ -460,57 +462,84 @@ impl Idevice {
         &mut self,
         pairing_file: &pairing_file::PairingFile,
     ) -> Result<(), IdeviceError> {
-        if CryptoProvider::get_default().is_none() {
-            // rust-analyzer will choke on this block, don't worry about it
-            let crypto_provider: CryptoProvider = {
-                #[cfg(all(feature = "ring", not(feature = "aws-lc")))]
-                {
-                    debug!("Using ring crypto backend");
-                    rustls::crypto::ring::default_provider()
+        #[cfg(feature = "rustls")]
+        {
+            if CryptoProvider::get_default().is_none() {
+                // rust-analyzer will choke on this block, don't worry about it
+                let crypto_provider: CryptoProvider = {
+                    #[cfg(all(feature = "ring", not(feature = "aws-lc")))]
+                    {
+                        debug!("Using ring crypto backend");
+                        rustls::crypto::ring::default_provider()
+                    }
+
+                    #[cfg(all(feature = "aws-lc", not(feature = "ring")))]
+                    {
+                        debug!("Using aws-lc crypto backend");
+                        rustls::crypto::aws_lc_rs::default_provider()
+                    }
+
+                    #[cfg(not(any(feature = "ring", feature = "aws-lc")))]
+                    {
+                        compile_error!(
+                            "No crypto backend was selected! Specify an idevice feature for a crypto backend"
+                        );
+                    }
+
+                    #[cfg(all(feature = "ring", feature = "aws-lc"))]
+                    {
+                        // We can't throw a compile error because it breaks rust-analyzer.
+                        // My sanity while debugging the workspace crates are more important.
+
+                        debug!("Using ring crypto backend, because both were passed");
+                        tracing::warn!(
+                            "Both ring && aws-lc are selected as idevice crypto backends!"
+                        );
+                        rustls::crypto::ring::default_provider()
+                    }
+                };
+
+                if let Err(e) = CryptoProvider::install_default(crypto_provider) {
+                    // For whatever reason, getting the default provider will return None on iOS at
+                    // random. Installing the default provider a second time will return an error, so
+                    // we will log it but not propogate it. An issue should be opened with rustls.
+                    tracing::error!("Failed to set crypto provider: {e:?}");
                 }
-
-                #[cfg(all(feature = "aws-lc", not(feature = "ring")))]
-                {
-                    debug!("Using aws-lc crypto backend");
-                    rustls::crypto::aws_lc_rs::default_provider()
-                }
-
-                #[cfg(not(any(feature = "ring", feature = "aws-lc")))]
-                {
-                    compile_error!(
-                        "No crypto backend was selected! Specify an idevice feature for a crypto backend"
-                    );
-                }
-
-                #[cfg(all(feature = "ring", feature = "aws-lc"))]
-                {
-                    // We can't throw a compile error because it breaks rust-analyzer.
-                    // My sanity while debugging the workspace crates are more important.
-
-                    debug!("Using ring crypto backend, because both were passed");
-                    tracing::warn!("Both ring && aws-lc are selected as idevice crypto backends!");
-                    rustls::crypto::ring::default_provider()
-                }
-            };
-
-            if let Err(e) = CryptoProvider::install_default(crypto_provider) {
-                // For whatever reason, getting the default provider will return None on iOS at
-                // random. Installing the default provider a second time will return an error, so
-                // we will log it but not propogate it. An issue should be opened with rustls.
-                tracing::error!("Failed to set crypto provider: {e:?}");
             }
+            let config = sni::create_client_config(pairing_file)?;
+            let connector = tokio_rustls::TlsConnector::from(Arc::new(config));
+
+            let socket = self.socket.take().unwrap();
+            let socket = connector
+                .connect(ServerName::try_from("Device").unwrap(), socket)
+                .await?;
+
+            self.socket = Some(Box::new(socket));
+
+            Ok(())
         }
-        let config = sni::create_client_config(pairing_file)?;
-        let connector = tokio_rustls::TlsConnector::from(Arc::new(config));
+        #[cfg(all(feature = "openssl", not(feature = "rustls")))]
+        {
+            let connector =
+                openssl::ssl::SslConnector::builder(openssl::ssl::SslMethod::tls()).unwrap();
 
-        let socket = self.socket.take().unwrap();
-        let socket = connector
-            .connect(ServerName::try_from("Device").unwrap(), socket)
-            .await?;
+            let mut connector = connector
+                .build()
+                .configure()
+                .unwrap()
+                .into_ssl("ur mom")
+                .unwrap();
 
-        self.socket = Some(Box::new(socket));
+            connector.set_certificate(&pairing_file.host_certificate)?;
+            connector.set_private_key(&pairing_file.host_private_key)?;
+            connector.set_verify(openssl::ssl::SslVerifyMode::empty());
+            let socket = self.socket.take().unwrap();
+            let mut ssl_stream = tokio_openssl::SslStream::new(connector, socket)?;
+            std::pin::Pin::new(&mut ssl_stream).connect().await?;
+            self.socket = Some(Box::new(ssl_stream));
 
-        Ok(())
+            Ok(())
+        }
     }
 }
 
@@ -521,12 +550,24 @@ impl Idevice {
 pub enum IdeviceError {
     #[error("device socket io failed")]
     Socket(#[from] io::Error) = -1,
+    #[cfg(all(feature = "rustls", not(feature = "openssl")))]
     #[error("PEM parse failed")]
     PemParseFailed(#[from] rustls::pki_types::pem::Error) = -2,
+
+    #[cfg(all(feature = "rustls", not(feature = "openssl")))]
     #[error("TLS error")]
     Rustls(#[from] rustls::Error) = -3,
+    #[cfg(all(feature = "openssl", not(feature = "rustls")))]
+    #[error("TLS error")]
+    Rustls(#[from] openssl::ssl::Error) = -3,
+
+    #[cfg(all(feature = "rustls", not(feature = "openssl")))]
     #[error("TLS verifiction build failed")]
     TlsBuilderFailed(#[from] rustls::server::VerifierBuilderError) = -4,
+    #[cfg(all(feature = "openssl", not(feature = "rustls")))]
+    #[error("TLS verifiction build failed")]
+    TlsBuilderFailed(#[from] openssl::error::ErrorStack) = -4,
+
     #[error("io on plist")]
     Plist(#[from] plist::Error) = -5,
     #[error("can't convert bytes to utf8")]

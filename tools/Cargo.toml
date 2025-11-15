@@ -161,3 +161,4 @@ futures-util = { version = "0.3" }
 default = ["aws-lc"]
 aws-lc = ["idevice/aws-lc"]
 ring = ["idevice/ring"]
+openssl = ["idevice/openssl"]

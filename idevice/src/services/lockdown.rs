@@ -243,7 +243,7 @@ impl LockdownClient {
     ///
     /// # Errors
     /// Returns `IdeviceError`
-    #[cfg(feature = "pair")]
+    #[cfg(all(feature = "pair", feature = "rustls"))]
     pub async fn pair(
         &mut self,
         host_id: impl Into<String>,

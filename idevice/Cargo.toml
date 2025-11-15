@@ -12,16 +12,18 @@ keywords = ["lockdownd", "ios"]
 
 [dependencies]
 tokio = { version = "1", features = ["io-util"] }
-tokio-rustls = { version = "0.26", default-features = false }
+tokio-rustls = { version = "0.26", default-features = false, optional = true }
 rustls = { version = "0.23", default-features = false, features = [
   "std",
   "tls12",
-] }
-crossfire = { version = "2.1", optional = true }
+], optional = true }
+tokio-openssl = { version = "0.6", optional = true }
+openssl = { version = "0.10", optional = true }
 
 plist = { version = "1.8" }
 serde = { version = "1", features = ["derive"] }
 ns-keyed-archive = { version = "0.1.4", optional = true }
+crossfire = { version = "2.1", optional = true }
 
 thiserror = { version = "2" }
 tracing = { version = "0.1.41" }
@@ -64,8 +66,10 @@ bytes = "1.10.1"
 
 [features]
 default = ["aws-lc"]
-aws-lc = ["rustls/aws-lc-rs", "tokio-rustls/aws-lc-rs"]
-ring = ["rustls/ring", "tokio-rustls/ring"]
+aws-lc = ["rustls", "rustls/aws-lc-rs", "tokio-rustls/aws-lc-rs"]
+ring = ["rustls", "rustls/ring", "tokio-rustls/ring"]
+rustls = ["dep:rustls", "dep:tokio-rustls"]
+openssl = ["dep:openssl", "dep:tokio-openssl"]
 
 afc = ["dep:chrono"]
 amfi = []
