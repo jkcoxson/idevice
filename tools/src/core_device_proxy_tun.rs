@@ -5,13 +5,12 @@ use idevice::{
     core_device_proxy::{self},
     IdeviceService,
 };
-use tun_rs::AbstractDevice;
 
 mod common;
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt::init();
     let matches = Command::new("core_device_proxy_tun")
         .about("Start a tunnel")
         .arg(
@@ -63,30 +62,48 @@ async fn main() {
         .await
         .expect("Unable to connect");
 
-    let dev = tun_rs::create(&tun_rs::Configuration::default()).unwrap();
-    dev.add_address_v6(
-        tun_proxy
-            .handshake
-            .client_parameters
-            .address
-            .parse()
-            .unwrap(),
-        32,
-    )
-    .unwrap();
+    // Create TUN interface
+    use tun_rs::DeviceBuilder;
+    let dev = DeviceBuilder::new()
+        .mtu(tun_proxy.handshake.client_parameters.mtu)
+        .build_sync()
+        .expect("Failed to create TUN interface");
+
+    // Make TUN interface with addresses from handshake
+    let client_ip: std::net::Ipv6Addr = tun_proxy
+        .handshake
+        .client_parameters
+        .address
+        .parse()
+        .expect("Failed to parse client IP (must be IPv6)");
+
+    // Set MTU
     dev.set_mtu(tun_proxy.handshake.client_parameters.mtu)
-        .unwrap();
-    dev.set_network_address(
-        tun_proxy.handshake.client_parameters.address.clone(),
-        tun_proxy
-            .handshake
-            .client_parameters
-            .netmask
-            .parse()
-            .unwrap(),
-        Some(tun_proxy.handshake.server_address.parse().unwrap()),
-    )
-    .unwrap();
+        .expect("Failed to set MTU");
+
+    // convert netmask to prefix length
+    let netmask_str = &tun_proxy.handshake.client_parameters.netmask;
+    let prefix_len = if let Ok(netmask_ipv6) = netmask_str.parse::<std::net::Ipv6Addr>() {
+        // Count leading 1s in the netmask to get prefix length
+        let octets = netmask_ipv6.octets();
+        let mut prefix = 0;
+        for &byte in &octets {
+            if byte == 0xFF {
+                prefix += 8;
+            } else {
+                // Count bits in partial byte
+                prefix += byte.leading_ones();
+                break;
+            }
+        }
+        prefix as u8
+    } else {
+        // Default to /64 for IPv6 if parsing fails
+        64
+    };
+
+    dev.add_address_v6(client_ip, prefix_len)
+        .expect("Failed to add IPv6 address");
 
     let async_dev = tun_rs::AsyncDevice::new(dev).unwrap();
     async_dev.enabled(true).unwrap();
