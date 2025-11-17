@@ -39,6 +39,18 @@ impl crate::IdeviceService for remote_server::RemoteServerClient<Box<dyn ReadWri
     async fn connect(provider: &dyn IdeviceProvider) -> Result<Self, IdeviceError> {
         // Establish Lockdown session
         let mut lockdown = LockdownClient::connect(provider).await?;
+
+        let legacy = lockdown
+            .get_value(Some("ProductVersion"), None)
+            .await
+            .ok()
+            .as_ref()
+            .and_then(|x| x.as_string())
+            .and_then(|x| x.split(".").next())
+            .and_then(|x| x.parse::<u8>().ok())
+            .map(|x| x < 5)
+            .unwrap_or(false);
+
         lockdown
             .start_session(&provider.get_pairing_file().await?)
             .await?;
@@ -56,7 +68,7 @@ impl crate::IdeviceService for remote_server::RemoteServerClient<Box<dyn ReadWri
                     let mut idevice = provider.connect(port).await?;
                     if ssl {
                         idevice
-                            .start_session(&provider.get_pairing_file().await?)
+                            .start_session(&provider.get_pairing_file().await?, legacy)
                             .await?;
                     }
                     // Convert to transport and build client

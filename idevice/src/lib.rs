@@ -76,6 +76,18 @@ pub trait IdeviceService: Sized {
     #[allow(async_fn_in_trait)]
     async fn connect(provider: &dyn IdeviceProvider) -> Result<Self, IdeviceError> {
         let mut lockdown = LockdownClient::connect(provider).await?;
+
+        let legacy = lockdown
+            .get_value(Some("ProductVersion"), None)
+            .await
+            .ok()
+            .as_ref()
+            .and_then(|x| x.as_string())
+            .and_then(|x| x.split(".").next())
+            .and_then(|x| x.parse::<u8>().ok())
+            .map(|x| x < 5)
+            .unwrap_or(false);
+
         lockdown
             .start_session(&provider.get_pairing_file().await?)
             .await?;
@@ -90,7 +102,7 @@ pub trait IdeviceService: Sized {
         let mut idevice = provider.connect(port).await?;
         if ssl {
             idevice
-                .start_session(&provider.get_pairing_file().await?)
+                .start_session(&provider.get_pairing_file().await?, legacy)
                 .await?;
         }
 
@@ -464,6 +476,7 @@ impl Idevice {
     pub async fn start_session(
         &mut self,
         pairing_file: &pairing_file::PairingFile,
+        legacy: bool,
     ) -> Result<(), IdeviceError> {
         #[cfg(feature = "rustls")]
         {
@@ -523,15 +536,16 @@ impl Idevice {
         }
         #[cfg(all(feature = "openssl", not(feature = "rustls")))]
         {
-            let connector =
-                openssl::ssl::SslConnector::builder(openssl::ssl::SslMethod::tls()).unwrap();
+            let mut connector =
+                openssl::ssl::SslConnector::builder(openssl::ssl::SslMethod::tls())?;
+            if legacy {
+                connector.set_min_proto_version(Some(openssl::ssl::SslVersion::SSL3))?;
+                connector.set_max_proto_version(Some(openssl::ssl::SslVersion::TLS1))?;
+                connector.set_cipher_list("ALL:!aNULL:!eNULL:@SECLEVEL=0")?;
+                connector.set_options(openssl::ssl::SslOptions::ALLOW_UNSAFE_LEGACY_RENEGOTIATION);
+            }
 
-            let mut connector = connector
-                .build()
-                .configure()
-                .unwrap()
-                .into_ssl("ur mom")
-                .unwrap();
+            let mut connector = connector.build().configure()?.into_ssl("ur mom")?;
 
             connector.set_certificate(&pairing_file.host_certificate)?;
             connector.set_private_key(&pairing_file.host_private_key)?;
@@ -553,18 +567,18 @@ impl Idevice {
 pub enum IdeviceError {
     #[error("device socket io failed")]
     Socket(#[from] io::Error) = -1,
-    #[cfg(all(feature = "rustls", not(feature = "openssl")))]
+    #[cfg(feature = "rustls")]
     #[error("PEM parse failed")]
     PemParseFailed(#[from] rustls::pki_types::pem::Error) = -2,
 
-    #[cfg(all(feature = "rustls", not(feature = "openssl")))]
+    #[cfg(feature = "rustls")]
     #[error("TLS error")]
     Rustls(#[from] rustls::Error) = -3,
     #[cfg(all(feature = "openssl", not(feature = "rustls")))]
     #[error("TLS error")]
     Rustls(#[from] openssl::ssl::Error) = -3,
 
-    #[cfg(all(feature = "rustls", not(feature = "openssl")))]
+    #[cfg(feature = "rustls")]
     #[error("TLS verifiction build failed")]
     TlsBuilderFailed(#[from] rustls::server::VerifierBuilderError) = -4,
     #[cfg(all(feature = "openssl", not(feature = "rustls")))]
@@ -817,6 +831,7 @@ impl IdeviceError {
     pub fn code(&self) -> i32 {
         match self {
             IdeviceError::Socket(_) => -1,
+            #[cfg(feature = "rustls")]
             IdeviceError::PemParseFailed(_) => -2,
             IdeviceError::Rustls(_) => -3,
             IdeviceError::TlsBuilderFailed(_) => -4,

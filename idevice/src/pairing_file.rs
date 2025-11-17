@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-#[cfg(feature = "openssl")]
+#[cfg(all(feature = "openssl", not(feature = "rustls")))]
 use openssl::{
     pkey::{PKey, Private},
     x509::X509,
@@ -237,6 +237,7 @@ impl TryFrom<RawPairingFile> for PairingFile {
     }
 }
 
+#[cfg(feature = "rustls")]
 impl From<PairingFile> for RawPairingFile {
     /// Converts a structured pairing file into a raw pairing file for serialization
     fn from(value: PairingFile) -> Self {
@@ -261,6 +262,26 @@ impl From<PairingFile> for RawPairingFile {
             wifi_mac_address: value.wifi_mac_address,
             udid: value.udid,
         }
+    }
+}
+
+#[cfg(all(feature = "openssl", not(feature = "rustls")))]
+impl TryFrom<PairingFile> for RawPairingFile {
+    type Error = openssl::error::ErrorStack;
+
+    fn try_from(value: PairingFile) -> Result<Self, Self::Error> {
+        Ok(Self {
+            device_certificate: Data::new(value.device_certificate.to_pem()?),
+            host_private_key: Data::new(value.host_private_key.private_key_to_pem_pkcs8()?),
+            host_certificate: Data::new(value.host_certificate.to_pem()?),
+            root_private_key: Data::new(value.root_private_key.private_key_to_pem_pkcs8()?),
+            root_certificate: Data::new(value.root_certificate.to_pem()?),
+            system_buid: value.system_buid,
+            host_id: value.host_id.clone(),
+            escrow_bag: Data::new(value.escrow_bag),
+            wifi_mac_address: value.wifi_mac_address,
+            udid: value.udid,
+        })
     }
 }
 

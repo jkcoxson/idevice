@@ -338,6 +338,7 @@ pub unsafe extern "C" fn idevice_rsd_checkin(idevice: *mut IdeviceHandle) -> *mu
 pub unsafe extern "C" fn idevice_start_session(
     idevice: *mut IdeviceHandle,
     pairing_file: *const IdevicePairingFile,
+    legacy: bool,
 ) -> *mut IdeviceFfiError {
     if idevice.is_null() || pairing_file.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
@@ -350,7 +351,7 @@ pub unsafe extern "C" fn idevice_start_session(
     let pf = unsafe { &(*pairing_file).0 };
 
     // Run the start_session method in the runtime
-    let result = run_sync(async { dev.start_session(pf).await });
+    let result = run_sync(async move { dev.start_session(pf, legacy).await });
 
     match result {
         Ok(_) => null_mut(),
