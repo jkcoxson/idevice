@@ -66,7 +66,7 @@ use crate::{IdeviceError, pretty_print_plist};
 /// Message header containing metadata about the message
 ///
 /// 32-byte structure that appears at the start of every message
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MessageHeader {
     /// Magic number identifying the protocol (0x1F3D5B79)
     magic: u32,
@@ -91,7 +91,7 @@ pub struct MessageHeader {
 /// Payload header containing information about the message contents
 ///
 /// 16-byte structure following the message header
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct PayloadHeader {
     /// Flags controlling message processing
     flags: u32,
@@ -104,7 +104,7 @@ pub struct PayloadHeader {
 /// Header for auxiliary data section
 ///
 /// 16-byte structure preceding auxiliary data
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct AuxHeader {
     /// Buffer size hint (often 496)
     buffer_size: u32,

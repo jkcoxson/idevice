@@ -19,6 +19,7 @@ impl RsdService for AppServiceClient<Box<dyn ReadWrite>> {
     }
 }
 
+#[derive(Debug)]
 pub struct AppServiceClient<R: ReadWrite> {
     inner: CoreDeviceServiceClient<R>,
 }

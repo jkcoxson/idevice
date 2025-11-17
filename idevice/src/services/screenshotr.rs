@@ -7,10 +7,13 @@ use crate::{Idevice, IdeviceError, IdeviceService, obf};
 use std::borrow::Cow;
 use tokio::io::AsyncReadExt;
 use tracing::{debug, warn};
+
+#[derive(Debug)]
 pub struct ScreenshotService {
     /// Underlying device connection
     pub idevice: Idevice,
 }
+
 impl IdeviceService for ScreenshotService {
     fn service_name() -> Cow<'static, str> {
         obf!("com.apple.mobile.screenshotr")

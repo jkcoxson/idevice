@@ -6,7 +6,7 @@ use crate::{Idevice, IdeviceError};
 
 use super::opcode::AfcOpcode;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct AfcPacketHeader {
     pub magic: u64,
     pub entire_len: u64,
@@ -32,7 +32,7 @@ impl AfcPacketHeader {
         res.extend_from_slice(&self.entire_len.to_le_bytes());
         res.extend_from_slice(&self.header_payload_len.to_le_bytes());
         res.extend_from_slice(&self.packet_num.to_le_bytes());
-        res.extend_from_slice(&(self.operation.clone() as u64).to_le_bytes());
+        res.extend_from_slice(&(self.operation as u64).to_le_bytes());
 
         res
     }

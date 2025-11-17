@@ -22,6 +22,7 @@ use crate::tss::TSSRequest;
 /// # Important Note
 /// A lockdown client must be established and queried after establishing a mounter client,
 /// or the device will stop responding to requests.
+#[derive(Debug)]
 pub struct ImageMounter {
     /// The underlying device connection with established image mounter service
     idevice: Idevice,

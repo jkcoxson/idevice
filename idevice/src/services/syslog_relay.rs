@@ -3,6 +3,7 @@
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 /// Client for interacting with the iOS device SyslogRelay service
+#[derive(Debug)]
 pub struct SyslogRelayClient {
     /// The underlying device connection with established SyslogRelay service
     pub idevice: Idevice,

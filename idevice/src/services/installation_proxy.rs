@@ -14,6 +14,7 @@ use crate::{Idevice, IdeviceError, IdeviceService, obf};
 ///
 /// This service provides access to information about installed applications
 /// and can perform application management operations.
+#[derive(Debug)]
 pub struct InstallationProxyClient {
     /// The underlying device connection with established installation_proxy service
     pub idevice: Idevice,

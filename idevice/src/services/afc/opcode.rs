@@ -1,6 +1,6 @@
 // Jackson Coxson
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u64)]
 pub enum AfcOpcode {
     Status = 0x00000001,
@@ -36,6 +36,7 @@ pub enum AfcOpcode {
 }
 
 #[repr(u64)]
+#[derive(Clone, Copy, Debug)]
 pub enum AfcFopenMode {
     RdOnly = 0x00000001,   // r   O_RDONLY
     Rw = 0x00000002,       // r+  O_RDWR   | O_CREAT
@@ -46,6 +47,7 @@ pub enum AfcFopenMode {
 }
 
 #[repr(u64)]
+#[derive(Clone, Copy, Debug)]
 pub enum LinkType {
     Hardlink = 0x00000001,
     Symlink = 0x00000002,

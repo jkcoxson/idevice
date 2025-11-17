@@ -13,6 +13,7 @@ use crate::{Idevice, IdeviceError, IdeviceService, obf};
 /// You must have the Bluetooth profile installed, or you'll get no data.
 ///
 /// ``https://developer.apple.com/bug-reporting/profiles-and-logs/?name=bluetooth``
+#[derive(Debug)]
 pub struct BtPacketLoggerClient {
     /// The underlying device connection with established logger service
     pub idevice: Idevice,

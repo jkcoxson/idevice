@@ -9,6 +9,7 @@ use crate::{Idevice, IdeviceError, IdeviceService, obf};
 ///
 /// This service provides access to home screen and app icon functionality,
 /// such as retrieving app icons.
+#[derive(Debug)]
 pub struct SpringBoardServicesClient {
     /// The underlying device connection with established SpringBoard services
     pub idevice: Idevice,

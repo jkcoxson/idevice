@@ -14,6 +14,7 @@ use crate::{Idevice, IdeviceError, IdeviceService, obf, pairing_file};
 /// - Access to device information and settings
 /// - Service discovery and port allocation
 /// - Session management and security
+#[derive(Debug)]
 pub struct LockdownClient {
     /// The underlying device connection with established lockdown service
     pub idevice: crate::Idevice,

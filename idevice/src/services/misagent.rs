@@ -13,6 +13,7 @@ use crate::{Idevice, IdeviceError, IdeviceService, RsdService, obf};
 /// - Installation of provisioning profiles
 /// - Removal of provisioning profiles
 /// - Querying installed profiles
+#[derive(Debug)]
 pub struct MisagentClient {
     /// The underlying device connection with established misagent service
     pub idevice: Idevice,

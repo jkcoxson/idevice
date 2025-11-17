@@ -82,6 +82,7 @@ impl CDTunnelPacket {
 /// A high-level client for the `com.apple.internal.devicecompute.CoreDeviceProxy` service.
 ///
 /// Handles session negotiation, handshake, and tunnel communication.
+#[derive(Debug)]
 pub struct CoreDeviceProxy {
     /// The underlying idevice connection used for communication.
     pub idevice: Idevice,

@@ -3,6 +3,7 @@
 use crate::{Idevice, IdeviceError, IdeviceService, RsdService, obf};
 
 /// Client for interacting with the preboard service on the device.
+#[derive(Debug)]
 pub struct PreboardServiceClient {
     /// The underlying device connection with established service
     pub idevice: Idevice,

@@ -14,6 +14,7 @@ impl RsdService for InstallcoordinationProxy<Box<dyn ReadWrite>> {
     }
 }
 
+#[derive(Debug)]
 pub struct InstallcoordinationProxy<R: ReadWrite> {
     inner: RemoteXpcClient<R>,
 }

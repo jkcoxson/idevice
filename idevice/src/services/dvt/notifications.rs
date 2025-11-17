@@ -23,6 +23,7 @@ pub struct NotificationInfo {
     state_description: String,
 }
 
+#[derive(Debug)]
 pub struct NotificationsClient<'a, R: ReadWrite> {
     /// The underlying channel used for communication
     pub channel: Channel<'a, R>,

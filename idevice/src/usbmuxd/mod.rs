@@ -55,6 +55,7 @@ pub enum UsbmuxdListenEvent {
 }
 
 /// Active connection to the usbmuxd service
+#[derive(Debug)]
 pub struct UsbmuxdConnection {
     socket: Box<dyn ReadWrite>,
     tag: u32,

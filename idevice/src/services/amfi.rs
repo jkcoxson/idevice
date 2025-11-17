@@ -3,6 +3,7 @@
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 /// Client for interacting with the AMFI service on the device
+#[derive(Debug)]
 pub struct AmfiClient {
     /// The underlying device connection with established amfi service
     pub idevice: Idevice,

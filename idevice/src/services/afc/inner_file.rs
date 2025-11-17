@@ -22,6 +22,7 @@ fn chunk_number(n: usize, chunk_size: usize) -> impl Iterator<Item = usize> {
 }
 
 // Used to descripe what the future returns
+#[derive(Debug)]
 pub(crate) enum PendingResult {
     // writing
     Empty,
@@ -365,6 +366,16 @@ impl AsyncSeek for InnerFileDescriptor<'_> {
             Err(e) => std::task::Poll::Ready(Err(std::io::Error::other(e.to_string()))),
             _ => unreachable!("a non seek future was stored, this shouldn't happen"),
         }
+    }
+}
+
+impl std::fmt::Debug for InnerFileDescriptor<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InnerFileDescriptor")
+            .field("client", &self.client)
+            .field("fd", &self.fd)
+            .field("path", &self.path)
+            .finish()
     }
 }
 

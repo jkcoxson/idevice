@@ -46,6 +46,7 @@ use crate::{
 };
 
 /// A client for the location simulation service
+#[derive(Debug)]
 pub struct LocationSimulationClient<'a, R: ReadWrite> {
     /// The underlying channel used for communication
     channel: Channel<'a, R>,

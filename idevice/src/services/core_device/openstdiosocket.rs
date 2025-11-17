@@ -16,6 +16,7 @@ impl RsdService for OpenStdioSocketClient {
 
 /// Call ``read_uuid`` to get the UUID. Pass that to app service launch to connect to the stream of
 /// the launched app. Inner is exposed to read and write to, using Tokio's AsyncReadExt/AsyncWriteExt
+#[derive(Debug)]
 pub struct OpenStdioSocketClient {
     pub inner: Box<dyn ReadWrite>,
 }

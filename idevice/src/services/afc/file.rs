@@ -7,6 +7,7 @@ use tokio::io::{AsyncRead, AsyncSeek, AsyncWrite};
 use super::inner_file::InnerFileDescriptor;
 use crate::IdeviceError;
 
+#[derive(Debug)]
 pub struct FileDescriptor<'a> {
     inner: Pin<Box<InnerFileDescriptor<'a>>>,
 }

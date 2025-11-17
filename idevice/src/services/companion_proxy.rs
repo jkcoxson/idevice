@@ -4,10 +4,12 @@ use tracing::warn;
 
 use crate::{Idevice, IdeviceError, IdeviceService, RsdService, obf};
 
+#[derive(Debug)]
 pub struct CompanionProxy {
     idevice: Idevice,
 }
 
+#[derive(Debug)]
 pub struct CompanionProxyStream {
     proxy: CompanionProxy,
 }

@@ -16,7 +16,7 @@ pub struct ListDevicesResponse {
     pub device_list: Vec<DeviceListResponse>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct DeviceListResponse {
     #[serde(rename = "DeviceID")]
     pub device_id: u32,
@@ -24,7 +24,7 @@ pub struct DeviceListResponse {
     pub properties: DevicePropertiesResponse,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct DevicePropertiesResponse {
     #[serde(rename = "ConnectionType")]
     pub connection_type: String,

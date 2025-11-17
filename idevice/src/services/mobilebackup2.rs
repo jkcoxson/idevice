@@ -22,6 +22,7 @@ pub const DL_CODE_FILE_DATA: u8 = 0x0c;
 ///
 /// This service provides access to device backup functionality including
 /// creating backups, restoring from backups, and managing backup data.
+#[derive(Debug)]
 pub struct MobileBackup2Client {
     /// The underlying device connection with established mobilebackup2 service
     pub idevice: Idevice,
@@ -46,7 +47,7 @@ impl IdeviceService for MobileBackup2Client {
 }
 
 /// Backup message types used in the mobilebackup2 protocol
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum BackupMessageType {
     /// Request to start a backup operation
     BackupMessageTypeBackup,
