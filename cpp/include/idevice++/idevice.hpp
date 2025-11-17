@@ -42,7 +42,7 @@ class Idevice {
     // Methods
     Result<std::string, FfiError> get_type() const;
     Result<void, FfiError>        rsd_checkin();
-    Result<void, FfiError>        start_session(const PairingFile& pairing_file);
+    Result<void, FfiError>        start_session(const PairingFile& pairing_file, bool legacy);
 
     // Ownership/RAII
     ~Idevice() noexcept                      = default;

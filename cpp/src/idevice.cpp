@@ -53,8 +53,8 @@ Result<void, FfiError> Idevice::rsd_checkin() {
     return Ok();
 }
 
-Result<void, FfiError> Idevice::start_session(const PairingFile& pairing_file) {
-    FfiError e(idevice_start_session(handle_.get(), pairing_file.raw()));
+Result<void, FfiError> Idevice::start_session(const PairingFile& pairing_file, bool legacy) {
+    FfiError e(idevice_start_session(handle_.get(), pairing_file.raw(), legacy));
     if (e) {
         return Err(e);
     }
