@@ -480,6 +480,12 @@ impl Idevice {
     ) -> Result<(), IdeviceError> {
         #[cfg(feature = "rustls")]
         {
+            if legacy {
+                tracing::warn!(
+                    "Compiled with rustls, but connecting to legacy device! rustls does not support old SSL, this will fail."
+                );
+            }
+
             if CryptoProvider::get_default().is_none() {
                 // rust-analyzer will choke on this block, don't worry about it
                 let crypto_provider: CryptoProvider = {
