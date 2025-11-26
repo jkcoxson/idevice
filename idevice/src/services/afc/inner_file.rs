@@ -12,8 +12,8 @@ use super::{
     packet::{AfcPacket, AfcPacketHeader},
 };
 
-/// Maximum transfer size for file operations (64KB)
-const MAX_TRANSFER: u64 = 64 * 1024; // this is what go-ios uses
+/// Maximum transfer size for file operations (1MB)
+const MAX_TRANSFER: u64 = 1024 * 1024; // this is what libimobiledevice uses in it's afcclient
 
 fn chunk_number(n: usize, chunk_size: usize) -> impl Iterator<Item = usize> {
     (0..n)
