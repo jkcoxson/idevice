@@ -17,7 +17,7 @@ use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 use byteorder::{BigEndian, WriteBytesExt};
 use serde::{Deserialize, Serialize};
-use std::io::{self, Write};
+use std::io::{self, IoSlice, Write};
 
 /// A representation of a CDTunnel packet used in the CoreDeviceProxy protocol.
 #[derive(Debug, PartialEq)]
@@ -193,6 +193,20 @@ impl CoreDeviceProxy {
     pub async fn send(&mut self, data: &[u8]) -> Result<(), IdeviceError> {
         self.idevice.send_raw(data).await?;
         Ok(())
+    }
+
+    /// Sends a raw data packet through the tunnel using vectored I/O.
+    ///
+    /// # Arguments
+    ///
+    /// * `bufs` - The buffers to send.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if the data is successfully sent.
+    /// * `Err(IdeviceError)` if sending fails.
+    pub async fn send_vectored(&mut self, bufs: &[IoSlice<'_>]) -> Result<(), IdeviceError> {
+        self.idevice.send_raw_vectored(bufs).await
     }
 
     /// Receives up to `mtu` bytes from the tunnel.
