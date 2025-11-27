@@ -304,6 +304,75 @@ impl Idevice {
         self.send_raw_with_progress(message, |_| async {}, ()).await
     }
 
+    /// Sends raw binary data via vectored I/O
+    ///
+    /// # Arguments
+    /// * `bufs` - The buffers to send
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if transmission fails
+    pub async fn send_raw_vectored(
+        &mut self,
+        bufs: &[std::io::IoSlice<'_>],
+    ) -> Result<(), IdeviceError> {
+        if let Some(socket) = &mut self.socket {
+            let mut curr_idx = 0;
+            let mut curr_offset = 0;
+
+            while curr_idx < bufs.len() {
+                let mut iovec = Vec::new();
+                let mut accumulated_len = 0;
+                let max_chunk = 1024 * 64;
+
+                // Add partial first slice
+                let first_avail = bufs[curr_idx].len() - curr_offset;
+                let to_take_first = std::cmp::min(first_avail, max_chunk);
+                iovec.push(std::io::IoSlice::new(
+                    &bufs[curr_idx][curr_offset..curr_offset + to_take_first],
+                ));
+                accumulated_len += to_take_first;
+
+                // Add others up to max_chunk
+                let mut temp_idx = curr_idx + 1;
+                while temp_idx < bufs.len() && accumulated_len < max_chunk {
+                    let needed = max_chunk - accumulated_len;
+                    let avail = bufs[temp_idx].len();
+                    let take = std::cmp::min(avail, needed);
+                    iovec.push(std::io::IoSlice::new(&bufs[temp_idx][..take]));
+                    accumulated_len += take;
+                    temp_idx += 1;
+                }
+
+                let n = socket.write_vectored(&iovec).await?;
+                if n == 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::WriteZero,
+                        "failed to write whole buffer",
+                    )
+                    .into());
+                }
+
+                // Advance cursor by n
+                let mut advanced = n;
+                while advanced > 0 && curr_idx < bufs.len() {
+                    let available = bufs[curr_idx].len() - curr_offset;
+                    if advanced < available {
+                        curr_offset += advanced;
+                        advanced = 0;
+                    } else {
+                        advanced -= available;
+                        curr_idx += 1;
+                        curr_offset = 0;
+                    }
+                }
+            }
+            socket.flush().await?;
+            Ok(())
+        } else {
+            Err(IdeviceError::NoEstablishedConnection)
+        }
+    }
+
     /// Sends raw binary data with progress callbacks
     ///
     /// # Arguments
