@@ -5,7 +5,10 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
 use clap::{Arg, Command};
-use idevice::{ReadWrite, usbmuxd::{Connection, UsbmuxdAddr, UsbmuxdDevice}};
+use idevice::{
+    ReadWrite,
+    usbmuxd::{Connection, UsbmuxdAddr, UsbmuxdDevice},
+};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, error, info};
@@ -68,7 +71,8 @@ async fn handle_client(
     let device = get_device(&client_data).await?;
 
     // Connect to device
-    let device_stream = connect_to_device(&device, client_data.device_port, &client_data.usbmuxd_addr).await?;
+    let device_stream =
+        connect_to_device(&device, client_data.device_port, &client_data.usbmuxd_addr).await?;
 
     // Bidirectional data forwarding
     let (mut client_read, mut client_write) = client_stream.split();
@@ -129,7 +133,9 @@ async fn handle_client(
 }
 
 /// Get device
-async fn get_device(client_data: &ClientData) -> Result<UsbmuxdDevice, Box<dyn std::error::Error + Send + Sync>> {
+async fn get_device(
+    client_data: &ClientData,
+) -> Result<UsbmuxdDevice, Box<dyn std::error::Error + Send + Sync>> {
     let mut usbmuxd = client_data.usbmuxd_addr.connect(1).await?;
 
     if let Some(udid) = &client_data.udid {
@@ -152,10 +158,10 @@ async fn get_device(client_data: &ClientData) -> Result<UsbmuxdDevice, Box<dyn s
         }
 
         for device in &devices {
-            if client_data.lookup_opts.network {
-                if let Connection::Network(_) = device.connection_type {
-                    return Ok(device.clone());
-                }
+            if client_data.lookup_opts.network
+                && let Connection::Network(_) = device.connection_type
+            {
+                return Ok(device.clone());
             }
         }
 
@@ -186,7 +192,9 @@ async fn connect_to_device(
                 device.device_id, device.udid, port
             );
             let conn = usbmuxd_addr.connect(device.device_id).await?;
-            let idevice = conn.connect_to_device(device.device_id, port, "iproxy").await?;
+            let idevice = conn
+                .connect_to_device(device.device_id, port, "iproxy")
+                .await?;
 
             // Extract underlying socket from Idevice
             match idevice.get_socket() {
@@ -194,9 +202,7 @@ async fn connect_to_device(
                 None => Err("Unable to get device socket".into()),
             }
         }
-        Connection::Unknown(desc) => {
-            Err(format!("Unsupported connection type: {}", desc).into())
-        }
+        Connection::Unknown(desc) => Err(format!("Unsupported connection type: {}", desc).into()),
     }
 }
 
@@ -247,7 +253,10 @@ async fn start_listener(
     loop {
         match listener.accept().await {
             Ok((stream, _addr)) => {
-                debug!("New connection: {} -> {}", port_pair.local_port, port_pair.device_port);
+                debug!(
+                    "New connection: {} -> {}",
+                    port_pair.local_port, port_pair.device_port
+                );
                 let client_data = Arc::clone(&client_data);
 
                 tokio::spawn(async move {
@@ -316,21 +325,14 @@ async fn main() {
     let udid = matches.get_one::<String>("udid").cloned();
 
     // Parse source address
-    let source_addr = if let Some(addr_str) = matches.get_one::<String>("source") {
-        Some(
-            addr_str
-                .parse::<IpAddr>()
-                .unwrap_or_else(|_| panic!("Invalid source address: {}", addr_str)),
-        )
-    } else {
-        None
-    };
+    let source_addr = matches.get_one::<String>("source").map(|addr_str| {
+        addr_str
+            .parse::<IpAddr>()
+            .unwrap_or_else(|_| panic!("Invalid source address: {}", addr_str))
+    });
 
     // Parse port pairs
-    let port_pairs_args: Vec<&String> = matches
-        .get_many::<String>("port_pairs")
-        .unwrap()
-        .collect();
+    let port_pairs_args: Vec<&String> = matches.get_many::<String>("port_pairs").unwrap().collect();
 
     let mut port_pairs = Vec::new();
 
