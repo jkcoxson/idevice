@@ -31,6 +31,7 @@ core_device = ["idevice/core_device", "dep:futures", "dep:uuid"]
 core_device_proxy = ["idevice/core_device_proxy"]
 crashreportcopymobile = ["idevice/crashreportcopymobile"]
 debug_proxy = ["idevice/debug_proxy"]
+diagnostics_relay = ["idevice/diagnostics_relay"]
 dvt = ["idevice/dvt"]
 heartbeat = ["idevice/heartbeat"]
 house_arrest = ["idevice/house_arrest"]
@@ -56,6 +57,7 @@ full = [
   "core_device_proxy",
   "crashreportcopymobile",
   "debug_proxy",
+  "diagnostics_relay",
   "dvt",
   "heartbeat",
   "house_arrest",
