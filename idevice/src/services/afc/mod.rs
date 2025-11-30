@@ -412,7 +412,7 @@ impl AfcClient {
         let fd = u64::from_le_bytes(res.header_payload[..8].try_into().unwrap());
 
         // we know it's a valid fd
-        Ok(unsafe { FileDescriptor::new(self, fd as _, path) })
+        Ok(unsafe { FileDescriptor::new(self, fd, path) })
     }
 
     /// Creates a hard or symbolic link
