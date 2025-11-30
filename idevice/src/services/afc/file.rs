@@ -1,6 +1,6 @@
 // Jackson Coxson
 
-use std::{io::SeekFrom, pin::Pin};
+use std::{io::SeekFrom, marker::PhantomPinned, pin::Pin};
 
 use tokio::io::{AsyncRead, AsyncSeek, AsyncWrite};
 
@@ -13,8 +13,25 @@ pub struct FileDescriptor<'a> {
 }
 
 impl<'a> FileDescriptor<'a> {
-    pub(crate) fn new(inner: Pin<Box<InnerFileDescriptor<'a>>>) -> Self {
-        Self { inner }
+    /// create a new FileDescriptor from a raw fd
+    ///
+    /// # Safety
+    /// make sure the fd is an opened file, and that you got it from a previous
+    /// FileDescriptor via `as_raw_fd()` method
+    pub unsafe fn new(client: &'a mut super::AfcClient, fd: u64, path: String) -> Self {
+        Self {
+            inner: Box::pin(InnerFileDescriptor {
+                client,
+                fd,
+                path,
+                pending_fut: None,
+                _m: PhantomPinned,
+            }),
+        }
+    }
+
+    pub fn as_raw_fd(&self) -> u64 {
+        self.inner.fd
     }
 }
 impl FileDescriptor<'_> {

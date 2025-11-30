@@ -44,17 +44,6 @@ pub(crate) struct InnerFileDescriptor<'a> {
     pub(crate) _m: std::marker::PhantomPinned,
 }
 
-impl<'a> InnerFileDescriptor<'a> {
-    pub(crate) fn new(client: &'a mut super::AfcClient, fd: u64, path: String) -> Pin<Box<Self>> {
-        Box::pin(Self {
-            client,
-            fd,
-            path,
-            pending_fut: None,
-            _m: std::marker::PhantomPinned,
-        })
-    }
-}
 impl InnerFileDescriptor<'_> {
     /// Generic helper to send an AFC packet and read the response
     pub async fn send_packet(
