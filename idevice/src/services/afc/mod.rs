@@ -410,9 +410,9 @@ impl AfcClient {
             return Err(IdeviceError::UnexpectedResponse);
         }
         let fd = u64::from_le_bytes(res.header_payload[..8].try_into().unwrap());
-        Ok(FileDescriptor::new(inner_file::InnerFileDescriptor::new(
-            self, fd, path,
-        )))
+
+        // we know it's a valid fd
+        Ok(unsafe { FileDescriptor::new(self, fd as _, path) })
     }
 
     /// Creates a hard or symbolic link
