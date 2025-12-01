@@ -4,9 +4,9 @@
 //! which allows creating, restoring, and managing device backups.
 
 use plist::Dictionary;
-use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
+use tokio::fs;
 use tokio::io::AsyncReadExt;
 use tracing::{debug, warn};
 
@@ -727,11 +727,11 @@ impl MobileBackup2Client {
                     self.send_status_response(0, None, Some(empty)).await?;
                 }
                 "DLMessageCreateDirectory" => {
-                    let status = Self::create_directory_from_message(&value, host_dir);
+                    let status = Self::create_directory_from_message(&value, host_dir).await;
                     self.send_status_response(status, None, None).await?;
                 }
                 "DLMessageMoveFiles" | "DLMessageMoveItems" => {
-                    let status = Self::move_files_from_message(&value, host_dir);
+                    let status = Self::move_files_from_message(&value, host_dir).await;
                     self.send_status_response(
                         status,
                         None,
@@ -740,7 +740,7 @@ impl MobileBackup2Client {
                     .await?;
                 }
                 "DLMessageRemoveFiles" | "DLMessageRemoveItems" => {
-                    let status = Self::remove_files_from_message(&value, host_dir);
+                    let status = Self::remove_files_from_message(&value, host_dir).await;
                     self.send_status_response(
                         status,
                         None,
@@ -749,7 +749,7 @@ impl MobileBackup2Client {
                     .await?;
                 }
                 "DLMessageCopyItem" => {
-                    let status = Self::copy_item_from_message(&value, host_dir);
+                    let status = Self::copy_item_from_message(&value, host_dir).await;
                     self.send_status_response(
                         status,
                         None,
@@ -875,7 +875,7 @@ impl MobileBackup2Client {
             let fname = self.read_exact_string(flen as usize).await?;
             let dst = host_dir.join(&fname);
             if let Some(parent) = dst.parent() {
-                let _ = fs::create_dir_all(parent);
+                let _ = fs::create_dir_all(parent).await;
             }
             let mut file = std::fs::File::create(&dst)
                 .map_err(|e| IdeviceError::InternalError(e.to_string()))?;
@@ -919,13 +919,13 @@ impl MobileBackup2Client {
         Ok(String::from_utf8_lossy(&buf).to_string())
     }
 
-    fn create_directory_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
+    async fn create_directory_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
         if let plist::Value::Array(arr) = dl_value
             && arr.len() >= 2
             && let Some(plist::Value::String(dir)) = arr.get(1)
         {
             let path = host_dir.join(dir);
-            return match fs::create_dir_all(&path) {
+            return match fs::create_dir_all(&path).await {
                 Ok(_) => 0,
                 Err(_) => -1,
             };
@@ -933,7 +933,7 @@ impl MobileBackup2Client {
         -1
     }
 
-    fn move_files_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
+    async fn move_files_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
         if let plist::Value::Array(arr) = dl_value
             && arr.len() >= 2
             && let Some(plist::Value::Dictionary(map)) = arr.get(1)
@@ -943,9 +943,9 @@ impl MobileBackup2Client {
                     let old = host_dir.join(from);
                     let newp = host_dir.join(to);
                     if let Some(parent) = newp.parent() {
-                        let _ = fs::create_dir_all(parent);
+                        let _ = fs::create_dir_all(parent).await;
                     }
-                    if fs::rename(&old, &newp).is_err() {
+                    if fs::rename(&old, &newp).await.is_err() {
                         return -1;
                     }
                 }
@@ -955,7 +955,7 @@ impl MobileBackup2Client {
         -1
     }
 
-    fn remove_files_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
+    async fn remove_files_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
         if let plist::Value::Array(arr) = dl_value
             && arr.len() >= 2
             && let Some(plist::Value::Array(items)) = arr.get(1)
@@ -964,10 +964,10 @@ impl MobileBackup2Client {
                 if let Some(p) = it.as_string() {
                     let path = host_dir.join(p);
                     if path.is_dir() {
-                        if fs::remove_dir_all(&path).is_err() {
+                        if fs::remove_dir_all(&path).await.is_err() {
                             return -1;
                         }
-                    } else if path.exists() && fs::remove_file(&path).is_err() {
+                    } else if path.exists() && fs::remove_file(&path).await.is_err() {
                         return -1;
                     }
                 }
@@ -977,7 +977,7 @@ impl MobileBackup2Client {
         -1
     }
 
-    fn copy_item_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
+    async fn copy_item_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
         if let plist::Value::Array(arr) = dl_value
             && arr.len() >= 3
             && let (Some(plist::Value::String(src)), Some(plist::Value::String(dst))) =
@@ -986,15 +986,15 @@ impl MobileBackup2Client {
             let from = host_dir.join(src);
             let to = host_dir.join(dst);
             if let Some(parent) = to.parent() {
-                let _ = fs::create_dir_all(parent);
+                let _ = fs::create_dir_all(parent).await;
             }
             if from.is_dir() {
-                return match fs::create_dir_all(&to) {
+                return match fs::create_dir_all(&to).await {
                     Ok(_) => 0,
                     Err(_) => -1,
                 };
             } else {
-                return match fs::copy(&from, &to) {
+                return match fs::copy(&from, &to).await {
                     Ok(_) => 0,
                     Err(_) => -1,
                 };
