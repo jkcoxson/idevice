@@ -68,15 +68,22 @@ impl OwnedFileDescriptor {
     pub async fn close(self) -> Result<AfcClient, IdeviceError> {
         self.inner.close().await
     }
+
+    /// gets the owned afc
+    ///
+    /// # Safety
+    /// this get's the afc out without closing, if you want to get the afc and close the file, use
+    /// `.close()`
+    pub unsafe fn get_inner_afc(self) -> AfcClient {
+        self.inner.get_inner_afc()
+    }
 }
 
-crate::impl_to_structs!(FileDescriptor<'_>, OwnedFileDescriptor; {
+crate::impl_to_structs!(FileDescriptor<'_>, OwnedFileDescriptor;  {
     pub fn as_raw_fd(&self) -> u64 {
         self.inner.fd
     }
-});
 
-crate::impl_to_structs!(FileDescriptor<'_>, OwnedFileDescriptor;  {
     /// Returns the current cursor position for the file
     pub async fn seek_tell(&mut self) -> Result<u64, IdeviceError> {
         self.inner.as_mut().seek_tell().await

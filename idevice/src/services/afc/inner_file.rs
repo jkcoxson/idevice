@@ -323,6 +323,10 @@ impl OwnedInnerFileDescriptor {
         // we don't need it to be pinned anymore
         Ok(unsafe { Pin::into_inner_unchecked(self) }.client)
     }
+
+    pub fn get_inner_afc(self: Pin<Box<Self>>) -> AfcClient {
+        unsafe { Pin::into_inner_unchecked(self).client }
+    }
 }
 
 crate::impl_trait_to_structs!(AsyncRead for InnerFileDescriptor<'_>, OwnedInnerFileDescriptor; {
