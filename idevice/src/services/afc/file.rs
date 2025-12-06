@@ -4,12 +4,22 @@ use std::{io::SeekFrom, marker::PhantomPinned, pin::Pin};
 
 use tokio::io::{AsyncRead, AsyncSeek, AsyncWrite};
 
-use super::inner_file::InnerFileDescriptor;
-use crate::IdeviceError;
+use crate::{
+    IdeviceError,
+    afc::{
+        AfcClient,
+        inner_file::{InnerFileDescriptor, OwnedInnerFileDescriptor},
+    },
+};
 
 #[derive(Debug)]
 pub struct FileDescriptor<'a> {
     inner: Pin<Box<InnerFileDescriptor<'a>>>,
+}
+
+#[derive(Debug)]
+pub struct OwnedFileDescriptor {
+    inner: Pin<Box<OwnedInnerFileDescriptor>>,
 }
 
 impl<'a> FileDescriptor<'a> {
@@ -18,7 +28,7 @@ impl<'a> FileDescriptor<'a> {
     /// # Safety
     /// make sure the fd is an opened file, and that you got it from a previous
     /// FileDescriptor via `as_raw_fd()` method
-    pub unsafe fn new(client: &'a mut super::AfcClient, fd: u64, path: String) -> Self {
+    pub unsafe fn new(client: &'a mut AfcClient, fd: u64, path: String) -> Self {
         Self {
             inner: Box::pin(InnerFileDescriptor {
                 client,
@@ -30,19 +40,46 @@ impl<'a> FileDescriptor<'a> {
         }
     }
 
-    pub fn as_raw_fd(&self) -> u64 {
-        self.inner.fd
-    }
-}
-impl FileDescriptor<'_> {
-    /// Returns the current cursor position for the file
-    pub async fn seek_tell(&mut self) -> Result<u64, IdeviceError> {
-        self.inner.as_mut().seek_tell().await
-    }
-
     /// Closes the file descriptor
     pub async fn close(self) -> Result<(), IdeviceError> {
         self.inner.close().await
+    }
+}
+
+impl OwnedFileDescriptor {
+    /// create a new OwnedFileDescriptor from a raw fd
+    ///
+    /// # Safety
+    /// make sure the fd is an opened file, and that you got it from a previous
+    /// OwnedFileDescriptor via `as_raw_fd()` method
+    pub unsafe fn new(client: AfcClient, fd: u64, path: String) -> Self {
+        Self {
+            inner: Box::pin(OwnedInnerFileDescriptor {
+                client,
+                fd,
+                path,
+                pending_fut: None,
+                _m: PhantomPinned,
+            }),
+        }
+    }
+
+    /// Closes the file descriptor
+    pub async fn close(self) -> Result<AfcClient, IdeviceError> {
+        self.inner.close().await
+    }
+}
+
+crate::impl_to_structs!(FileDescriptor<'_>, OwnedFileDescriptor; {
+    pub fn as_raw_fd(&self) -> u64 {
+        self.inner.fd
+    }
+});
+
+crate::impl_to_structs!(FileDescriptor<'_>, OwnedFileDescriptor;  {
+    /// Returns the current cursor position for the file
+    pub async fn seek_tell(&mut self) -> Result<u64, IdeviceError> {
+        self.inner.as_mut().seek_tell().await
     }
 
     /// Reads the entire contents of the file
@@ -60,9 +97,9 @@ impl FileDescriptor<'_> {
     pub async fn write_entire(&mut self, bytes: &[u8]) -> Result<(), IdeviceError> {
         self.inner.as_mut().write(bytes).await
     }
-}
+});
 
-impl AsyncRead for FileDescriptor<'_> {
+crate::impl_trait_to_structs!(AsyncRead for FileDescriptor<'_>, OwnedFileDescriptor; {
     fn poll_read(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -71,9 +108,9 @@ impl AsyncRead for FileDescriptor<'_> {
         let inner = self.inner.as_mut();
         inner.poll_read(cx, buf)
     }
-}
+});
 
-impl AsyncWrite for FileDescriptor<'_> {
+crate::impl_trait_to_structs!(AsyncWrite for FileDescriptor<'_>, OwnedFileDescriptor; {
     fn poll_write(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -98,9 +135,9 @@ impl AsyncWrite for FileDescriptor<'_> {
         let inner = self.inner.as_mut();
         inner.poll_shutdown(cx)
     }
-}
+});
 
-impl AsyncSeek for FileDescriptor<'_> {
+crate::impl_trait_to_structs!(AsyncSeek for FileDescriptor<'_>, OwnedFileDescriptor; {
     fn start_seek(mut self: Pin<&mut Self>, position: SeekFrom) -> std::io::Result<()> {
         let this = self.inner.as_mut();
         this.start_seek(position)
@@ -113,4 +150,4 @@ impl AsyncSeek for FileDescriptor<'_> {
         let this = self.inner.as_mut();
         this.poll_complete(cx)
     }
-}
+});
