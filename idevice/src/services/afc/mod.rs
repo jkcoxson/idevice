@@ -6,16 +6,20 @@
 use std::collections::HashMap;
 
 use errors::AfcError;
-use file::FileDescriptor;
 use opcode::{AfcFopenMode, AfcOpcode};
 use packet::{AfcPacket, AfcPacketHeader};
 use tracing::warn;
 
-use crate::{Idevice, IdeviceError, IdeviceService, obf};
+use crate::{
+    Idevice, IdeviceError, IdeviceService,
+    afc::file::{FileDescriptor, OwnedFileDescriptor},
+    obf,
+};
 
 pub mod errors;
 pub mod file;
 mod inner_file;
+mod inner_file_impl_macro;
 pub mod opcode;
 pub mod packet;
 
@@ -413,6 +417,51 @@ impl AfcClient {
 
         // we know it's a valid fd
         Ok(unsafe { FileDescriptor::new(self, fd, path) })
+    }
+
+    /// Opens an owned file on the device
+    ///
+    /// # Arguments
+    /// * `path` - Path to the file to open
+    /// * `mode` - Opening mode (read, write, etc.)
+    ///
+    /// # Returns
+    /// A `OwnedFileDescriptor` struct for the opened file
+    pub async fn open_owned(
+        mut self,
+        path: impl Into<String>,
+        mode: AfcFopenMode,
+    ) -> Result<OwnedFileDescriptor, IdeviceError> {
+        let path = path.into();
+        let mut header_payload = (mode as u64).to_le_bytes().to_vec();
+        header_payload.extend(path.as_bytes());
+        let header_len = header_payload.len() as u64 + AfcPacketHeader::LEN;
+
+        let header = AfcPacketHeader {
+            magic: MAGIC,
+            entire_len: header_len, // it's the same since the payload is empty for this
+            header_payload_len: header_len,
+            packet_num: self.package_number,
+            operation: AfcOpcode::FileOpen,
+        };
+        self.package_number += 1;
+
+        let packet = AfcPacket {
+            header,
+            header_payload,
+            payload: Vec::new(),
+        };
+
+        self.send(packet).await?;
+        let res = self.read().await?;
+        if res.header_payload.len() < 8 {
+            warn!("Header payload fd is less than 8 bytes");
+            return Err(IdeviceError::UnexpectedResponse);
+        }
+        let fd = u64::from_le_bytes(res.header_payload[..8].try_into().unwrap());
+
+        // we know it's a valid fd
+        Ok(unsafe { OwnedFileDescriptor::new(self, fd, path) })
     }
 
     /// Creates a hard or symbolic link
