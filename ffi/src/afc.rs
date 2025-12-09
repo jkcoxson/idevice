@@ -1,12 +1,13 @@
 // Jackson Coxson
 
-use std::ptr::null_mut;
+use std::{io::SeekFrom, ptr::null_mut};
 
 use idevice::{
     IdeviceError, IdeviceService,
-    afc::{AfcClient, DeviceInfo, FileInfo},
+    afc::{AfcClient, DeviceInfo, FileInfo, file::FileDescriptor},
     provider::IdeviceProvider,
 };
+use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use crate::{
     IdeviceFfiError, IdeviceHandle, LOCAL_RUNTIME, ffi_err, provider::IdeviceProviderHandle,
@@ -555,12 +556,13 @@ pub unsafe extern "C" fn afc_file_close(handle: *mut AfcFileHandle) -> *mut Idev
     }
 }
 
-/// Reads data from an open file
+/// Reads data from an open file. This advances the cursor of the file.
 ///
 /// # Arguments
 /// * [`handle`] - File handle to read from
 /// * [`data`] - Will be set to point to the read data
-/// * [`length`] - Will be set to the length of the read data
+/// * [`len`] - Number of bytes to read from the file
+/// * [`bytes_read`] - The number of bytes read from the file
 ///
 /// # Returns
 /// An IdeviceFfiError on error, null on success
@@ -571,23 +573,125 @@ pub unsafe extern "C" fn afc_file_close(handle: *mut AfcFileHandle) -> *mut Idev
 pub unsafe extern "C" fn afc_file_read(
     handle: *mut AfcFileHandle,
     data: *mut *mut u8,
-    length: *mut libc::size_t,
+    len: usize,
+    bytes_read: *mut libc::size_t,
 ) -> *mut IdeviceFfiError {
-    if handle.is_null() || data.is_null() || length.is_null() {
+    if handle.is_null() || data.is_null() || bytes_read.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let fd = unsafe { &mut *(handle as *mut idevice::afc::file::FileDescriptor) };
-    let res: Result<Vec<u8>, IdeviceError> = run_sync(async move { fd.read_entire().await });
+    let fd = unsafe { &mut *(handle as *mut FileDescriptor) };
+    let res: Result<Vec<u8>, IdeviceError> = run_sync({
+        let mut buf = Vec::with_capacity(len);
+        async move {
+            let r = fd.read(&mut buf).await?;
+            buf.resize(r, 0);
+            Ok(buf)
+        }
+    });
 
     match res {
         Ok(bytes) => {
             let mut boxed = bytes.into_boxed_slice();
             unsafe {
                 *data = boxed.as_mut_ptr();
-                *length = boxed.len();
+                *bytes_read = boxed.len();
             }
             std::mem::forget(boxed);
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Moves the read/write cursor in an open file.
+///
+/// # Arguments
+/// * [`handle`] - File handle whose cursor should be moved
+/// * [`offset`] - Distance to move the cursor, interpreted based on `whence`
+/// * [`whence`] - Origin used for the seek operation:
+///     * `0` — Seek from the start of the file (`SeekFrom::Start`)
+///     * `1` — Seek from the current cursor position (`SeekFrom::Current`)
+///     * `2` — Seek from the end of the file (`SeekFrom::End`)
+/// * [`new_pos`] - Output parameter; will be set to the new absolute cursor position
+///
+/// # Returns
+/// An [`IdeviceFfiError`] on error, or null on success.
+///
+/// # Safety
+/// All pointers must be valid and non-null.
+///
+/// # Notes
+/// * If `whence` is invalid, this function returns `FfiInvalidArg`.
+/// * The AFC protocol may restrict seeking beyond certain bounds; such errors
+///   are reported through the returned [`IdeviceFfiError`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn afc_file_seek(
+    handle: *mut AfcFileHandle,
+    offset: i64,
+    whence: libc::c_int,
+    new_pos: *mut libc::off_t,
+) -> *mut IdeviceFfiError {
+    if handle.is_null() || new_pos.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let fd = unsafe { &mut *(handle as *mut FileDescriptor) };
+
+    let seek_from = match whence {
+        0 => SeekFrom::Start(offset as u64),
+        1 => SeekFrom::Current(offset),
+        2 => SeekFrom::End(offset),
+        _ => return ffi_err!(IdeviceError::FfiInvalidArg),
+    };
+
+    let res: Result<u64, IdeviceError> = run_sync(async move { Ok(fd.seek(seek_from).await?) });
+
+    match res {
+        Ok(pos) => {
+            unsafe {
+                *new_pos = pos as libc::off_t;
+            }
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Returns the current read/write cursor position of an open file.
+///
+/// # Arguments
+/// * [`handle`] - File handle whose cursor should be queried
+/// * [`pos`] - Output parameter; will be set to the current absolute cursor position
+///
+/// # Returns
+/// An [`IdeviceFfiError`] on error, or null on success.
+///
+/// # Safety
+/// All pointers must be valid and non-null.
+///
+/// # Notes
+/// This function is equivalent to performing a seek operation with
+/// `SeekFrom::Current(0)` internally.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn afc_file_tell(
+    handle: *mut AfcFileHandle,
+    pos: *mut libc::off_t,
+) -> *mut IdeviceFfiError {
+    if handle.is_null() || pos.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let fd = unsafe { &mut *(handle as *mut FileDescriptor) };
+
+    let res: Result<u64, IdeviceError> =
+        run_sync(async { Ok(fd.seek(SeekFrom::Current(0)).await?) });
+
+    match res {
+        Ok(cur) => {
+            unsafe {
+                *pos = cur as libc::off_t;
+            }
             null_mut()
         }
         Err(e) => ffi_err!(e),
