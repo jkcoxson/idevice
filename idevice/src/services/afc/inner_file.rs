@@ -5,11 +5,13 @@ use std::{io::SeekFrom, pin::Pin};
 use futures::{FutureExt, future::BoxFuture};
 use tokio::io::{AsyncRead, AsyncSeek, AsyncWrite};
 
-use crate::IdeviceError;
-
-use super::{
-    opcode::AfcOpcode,
-    packet::{AfcPacket, AfcPacketHeader},
+use crate::{
+    IdeviceError,
+    afc::{
+        AfcClient, MAGIC,
+        opcode::AfcOpcode,
+        packet::{AfcPacket, AfcPacketHeader},
+    },
 };
 
 /// Maximum transfer size for file operations (1MB)
@@ -32,19 +34,31 @@ pub(crate) enum PendingResult {
     Bytes(Vec<u8>),
 }
 
+type OwnedBoxFuture = Pin<Box<dyn Future<Output = Result<PendingResult, IdeviceError>> + Send>>;
+
 /// Handle for an open file on the device.
 /// Call close before dropping
 pub(crate) struct InnerFileDescriptor<'a> {
-    pub(crate) client: &'a mut super::AfcClient,
+    pub(crate) client: &'a mut AfcClient,
     pub(crate) fd: u64,
     pub(crate) path: String,
 
     pub(crate) pending_fut: Option<BoxFuture<'a, Result<PendingResult, IdeviceError>>>,
-
     pub(crate) _m: std::marker::PhantomPinned,
 }
 
-impl InnerFileDescriptor<'_> {
+/// Handle for an owned open file on the device.
+/// Call close before dropping
+pub(crate) struct OwnedInnerFileDescriptor {
+    pub(crate) client: AfcClient,
+    pub(crate) fd: u64,
+    pub(crate) path: String,
+
+    pub(crate) pending_fut: Option<OwnedBoxFuture>,
+    pub(crate) _m: std::marker::PhantomPinned,
+}
+
+crate::impl_to_structs!(InnerFileDescriptor<'_>, OwnedInnerFileDescriptor; {
     /// Generic helper to send an AFC packet and read the response
     pub async fn send_packet(
         self: Pin<&mut Self>,
@@ -57,7 +71,7 @@ impl InnerFileDescriptor<'_> {
 
         let header_len = header_payload.len() as u64 + AfcPacketHeader::LEN;
         let header = AfcPacketHeader {
-            magic: super::MAGIC,
+            magic: MAGIC,
             entire_len: header_len + payload.len() as u64,
             header_payload_len: header_len,
             packet_num: this.client.package_number,
@@ -115,15 +129,6 @@ impl InnerFileDescriptor<'_> {
         self.as_mut().seek_tell().await
     }
 
-    /// Closes the file descriptor
-    pub async fn close(mut self: Pin<Box<Self>>) -> Result<(), IdeviceError> {
-        let header_payload = self.fd.to_le_bytes().to_vec();
-
-        self.as_mut()
-            .send_packet(AfcOpcode::FileClose, header_payload, Vec::new())
-            .await?;
-        Ok(())
-    }
 
     /// Reads n size of contents from the file
     ///
@@ -188,7 +193,7 @@ impl InnerFileDescriptor<'_> {
 
     fn store_pending_read(mut self: Pin<&mut Self>, buf_rem: usize) {
         unsafe {
-            let this = self.as_mut().get_unchecked_mut() as *mut InnerFileDescriptor;
+            let this = self.as_mut().get_unchecked_mut() as *mut Self;
 
             let fut = Some(
                 // SAFETY: we already know that self is pinned
@@ -204,7 +209,7 @@ impl InnerFileDescriptor<'_> {
 
     fn store_pending_seek(mut self: Pin<&mut Self>, position: std::io::SeekFrom) {
         unsafe {
-            let this = self.as_mut().get_unchecked_mut() as *mut InnerFileDescriptor;
+            let this = self.as_mut().get_unchecked_mut() as *mut Self;
 
             let fut = Some(
                 Pin::new_unchecked(&mut *this)
@@ -221,7 +226,7 @@ impl InnerFileDescriptor<'_> {
         unsafe {
             let this = self.as_mut().get_unchecked_mut();
 
-            let this = this as *mut InnerFileDescriptor;
+            let this = this as *mut Self;
 
             // move the entire buffer into the future so we don't have to store it somewhere
             let pined_this = Pin::new_unchecked(&mut *this);
@@ -232,7 +237,7 @@ impl InnerFileDescriptor<'_> {
             (&mut *this).pending_fut = Some(fut);
         }
     }
-}
+});
 
 impl<'a> InnerFileDescriptor<'a> {
     fn get_or_init_read_fut(
@@ -268,9 +273,63 @@ impl<'a> InnerFileDescriptor<'a> {
             self.as_mut().get_unchecked_mut().pending_fut.take();
         }
     }
+
+    /// Closes the file descriptor
+    pub async fn close(mut self: Pin<Box<Self>>) -> Result<(), IdeviceError> {
+        let header_payload = self.fd.to_le_bytes().to_vec();
+
+        self.as_mut()
+            .send_packet(AfcOpcode::FileClose, header_payload, Vec::new())
+            .await?;
+        Ok(())
+    }
 }
 
-impl AsyncRead for InnerFileDescriptor<'_> {
+impl OwnedInnerFileDescriptor {
+    fn get_or_init_read_fut(mut self: Pin<&mut Self>, buf_rem: usize) -> &mut OwnedBoxFuture {
+        if self.as_ref().pending_fut.is_none() {
+            self.as_mut().store_pending_read(buf_rem);
+        }
+
+        unsafe { self.get_unchecked_mut().pending_fut.as_mut().unwrap() }
+    }
+
+    fn get_or_init_write_fut(mut self: Pin<&mut Self>, buf: &'_ [u8]) -> &mut OwnedBoxFuture {
+        if self.as_ref().pending_fut.is_none() {
+            self.as_mut().store_pending_write(buf);
+        }
+
+        unsafe { self.get_unchecked_mut().pending_fut.as_mut().unwrap() }
+    }
+
+    fn get_seek_fut(self: Pin<&mut Self>) -> Option<&mut OwnedBoxFuture> {
+        unsafe { self.get_unchecked_mut().pending_fut.as_mut() }
+    }
+
+    fn remove_pending_fut(mut self: Pin<&mut Self>) {
+        unsafe {
+            self.as_mut().get_unchecked_mut().pending_fut.take();
+        }
+    }
+
+    /// Closes the file descriptor
+    pub async fn close(mut self: Pin<Box<Self>>) -> Result<AfcClient, IdeviceError> {
+        let header_payload = self.fd.to_le_bytes().to_vec();
+
+        self.as_mut()
+            .send_packet(AfcOpcode::FileClose, header_payload, Vec::new())
+            .await?;
+
+        // we don't need it to be pinned anymore
+        Ok(unsafe { Pin::into_inner_unchecked(self) }.client)
+    }
+
+    pub fn get_inner_afc(self: Pin<Box<Self>>) -> AfcClient {
+        unsafe { Pin::into_inner_unchecked(self).client }
+    }
+}
+
+crate::impl_trait_to_structs!(AsyncRead for InnerFileDescriptor<'_>, OwnedInnerFileDescriptor; {
     fn poll_read(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -293,9 +352,9 @@ impl AsyncRead for InnerFileDescriptor<'_> {
 
         std::task::Poll::Ready(Ok(()))
     }
-}
+});
 
-impl AsyncWrite for InnerFileDescriptor<'_> {
+crate::impl_trait_to_structs!(AsyncWrite for InnerFileDescriptor<'_>, OwnedInnerFileDescriptor; {
     fn poll_write(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -329,9 +388,10 @@ impl AsyncWrite for InnerFileDescriptor<'_> {
     ) -> std::task::Poll<Result<(), std::io::Error>> {
         std::task::Poll::Ready(Ok(()))
     }
-}
 
-impl AsyncSeek for InnerFileDescriptor<'_> {
+});
+
+crate::impl_trait_to_structs!(AsyncSeek for InnerFileDescriptor<'_>, OwnedInnerFileDescriptor; {
     fn start_seek(self: Pin<&mut Self>, position: SeekFrom) -> std::io::Result<()> {
         self.store_pending_seek(position);
 
@@ -356,11 +416,21 @@ impl AsyncSeek for InnerFileDescriptor<'_> {
             _ => unreachable!("a non seek future was stored, this shouldn't happen"),
         }
     }
-}
+});
 
 impl std::fmt::Debug for InnerFileDescriptor<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("InnerFileDescriptor")
+            .field("client", &self.client)
+            .field("fd", &self.fd)
+            .field("path", &self.path)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for OwnedInnerFileDescriptor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OwnedInnerFileDescriptor")
             .field("client", &self.client)
             .field("fd", &self.fd)
             .field("path", &self.path)
@@ -374,12 +444,15 @@ mod tests {
 
     use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
-    use crate::usbmuxd::{UsbmuxdAddr, UsbmuxdConnection};
+    use crate::{
+        IdeviceService as _,
+        afc::opcode::AfcFopenMode,
+        usbmuxd::{UsbmuxdAddr, UsbmuxdConnection},
+    };
 
-    use super::super::*;
     use super::*;
 
-    async fn make_client() -> super::super::AfcClient {
+    async fn make_client() -> AfcClient {
         let mut u = UsbmuxdConnection::default()
             .await
             .expect("failed to connect to usbmuxd");
