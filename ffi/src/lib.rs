@@ -377,6 +377,17 @@ pub unsafe extern "C" fn idevice_free(idevice: *mut IdeviceHandle) {
     }
 }
 
+/// Frees a stream handle
+///
+/// # Safety
+/// Pass a valid handle allocated by this library
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_stream_free(stream_handle: *mut ReadWriteOpaque) {
+    if !stream_handle.is_null() {
+        let _ = unsafe { Box::from_raw(stream_handle) };
+    }
+}
+
 /// Frees a string allocated by this library
 ///
 /// # Arguments
