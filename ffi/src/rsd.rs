@@ -63,7 +63,7 @@ pub unsafe extern "C" fn rsd_handshake_new(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let wrapper = unsafe { &mut *socket };
+    let mut wrapper = unsafe { Box::from_raw(socket) };
 
     let res = match wrapper.inner.take() {
         Some(mut w) => run_sync(async move { RsdHandshake::new(w.as_mut()).await }),
