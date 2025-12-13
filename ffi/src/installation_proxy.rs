@@ -145,7 +145,8 @@ pub unsafe extern "C" fn installation_proxy_get_apps(
     });
 
     match res {
-        Ok(mut r) => {
+        Ok(r) => {
+            let mut r = r.into_boxed_slice();
             let ptr = r.as_mut_ptr();
             let len = r.len();
             std::mem::forget(r);
