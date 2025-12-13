@@ -414,7 +414,7 @@ pub unsafe extern "C" fn idevice_string_free(string: *mut c_char) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn idevice_data_free(data: *mut u8, len: usize) {
     if !data.is_null() {
-        let _ = unsafe { std::slice::from_raw_parts(data, len) };
+        let _ = unsafe { Vec::from_raw_parts(data, len, len) };
     }
 }
 

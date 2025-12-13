@@ -477,7 +477,7 @@ pub unsafe extern "C" fn app_service_free_process_list(
     count: usize,
 ) {
     if !processes.is_null() && count > 0 {
-        let processes_slice = unsafe { std::slice::from_raw_parts_mut(processes, count) };
+        let processes_slice = unsafe { Vec::from_raw_parts(processes, count, count) };
         for process in processes_slice {
             if !process.executable_url.is_null() {
                 let _ = unsafe { CString::from_raw(process.executable_url) };
