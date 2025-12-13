@@ -131,7 +131,6 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Failed to connect to image mounter: [%d] %s", err->code,
             err->message);
     idevice_error_free(err);
-    idevice_provider_free(provider);
     return 1;
   }
   idevice_provider_free(provider);
