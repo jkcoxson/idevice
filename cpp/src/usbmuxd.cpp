@@ -117,6 +117,7 @@ Result<std::vector<UsbmuxdDevice>, FfiError> UsbmuxdConnection::get_devices() co
     for (int i = 0; i < count; ++i) {
         out.emplace_back(UsbmuxdDevice::adopt(list[i]));
     }
+    idevice_outer_slice_free(list, count);
     return Ok(std::move(out));
 }
 

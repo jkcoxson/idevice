@@ -50,7 +50,7 @@ use idevice::{Idevice, IdeviceSocket, ReadWrite};
 use once_cell::sync::Lazy;
 use plist_ffi::PlistWrapper;
 use std::{
-    ffi::{CStr, CString, c_char},
+    ffi::{CStr, CString, c_char, c_void},
     ptr::null_mut,
 };
 use tokio::runtime::{self, Runtime};
@@ -430,5 +430,20 @@ pub unsafe extern "C" fn idevice_plist_array_free(plists: *mut plist_t, len: usi
         for x in data {
             unsafe { plist_ffi::creation::plist_free((*x) as *mut PlistWrapper) };
         }
+    }
+}
+
+/// Frees a slice of pointers allocated by this library that had an underlying
+/// vec creation.
+///
+/// The following functions use an underlying vec and are safe to use:
+/// - idevice_usbmuxd_get_devices
+///
+/// # Safety
+/// Pass a valid pointer passed by the Vec creating functions
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_outer_slice_free(slice: *mut c_void, len: usize) {
+    if !slice.is_null() {
+        let _ = unsafe { Vec::from_raw_parts(slice, len, len) };
     }
 }
