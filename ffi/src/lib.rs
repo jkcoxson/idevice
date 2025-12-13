@@ -48,6 +48,7 @@ pub use pairing_file::*;
 
 use idevice::{Idevice, IdeviceSocket, ReadWrite};
 use once_cell::sync::Lazy;
+use plist_ffi::PlistWrapper;
 use std::{
     ffi::{CStr, CString, c_char},
     ptr::null_mut,
@@ -403,5 +404,20 @@ pub unsafe extern "C" fn idevice_string_free(string: *mut c_char) {
 pub unsafe extern "C" fn idevice_data_free(data: *mut u8, len: usize) {
     if !data.is_null() {
         let _ = unsafe { std::slice::from_raw_parts(data, len) };
+    }
+}
+
+/// Frees an array of plists allocated by this library
+///
+/// # Safety
+/// `data` must be a pointer to data allocated by this library,
+/// NOT data allocated by libplist.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_plist_array_free(plists: *mut plist_t, len: usize) {
+    if !plists.is_null() {
+        let data = unsafe { std::slice::from_raw_parts(plists, len) };
+        for x in data {
+            unsafe { plist_ffi::creation::plist_free((*x) as *mut PlistWrapper) };
+        }
     }
 }
