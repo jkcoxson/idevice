@@ -38,7 +38,7 @@ use std::{
 };
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tracing::{debug, error, trace};
+use tracing::{debug, trace};
 
 pub use util::{pretty_print_dictionary, pretty_print_plist};
 
