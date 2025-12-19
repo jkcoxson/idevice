@@ -9,12 +9,12 @@ use chacha20poly1305::{
 };
 use ed25519_dalek::Signature;
 use hkdf::Hkdf;
+use idevice_srp::{client::SrpClient, groups::G_3072};
 use rand::RngCore;
 use rsa::{rand_core::OsRng, signature::SignerMut};
 use serde::Serialize;
 use serde_json::json;
 use sha2::Sha512;
-use srp::{client::SrpClient, groups::G_3072};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{debug, warn};
 use x25519_dalek::{EphemeralSecret, PublicKey as X25519PublicKey};

@@ -1202,6 +1202,7 @@ dependencies = [
  "ed25519-dalek",
  "futures",
  "hkdf",
+ "idevice-srp",
  "indexmap",
  "json",
  "ns-keyed-archive",
@@ -1215,7 +1216,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "srp",
  "thiserror 2.0.17",
  "tokio",
  "tokio-openssl",
@@ -1245,6 +1245,20 @@ dependencies = [
  "ureq",
  "uuid",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "idevice-srp"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d84c9637ebbdfa523f352b62c8cf791288b3fbf59f6eac6c57c7c9949f5924b2"
+dependencies = [
+ "base64 0.21.7",
+ "digest",
+ "generic-array",
+ "lazy_static",
+ "num-bigint",
+ "subtle",
 ]
 
 [[package]]
@@ -2421,18 +2435,6 @@ checksum = "d91ed6c858b01f942cd56b37a94b3e0a1798290327d1236e4d9cf4eaca44d29d"
 dependencies = [
  "base64ct",
  "der",
-]
-
-[[package]]
-name = "srp"
-version = "0.6.0"
-dependencies = [
- "base64 0.21.7",
- "digest",
- "generic-array",
- "lazy_static",
- "num-bigint",
- "subtle",
 ]
 
 [[package]]

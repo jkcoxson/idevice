@@ -58,7 +58,7 @@ x25519-dalek = { version = "2", optional = true }
 ed25519-dalek = { version = "2", features = ["rand_core"], optional = true }
 hkdf = { version = "0.12", optional = true }
 chacha20poly1305 = { version = "0.10", optional = true }
-srp = { path = "../../apple-private-apis/icloud-auth/rustcrypto-srp", optional = true }
+idevice-srp = { version = "0.6", optional = true }
 
 obfstr = { version = "0.4", optional = true }
 
@@ -113,7 +113,7 @@ remote_pairing = [
   "dep:ed25519-dalek",
   "dep:hkdf",
   "dep:chacha20poly1305",
-  "dep:srp",
+  "dep:idevice-srp",
   "dep:uuid",
 ]
 restore_service = []
