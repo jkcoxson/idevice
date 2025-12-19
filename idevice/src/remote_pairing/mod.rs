@@ -99,6 +99,8 @@ impl<'a, R: ReadWrite> RemotePairingClient<'a, R> {
             "startNewSession": true
         }})
         .await?;
+        debug!("Waiting for response from verifyManualPairing");
+
         let pairing_data = self.receive_pairing_data().await?;
         let pairing_data = match pairing_data.as_str() {
             Some(p) => p,
@@ -191,6 +193,7 @@ impl<'a, R: ReadWrite> RemotePairingClient<'a, R> {
             },
         ];
 
+        debug!("Waiting for signbuf response");
         self.send_pairing_data(json! {{
             "data": B64.encode(tlv::serialize_tlv8(&msg)),
             "kind": "verifyManualPairing",
@@ -209,6 +212,7 @@ impl<'a, R: ReadWrite> RemotePairingClient<'a, R> {
 
         let data = B64.decode(res)?;
         let data = tlv::deserialize_tlv8(&data)?;
+        debug!("Verify TLV: {data:#?}");
 
         // Check if the device responded with an error (which is expected for a new pairing)
         if data
@@ -232,6 +236,7 @@ impl<'a, R: ReadWrite> RemotePairingClient<'a, R> {
     }
 
     pub async fn attempt_pair_verify(&mut self) -> Result<serde_json::Value, IdeviceError> {
+        debug!("Sending attemptPairVerify");
         self.send_plain_request(json! {
         {
             "request": {
@@ -247,6 +252,7 @@ impl<'a, R: ReadWrite> RemotePairingClient<'a, R> {
         }
         })
         .await?;
+        debug!("Waiting for attemptPairVerify response");
         let response = self.receive_plain_request().await?;
 
         let response = response
