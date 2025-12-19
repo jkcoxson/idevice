@@ -30,7 +30,7 @@ tracing = { version = "0.1.41" }
 base64 = { version = "0.22" }
 
 indexmap = { version = "2.11", features = ["serde"], optional = true }
-uuid = { version = "1.18", features = ["serde", "v4"], optional = true }
+uuid = { version = "1.18", features = ["serde", "v3", "v4"], optional = true }
 chrono = { version = "0.4", optional = true, default-features = false, features = [
   "serde",
 ] }
@@ -54,6 +54,11 @@ x509-cert = { version = "0.2", optional = true, features = [
   "builder",
   "pem",
 ], default-features = false }
+x25519-dalek = { version = "2", optional = true }
+ed25519-dalek = { version = "2", features = ["rand_core"], optional = true }
+hkdf = { version = "0.12", optional = true }
+chacha20poly1305 = { version = "0.10", optional = true }
+srp = { path = "../../apple-private-apis/icloud-auth/rustcrypto-srp", optional = true }
 
 obfstr = { version = "0.4", optional = true }
 
@@ -101,6 +106,16 @@ pair = ["chrono/default", "tokio/time", "dep:sha2", "dep:rsa", "dep:x509-cert"]
 pcapd = []
 preboard_service = []
 obfuscate = ["dep:obfstr"]
+remote_pairing = [
+  "dep:serde_json",
+  "dep:json",
+  "dep:x25519-dalek",
+  "dep:ed25519-dalek",
+  "dep:hkdf",
+  "dep:chacha20poly1305",
+  "dep:srp",
+  "dep:uuid",
+]
 restore_service = []
 rsd = ["xpc"]
 screenshotr = []
@@ -140,6 +155,7 @@ full = [
   "pair",
   "pcapd",
   "preboard_service",
+  "remote_pairing",
   "restore_service",
   "rsd",
   "screenshotr",

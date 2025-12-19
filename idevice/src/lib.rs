@@ -8,6 +8,8 @@ mod ca;
 pub mod pairing_file;
 pub mod plist_macro;
 pub mod provider;
+#[cfg(feature = "remote_pairing")]
+pub mod remote_pairing;
 #[cfg(feature = "rustls")]
 mod sni;
 #[cfg(feature = "tunnel_tcp_stack")]
@@ -856,6 +858,23 @@ pub enum IdeviceError {
 
     #[error("Developer mode is not enabled")]
     DeveloperModeNotEnabled = -68,
+
+    #[error("Unknown TLV {0}")]
+    UnknownTlv(u8) = -69,
+    #[error("Malformed TLV")]
+    MalformedTlv = -70,
+    #[error("Pairing rejected: {0}")]
+    PairingRejected(String) = -71,
+    #[cfg(feature = "remote_pairing")]
+    #[error("Base64 decode error")]
+    Base64DecodeError(#[from] base64::DecodeError) = -72,
+    #[error("Pair verified failed")]
+    PairVerifyFailed = -73,
+    #[error("SRP auth failed")]
+    SrpAuthFailed = -74,
+    #[cfg(feature = "remote_pairing")]
+    #[error("Chacha encryption error")]
+    ChachaEncryption(chacha20poly1305::Error) = -75,
 }
 
 impl IdeviceError {
@@ -1021,6 +1040,14 @@ impl IdeviceError {
             #[cfg(feature = "installation_proxy")]
             IdeviceError::MalformedPackageArchive(_) => -67,
             IdeviceError::DeveloperModeNotEnabled => -68,
+            IdeviceError::UnknownTlv(_) => -69,
+            IdeviceError::MalformedTlv => -70,
+            IdeviceError::PairingRejected(_) => -71,
+            #[cfg(feature = "remote_pairing")]
+            IdeviceError::Base64DecodeError(_) => -72,
+            IdeviceError::PairVerifyFailed => -73,
+            IdeviceError::SrpAuthFailed => -74,
+            IdeviceError::ChachaEncryption(_) => -75,
         }
     }
 }

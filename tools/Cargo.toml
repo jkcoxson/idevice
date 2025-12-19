@@ -78,6 +78,10 @@ name = "pair"
 path = "src/pair.rs"
 
 [[bin]]
+name = "pair_apple_tv"
+path = "src/pair_apple_tv.rs"
+
+[[bin]]
 name = "syslog_relay"
 path = "src/syslog_relay.rs"
 
