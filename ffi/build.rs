@@ -35,14 +35,22 @@ fn main() {
         .expect("Unable to generate bindings")
         .write_to_file("idevice.h");
 
-    // download plist.h
-    let h = ureq::get("https://raw.githubusercontent.com/libimobiledevice/libplist/refs/heads/master/include/plist/plist.h")
-        .call()
-        .expect("failed to download plist.h");
-    let h = h
-        .into_body()
-        .read_to_string()
-        .expect("failed to get string content");
+    // Check if plist.h exists locally first, otherwise download
+    let plist_h_path = "plist.h";
+    let h = if std::path::Path::new(plist_h_path).exists() {
+        std::fs::read_to_string(plist_h_path)
+            .expect("failed to read plist.h")
+    } else {
+        // download plist.h
+        let h = ureq::get("https://raw.githubusercontent.com/libimobiledevice/libplist/refs/heads/master/include/plist/plist.h")
+            .call()
+            .expect("failed to download plist.h");
+        h
+            .into_body()
+            .read_to_string()
+            .expect("failed to get string content")
+    };
+    
     let mut f = OpenOptions::new().append(true).open("idevice.h").unwrap();
     f.write_all(b"\n\n\n").unwrap();
     f.write_all(&h.into_bytes())
