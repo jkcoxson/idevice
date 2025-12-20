@@ -71,7 +71,7 @@ ring = ["rustls", "rustls/ring", "tokio-rustls/ring"]
 rustls = ["dep:rustls", "dep:tokio-rustls"]
 openssl = ["dep:openssl", "dep:tokio-openssl"]
 
-afc = ["dep:chrono"]
+afc = ["dep:chrono", "dep:futures"]
 amfi = []
 bt_packet_logger = []
 companion_proxy = []
