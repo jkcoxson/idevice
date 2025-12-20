@@ -38,7 +38,7 @@ use std::{
 };
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tracing::{debug, error, trace};
+use tracing::{debug, trace};
 
 pub use util::{pretty_print_dictionary, pretty_print_plist};
 
@@ -482,7 +482,13 @@ impl Idevice {
             if let Some(e) = IdeviceError::from_device_error_type(e.as_str(), &res) {
                 return Err(e);
             } else {
-                return Err(IdeviceError::UnknownErrorType(e));
+                let msg =
+                    if let Some(desc) = res.get("ErrorDescription").and_then(|x| x.as_string()) {
+                        format!("{} ({})", e, desc)
+                    } else {
+                        e
+                    };
+                return Err(IdeviceError::UnknownErrorType(msg));
             }
         }
         Ok(res)
