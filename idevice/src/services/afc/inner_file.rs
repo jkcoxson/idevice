@@ -146,7 +146,7 @@ impl InnerFileDescriptor<'_> {
         let mut collected_bytes = Vec::with_capacity(n);
 
         for chunk in chunk_number(n, MAX_TRANSFER as usize) {
-            let header_payload = [self.fd.to_le_bytes(), chunk.to_le_bytes()].concat();
+            let header_payload = [self.fd.to_le_bytes(), (chunk as u64).to_le_bytes()].concat();
             let res = self
                 .as_mut()
                 .send_packet(AfcOpcode::Read, header_payload, Vec::new())
