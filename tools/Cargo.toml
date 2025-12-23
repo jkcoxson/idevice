@@ -9,147 +9,151 @@ documentation = "https://docs.rs/idevice"
 repository = "https://github.com/jkcoxson/idevice"
 keywords = ["lockdownd", "ios"]
 
-[[bin]]
-name = "ideviceinfo"
-path = "src/ideviceinfo.rs"
-
-[[bin]]
-name = "heartbeat_client"
-path = "src/heartbeat_client.rs"
-
-[[bin]]
-name = "instproxy"
-path = "src/instproxy.rs"
-
-[[bin]]
-name = "ideviceinstaller"
-path = "src/ideviceinstaller.rs"
-
-[[bin]]
-name = "mounter"
-path = "src/mounter.rs"
+# [[bin]]
+# name = "ideviceinfo"
+# path = "src/ideviceinfo.rs"
+#
+# [[bin]]
+# name = "heartbeat_client"
+# path = "src/heartbeat_client.rs"
+#
+# [[bin]]
+# name = "instproxy"
+# path = "src/instproxy.rs"
+#
+# [[bin]]
+# name = "ideviceinstaller"
+# path = "src/ideviceinstaller.rs"
+#
+# [[bin]]
+# name = "mounter"
+# path = "src/mounter.rs"
 
 # [[bin]]
 # name = "core_device_proxy_tun"
 # path = "src/core_device_proxy_tun.rs"
 
-[[bin]]
-name = "idevice_id"
-path = "src/idevice_id.rs"
-
-[[bin]]
-name = "process_control"
-path = "src/process_control.rs"
-
-[[bin]]
-name = "dvt_packet_parser"
-path = "src/dvt_packet_parser.rs"
-
-[[bin]]
-name = "remotexpc"
-path = "src/remotexpc.rs"
-
-[[bin]]
-name = "debug_proxy"
-path = "src/debug_proxy.rs"
-
-[[bin]]
-name = "misagent"
-path = "src/misagent.rs"
-
-[[bin]]
-name = "location_simulation"
-path = "src/location_simulation.rs"
-
-[[bin]]
-name = "afc"
-path = "src/afc.rs"
-
-[[bin]]
-name = "crash_logs"
-path = "src/crash_logs.rs"
-
-[[bin]]
-name = "amfi"
-path = "src/amfi.rs"
-
-[[bin]]
-name = "pair"
-path = "src/pair.rs"
+# [[bin]]
+# name = "idevice_id"
+# path = "src/idevice_id.rs"
+#
+# [[bin]]
+# name = "process_control"
+# path = "src/process_control.rs"
+#
+# [[bin]]
+# name = "dvt_packet_parser"
+# path = "src/dvt_packet_parser.rs"
+#
+# [[bin]]
+# name = "remotexpc"
+# path = "src/remotexpc.rs"
+#
+# [[bin]]
+# name = "debug_proxy"
+# path = "src/debug_proxy.rs"
+#
+# [[bin]]
+# name = "misagent"
+# path = "src/misagent.rs"
+#
+# [[bin]]
+# name = "location_simulation"
+# path = "src/location_simulation.rs"
+#
+# [[bin]]
+# name = "afc"
+# path = "src/afc.rs"
+#
+# [[bin]]
+# name = "crash_logs"
+# path = "src/crash_logs.rs"
+#
+# [[bin]]
+# name = "amfi"
+# path = "src/amfi.rs"
+#
+# [[bin]]
+# name = "pair"
+# path = "src/pair.rs"
 
 [[bin]]
 name = "pair_apple_tv"
 path = "src/pair_apple_tv.rs"
 
 [[bin]]
-name = "syslog_relay"
-path = "src/syslog_relay.rs"
+name = "pair_rsd_ios"
+path = "src/pair_rsd_ios.rs"
 
-[[bin]]
-name = "os_trace_relay"
-path = "src/os_trace_relay.rs"
-
-[[bin]]
-name = "app_service"
-path = "src/app_service.rs"
-
-[[bin]]
-name = "lockdown"
-path = "src/lockdown.rs"
-
-[[bin]]
-name = "restore_service"
-path = "src/restore_service.rs"
-
-[[bin]]
-name = "companion_proxy"
-path = "src/companion_proxy.rs"
-
-[[bin]]
-name = "diagnostics"
-path = "src/diagnostics.rs"
-
-[[bin]]
-name = "mobilebackup2"
-path = "src/mobilebackup2.rs"
-
-[[bin]]
-name = "diagnosticsservice"
-path = "src/diagnosticsservice.rs"
-
-[[bin]]
-name = "bt_packet_logger"
-path = "src/bt_packet_logger.rs"
-
-[[bin]]
-name = "pcapd"
-path = "src/pcapd.rs"
-
-[[bin]]
-name = "preboard"
-path = "src/preboard.rs"
-
-
-[[bin]]
-name = "screenshot"
-path = "src/screenshot.rs"
-
-[[bin]]
-name = "activation"
-path = "src/activation.rs"
-
-[[bin]]
-name = "notifications"
-path = "src/notifications.rs"
-
-
-[[bin]]
-name = "installcoordination_proxy"
-path = "src/installcoordination_proxy.rs"
-
-[[bin]]
-name = "iproxy"
-path = "src/iproxy.rs"
+# [[bin]]
+# name = "syslog_relay"
+# path = "src/syslog_relay.rs"
+#
+# [[bin]]
+# name = "os_trace_relay"
+# path = "src/os_trace_relay.rs"
+#
+# [[bin]]
+# name = "app_service"
+# path = "src/app_service.rs"
+#
+# [[bin]]
+# name = "lockdown"
+# path = "src/lockdown.rs"
+#
+# [[bin]]
+# name = "restore_service"
+# path = "src/restore_service.rs"
+#
+# [[bin]]
+# name = "companion_proxy"
+# path = "src/companion_proxy.rs"
+#
+# [[bin]]
+# name = "diagnostics"
+# path = "src/diagnostics.rs"
+#
+# [[bin]]
+# name = "mobilebackup2"
+# path = "src/mobilebackup2.rs"
+#
+# [[bin]]
+# name = "diagnosticsservice"
+# path = "src/diagnosticsservice.rs"
+#
+# [[bin]]
+# name = "bt_packet_logger"
+# path = "src/bt_packet_logger.rs"
+#
+# [[bin]]
+# name = "pcapd"
+# path = "src/pcapd.rs"
+#
+# [[bin]]
+# name = "preboard"
+# path = "src/preboard.rs"
+#
+#
+# [[bin]]
+# name = "screenshot"
+# path = "src/screenshot.rs"
+#
+# [[bin]]
+# name = "activation"
+# path = "src/activation.rs"
+#
+# [[bin]]
+# name = "notifications"
+# path = "src/notifications.rs"
+#
+#
+# [[bin]]
+# name = "installcoordination_proxy"
+# path = "src/installcoordination_proxy.rs"
+#
+# [[bin]]
+# name = "iproxy"
+# path = "src/iproxy.rs"
 
 [dependencies]
 idevice = { path = "../idevice", features = ["full"], default-features = false }
@@ -164,6 +168,7 @@ plist = { version = "1.7" }
 ns-keyed-archive = "0.1.2"
 uuid = "1.16"
 futures-util = { version = "0.3" }
+mdns = { version = "3" }
 
 [features]
 default = ["aws-lc"]
