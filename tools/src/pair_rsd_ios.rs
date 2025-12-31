@@ -4,18 +4,22 @@
 
 // Jackson Coxson
 
-use std::{io::Write, net::IpAddr, str::FromStr, time::Duration};
+use std::{any::Any, io::Write, net::IpAddr, str::FromStr, sync::Arc, time::Duration};
 
 use clap::{Arg, Command};
 use futures_util::{StreamExt, pin_mut};
 use idevice::remote_pairing::{RemotePairingClient, RpPairingFile};
-use mdns::{Record, RecordKind};
+use zeroconf::{
+    BrowserEvent, MdnsBrowser, ServiceDiscovery, ServiceType,
+    prelude::{TEventLoop, TMdnsBrowser},
+};
 
-const SERVICE_NAME: &'static str = "ncm._remoted._tcp.local.";
+const SERVICE_NAME: &str = "remoted";
+const SERVICE_PROTOCOL: &str = "tcp";
 
 #[tokio::main]
 async fn main() {
-    // tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt::init();
 
     let matches = Command::new("pair")
         .about("Pair with the device")
@@ -33,26 +37,26 @@ async fn main() {
         return;
     }
 
-    let stream = mdns::discover::all(SERVICE_NAME, Duration::from_secs(1))
-        .unwrap()
-        .listen();
-    pin_mut!(stream);
+    let mut browser = MdnsBrowser::new(
+        ServiceType::new(SERVICE_NAME, SERVICE_PROTOCOL).expect("Unable to start mDNS browse"),
+    );
+    browser.set_service_callback(Box::new(on_service_discovered));
 
-    while let Some(Ok(response)) = stream.next().await {
-        let addr = response.records().filter_map(self::to_ip_addr).next();
+    let event_loop = browser.browse_services().unwrap();
 
-        if let Some(addr) = addr {
-            println!("found cast device at {}", addr);
-        } else {
-            println!("cast device does not advertise address");
-        }
+    loop {
+        // calling `poll()` will keep this browser alive
+        event_loop.poll(Duration::from_secs(0)).unwrap();
     }
 }
 
-fn to_ip_addr(record: &Record) -> Option<IpAddr> {
-    match record.kind {
-        RecordKind::A(addr) => Some(addr.into()),
-        RecordKind::AAAA(addr) => Some(addr.into()),
-        _ => None,
+fn on_service_discovered(
+    result: zeroconf::Result<BrowserEvent>,
+    _context: Option<Arc<dyn Any + Send + Sync>>,
+) {
+    if let Ok(BrowserEvent::Add(result)) = result {
+        tokio::task::spawn(async move {
+            println!("{result:?}");
+        });
     }
 }

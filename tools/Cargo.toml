@@ -168,7 +168,7 @@ plist = { version = "1.7" }
 ns-keyed-archive = "0.1.2"
 uuid = "1.16"
 futures-util = { version = "0.3" }
-mdns = { version = "3" }
+zeroconf = { version = "0.17" }
 
 [features]
 default = ["aws-lc"]
