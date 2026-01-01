@@ -1,6 +1,6 @@
 // Jackson Coxson
 
-use crate::util::plist_to_xml_bytes;
+use plist_macro::plist_to_xml_bytes;
 use tracing::warn;
 
 #[derive(Debug)]

@@ -3,9 +3,9 @@
 use clap::{Arg, Command, arg};
 use idevice::{
     IdeviceService, RsdService, companion_proxy::CompanionProxy,
-    core_device_proxy::CoreDeviceProxy, pretty_print_dictionary, pretty_print_plist,
-    rsd::RsdHandshake,
+    core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake,
 };
+use plist_macro::{pretty_print_dictionary, pretty_print_plist};
 
 mod common;
 

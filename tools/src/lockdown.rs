@@ -1,8 +1,9 @@
 // Jackson Coxson
 
 use clap::{Arg, Command, arg};
-use idevice::{IdeviceService, lockdown::LockdownClient, pretty_print_plist};
+use idevice::{IdeviceService, lockdown::LockdownClient};
 use plist::Value;
+use plist_macro::pretty_print_plist;
 
 mod common;
 

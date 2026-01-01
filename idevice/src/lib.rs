@@ -5,8 +5,9 @@
 
 #[cfg(all(feature = "pair", feature = "rustls"))]
 mod ca;
+pub mod cursor;
+mod obfuscation;
 pub mod pairing_file;
-pub mod plist_macro;
 pub mod provider;
 #[cfg(feature = "rustls")]
 mod sni;
@@ -18,7 +19,6 @@ pub mod tss;
 pub mod tunneld;
 #[cfg(feature = "usbmuxd")]
 pub mod usbmuxd;
-mod util;
 pub mod utils;
 #[cfg(feature = "xpc")]
 pub mod xpc;
@@ -29,6 +29,7 @@ pub use services::*;
 #[cfg(feature = "xpc")]
 pub use xpc::RemoteXpcClient;
 
+use plist_macro::{plist, pretty_print_dictionary, pretty_print_plist};
 use provider::{IdeviceProvider, RsdProvider};
 #[cfg(feature = "rustls")]
 use rustls::{crypto::CryptoProvider, pki_types::ServerName};
@@ -39,8 +40,6 @@ use std::{
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tracing::{debug, trace};
-
-pub use util::{pretty_print_dictionary, pretty_print_plist};
 
 use crate::services::lockdown::LockdownClient;
 
@@ -192,7 +191,7 @@ impl Idevice {
     /// # Errors
     /// Returns `IdeviceError` if communication fails or response is invalid
     pub async fn get_type(&mut self) -> Result<String, IdeviceError> {
-        let req = crate::plist!({
+        let req = plist!({
             "Label": self.label.clone(),
             "Request": "QueryType",
         });
@@ -212,7 +211,7 @@ impl Idevice {
     /// # Errors
     /// Returns `IdeviceError` if the protocol sequence isn't followed correctly
     pub async fn rsd_checkin(&mut self) -> Result<(), IdeviceError> {
-        let req = crate::plist!({
+        let req = plist!({
             "Label": self.label.clone(),
             "ProtocolVersion": "2",
             "Request": "RSDCheckin",

@@ -1,13 +1,12 @@
-use std::{io::Cursor, path::Path};
-
 use async_zip::base::read::seek::ZipFileReader;
 use futures::AsyncReadExt as _;
+use plist_macro::plist;
+use std::{io::Cursor, path::Path};
 use tokio::io::{AsyncBufRead, AsyncSeek, BufReader};
 
 use crate::{
     IdeviceError, IdeviceService,
     afc::{AfcClient, opcode::AfcFopenMode},
-    plist,
     provider::IdeviceProvider,
 };
 

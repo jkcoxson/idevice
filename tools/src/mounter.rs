@@ -4,10 +4,8 @@
 use std::{io::Write, path::PathBuf};
 
 use clap::{Arg, Command, arg, value_parser};
-use idevice::{
-    IdeviceService, lockdown::LockdownClient, mobile_image_mounter::ImageMounter,
-    pretty_print_plist,
-};
+use idevice::{IdeviceService, lockdown::LockdownClient, mobile_image_mounter::ImageMounter};
+use plist_macro::pretty_print_plist;
 
 mod common;
 

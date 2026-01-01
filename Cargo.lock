@@ -1076,6 +1076,7 @@ dependencies = [
  "obfstr",
  "openssl",
  "plist",
+ "plist-macro",
  "rand 0.9.2",
  "reqwest",
  "rsa",
@@ -1122,6 +1123,7 @@ dependencies = [
  "idevice",
  "ns-keyed-archive",
  "plist",
+ "plist-macro",
  "sha2",
  "tokio",
  "tracing",
@@ -1728,6 +1730,15 @@ dependencies = [
  "quick-xml",
  "serde",
  "time",
+]
+
+[[package]]
+name = "plist-macro"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb72007326fe20721ef27304fcf2d1bd5877b92d13dbd8df735fd33407e31c2a"
+dependencies = [
+ "plist",
 ]
 
 [[package]]

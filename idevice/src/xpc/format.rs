@@ -1,3 +1,4 @@
+use plist_macro::plist;
 use std::{
     ffi::CString,
     io::{BufRead, Cursor, Read},
@@ -169,7 +170,7 @@ impl XPCObject {
                 plist::Value::Dictionary(dict)
             }
             Self::FileTransfer { msg_id, data } => {
-                crate::plist!({
+                plist!({
                     "msg_id": *msg_id,
                     "data": data.to_plist(),
                 })

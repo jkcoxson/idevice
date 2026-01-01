@@ -157,6 +157,7 @@ sha2 = { version = "0.10" }
 ureq = { version = "3" }
 clap = { version = "4.5" }
 plist = { version = "1.7" }
+plist-macro = { version = "0.1" }
 ns-keyed-archive = "0.1.2"
 uuid = "1.16"
 futures-util = { version = "0.3" }

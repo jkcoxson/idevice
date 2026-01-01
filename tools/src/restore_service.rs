@@ -2,9 +2,10 @@
 
 use clap::{Arg, Command};
 use idevice::{
-    IdeviceService, RsdService, core_device_proxy::CoreDeviceProxy, pretty_print_dictionary,
+    IdeviceService, RsdService, core_device_proxy::CoreDeviceProxy,
     restore_service::RestoreServiceClient, rsd::RsdHandshake,
 };
+use plist_macro::pretty_print_dictionary;
 
 mod common;
 

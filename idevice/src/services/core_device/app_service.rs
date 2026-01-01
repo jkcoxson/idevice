@@ -1,5 +1,6 @@
 // Jackson Coxson
 
+use plist_macro::plist_to_xml_bytes;
 use serde::Deserialize;
 use tracing::warn;
 
@@ -216,7 +217,7 @@ impl<R: ReadWrite> AppServiceClient<R> {
                 "user": {
                     "active": true,
                 },
-                "platformSpecificOptions": plist::Value::Data(crate::util::plist_to_xml_bytes(&platform_options.unwrap_or_default())),
+                "platformSpecificOptions": plist::Value::Data(plist_to_xml_bytes(&platform_options.unwrap_or_default())),
             },
         });
 
