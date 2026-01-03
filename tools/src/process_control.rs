@@ -1,76 +1,26 @@
 // Jackson Coxson
 
-use clap::{Arg, Command};
+use idevice::provider::IdeviceProvider;
 use idevice::services::lockdown::LockdownClient;
 use idevice::{IdeviceService, RsdService, core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake};
+use jkcli::{CollectedArguments, JkArgument, JkCommand};
 
-mod common;
+pub fn register() -> JkCommand {
+    JkCommand::new()
+        .help("Launch an app with process control")
+        .with_argument(
+            JkArgument::new()
+                .required(true)
+                .with_help("The bundle ID to launch"),
+        )
+}
 
-#[tokio::main]
-async fn main() {
+pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvider>) {
     tracing_subscriber::fmt::init();
 
-    let matches = Command::new("process_control")
-        .about("Query process control")
-        .arg(
-            Arg::new("host")
-                .long("host")
-                .value_name("HOST")
-                .help("IP address of the device"),
-        )
-        .arg(
-            Arg::new("pairing_file")
-                .long("pairing-file")
-                .value_name("PATH")
-                .help("Path to the pairing file"),
-        )
-        .arg(
-            Arg::new("udid")
-                .value_name("UDID")
-                .help("UDID of the device (overrides host/pairing file)")
-                .index(2),
-        )
-        .arg(
-            Arg::new("about")
-                .long("about")
-                .help("Show about information")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("tunneld")
-                .long("tunneld")
-                .help("Use tunneld for connection")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("bundle_id")
-                .value_name("Bundle ID")
-                .help("Bundle ID of the app to launch")
-                .index(1),
-        )
-        .get_matches();
+    let mut arguments = arguments.clone();
 
-    if matches.get_flag("about") {
-        println!("process_control - launch and manage processes on the device");
-        println!("Copyright (c) 2025 Jackson Coxson");
-        return;
-    }
-
-    let udid = matches.get_one::<String>("udid");
-    let pairing_file = matches.get_one::<String>("pairing_file");
-    let host = matches.get_one::<String>("host");
-    let bundle_id = matches
-        .get_one::<String>("bundle_id")
-        .expect("No bundle ID specified");
-
-    let provider =
-        match common::get_provider(udid, host, pairing_file, "process_control-jkcoxson").await {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("{e}");
-                return;
-            }
-        };
+    let bundle_id: String = arguments.next_argument().expect("No bundle ID specified");
 
     let mut rs_client_opt: Option<
         idevice::dvt::remote_server::RemoteServerClient<Box<dyn idevice::ReadWrite>>,

@@ -1,59 +1,16 @@
 //  Monitor memory and app notifications
 
-use clap::{Arg, Command};
-use idevice::{IdeviceService, RsdService, core_device_proxy::CoreDeviceProxy, rsd::RsdHandshake};
-mod common;
+use idevice::{
+    IdeviceService, RsdService, core_device_proxy::CoreDeviceProxy, provider::IdeviceProvider,
+    rsd::RsdHandshake,
+};
+use jkcli::{CollectedArguments, JkCommand};
 
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt::init();
-    let matches = Command::new("notifications")
-        .about("start notifications")
-        .arg(
-            Arg::new("host")
-                .long("host")
-                .value_name("HOST")
-                .help("IP address of the device"),
-        )
-        .arg(
-            Arg::new("pairing_file")
-                .long("pairing-file")
-                .value_name("PATH")
-                .help("Path to the pairing file"),
-        )
-        .arg(
-            Arg::new("udid")
-                .value_name("UDID")
-                .help("UDID of the device (overrides host/pairing file)")
-                .index(1),
-        )
-        .arg(
-            Arg::new("about")
-                .long("about")
-                .help("Show about information")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .get_matches();
+pub fn register() -> JkCommand {
+    JkCommand::new().help("Notification proxy")
+}
 
-    if matches.get_flag("about") {
-        print!("notifications - start notifications to ios device");
-        println!("Copyright (c) 2025 Jackson Coxson");
-        return;
-    }
-
-    let udid = matches.get_one::<String>("udid");
-    let host = matches.get_one::<String>("host");
-    let pairing_file = matches.get_one::<String>("pairing_file");
-
-    let provider =
-        match common::get_provider(udid, host, pairing_file, "notifications-jkcoxson").await {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("{e}");
-                return;
-            }
-        };
-
+pub async fn main(_arguments: &CollectedArguments, provider: Box<dyn IdeviceProvider>) {
     let proxy = CoreDeviceProxy::connect(&*provider)
         .await
         .expect("no core proxy");
@@ -80,7 +37,6 @@ async fn main() {
         .await
         .expect("Failed to start notifications");
 
-    // Handle Ctrl+C gracefully
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
@@ -88,7 +44,6 @@ async fn main() {
                 break;
             }
 
-            // Branch 2: Wait for the next batch of notifications.
             result = notification_client.get_notification() => {
                 if let Err(e) = result {
                     eprintln!("Failed to get notifications: {}", e);

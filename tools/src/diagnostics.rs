@@ -1,106 +1,71 @@
 // Jackson Coxson
 // idevice Rust implementation of libimobiledevice's idevicediagnostics
 
-use clap::{Arg, ArgMatches, Command};
-use idevice::{IdeviceService, services::diagnostics_relay::DiagnosticsRelayClient};
+use idevice::{
+    IdeviceService, provider::IdeviceProvider, services::diagnostics_relay::DiagnosticsRelayClient,
+};
+use jkcli::{CollectedArguments, JkArgument, JkCommand, JkFlag};
 
-mod common;
-
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt::init();
-
-    let matches = Command::new("idevicediagnostics")
-        .about("Interact with the diagnostics interface of a device")
-        .arg(
-            Arg::new("host")
-                .long("host")
-                .value_name("HOST")
-                .help("IP address of the device"),
-        )
-        .arg(
-            Arg::new("pairing_file")
-                .long("pairing-file")
-                .value_name("PATH")
-                .help("Path to the pairing file"),
-        )
-        .arg(
-            Arg::new("udid")
-                .value_name("UDID")
-                .help("UDID of the device (overrides host/pairing file)")
-                .index(1),
-        )
-        .arg(
-            Arg::new("about")
-                .long("about")
-                .help("Show about information")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .subcommand(
-            Command::new("ioregistry")
-                .about("Print IORegistry information")
-                .arg(
-                    Arg::new("plane")
-                        .long("plane")
-                        .value_name("PLANE")
-                        .help("IORegistry plane to query (e.g., IODeviceTree, IOService)"),
+pub fn register() -> JkCommand {
+    JkCommand::new()
+        .help("Interact with the diagnostics interface of a device")
+        .with_subcommand(
+            "ioregistry",
+            JkCommand::new()
+                .help("Print IORegistry information")
+                .with_flag(
+                    JkFlag::new("plane")
+                        .with_help("IORegistry plane to query (e.g., IODeviceTree, IOService)")
+                        .with_argument(JkArgument::new().required(true)),
                 )
-                .arg(
-                    Arg::new("name")
-                        .long("name")
-                        .value_name("NAME")
-                        .help("Entry name to filter by"),
+                .with_flag(
+                    JkFlag::new("name")
+                        .with_help("Entry name to filter by")
+                        .with_argument(JkArgument::new().required(true)),
                 )
-                .arg(
-                    Arg::new("class")
-                        .long("class")
-                        .value_name("CLASS")
-                        .help("Entry class to filter by"),
+                .with_flag(
+                    JkFlag::new("class")
+                        .with_help("Entry class to filter by")
+                        .with_argument(JkArgument::new().required(true)),
                 ),
         )
-        .subcommand(
-            Command::new("mobilegestalt")
-                .about("Print MobileGestalt information")
-                .arg(
-                    Arg::new("keys")
-                        .long("keys")
-                        .value_name("KEYS")
-                        .help("Comma-separated list of keys to query")
-                        .value_delimiter(',')
-                        .num_args(1..),
+        .with_subcommand(
+            "mobilegestalt",
+            JkCommand::new()
+                .help("Print MobileGestalt information")
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("Comma-separated list of keys to query")
+                        .required(true),
                 ),
         )
-        .subcommand(Command::new("gasguage").about("Print gas gauge (battery) information"))
-        .subcommand(Command::new("nand").about("Print NAND flash information"))
-        .subcommand(Command::new("all").about("Print all available diagnostics information"))
-        .subcommand(Command::new("wifi").about("Print WiFi diagnostics information"))
-        .subcommand(Command::new("goodbye").about("Send Goodbye to diagnostics relay"))
-        .subcommand(Command::new("restart").about("Restart the device"))
-        .subcommand(Command::new("shutdown").about("Shutdown the device"))
-        .subcommand(Command::new("sleep").about("Put the device to sleep"))
-        .get_matches();
+        .with_subcommand(
+            "gasguage",
+            JkCommand::new().help("Print gas gauge (battery) information"),
+        )
+        .with_subcommand(
+            "nand",
+            JkCommand::new().help("Print NAND flash information"),
+        )
+        .with_subcommand(
+            "all",
+            JkCommand::new().help("Print all available diagnostics information"),
+        )
+        .with_subcommand(
+            "wifi",
+            JkCommand::new().help("Print WiFi diagnostics information"),
+        )
+        .with_subcommand(
+            "goodbye",
+            JkCommand::new().help("Send Goodbye to diagnostics relay"),
+        )
+        .with_subcommand("restart", JkCommand::new().help("Restart the device"))
+        .with_subcommand("shutdown", JkCommand::new().help("Shutdown the device"))
+        .with_subcommand("sleep", JkCommand::new().help("Put the device to sleep"))
+        .subcommand_required(true)
+}
 
-    if matches.get_flag("about") {
-        println!(
-            "idevicediagnostics - interact with the diagnostics interface of a device. Reimplementation of libimobiledevice's binary."
-        );
-        println!("Copyright (c) 2025 Jackson Coxson");
-        return;
-    }
-
-    let udid = matches.get_one::<String>("udid");
-    let host = matches.get_one::<String>("host");
-    let pairing_file = matches.get_one::<String>("pairing_file");
-
-    let provider =
-        match common::get_provider(udid, host, pairing_file, "idevicediagnostics-jkcoxson").await {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("{e}");
-                return;
-            }
-        };
-
+pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvider>) {
     let mut diagnostics_client = match DiagnosticsRelayClient::connect(&*provider).await {
         Ok(client) => client,
         Err(e) => {
@@ -109,47 +74,52 @@ async fn main() {
         }
     };
 
-    match matches.subcommand() {
-        Some(("ioregistry", sub_matches)) => {
-            handle_ioregistry(&mut diagnostics_client, sub_matches).await;
+    let (sub_name, sub_args) = arguments.first_subcommand().unwrap();
+    let mut sub_matches = sub_args.clone();
+
+    match sub_name.as_str() {
+        "ioregistry" => {
+            handle_ioregistry(&mut diagnostics_client, &sub_matches).await;
         }
-        Some(("mobilegestalt", sub_matches)) => {
-            handle_mobilegestalt(&mut diagnostics_client, sub_matches).await;
+        "mobilegestalt" => {
+            handle_mobilegestalt(&mut diagnostics_client, &mut sub_matches).await;
         }
-        Some(("gasguage", _)) => {
+        "gasguage" => {
             handle_gasguage(&mut diagnostics_client).await;
         }
-        Some(("nand", _)) => {
+        "nand" => {
             handle_nand(&mut diagnostics_client).await;
         }
-        Some(("all", _)) => {
+        "all" => {
             handle_all(&mut diagnostics_client).await;
         }
-        Some(("wifi", _)) => {
+        "wifi" => {
             handle_wifi(&mut diagnostics_client).await;
         }
-        Some(("restart", _)) => {
+        "restart" => {
             handle_restart(&mut diagnostics_client).await;
         }
-        Some(("shutdown", _)) => {
+        "shutdown" => {
             handle_shutdown(&mut diagnostics_client).await;
         }
-        Some(("sleep", _)) => {
+        "sleep" => {
             handle_sleep(&mut diagnostics_client).await;
         }
-        Some(("goodbye", _)) => {
+        "goodbye" => {
             handle_goodbye(&mut diagnostics_client).await;
         }
-        _ => {
-            eprintln!("No subcommand specified. Use --help for usage information.");
-        }
+        _ => unreachable!(),
     }
 }
 
-async fn handle_ioregistry(client: &mut DiagnosticsRelayClient, matches: &ArgMatches) {
-    let plane = matches.get_one::<String>("plane").map(|s| s.as_str());
-    let name = matches.get_one::<String>("name").map(|s| s.as_str());
-    let class = matches.get_one::<String>("class").map(|s| s.as_str());
+async fn handle_ioregistry(client: &mut DiagnosticsRelayClient, matches: &CollectedArguments) {
+    let plane = matches.get_flag::<String>("plane");
+    let name = matches.get_flag::<String>("name");
+    let class = matches.get_flag::<String>("class");
+
+    let plane = plane.as_deref();
+    let name = name.as_deref();
+    let class = class.as_deref();
 
     match client.ioregistry(plane, name, class).await {
         Ok(Some(data)) => {
@@ -164,12 +134,14 @@ async fn handle_ioregistry(client: &mut DiagnosticsRelayClient, matches: &ArgMat
     }
 }
 
-async fn handle_mobilegestalt(client: &mut DiagnosticsRelayClient, matches: &ArgMatches) {
-    let keys = matches
-        .get_many::<String>("keys")
-        .map(|values| values.map(|s| s.to_string()).collect::<Vec<_>>());
+async fn handle_mobilegestalt(
+    client: &mut DiagnosticsRelayClient,
+    matches: &mut CollectedArguments,
+) {
+    let keys = matches.next_argument::<String>().unwrap();
+    let keys = keys.split(',').map(|x| x.to_string()).collect();
 
-    match client.mobilegestalt(keys).await {
+    match client.mobilegestalt(Some(keys)).await {
         Ok(Some(data)) => {
             println!("{data:#?}");
         }

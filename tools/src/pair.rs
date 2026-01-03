@@ -1,46 +1,29 @@
 // Jackson Coxson
 
-use clap::{Arg, Command};
 use idevice::{
     IdeviceService,
     lockdown::LockdownClient,
+    provider::IdeviceProvider,
     usbmuxd::{Connection, UsbmuxdAddr, UsbmuxdConnection},
 };
+use jkcli::{CollectedArguments, JkArgument, JkCommand};
 
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt::init();
+pub fn register() -> JkCommand {
+    JkCommand::new()
+        .help("Manage files in the AFC jail of a device")
+        .with_argument(JkArgument::new().with_help("A UDID to override and pair with"))
+}
 
-    let matches = Command::new("pair")
-        .about("Pair with the device")
-        .arg(
-            Arg::new("udid")
-                .value_name("UDID")
-                .help("UDID of the device (overrides host/pairing file)")
-                .index(1),
-        )
-        .arg(
-            Arg::new("about")
-                .long("about")
-                .help("Show about information")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .get_matches();
-
-    if matches.get_flag("about") {
-        println!("pair - pair with the device");
-        println!("Copyright (c) 2025 Jackson Coxson");
-        return;
-    }
-
-    let udid = matches.get_one::<String>("udid");
+pub async fn main(arguments: &CollectedArguments, _provider: Box<dyn IdeviceProvider>) {
+    let mut arguments = arguments.clone();
+    let udid: Option<String> = arguments.next_argument();
 
     let mut u = UsbmuxdConnection::default()
         .await
         .expect("Failed to connect to usbmuxd");
     let dev = match udid {
         Some(udid) => u
-            .get_device(udid)
+            .get_device(udid.as_str())
             .await
             .expect("Failed to get device with specific udid"),
         None => u
