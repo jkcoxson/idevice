@@ -47,11 +47,11 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
         .await
         .expect("no session");
 
+    let domain: Option<String> = arguments.get_flag("domain");
+    let domain = domain.as_deref();
+
     let (sub_name, sub_args) = arguments.first_subcommand().expect("No subcommand");
     let mut sub_args = sub_args.clone();
-
-    let domain: Option<String> = sub_args.get_flag("domain");
-    let domain = domain.as_deref();
 
     match sub_name.as_str() {
         "get" => {
