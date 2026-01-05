@@ -1,7 +1,7 @@
 // Jackson Coxson
 
 use idevice::{IdeviceService, lockdown::LockdownClient, provider::IdeviceProvider};
-use jkcli::{CollectedArguments, JkArgument, JkCommand};
+use jkcli::{CollectedArguments, JkArgument, JkCommand, JkFlag};
 use plist::Value;
 use plist_macro::pretty_print_plist;
 
@@ -12,8 +12,7 @@ pub fn register() -> JkCommand {
             "get",
             JkCommand::new()
                 .help("Gets a value from lockdown")
-                .with_argument(JkArgument::new().with_help("The value to get"))
-                .with_argument(JkArgument::new().with_help("The domain to get in")),
+                .with_argument(JkArgument::new().with_help("The value to get")),
         )
         .with_subcommand(
             "set",
@@ -28,8 +27,12 @@ pub fn register() -> JkCommand {
                     JkArgument::new()
                         .with_help("The value key to set")
                         .required(true),
-                )
-                .with_argument(JkArgument::new().with_help("The domain to set in")),
+                ),
+        )
+        .with_flag(
+            JkFlag::new("domain")
+                .with_help("The domain to set/get in")
+                .with_argument(JkArgument::new().required(true)),
         )
         .subcommand_required(true)
 }
@@ -47,10 +50,12 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
     let (sub_name, sub_args) = arguments.first_subcommand().expect("No subcommand");
     let mut sub_args = sub_args.clone();
 
+    let domain: Option<String> = sub_args.get_flag("domain");
+    let domain = domain.as_deref();
+
     match sub_name.as_str() {
         "get" => {
             let key: Option<String> = sub_args.next_argument();
-            let domain: Option<String> = sub_args.next_argument();
 
             match lockdown_client
                 .get_value(
@@ -58,10 +63,7 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
                         Some(k) => Some(k.as_str()),
                         None => None,
                     },
-                    match &domain {
-                        Some(d) => Some(d.as_str()),
-                        None => None,
-                    },
+                    domain,
                 )
                 .await
             {
@@ -76,21 +78,10 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
         "set" => {
             let value_str: String = sub_args.next_argument().unwrap();
             let key: String = sub_args.next_argument().unwrap();
-            let domain: Option<String> = sub_args.next_argument();
 
             let value = Value::String(value_str.clone());
 
-            match lockdown_client
-                .set_value(
-                    key,
-                    value,
-                    match &domain {
-                        Some(d) => Some(d.as_str()),
-                        None => None,
-                    },
-                )
-                .await
-            {
+            match lockdown_client.set_value(key, value, domain).await {
                 Ok(()) => println!("Successfully set"),
                 Err(e) => eprintln!("Error setting value: {e}"),
             }
