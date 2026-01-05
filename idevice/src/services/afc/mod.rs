@@ -13,6 +13,7 @@ use tracing::warn;
 use crate::{
     Idevice, IdeviceError, IdeviceService,
     afc::file::{FileDescriptor, OwnedFileDescriptor},
+    lockdown::LockdownClient,
     obf,
 };
 
@@ -89,6 +90,43 @@ impl AfcClient {
             idevice,
             package_number: 0,
         }
+    }
+
+    /// Connects to afc2 from a provider
+    pub async fn new_afc2(
+        provider: &dyn crate::provider::IdeviceProvider,
+    ) -> Result<Self, IdeviceError> {
+        let mut lockdown = LockdownClient::connect(provider).await?;
+
+        #[cfg(feature = "openssl")]
+        let legacy = lockdown
+            .get_value(Some("ProductVersion"), None)
+            .await
+            .ok()
+            .as_ref()
+            .and_then(|x| x.as_string())
+            .and_then(|x| x.split(".").next())
+            .and_then(|x| x.parse::<u8>().ok())
+            .map(|x| x < 5)
+            .unwrap_or(false);
+
+        #[cfg(not(feature = "openssl"))]
+        let legacy = false;
+
+        lockdown
+            .start_session(&provider.get_pairing_file().await?)
+            .await?;
+
+        let (port, ssl) = lockdown.start_service(obf!("com.apple.afc2")).await?;
+
+        let mut idevice = provider.connect(port).await?;
+        if ssl {
+            idevice
+                .start_session(&provider.get_pairing_file().await?, legacy)
+                .await?;
+        }
+
+        Self::from_stream(idevice).await
     }
 
     /// Lists the contents of a directory on the device

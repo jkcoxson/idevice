@@ -54,6 +54,44 @@ pub unsafe extern "C" fn afc_client_connect(
     }
 }
 
+/// Connects to the AFC2 service using a TCP provider
+///
+/// # Arguments
+/// * [`provider`] - An IdeviceProvider
+/// * [`client`] - On success, will be set to point to a newly allocated AfcClient handle
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `provider` must be a valid pointer to a handle allocated by this library
+/// `client` must be a valid, non-null pointer to a location where the handle will be stored
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn afc2_client_connect(
+    provider: *mut IdeviceProviderHandle,
+    client: *mut *mut AfcClientHandle,
+) -> *mut IdeviceFfiError {
+    if provider.is_null() || client.is_null() {
+        tracing::error!("Null pointer provided");
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let res = run_sync_local(async {
+        let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
+
+        AfcClient::new_afc2(provider_ref).await
+    });
+
+    match res {
+        Ok(r) => {
+            let boxed = Box::new(AfcClientHandle(r));
+            unsafe { *client = Box::into_raw(boxed) };
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
 /// Creates a new AfcClient from an existing Idevice connection
 ///
 /// # Arguments
