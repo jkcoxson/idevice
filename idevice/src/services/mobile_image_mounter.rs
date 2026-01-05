@@ -90,7 +90,11 @@ impl ImageMounter {
         self.idevice.send_plist(req).await?;
 
         let res = self.idevice.read_plist().await?;
-        match res.get("ImageSignature") {
+        match res
+            .get("ImageSignature")
+            .and_then(|x| x.as_array())
+            .and_then(|x| x.first())
+        {
             Some(plist::Value::Data(signature)) => Ok(signature.clone()),
             _ => Err(IdeviceError::NotFound),
         }

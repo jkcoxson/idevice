@@ -18,6 +18,10 @@ pub fn register() -> JkCommand {
             JkCommand::new().help("Lists the images mounted on the device"),
         )
         .with_subcommand(
+            "lookup",
+            JkCommand::new().help("Lookup the image signature on the device"),
+        )
+        .with_subcommand(
             "unmount",
             JkCommand::new().help("Unmounts the developer disk image"),
         )
@@ -100,6 +104,17 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
             for i in images {
                 println!("{}", pretty_print_plist(&i));
             }
+        }
+        "lookup" => {
+            let sig = mounter_client
+                .lookup_image(if product_version < 17 {
+                    "Developer"
+                } else {
+                    "Personalized"
+                })
+                .await
+                .expect("Failed to lookup images");
+            println!("Image signature: {sig:02X?}");
         }
         "unmount" => {
             if product_version < 17 {
