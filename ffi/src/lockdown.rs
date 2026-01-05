@@ -179,7 +179,7 @@ pub unsafe extern "C" fn lockdownd_get_value(
     domain: *const libc::c_char,
     out_plist: *mut plist_t,
 ) -> *mut IdeviceFfiError {
-    if out_plist.is_null() {
+    if client.is_null() || out_plist.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
@@ -217,6 +217,35 @@ pub unsafe extern "C" fn lockdownd_get_value(
             }
             null_mut()
         }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Tells the device to enter recovery mode
+///
+/// # Arguments
+/// * `client` - A valid LockdowndClient handle
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `client` must be a valid pointer to a handle allocated by this library
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lockdownd_enter_recovery(
+    client: *mut LockdowndClientHandle,
+) -> *mut IdeviceFfiError {
+    if client.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.enter_recovery().await
+    });
+
+    match res {
+        Ok(_) => null_mut(),
         Err(e) => ffi_err!(e),
     }
 }

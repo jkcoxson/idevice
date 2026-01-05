@@ -29,6 +29,10 @@ pub fn register() -> JkCommand {
                         .required(true),
                 ),
         )
+        .with_subcommand(
+            "recovery",
+            JkCommand::new().help("Tell the device to enter recovery mode"),
+        )
         .with_flag(
             JkFlag::new("domain")
                 .with_help("The domain to set/get in")
@@ -86,6 +90,10 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
                 Err(e) => eprintln!("Error setting value: {e}"),
             }
         }
+        "recovery" => lockdown_client
+            .enter_recovery()
+            .await
+            .expect("Failed to enter recovery"),
         _ => unreachable!(),
     }
 }

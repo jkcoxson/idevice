@@ -326,6 +326,23 @@ impl LockdownClient {
             }
         }
     }
+
+    /// Tell the device to enter recovery mode
+    pub async fn enter_recovery(&mut self) -> Result<(), IdeviceError> {
+        self.idevice
+            .send_plist(crate::plist!({
+                "Request": "EnterRecovery"
+            }))
+            .await?;
+
+        let res = self.idevice.read_plist().await?;
+
+        if res.get("Request").and_then(|x| x.as_string()) == Some("EnterRecovery") {
+            Ok(())
+        } else {
+            Err(IdeviceError::UnexpectedResponse)
+        }
+    }
 }
 
 impl From<Idevice> for LockdownClient {
