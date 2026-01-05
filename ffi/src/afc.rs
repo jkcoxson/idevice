@@ -707,7 +707,7 @@ pub unsafe extern "C" fn afc_file_seek(
     handle: *mut AfcFileHandle,
     offset: i64,
     whence: libc::c_int,
-    new_pos: *mut libc::off_t,
+    new_pos: *mut i64,
 ) -> *mut IdeviceFfiError {
     if handle.is_null() || new_pos.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
@@ -727,7 +727,7 @@ pub unsafe extern "C" fn afc_file_seek(
     match res {
         Ok(pos) => {
             unsafe {
-                *new_pos = pos as libc::off_t;
+                *new_pos = pos as i64;
             }
             null_mut()
         }
@@ -753,7 +753,7 @@ pub unsafe extern "C" fn afc_file_seek(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn afc_file_tell(
     handle: *mut AfcFileHandle,
-    pos: *mut libc::off_t,
+    pos: *mut i64,
 ) -> *mut IdeviceFfiError {
     if handle.is_null() || pos.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
@@ -767,7 +767,7 @@ pub unsafe extern "C" fn afc_file_tell(
     match res {
         Ok(cur) => {
             unsafe {
-                *pos = cur as libc::off_t;
+                *pos = cur as i64;
             }
             null_mut()
         }
