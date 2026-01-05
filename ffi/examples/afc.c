@@ -254,7 +254,7 @@ int main(int argc, char **argv) {
       } else {
         uint8_t *data = NULL;
         size_t length = 0;
-        err = afc_file_read(file, &data, &length);
+        err = afc_file_read_entire(file, &data, &length);
         if (err == NULL) {
           if (write_file(dest_path, data, length)) {
             printf("File downloaded successfully\n");

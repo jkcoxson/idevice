@@ -604,6 +604,45 @@ pub unsafe extern "C" fn afc_file_read(
     }
 }
 
+/// Reads all data from an open file.
+///
+/// # Arguments
+/// * [`handle`] - File handle to read from
+/// * [`data`] - Will be set to point to the read data
+/// * [`length`] - The number of bytes read from the file
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// All pointers must be valid and non-null
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn afc_file_read_entire(
+    handle: *mut AfcFileHandle,
+    data: *mut *mut u8,
+    length: *mut libc::size_t,
+) -> *mut IdeviceFfiError {
+    if handle.is_null() || data.is_null() || length.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let fd = unsafe { &mut *(handle as *mut idevice::afc::file::FileDescriptor) };
+    let res: Result<Vec<u8>, IdeviceError> = run_sync(async move { fd.read_entire().await });
+
+    match res {
+        Ok(bytes) => {
+            let mut boxed = bytes.into_boxed_slice();
+            unsafe {
+                *data = boxed.as_mut_ptr();
+                *length = boxed.len();
+            }
+            std::mem::forget(boxed);
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
 /// Moves the read/write cursor in an open file.
 ///
 /// # Arguments
