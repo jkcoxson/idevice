@@ -190,7 +190,7 @@ pub unsafe extern "C" fn diagnostics_relay_client_mobilegestalt(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    let keys = if keys.is_null() {
+    let keys = if !keys.is_null() {
         let keys = unsafe { std::slice::from_raw_parts(keys, keys_len) };
         Some(
             keys.iter()
