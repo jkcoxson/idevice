@@ -42,6 +42,8 @@ pub mod tcp_object_stack;
 #[cfg(feature = "usbmuxd")]
 pub mod usbmuxd;
 pub mod util;
+#[cfg(feature = "screenshotr")]
+pub mod screenshotr;
 
 pub use errors::*;
 pub use pairing_file::*;
