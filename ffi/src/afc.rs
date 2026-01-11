@@ -620,10 +620,10 @@ pub unsafe extern "C" fn afc_file_read(
 
     let fd = unsafe { &mut *(handle as *mut FileDescriptor) };
     let res: Result<Vec<u8>, IdeviceError> = run_sync({
-        let mut buf = Vec::with_capacity(len);
+        let mut buf = vec![0u8; len];
         async move {
             let r = fd.read(&mut buf).await?;
-            buf.resize(r, 0);
+            buf.truncate(r);
             Ok(buf)
         }
     });
