@@ -50,6 +50,7 @@ tss = ["idevice/tss"]
 tunneld = ["idevice/tunneld"]
 usbmuxd = ["idevice/usbmuxd"]
 xpc = ["idevice/xpc"]
+screenshotr = ["idevice/screenshotr"]
 full = [
   "afc",
   "amfi",
@@ -75,6 +76,7 @@ full = [
   "tunneld",
   "springboardservices",
   "syslog_relay",
+  "screenshotr",
 ]
 default = ["full", "aws-lc"]
 
