@@ -47,7 +47,7 @@ DiagnosticsRelay::ioregistry(Option<std::string> current_plane,
     }
 
     if (res == nullptr) {
-        return Ok(Some(res));
+        return Ok(Option<plist_t>(None));
     }
     return Ok(Some(res));
 }
@@ -67,7 +67,7 @@ DiagnosticsRelay::mobilegestalt(Option<std::vector<char*>> keys) const {
     }
 
     if (res == nullptr) {
-        return Ok(Some(res));
+        return Ok(Option<plist_t>(None));
     }
     return Ok(Some(res));
 }
@@ -80,7 +80,7 @@ Result<Option<plist_t>, FfiError> DiagnosticsRelay::gasguage() const {
     }
 
     if (res == nullptr) {
-        return Ok(Some(res));
+        return Ok(Option<plist_t>(None));
     }
     return Ok(Some(res));
 }
@@ -93,7 +93,7 @@ Result<Option<plist_t>, FfiError> DiagnosticsRelay::nand() const {
     }
 
     if (res == nullptr) {
-        return Ok(Some(res));
+        return Ok(Option<plist_t>(None));
     }
     return Ok(Some(res));
 }
@@ -106,7 +106,7 @@ Result<Option<plist_t>, FfiError> DiagnosticsRelay::all() const {
     }
 
     if (res == nullptr) {
-        return Ok(Some(res));
+        return Ok(Option<plist_t>(None));
     }
     return Ok(Some(res));
 }
@@ -119,7 +119,7 @@ Result<Option<plist_t>, FfiError> DiagnosticsRelay::wifi() const {
     }
 
     if (res == nullptr) {
-        return Ok(Some(res));
+        return Ok(Option<plist_t>(None));
     }
     return Ok(Some(res));
 }
