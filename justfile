@@ -6,7 +6,7 @@ check-features:
 ci-check: build-ffi-native build-tools-native build-cpp build-c
   cargo clippy --all-targets --all-features -- -D warnings
   cargo fmt -- --check
-macos-ci-check: ci-check
+macos-ci-check: ci-check xcframework
   cd tools && cargo build --release --target x86_64-apple-darwin
 windows-ci-check: build-ffi-native build-tools-native build-cpp
 
@@ -57,6 +57,7 @@ xcframework: apple-build
 apple-build: # requires a Mac
   # iOS device build
   BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$(xcrun --sdk iphoneos --show-sdk-path)" \
+    IPHONEOS_DEPLOYMENT_TARGET=17.0 \
     cargo build --release --target aarch64-apple-ios --features obfuscate
 
   # iOS Simulator (arm64)
