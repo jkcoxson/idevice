@@ -33,6 +33,8 @@ mod pairing_file;
 pub mod provider;
 #[cfg(feature = "xpc")]
 pub mod rsd;
+#[cfg(feature = "screenshotr")]
+pub mod screenshotr;
 #[cfg(feature = "springboardservices")]
 pub mod springboardservices;
 #[cfg(feature = "syslog_relay")]
@@ -42,8 +44,6 @@ pub mod tcp_object_stack;
 #[cfg(feature = "usbmuxd")]
 pub mod usbmuxd;
 pub mod util;
-#[cfg(feature = "screenshotr")]
-pub mod screenshotr;
 
 pub use errors::*;
 pub use pairing_file::*;

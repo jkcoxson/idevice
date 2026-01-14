@@ -2,7 +2,10 @@
 
 use std::ptr::null_mut;
 
-use idevice::{IdeviceError, IdeviceService, services::screenshotr::ScreenshotService, provider::IdeviceProvider};
+use idevice::{
+    IdeviceError, IdeviceService, provider::IdeviceProvider,
+    services::screenshotr::ScreenshotService,
+};
 
 use crate::{IdeviceFfiError, ffi_err, provider::IdeviceProviderHandle, run_sync_local};
 
@@ -84,7 +87,7 @@ pub unsafe extern "C" fn screenshotr_take_screenshot(
             let len = data.len();
             let boxed = data.into_boxed_slice();
             let ptr = Box::into_raw(boxed) as *mut u8;
-            
+
             unsafe {
                 (*screenshot).data = ptr;
                 (*screenshot).length = len;
@@ -107,9 +110,8 @@ pub unsafe extern "C" fn screenshotr_take_screenshot(
 pub unsafe extern "C" fn screenshotr_screenshot_free(screenshot: ScreenshotData) {
     if !screenshot.data.is_null() && screenshot.length > 0 {
         tracing::debug!("Freeing screenshot data");
-        let _ = unsafe {
-            Vec::from_raw_parts(screenshot.data, screenshot.length, screenshot.length)
-        };
+        let _ =
+            unsafe { Vec::from_raw_parts(screenshot.data, screenshot.length, screenshot.length) };
     }
 }
 
