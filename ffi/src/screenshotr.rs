@@ -108,10 +108,7 @@ pub unsafe extern "C" fn screenshotr_screenshot_free(screenshot: ScreenshotData)
     if !screenshot.data.is_null() && screenshot.length > 0 {
         tracing::debug!("Freeing screenshot data");
         let _ = unsafe {
-            Box::from_raw(std::slice::from_raw_parts_mut(
-                screenshot.data,
-                screenshot.length,
-            ))
+            Vec::from_raw_parts(screenshot.data, screenshot.length, screenshot.length)
         };
     }
 }
