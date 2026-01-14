@@ -35,6 +35,8 @@ mod pairing_file;
 pub mod provider;
 #[cfg(feature = "xpc")]
 pub mod rsd;
+#[cfg(feature = "screenshotr")]
+pub mod screenshotr;
 #[cfg(feature = "springboardservices")]
 pub mod springboardservices;
 #[cfg(feature = "syslog_relay")]
