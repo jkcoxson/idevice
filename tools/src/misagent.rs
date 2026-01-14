@@ -28,12 +28,20 @@ pub fn register() -> JkCommand {
                         .required(true),
                 ),
         )
+        .with_subcommand(
+            "install",
+            JkCommand::new()
+                .help("Install a provisioning profile on the device")
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("Path to the provisioning profile to install")
+                        .required(true),
+                ),
+        )
         .subcommand_required(true)
 }
 
 pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvider>) {
-    tracing_subscriber::fmt::init();
-
     let mut misagent_client = MisagentClient::connect(&*provider)
         .await
         .expect("Unable to connect to misagent");
@@ -66,6 +74,16 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
                 .remove(id.as_str())
                 .await
                 .expect("Failed to remove");
+        }
+        "install" => {
+            let path = sub_args
+                .next_argument::<PathBuf>()
+                .expect("No profile path passed");
+            let profile = tokio::fs::read(path).await.expect("Unable to read profile");
+            misagent_client
+                .install(profile)
+                .await
+                .expect("Failed to install profile");
         }
         _ => unreachable!(),
     }
