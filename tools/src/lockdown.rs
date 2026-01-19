@@ -38,6 +38,7 @@ pub fn register() -> JkCommand {
                 .with_help("The domain to set/get in")
                 .with_argument(JkArgument::new().required(true)),
         )
+        .with_flag(JkFlag::new("no-session").with_help("Don't start a TLS session"))
         .subcommand_required(true)
 }
 
@@ -46,10 +47,12 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
         .await
         .expect("Unable to connect to lockdown");
 
-    lockdown_client
-        .start_session(&provider.get_pairing_file().await.expect("no pairing file"))
-        .await
-        .expect("no session");
+    if !arguments.has_flag("no-session") {
+        lockdown_client
+            .start_session(&provider.get_pairing_file().await.expect("no pairing file"))
+            .await
+            .expect("no session");
+    }
 
     let domain: Option<String> = arguments.get_flag("domain");
     let domain = domain.as_deref();
