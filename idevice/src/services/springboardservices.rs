@@ -115,7 +115,10 @@ impl SpringBoardServicesClient {
         }
 
         self.idevice.send_plist(req).await?;
-        let res = self.idevice.read_plist_value().await?;
+        let mut res = self.idevice.read_plist_value().await?;
+
+        truncate_dates_to_seconds(&mut res);
+
         Ok(res)
     }
 
@@ -156,12 +159,9 @@ impl SpringBoardServicesClient {
     /// - The device may validate the icon state structure before applying
     /// - Invalid icon states will be rejected by the device
     pub async fn set_icon_state(&mut self, icon_state: plist::Value) -> Result<(), IdeviceError> {
-        let mut icon_state_normalized = icon_state.clone();
-        truncate_dates_to_seconds(&mut icon_state_normalized);
-
         let req = crate::plist!({
             "command": "setIconState",
-            "iconState": icon_state_normalized,
+            "iconState": icon_state,
         });
 
         self.idevice.send_plist(req).await?;
@@ -189,12 +189,9 @@ impl SpringBoardServicesClient {
         icon_state: plist::Value,
         format_version: Option<String>,
     ) -> Result<(), IdeviceError> {
-        let mut icon_state_normalized = icon_state.clone();
-        truncate_dates_to_seconds(&mut icon_state_normalized);
-
         let mut req = crate::plist!({
             "command": "setIconState",
-            "iconState": icon_state_normalized,
+            "iconState": icon_state,
         });
 
         if let Some(version) = format_version {
