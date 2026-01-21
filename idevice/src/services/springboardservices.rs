@@ -3,7 +3,8 @@
 //! Provides functionality for interacting with the SpringBoard services on iOS devices,
 //! which manages home screen and app icon related operations.
 
-use crate::{Idevice, IdeviceError, IdeviceService, obf, utils::plist::truncate_dates_to_seconds};
+use crate::{obf, utils::plist::truncate_dates_to_seconds, Idevice, IdeviceError, IdeviceService};
+use plist_macro::plist;
 
 /// Client for interacting with the iOS SpringBoard services
 ///
@@ -98,24 +99,25 @@ impl SpringBoardServicesClient {
     ///
     /// # Notes
     /// This method successfully reads the home screen layout on all iOS versions.
-    /// Note that modifying and setting icon state (setIconState) does not work
-    /// on iOS 18+ due to Apple's security restrictions. See issue #62 for details.
     pub async fn get_icon_state(
         &mut self,
-        format_version: Option<String>,
+        format_version: Option<&str>,
     ) -> Result<plist::Value, IdeviceError> {
-        let mut req = crate::plist!({
+        let req = crate::plist!({
             "command": "getIconState",
+            "formatVersion":? format_version,
         });
-
-        if let Some(version) = format_version {
-            if let Some(dict) = req.as_dictionary_mut() {
-                dict.insert("formatVersion".to_string(), plist::Value::String(version));
-            }
-        }
 
         self.idevice.send_plist(req).await?;
         let mut res = self.idevice.read_plist_value().await?;
+
+        // Some devices may return an error dictionary instead of icon state.
+        // Detect this and surface it as an UnexpectedResponse, similar to get_icon_pngdata.
+        if let plist::Value::Dictionary(ref dict) = res {
+            if dict.contains_key("error") || dict.contains_key("Error") {
+                return Err(IdeviceError::UnexpectedResponse);
+            }
+        }
 
         truncate_dates_to_seconds(&mut res);
 
@@ -153,9 +155,8 @@ impl SpringBoardServicesClient {
     /// println!("Icon state updated successfully");
     /// ```
     ///
-    /// # Notes
-    /// - This method does NOT work on iOS 18+ due to Apple's security restrictions
-    /// - On supported iOS versions, changes take effect immediately
+    /// # Notes    
+    /// - Changes take effect immediately
     /// - The device may validate the icon state structure before applying
     /// - Invalid icon states will be rejected by the device
     pub async fn set_icon_state(&mut self, icon_state: plist::Value) -> Result<(), IdeviceError> {
@@ -187,18 +188,13 @@ impl SpringBoardServicesClient {
     pub async fn set_icon_state_with_version(
         &mut self,
         icon_state: plist::Value,
-        format_version: Option<String>,
+        format_version: Option<&str>,
     ) -> Result<(), IdeviceError> {
-        let mut req = crate::plist!({
+        let req = crate::plist!({
             "command": "setIconState",
             "iconState": icon_state,
+            "formatVersion":? format_version,
         });
-
-        if let Some(version) = format_version {
-            if let Some(dict) = req.as_dictionary_mut() {
-                dict.insert("formatVersion".to_string(), plist::Value::String(version));
-            }
-        }
 
         self.idevice.send_plist(req).await?;
         Ok(())
