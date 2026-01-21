@@ -3,7 +3,7 @@
 //! Provides functionality for interacting with the SpringBoard services on iOS devices,
 //! which manages home screen and app icon related operations.
 
-use crate::{Idevice, IdeviceError, IdeviceService, obf};
+use crate::{obf, Idevice, IdeviceError, IdeviceService};
 
 /// Client for interacting with the iOS SpringBoard services
 ///
@@ -69,5 +69,53 @@ impl SpringBoardServicesClient {
             Some(plist::Value::Data(res)) => Ok(res),
             _ => Err(IdeviceError::UnexpectedResponse),
         }
+    }
+
+    /// Retrieves the current icon state from the device
+    ///
+    /// The icon state contains the layout and organization of all apps on the home screen,
+    /// including folder structures and icon positions. This is a read-only operation.
+    ///
+    /// # Arguments
+    /// * `format_version` - Optional format version string for the icon state format
+    ///
+    /// # Returns
+    /// A plist Value containing the complete icon state structure
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The response is malformed
+    ///
+    /// # Example
+    /// ```rust
+    /// use idevice::services::springboardservices::SpringBoardServicesClient;
+    ///
+    /// let mut client = SpringBoardServicesClient::connect(&provider).await?;
+    /// let icon_state = client.get_icon_state(None).await?;
+    /// println!("Icon state: {:?}", icon_state);
+    /// ```
+    ///
+    /// # Notes
+    /// This method successfully reads the home screen layout on all iOS versions.
+    /// Note that modifying and setting icon state (setIconState) does not work
+    /// on iOS 18+ due to Apple's security restrictions. See issue #62 for details.
+    pub async fn get_icon_state(
+        &mut self,
+        format_version: Option<String>,
+    ) -> Result<plist::Value, IdeviceError> {
+        let mut req = crate::plist!({
+            "command": "getIconState",
+        });
+
+        if let Some(version) = format_version {
+            if let Some(dict) = req.as_dictionary_mut() {
+                dict.insert("formatVersion".to_string(), plist::Value::String(version));
+            }
+        }
+
+        self.idevice.send_plist(req).await?;
+        let res = self.idevice.read_plist_value().await?;
+        Ok(res)
     }
 }
