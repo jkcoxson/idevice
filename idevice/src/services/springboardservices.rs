@@ -3,34 +3,7 @@
 //! Provides functionality for interacting with the SpringBoard services on iOS devices,
 //! which manages home screen and app icon related operations.
 
-use crate::{Idevice, IdeviceError, IdeviceService, obf};
-
-fn truncate_dates_to_seconds(value: &mut plist::Value) {
-    match value {
-        plist::Value::Date(date) => {
-            let xml_string = date.to_xml_format();
-            if let Some(dot_pos) = xml_string.find('.') {
-                if xml_string[dot_pos..].contains('Z') {
-                    let truncated_string = format!("{}Z", &xml_string[..dot_pos]);
-                    if let Ok(new_date) = plist::Date::from_xml_format(&truncated_string) {
-                        *date = new_date;
-                    }
-                }
-            }
-        }
-        plist::Value::Array(arr) => {
-            for item in arr.iter_mut() {
-                truncate_dates_to_seconds(item);
-            }
-        }
-        plist::Value::Dictionary(dict) => {
-            for (_, v) in dict.iter_mut() {
-                truncate_dates_to_seconds(v);
-            }
-        }
-        _ => {}
-    }
-}
+use crate::{Idevice, IdeviceError, IdeviceService, obf, utils::plist::truncate_dates_to_seconds};
 
 /// Client for interacting with the iOS SpringBoard services
 ///
