@@ -3,8 +3,7 @@
 //! Provides functionality for interacting with the SpringBoard services on iOS devices,
 //! which manages home screen and app icon related operations.
 
-use crate::{obf, utils::plist::truncate_dates_to_seconds, Idevice, IdeviceError, IdeviceService};
-use plist_macro::plist;
+use crate::{Idevice, IdeviceError, IdeviceService, obf, utils::plist::truncate_dates_to_seconds};
 
 /// Client for interacting with the iOS SpringBoard services
 ///
@@ -113,10 +112,10 @@ impl SpringBoardServicesClient {
 
         // Some devices may return an error dictionary instead of icon state.
         // Detect this and surface it as an UnexpectedResponse, similar to get_icon_pngdata.
-        if let plist::Value::Dictionary(ref dict) = res {
-            if dict.contains_key("error") || dict.contains_key("Error") {
-                return Err(IdeviceError::UnexpectedResponse);
-            }
+        if let plist::Value::Dictionary(ref dict) = res
+            && (dict.contains_key("error") || dict.contains_key("Error"))
+        {
+            return Err(IdeviceError::UnexpectedResponse);
         }
 
         truncate_dates_to_seconds(&mut res);
