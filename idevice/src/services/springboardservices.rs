@@ -3,7 +3,7 @@
 //! Provides functionality for interacting with the SpringBoard services on iOS devices,
 //! which manages home screen and app icon related operations.
 
-use crate::{Idevice, IdeviceError, IdeviceService, obf};
+use crate::{Idevice, IdeviceError, IdeviceService, obf, utils::plist::truncate_dates_to_seconds};
 
 /// Client for interacting with the iOS SpringBoard services
 ///
@@ -69,5 +69,133 @@ impl SpringBoardServicesClient {
             Some(plist::Value::Data(res)) => Ok(res),
             _ => Err(IdeviceError::UnexpectedResponse),
         }
+    }
+
+    /// Retrieves the current icon state from the device
+    ///
+    /// The icon state contains the layout and organization of all apps on the home screen,
+    /// including folder structures and icon positions. This is a read-only operation.
+    ///
+    /// # Arguments
+    /// * `format_version` - Optional format version string for the icon state format
+    ///
+    /// # Returns
+    /// A plist Value containing the complete icon state structure
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The response is malformed
+    ///
+    /// # Example
+    /// ```rust
+    /// use idevice::services::springboardservices::SpringBoardServicesClient;
+    ///
+    /// let mut client = SpringBoardServicesClient::connect(&provider).await?;
+    /// let icon_state = client.get_icon_state(None).await?;
+    /// println!("Icon state: {:?}", icon_state);
+    /// ```
+    ///
+    /// # Notes
+    /// This method successfully reads the home screen layout on all iOS versions.
+    pub async fn get_icon_state(
+        &mut self,
+        format_version: Option<&str>,
+    ) -> Result<plist::Value, IdeviceError> {
+        let req = crate::plist!({
+            "command": "getIconState",
+            "formatVersion":? format_version,
+        });
+
+        self.idevice.send_plist(req).await?;
+        let mut res = self.idevice.read_plist_value().await?;
+
+        // Some devices may return an error dictionary instead of icon state.
+        // Detect this and surface it as an UnexpectedResponse, similar to get_icon_pngdata.
+        if let plist::Value::Dictionary(ref dict) = res
+            && (dict.contains_key("error") || dict.contains_key("Error"))
+        {
+            return Err(IdeviceError::UnexpectedResponse);
+        }
+
+        truncate_dates_to_seconds(&mut res);
+
+        Ok(res)
+    }
+
+    /// Sets the icon state on the device
+    ///
+    /// This method allows you to modify the home screen layout by providing a new icon state.
+    /// The icon state structure should match the format returned by `get_icon_state`.
+    ///
+    /// # Arguments
+    /// * `icon_state` - A plist Value containing the complete icon state structure
+    ///
+    /// # Returns
+    /// Ok(()) if the icon state was successfully set
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The icon state format is invalid
+    /// - The device rejects the new layout
+    ///
+    /// # Example
+    /// ```rust
+    /// use idevice::services::springboardservices::SpringBoardServicesClient;
+    ///
+    /// let mut client = SpringBoardServicesClient::connect(&provider).await?;
+    /// let mut icon_state = client.get_icon_state(None).await?;
+    ///
+    /// // Modify the icon state (e.g., swap two icons)
+    /// // ... modify icon_state ...
+    ///
+    /// client.set_icon_state(icon_state).await?;
+    /// println!("Icon state updated successfully");
+    /// ```
+    ///
+    /// # Notes    
+    /// - Changes take effect immediately
+    /// - The device may validate the icon state structure before applying
+    /// - Invalid icon states will be rejected by the device
+    pub async fn set_icon_state(&mut self, icon_state: plist::Value) -> Result<(), IdeviceError> {
+        let req = crate::plist!({
+            "command": "setIconState",
+            "iconState": icon_state,
+        });
+
+        self.idevice.send_plist(req).await?;
+        Ok(())
+    }
+
+    /// Sets the icon state with a specific format version
+    ///
+    /// This is similar to `set_icon_state` but allows specifying a format version.
+    ///
+    /// # Arguments
+    /// * `icon_state` - A plist Value containing the complete icon state structure
+    /// * `format_version` - Optional format version string
+    ///
+    /// # Returns
+    /// Ok(()) if the icon state was successfully set
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The icon state format is invalid
+    /// - The device rejects the new layout
+    pub async fn set_icon_state_with_version(
+        &mut self,
+        icon_state: plist::Value,
+        format_version: Option<&str>,
+    ) -> Result<(), IdeviceError> {
+        let req = crate::plist!({
+            "command": "setIconState",
+            "iconState": icon_state,
+            "formatVersion":? format_version,
+        });
+
+        self.idevice.send_plist(req).await?;
+        Ok(())
     }
 }

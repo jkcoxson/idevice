@@ -33,7 +33,7 @@ ureq = { version = "3" }
 clap = { version = "4.5" }
 jkcli = { version = "0.1" }
 plist = { version = "1.7" }
-plist-macro = { version = "0.1" }
+plist-macro = { version = "0.1.3" }
 ns-keyed-archive = "0.1.2"
 uuid = "1.16"
 futures-util = { version = "0.3" }

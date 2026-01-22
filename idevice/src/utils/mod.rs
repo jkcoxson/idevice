@@ -2,3 +2,5 @@
 
 #[cfg(all(feature = "afc", feature = "installation_proxy"))]
 pub mod installation;
+
+pub mod plist;
