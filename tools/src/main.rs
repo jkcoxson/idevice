@@ -42,6 +42,7 @@ mod process_control;
 mod remotexpc;
 mod restore_service;
 mod screenshot;
+mod springboardservices;
 mod syslog_relay;
 
 mod pcap;
@@ -120,6 +121,7 @@ async fn main() {
         .with_subcommand("remotexpc", remotexpc::register())
         .with_subcommand("restore_service", restore_service::register())
         .with_subcommand("screenshot", screenshot::register())
+        .with_subcommand("springboard", springboardservices::register())
         .with_subcommand("syslog_relay", syslog_relay::register())
         .subcommand_required(true)
         .collect()
@@ -235,6 +237,9 @@ async fn main() {
         }
         "screenshot" => {
             screenshot::main(sub_args, provider).await;
+        }
+        "springboard" => {
+            springboardservices::main(sub_args, provider).await;
         }
         "syslog_relay" => {
             syslog_relay::main(sub_args, provider).await;
