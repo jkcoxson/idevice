@@ -1,5 +1,5 @@
 /// Utilities for working with plist values
-
+///
 /// Truncates all Date values in a plist structure to second precision.
 ///
 /// This function recursively walks through a plist Value and truncates any Date values
@@ -27,12 +27,12 @@ pub fn truncate_dates_to_seconds(value: &mut plist::Value) {
     match value {
         plist::Value::Date(date) => {
             let xml_string = date.to_xml_format();
-            if let Some(dot_pos) = xml_string.find('.') {
-                if xml_string[dot_pos..].contains('Z') {
-                    let truncated_string = format!("{}Z", &xml_string[..dot_pos]);
-                    if let Ok(new_date) = plist::Date::from_xml_format(&truncated_string) {
-                        *date = new_date;
-                    }
+            if let Some(dot_pos) = xml_string.find('.')
+                && xml_string[dot_pos..].contains('Z')
+            {
+                let truncated_string = format!("{}Z", &xml_string[..dot_pos]);
+                if let Ok(new_date) = plist::Date::from_xml_format(&truncated_string) {
+                    *date = new_date;
                 }
             }
         }
@@ -127,14 +127,14 @@ mod tests {
 
         truncate_dates_to_seconds(&mut value);
 
-        if let plist::Value::Dictionary(dict) = value {
-            if let Some(plist::Value::Date(date)) = dict.get("timestamp") {
-                let formatted = date.to_xml_format();
-                assert!(
-                    !formatted.contains('.'),
-                    "Date in dictionary should be truncated"
-                );
-            }
+        if let plist::Value::Dictionary(dict) = value
+            && let Some(plist::Value::Date(date)) = dict.get("timestamp")
+        {
+            let formatted = date.to_xml_format();
+            assert!(
+                !formatted.contains('.'),
+                "Date in dictionary should be truncated"
+            );
         }
     }
 
