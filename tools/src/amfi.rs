@@ -19,8 +19,12 @@ pub fn register() -> JkCommand {
             "status",
             JkCommand::new().help("Gets the developer mode status"),
         )
-        .with_subcommand("trust", JkCommand::new().help("Trusts an app signer"))
-        .with_argument(JkArgument::new().with_help("UUID").required(true))
+        .with_subcommand(
+            "trust",
+            JkCommand::new()
+                .help("Trusts an app signer")
+                .with_argument(JkArgument::new().with_help("UUID").required(true)),
+        )
         .subcommand_required(true)
 }
 
