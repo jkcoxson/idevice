@@ -22,3 +22,4 @@ xcuserdata
 ._*
 *.vcxproj.user
 .vs
+/__pycache__
