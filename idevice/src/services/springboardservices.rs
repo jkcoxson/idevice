@@ -198,4 +198,71 @@ impl SpringBoardServicesClient {
         self.idevice.send_plist(req).await?;
         Ok(())
     }
+    /// Gets the home screen wallpaper preview as PNG data
+    ///
+    /// This gets a rendered preview of the home screen wallpaper.
+    ///
+    /// # Returns
+    /// The raw PNG data of the home screen wallpaper preview
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The device rejects the request
+    /// - The image is malformed/corupted
+    ///
+    /// # Example
+    /// ```rust
+    /// let wallpaper = client.get_home_screen_wallpaper_preview_pngdata().await?;
+    /// std::fs::write("home.png", wallpaper)?;
+    /// ```
+    pub async fn get_home_screen_wallpaper_preview_pngdata(
+        &mut self,
+    ) -> Result<Vec<u8>, IdeviceError> {
+        let req = crate::plist!({
+            "command": "getWallpaperPreviewImage",
+            "wallpaperName": "homescreen",
+        });
+        self.idevice.send_plist(req).await?;
+
+        let mut res = self.idevice.read_plist().await?;
+        match res.remove("pngData") {
+            Some(plist::Value::Data(res)) => Ok(res),
+            _ => Err(IdeviceError::UnexpectedResponse),
+        }
+    }
+
+    /// Gets the lock screen wallpaper preview as PNG data
+    ///
+    /// This gets a rendered preview of the lock screen wallpaper.
+    ///
+    /// # Returns
+    /// The raw PNG data of the lock screen wallpaper preview
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The device rejects the request
+    /// - The image is malformed/corupted
+    ///
+    /// # Example
+    /// ```rust
+    /// let wallpaper = client.get_lock_screen_wallpaper_preview_pngdata().await?;
+    /// std::fs::write("lock.png", wallpaper)?;
+    /// ```
+    pub async fn get_lock_screen_wallpaper_preview_pngdata(
+        &mut self,
+    ) -> Result<Vec<u8>, IdeviceError> {
+        let req = crate::plist!({
+            "command": "getWallpaperPreviewImage",
+            "wallpaperName": "lockscreen",
+        });
+        self.idevice.send_plist(req).await?;
+
+        let mut res = self.idevice.read_plist().await?;
+        match res.remove("pngData") {
+            Some(plist::Value::Data(res)) => Ok(res),
+            _ => Err(IdeviceError::UnexpectedResponse),
+        }
+    }
 }

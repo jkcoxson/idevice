@@ -137,6 +137,96 @@ pub unsafe extern "C" fn springboard_services_get_icon(
     }
 }
 
+/// Gets the home screen wallpaper preview as PNG image
+///
+/// # Arguments
+/// * `client` - A valid SpringBoardServicesClient handle
+/// * `out_result` - On success, will be set to point to newly allocated png image
+/// * `out_result_len` - On success, will contain the size of the data in bytes
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `client` must be a valid pointer to a handle allocated by this library
+/// `out_result` and `out_result_len` must be valid, non-null pointers
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn springboard_services_get_home_screen_wallpaper_preview(
+    client: *mut SpringBoardServicesClientHandle,
+    out_result: *mut *mut c_void,
+    out_result_len: *mut libc::size_t,
+) -> *mut IdeviceFfiError {
+    if client.is_null() || out_result.is_null() || out_result_len.is_null() {
+        tracing::error!("Invalid arguments: {client:?}, {out_result:?}");
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let client = unsafe { &mut *client };
+
+    let res: Result<Vec<u8>, IdeviceError> =
+        run_sync(async { client.0.get_home_screen_wallpaper_preview_pngdata().await });
+
+    match res {
+        Ok(r) => {
+            let len = r.len();
+            let boxed_slice = r.into_boxed_slice();
+            let ptr = boxed_slice.as_ptr();
+            std::mem::forget(boxed_slice);
+
+            unsafe {
+                *out_result = ptr as *mut c_void;
+                *out_result_len = len;
+            }
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Gets the lock screen wallpaper preview as PNG image
+///
+/// # Arguments
+/// * `client` - A valid SpringBoardServicesClient handle
+/// * `out_result` - On success, will be set to point to newly allocated png image
+/// * `out_result_len` - On success, will contain the size of the data in bytes
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `client` must be a valid pointer to a handle allocated by this library
+/// `out_result` and `out_result_len` must be valid, non-null pointers
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn springboard_services_get_lock_screen_wallpaper_preview(
+    client: *mut SpringBoardServicesClientHandle,
+    out_result: *mut *mut c_void,
+    out_result_len: *mut libc::size_t,
+) -> *mut IdeviceFfiError {
+    if client.is_null() || out_result.is_null() || out_result_len.is_null() {
+        tracing::error!("Invalid arguments: {client:?}, {out_result:?}");
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let client = unsafe { &mut *client };
+
+    let res: Result<Vec<u8>, IdeviceError> =
+        run_sync(async { client.0.get_lock_screen_wallpaper_preview_pngdata().await });
+
+    match res {
+        Ok(r) => {
+            let len = r.len();
+            let boxed_slice = r.into_boxed_slice();
+            let ptr = boxed_slice.as_ptr();
+            std::mem::forget(boxed_slice);
+
+            unsafe {
+                *out_result = ptr as *mut c_void;
+                *out_result_len = len;
+            }
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
 /// Frees an SpringBoardServicesClient handle
 ///
 /// # Arguments
