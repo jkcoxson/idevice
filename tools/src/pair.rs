@@ -6,12 +6,18 @@ use idevice::{
     provider::IdeviceProvider,
     usbmuxd::{Connection, UsbmuxdAddr, UsbmuxdConnection},
 };
-use jkcli::{CollectedArguments, JkArgument, JkCommand};
+use jkcli::{CollectedArguments, JkArgument, JkCommand, JkFlag};
 
 pub fn register() -> JkCommand {
     JkCommand::new()
         .help("Manage files in the AFC jail of a device")
         .with_argument(JkArgument::new().with_help("A UDID to override and pair with"))
+        .with_flag(
+            JkFlag::new("name")
+                .with_help("The host name to report to the device")
+                .with_argument(JkArgument::new().required(true))
+                .with_short("n"),
+        )
 }
 
 pub async fn main(arguments: &CollectedArguments, _provider: Box<dyn IdeviceProvider>) {
@@ -45,8 +51,11 @@ pub async fn main(arguments: &CollectedArguments, _provider: Box<dyn IdeviceProv
     };
     let id = uuid::Uuid::new_v4().to_string().to_uppercase();
 
+    let name = arguments.get_flag::<String>("name");
+    let name = name.as_deref();
+
     let mut pairing_file = lockdown_client
-        .pair(id, u.get_buid().await.unwrap())
+        .pair(id, u.get_buid().await.unwrap(), name)
         .await
         .expect("Failed to pair");
 

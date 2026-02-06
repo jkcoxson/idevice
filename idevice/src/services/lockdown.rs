@@ -260,6 +260,7 @@ impl LockdownClient {
         &mut self,
         host_id: impl Into<String>,
         system_buid: impl Into<String>,
+        host_name: Option<&str>,
     ) -> Result<crate::pairing_file::PairingFile, IdeviceError> {
         let host_id = host_id.into();
         let system_buid = system_buid.into();
@@ -297,6 +298,7 @@ impl LockdownClient {
         let req = crate::plist!({
             "Label": self.idevice.label.clone(),
             "Request": "Pair",
+            "HostName":? host_name,
             "PairRecord": pair_record.clone(),
             "ProtocolVersion": "2",
             "PairingOptions": {
