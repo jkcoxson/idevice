@@ -283,12 +283,12 @@ impl SpringBoardServicesClient {
         }
     }
 
-    /// Get device orientation
+    /// Gets the current interface orientation of the device
     ///
     /// This gets which way the device is currently facing
     ///
     /// # Returns
-    /// The current `InterfacOrientation` of the device
+    /// The current `InterfaceOrientation` of the device
     ///
     /// # Errors
     /// Returns `IdeviceError` if:

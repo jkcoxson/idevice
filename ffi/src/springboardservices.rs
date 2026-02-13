@@ -227,7 +227,7 @@ pub unsafe extern "C" fn springboard_services_get_lock_screen_wallpaper_preview(
     }
 }
 
-/// Get device orientation
+/// Gets the current interface orientation of the device
 ///
 /// # Arguments
 /// * `client` - A valid SpringBoardServicesClient handle
