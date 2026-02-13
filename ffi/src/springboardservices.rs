@@ -7,6 +7,7 @@ use idevice::{
     IdeviceError, IdeviceService, provider::IdeviceProvider,
     springboardservices::SpringBoardServicesClient,
 };
+use plist_ffi::plist_t;
 
 use crate::{
     IdeviceFfiError, IdeviceHandle, ffi_err, provider::IdeviceProviderHandle, run_sync,
@@ -256,6 +257,43 @@ pub unsafe extern "C" fn springboard_services_get_interface_orientation(
         Ok(orientation) => {
             unsafe {
                 *out_orientation = orientation as u8;
+            }
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Gets the home screen icon layout metrics
+///
+/// # Arguments
+/// * `client` - A valid SpringBoardServicesClient handle
+/// * `res` - On success, will point to a plist dictionary node containing the metrics
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `client` must be a valid pointer to a handle allocated by this library
+/// `res` must be a valid, non-null pointer
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn springboard_services_get_homescreen_icon_metrics(
+    client: *mut SpringBoardServicesClientHandle,
+    res: *mut plist_t,
+) -> *mut IdeviceFfiError {
+    if client.is_null() || res.is_null() {
+        tracing::error!("Invalid arguments: {client:?}, {res:?}");
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let client = unsafe { &mut *client };
+
+    let output = run_sync(async { client.0.get_homescreen_icon_metrics().await });
+
+    match output {
+        Ok(metrics) => {
+            unsafe {
+                *res =
+                    plist_ffi::PlistWrapper::new_node(plist::Value::Dictionary(metrics)).into_ptr();
             }
             null_mut()
         }
