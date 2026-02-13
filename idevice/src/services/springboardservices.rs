@@ -5,6 +5,22 @@
 
 use crate::{Idevice, IdeviceError, IdeviceService, obf, utils::plist::truncate_dates_to_seconds};
 
+/// Orientation of the device
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum InterfaceOrientation {
+    /// Orientation is unknown or cannot be determined
+    Unknown = 0,
+    /// Portrait mode (normal vertical)
+    Portrait = 1,
+    /// Portrait mode upside down
+    PortraitUpsideDown = 2,
+    /// Landscape with home button on the right (notch to the left)
+    LandscapeRight = 3,
+    /// Landscape with home button on the left (notch to the right)
+    LandscapeLeft = 4,
+}
+
 /// Client for interacting with the iOS SpringBoard services
 ///
 /// This service provides access to home screen and app icon functionality,
@@ -198,6 +214,7 @@ impl SpringBoardServicesClient {
         self.idevice.send_plist(req).await?;
         Ok(())
     }
+
     /// Gets the home screen wallpaper preview as PNG data
     ///
     /// This gets a rendered preview of the home screen wallpaper.
@@ -264,5 +281,48 @@ impl SpringBoardServicesClient {
             Some(plist::Value::Data(res)) => Ok(res),
             _ => Err(IdeviceError::UnexpectedResponse),
         }
+    }
+
+    /// Get device orientation
+    ///
+    /// This gets which way the device is currently facing
+    ///
+    /// # Returns
+    /// The current `InterfacOrientation` of the device
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The device doesn't support this command
+    /// - The response format is unexpected
+    ///
+    /// # Example
+    /// ```rust
+    /// let orientation = client.get_interface_orientation().await?;
+    /// println!("Device orientation: {:?}", orientation);
+    /// ```
+    pub async fn get_interface_orientation(
+        &mut self,
+    ) -> Result<InterfaceOrientation, IdeviceError> {
+        let req = crate::plist!({
+            "command": "getInterfaceOrientation",
+        });
+        self.idevice.send_plist(req).await?;
+
+        let res = self.idevice.read_plist().await?;
+        let orientation_value = res
+            .get("interfaceOrientation")
+            .and_then(|v| v.as_unsigned_integer())
+            .ok_or(IdeviceError::UnexpectedResponse)?;
+
+        let orientation = match orientation_value {
+            1 => InterfaceOrientation::Portrait,
+            2 => InterfaceOrientation::PortraitUpsideDown,
+            3 => InterfaceOrientation::LandscapeRight,
+            4 => InterfaceOrientation::LandscapeLeft,
+            _ => InterfaceOrientation::Unknown,
+        };
+
+        Ok(orientation)
     }
 }
