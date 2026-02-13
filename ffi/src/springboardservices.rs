@@ -292,10 +292,8 @@ pub unsafe extern "C" fn springboard_services_get_homescreen_icon_metrics(
     match output {
         Ok(metrics) => {
             unsafe {
-                *res = plist_ffi::PlistWrapper::new_node(
-                    plist::Value::Dictionary(metrics),
-                )
-                .into_ptr();
+                *res =
+                    plist_ffi::PlistWrapper::new_node(plist::Value::Dictionary(metrics)).into_ptr();
             }
             null_mut()
         }

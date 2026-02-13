@@ -343,9 +343,7 @@ impl SpringBoardServicesClient {
     /// let metrics = client.get_homescreen_icon_metrics().await?;
     /// println!("{:?}", metrics);
     /// ```
-    pub async fn get_homescreen_icon_metrics(
-        &mut self,
-    ) -> Result<plist::Dictionary, IdeviceError> {
+    pub async fn get_homescreen_icon_metrics(&mut self) -> Result<plist::Dictionary, IdeviceError> {
         let req = crate::plist!({
             "command": "getHomeScreenIconMetrics",
         });
