@@ -227,6 +227,42 @@ pub unsafe extern "C" fn springboard_services_get_lock_screen_wallpaper_preview(
     }
 }
 
+/// Gets the current interface orientation of the device
+///
+/// # Arguments
+/// * `client` - A valid SpringBoardServicesClient handle
+/// * `out_orientation` - On success, will contain the orientation value (0-4)
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `client` must be a valid pointer to a handle allocated by this library
+/// `out_orientation` must be a valid, non-null pointer
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn springboard_services_get_interface_orientation(
+    client: *mut SpringBoardServicesClientHandle,
+    out_orientation: *mut u8,
+) -> *mut IdeviceFfiError {
+    if client.is_null() || out_orientation.is_null() {
+        tracing::error!("Invalid arguments: {client:?}, {out_orientation:?}");
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let client = unsafe { &mut *client };
+
+    let res = run_sync(async { client.0.get_interface_orientation().await });
+
+    match res {
+        Ok(orientation) => {
+            unsafe {
+                *out_orientation = orientation as u8;
+            }
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
 /// Frees an SpringBoardServicesClient handle
 ///
 /// # Arguments

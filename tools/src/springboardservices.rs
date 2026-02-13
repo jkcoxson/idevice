@@ -45,6 +45,10 @@ pub fn register() -> JkCommand {
                         .with_argument(JkArgument::new().required(true)),
                 ),
         )
+        .with_subcommand(
+            "get_interface_orientation",
+            JkCommand::new().help("Gets the device's current screen orientation"),
+        )
         .subcommand_required(true)
 }
 
@@ -101,6 +105,13 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
             tokio::fs::write(&save_path, wallpaper)
                 .await
                 .expect("Failed to save wallpaper");
+        }
+        "get_interface_orientation" => {
+            let orientation = sbc
+                .get_interface_orientation()
+                .await
+                .expect("Failed to get interface orientation");
+            println!("{:?}", orientation);
         }
         _ => unreachable!(),
     }
