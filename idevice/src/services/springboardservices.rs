@@ -325,4 +325,33 @@ impl SpringBoardServicesClient {
 
         Ok(orientation)
     }
+
+    /// Gets the home screen icon layout metrics
+    ///
+    /// Returns icon spacing, size, and positioning information
+    ///
+    /// # Returns
+    /// A `plist::Dictionary` containing the icon layout metrics
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if:
+    /// - Communication fails
+    /// - The response is malformed
+    ///
+    /// # Example
+    /// ```rust
+    /// let metrics = client.get_homescreen_icon_metrics().await?;
+    /// println!("{:?}", metrics);
+    /// ```
+    pub async fn get_homescreen_icon_metrics(
+        &mut self,
+    ) -> Result<plist::Dictionary, IdeviceError> {
+        let req = crate::plist!({
+            "command": "getHomeScreenIconMetrics",
+        });
+        self.idevice.send_plist(req).await?;
+
+        let res = self.idevice.read_plist().await?;
+        Ok(res)
+    }
 }

@@ -49,6 +49,10 @@ pub fn register() -> JkCommand {
             "get_interface_orientation",
             JkCommand::new().help("Gets the device's current screen orientation"),
         )
+        .with_subcommand(
+            "get_homescreen_icon_metrics",
+            JkCommand::new().help("Gets home screen icon layout metrics"),
+        )
         .subcommand_required(true)
 }
 
@@ -112,6 +116,14 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
                 .await
                 .expect("Failed to get interface orientation");
             println!("{:?}", orientation);
+        }
+        "get_homescreen_icon_metrics" => {
+            let metrics = sbc
+                .get_homescreen_icon_metrics()
+                .await
+                .expect("Failed to get homescreen icon metrics");
+            let metrics_value = plist::Value::Dictionary(metrics);
+            println!("{}", pretty_print_plist(&metrics_value));
         }
         _ => unreachable!(),
     }
