@@ -3,90 +3,62 @@
 
 use std::{io::Write, path::PathBuf};
 
-use clap::{Arg, Command, arg, value_parser};
 use idevice::{
     IdeviceService, lockdown::LockdownClient, mobile_image_mounter::ImageMounter,
-    pretty_print_plist,
+    provider::IdeviceProvider,
 };
+use jkcli::{CollectedArguments, JkArgument, JkCommand, JkFlag};
+use plist_macro::pretty_print_plist;
 
-mod common;
-
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt::init();
-
-    let matches = Command::new("core_device_proxy_tun")
-        .about("Start a tunnel")
-        .arg(
-            Arg::new("host")
-                .long("host")
-                .value_name("HOST")
-                .help("IP address of the device"),
+pub fn register() -> JkCommand {
+    JkCommand::new()
+        .help("Manage mounts on an iOS device")
+        .with_subcommand(
+            "list",
+            JkCommand::new().help("Lists the images mounted on the device"),
         )
-        .arg(
-            Arg::new("pairing_file")
-                .long("pairing-file")
-                .value_name("PATH")
-                .help("Path to the pairing file"),
+        .with_subcommand(
+            "lookup",
+            JkCommand::new().help("Lookup the image signature on the device"),
         )
-        .arg(
-            Arg::new("udid")
-                .value_name("UDID")
-                .help("UDID of the device (overrides host/pairing file)")
-                .index(1),
+        .with_subcommand(
+            "unmount",
+            JkCommand::new().help("Unmounts the developer disk image"),
         )
-        .arg(
-            Arg::new("about")
-                .long("about")
-                .help("Show about information")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .subcommand(Command::new("list").about("Lists the images mounted on the device"))
-        .subcommand(Command::new("unmount").about("Unmounts the developer disk image"))
-        .subcommand(
-            Command::new("mount")
-                .about("Mounts the developer disk image")
-                .arg(
-                    arg!(-i --image <FILE> "the developer disk image to mount")
-                        .value_parser(value_parser!(PathBuf))
+        .with_subcommand(
+            "mount",
+            JkCommand::new()
+                .help("Mounts the developer disk image")
+                .with_flag(
+                    JkFlag::new("image")
+                        .with_short("i")
+                        .with_argument(JkArgument::new().required(true))
+                        .with_help("A path to the image to mount")
                         .required(true),
                 )
-                .arg(
-                    arg!(-b --manifest <FILE> "the build manifest (iOS 17+)")
-                        .value_parser(value_parser!(PathBuf)),
+                .with_flag(
+                    JkFlag::new("manifest")
+                        .with_short("b")
+                        .with_argument(JkArgument::new())
+                        .with_help("the build manifest (iOS 17+)"),
                 )
-                .arg(
-                    arg!(-t --trustcache <FILE> "the trust cache (iOS 17+)")
-                        .value_parser(value_parser!(PathBuf)),
+                .with_flag(
+                    JkFlag::new("trustcache")
+                        .with_short("t")
+                        .with_argument(JkArgument::new())
+                        .with_help("the trust cache (iOS 17+)"),
                 )
-                .arg(
-                    arg!(-s --signature <FILE> "the image signature (iOS < 17.0")
-                        .value_parser(value_parser!(PathBuf)),
+                .with_flag(
+                    JkFlag::new("signature")
+                        .with_short("s")
+                        .with_argument(JkArgument::new())
+                        .with_help("the image signature (iOS < 17.0"),
                 ),
         )
-        .get_matches();
+        .subcommand_required(true)
+}
 
-    if matches.get_flag("about") {
-        println!(
-            "mounter - query and manage images mounted on a device. Reimplementation of libimobiledevice's binary."
-        );
-        println!("Copyright (c) 2025 Jackson Coxson");
-        return;
-    }
-
-    let udid = matches.get_one::<String>("udid");
-    let host = matches.get_one::<String>("host");
-    let pairing_file = matches.get_one::<String>("pairing_file");
-
-    let provider =
-        match common::get_provider(udid, host, pairing_file, "ideviceinfo-jkcoxson").await {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("{e}");
-                return;
-            }
-        };
-
+pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvider>) {
     let mut lockdown_client = LockdownClient::connect(&*provider)
         .await
         .expect("Unable to connect to lockdown");
@@ -119,114 +91,131 @@ async fn main() {
         .await
         .expect("Unable to connect to image mounter");
 
-    if matches.subcommand_matches("list").is_some() {
-        let images = mounter_client
-            .copy_devices()
-            .await
-            .expect("Unable to get images");
-        for i in images {
-            println!("{}", pretty_print_plist(&i));
-        }
-    } else if matches.subcommand_matches("unmount").is_some() {
-        if product_version < 17 {
-            mounter_client
-                .unmount_image("/Developer")
+    let (subcommand, sub_args) = arguments
+        .first_subcommand()
+        .expect("No subcommand passed! Pass -h for help");
+
+    match subcommand.as_str() {
+        "list" => {
+            let images = mounter_client
+                .copy_devices()
                 .await
-                .expect("Failed to unmount");
-        } else {
-            mounter_client
-                .unmount_image("/System/Developer")
-                .await
-                .expect("Failed to unmount");
-        }
-    } else if let Some(matches) = matches.subcommand_matches("mount") {
-        let image: &PathBuf = match matches.get_one("image") {
-            Some(i) => i,
-            None => {
-                eprintln!("No image was passed! Pass -h for help");
-                return;
+                .expect("Unable to get images");
+            for i in images {
+                println!("{}", pretty_print_plist(&i));
             }
-        };
-        let image = tokio::fs::read(image).await.expect("Unable to read image");
-        if product_version < 17 {
-            let signature: &PathBuf = match matches.get_one("signature") {
-                Some(s) => s,
-                None => {
-                    eprintln!("No signature was passed! Pass -h for help");
-                    return;
-                }
-            };
-            let signature = tokio::fs::read(signature)
-                .await
-                .expect("Unable to read signature");
-
-            mounter_client
-                .mount_developer(&image, signature)
-                .await
-                .expect("Unable to mount");
-        } else {
-            let manifest: &PathBuf = match matches.get_one("manifest") {
-                Some(s) => s,
-                None => {
-                    eprintln!("No build manifest was passed! Pass -h for help");
-                    return;
-                }
-            };
-            let build_manifest = &tokio::fs::read(manifest)
-                .await
-                .expect("Unable to read signature");
-
-            let trust_cache: &PathBuf = match matches.get_one("trustcache") {
-                Some(s) => s,
-                None => {
-                    eprintln!("No trust cache was passed! Pass -h for help");
-                    return;
-                }
-            };
-            let trust_cache = tokio::fs::read(trust_cache)
-                .await
-                .expect("Unable to read signature");
-
-            let unique_chip_id =
-                match lockdown_client.get_value(Some("UniqueChipID"), None).await {
-                    Ok(u) => u,
-                    Err(_) => {
-                        lockdown_client
-                            .start_session(&provider.get_pairing_file().await.unwrap())
-                            .await
-                            .expect("Unable to start session");
-                        lockdown_client
-                            .get_value(Some("UniqueChipID"), None)
-                            .await
-                            .expect("Unable to get UniqueChipID")
-                    }
-                }
-                .as_unsigned_integer()
-                .expect("Unexpected value for chip IP");
-
-            mounter_client
-                .mount_personalized_with_callback(
-                    &*provider,
-                    image,
-                    trust_cache,
-                    build_manifest,
-                    None,
-                    unique_chip_id,
-                    async |((n, d), _)| {
-                        let percent = (n as f64 / d as f64) * 100.0;
-                        print!("\rProgress: {percent:.2}%");
-                        std::io::stdout().flush().unwrap(); // Make sure it prints immediately
-                        if n == d {
-                            println!();
-                        }
-                    },
-                    (),
-                )
-                .await
-                .expect("Unable to mount");
         }
-    } else {
-        eprintln!("Invalid usage, pass -h for help");
+        "lookup" => {
+            let sig = mounter_client
+                .lookup_image(if product_version < 17 {
+                    "Developer"
+                } else {
+                    "Personalized"
+                })
+                .await
+                .expect("Failed to lookup images");
+            println!("Image signature: {sig:02X?}");
+        }
+        "unmount" => {
+            if product_version < 17 {
+                mounter_client
+                    .unmount_image("/Developer")
+                    .await
+                    .expect("Failed to unmount");
+            } else {
+                mounter_client
+                    .unmount_image("/System/Developer")
+                    .await
+                    .expect("Failed to unmount");
+            }
+        }
+        "mount" => {
+            let image: PathBuf = match sub_args.get_flag("image") {
+                Some(i) => i,
+                None => {
+                    eprintln!("No image was passed! Pass -h for help");
+                    return;
+                }
+            };
+            let image = tokio::fs::read(image).await.expect("Unable to read image");
+            if product_version < 17 {
+                let signature: PathBuf = match sub_args.get_flag("signature") {
+                    Some(s) => s,
+                    None => {
+                        eprintln!("No signature was passed! Pass -h for help");
+                        return;
+                    }
+                };
+                let signature = tokio::fs::read(signature)
+                    .await
+                    .expect("Unable to read signature");
+
+                mounter_client
+                    .mount_developer(&image, signature)
+                    .await
+                    .expect("Unable to mount");
+            } else {
+                let manifest: PathBuf = match sub_args.get_flag("manifest") {
+                    Some(s) => s,
+                    None => {
+                        eprintln!("No build manifest was passed! Pass -h for help");
+                        return;
+                    }
+                };
+                let build_manifest = &tokio::fs::read(manifest)
+                    .await
+                    .expect("Unable to read signature");
+
+                let trust_cache: PathBuf = match sub_args.get_flag("trustcache") {
+                    Some(s) => s,
+                    None => {
+                        eprintln!("No trust cache was passed! Pass -h for help");
+                        return;
+                    }
+                };
+                let trust_cache = tokio::fs::read(trust_cache)
+                    .await
+                    .expect("Unable to read signature");
+
+                let unique_chip_id =
+                    match lockdown_client.get_value(Some("UniqueChipID"), None).await {
+                        Ok(u) => u,
+                        Err(_) => {
+                            lockdown_client
+                                .start_session(&provider.get_pairing_file().await.unwrap())
+                                .await
+                                .expect("Unable to start session");
+                            lockdown_client
+                                .get_value(Some("UniqueChipID"), None)
+                                .await
+                                .expect("Unable to get UniqueChipID")
+                        }
+                    }
+                    .as_unsigned_integer()
+                    .expect("Unexpected value for chip IP");
+
+                mounter_client
+                    .mount_personalized_with_callback(
+                        &*provider,
+                        image,
+                        trust_cache,
+                        build_manifest,
+                        None,
+                        unique_chip_id,
+                        async |((n, d), _)| {
+                            let percent = (n as f64 / d as f64) * 100.0;
+                            print!("\rProgress: {percent:.2}%");
+                            std::io::stdout().flush().unwrap(); // Make sure it prints immediately
+                            if n == d {
+                                println!();
+                            }
+                        },
+                        (),
+                    )
+                    .await
+                    .expect("Unable to mount");
+            }
+        }
+        _ => unreachable!(),
     }
-    return;
 }

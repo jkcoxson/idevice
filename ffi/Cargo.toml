@@ -34,6 +34,7 @@ debug_proxy = ["idevice/debug_proxy"]
 diagnostics_relay = ["idevice/diagnostics_relay"]
 dvt = ["idevice/dvt"]
 heartbeat = ["idevice/heartbeat"]
+notification_proxy = ["idevice/notification_proxy"]
 house_arrest = ["idevice/house_arrest"]
 installation_proxy = ["idevice/installation_proxy"]
 springboardservices = ["idevice/springboardservices"]
@@ -50,6 +51,7 @@ tss = ["idevice/tss"]
 tunneld = ["idevice/tunneld"]
 usbmuxd = ["idevice/usbmuxd"]
 xpc = ["idevice/xpc"]
+screenshotr = ["idevice/screenshotr"]
 full = [
   "afc",
   "amfi",
@@ -60,6 +62,7 @@ full = [
   "diagnostics_relay",
   "dvt",
   "heartbeat",
+  "notification_proxy",
   "house_arrest",
   "installation_proxy",
   "misagent",
@@ -75,6 +78,7 @@ full = [
   "tunneld",
   "springboardservices",
   "syslog_relay",
+  "screenshotr",
 ]
 default = ["full", "aws-lc"]
 

@@ -1,111 +1,72 @@
 // Jackson Coxson
 
-use clap::{Arg, Command};
 use idevice::{
     IdeviceService, RsdService,
     core_device::{AppServiceClient, OpenStdioSocketClient},
     core_device_proxy::CoreDeviceProxy,
+    provider::IdeviceProvider,
     rsd::RsdHandshake,
 };
+use jkcli::{CollectedArguments, JkArgument, JkCommand};
 
-mod common;
-
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt::init();
-
-    let matches = Command::new("remotexpc")
-        .about("Get services from RemoteXPC")
-        .arg(
-            Arg::new("host")
-                .long("host")
-                .value_name("HOST")
-                .help("IP address of the device"),
-        )
-        .arg(
-            Arg::new("pairing_file")
-                .long("pairing-file")
-                .value_name("PATH")
-                .help("Path to the pairing file"),
-        )
-        .arg(
-            Arg::new("udid")
-                .value_name("UDID")
-                .help("UDID of the device (overrides host/pairing file)")
-                .index(1),
-        )
-        .arg(
-            Arg::new("tunneld")
-                .long("tunneld")
-                .help("Use tunneld")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("about")
-                .long("about")
-                .help("Show about information")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .subcommand(Command::new("list").about("Lists the images mounted on the device"))
-        .subcommand(
-            Command::new("launch")
-                .about("Launch the app on the device")
-                .arg(
-                    Arg::new("bundle_id")
-                        .required(true)
-                        .help("The bundle ID to launch"),
+pub fn register() -> JkCommand {
+    JkCommand::new()
+        .help("Interact with the RemoteXPC app service on the device")
+        .with_subcommand("list", JkCommand::new().help("List apps on the device"))
+        .with_subcommand(
+            "launch",
+            JkCommand::new()
+                .help("Launch an app on the device")
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("Bundle ID to launch")
+                        .required(true),
                 ),
         )
-        .subcommand(Command::new("processes").about("List the processes running"))
-        .subcommand(
-            Command::new("uninstall").about("Uninstall an app").arg(
-                Arg::new("bundle_id")
-                    .required(true)
-                    .help("The bundle ID to uninstall"),
+        .with_subcommand(
+            "processes",
+            JkCommand::new().help("List the processes running"),
+        )
+        .with_subcommand(
+            "uninstall",
+            JkCommand::new().help("Uninstall an app").with_argument(
+                JkArgument::new()
+                    .with_help("Bundle ID to uninstall")
+                    .required(true),
             ),
         )
-        .subcommand(
-            Command::new("signal")
-                .about("Send a signal to an app")
-                .arg(Arg::new("pid").required(true).help("PID to send to"))
-                .arg(Arg::new("signal").required(true).help("Signal to send")),
+        .with_subcommand(
+            "signal",
+            JkCommand::new()
+                .help("Uninstall an app")
+                .with_argument(JkArgument::new().with_help("PID to signal").required(true))
+                .with_argument(JkArgument::new().with_help("Signal to send").required(true)),
         )
-        .subcommand(
-            Command::new("icon")
-                .about("Send a signal to an app")
-                .arg(
-                    Arg::new("bundle_id")
-                        .required(true)
-                        .help("The bundle ID to fetch"),
+        .with_subcommand(
+            "icon",
+            JkCommand::new()
+                .help("Fetch an icon for an app")
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("Bundle ID for the app")
+                        .required(true),
                 )
-                .arg(
-                    Arg::new("path")
-                        .required(true)
-                        .help("The path to save the icon to"),
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("Path to save it to")
+                        .required(true),
                 )
-                .arg(Arg::new("hw").required(false).help("The height and width"))
-                .arg(Arg::new("scale").required(false).help("The scale")),
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("Height and width")
+                        .required(true),
+                )
+                .with_argument(JkArgument::new().with_help("Scale").required(true)),
         )
-        .get_matches();
+        .subcommand_required(true)
+}
 
-    if matches.get_flag("about") {
-        println!("debug_proxy - connect to the debug proxy and run commands");
-        println!("Copyright (c) 2025 Jackson Coxson");
-        return;
-    }
-
-    let udid = matches.get_one::<String>("udid");
-    let pairing_file = matches.get_one::<String>("pairing_file");
-    let host = matches.get_one::<String>("host");
-
-    let provider =
-        match common::get_provider(udid, host, pairing_file, "app_service-jkcoxson").await {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("{e}");
-                return;
-            }
-        };
+pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvider>) {
     let proxy = CoreDeviceProxy::connect(&*provider)
         .await
         .expect("no core proxy");
@@ -123,121 +84,122 @@ async fn main() {
         .await
         .expect("no connect");
 
-    if matches.subcommand_matches("list").is_some() {
-        let apps = asc
-            .list_apps(true, true, true, true, true)
-            .await
-            .expect("Failed to get apps");
-        println!("{apps:#?}");
-    } else if let Some(matches) = matches.subcommand_matches("launch") {
-        let bundle_id: &String = match matches.get_one("bundle_id") {
-            Some(b) => b,
-            None => {
-                eprintln!("No bundle ID passed");
-                return;
-            }
-        };
+    let (sub_name, sub_args) = arguments.first_subcommand().expect("No subcommand");
+    let mut sub_args = sub_args.clone();
 
-        let mut stdio_conn = OpenStdioSocketClient::connect_rsd(&mut adapter, &mut handshake)
-            .await
-            .expect("no stdio");
-
-        let stdio_uuid = stdio_conn.read_uuid().await.expect("no uuid");
-        println!("stdio uuid: {stdio_uuid:?}");
-
-        let res = asc
-            .launch_application(bundle_id, &[], true, false, None, None, Some(stdio_uuid))
-            .await
-            .expect("no launch");
-
-        println!("Launch response {res:#?}");
-
-        let (mut remote_reader, mut remote_writer) = tokio::io::split(stdio_conn.inner);
-        let mut local_stdin = tokio::io::stdin();
-        let mut local_stdout = tokio::io::stdout();
-
-        tokio::select! {
-            // Task 1: Copy data from the remote process to local stdout
-            res = tokio::io::copy(&mut remote_reader, &mut local_stdout) => {
-                if let Err(e) = res {
-                    eprintln!("Error copying from remote to local: {}", e);
+    match sub_name.as_str() {
+        "list" => {
+            let apps = asc
+                .list_apps(true, true, true, true, true)
+                .await
+                .expect("Failed to get apps");
+            println!("{apps:#?}");
+        }
+        "launch" => {
+            let bundle_id: String = match sub_args.next_argument() {
+                Some(b) => b,
+                None => {
+                    eprintln!("No bundle ID passed");
+                    return;
                 }
-                println!("\nRemote connection closed.");
-                return;
-            }
-            // Task 2: Copy data from local stdin to the remote process
-            res = tokio::io::copy(&mut local_stdin, &mut remote_writer) => {
-                if let Err(e) = res {
-                    eprintln!("Error copying from local to remote: {}", e);
+            };
+
+            let mut stdio_conn = OpenStdioSocketClient::connect_rsd(&mut adapter, &mut handshake)
+                .await
+                .expect("no stdio");
+
+            let stdio_uuid = stdio_conn.read_uuid().await.expect("no uuid");
+            println!("stdio uuid: {stdio_uuid:?}");
+
+            let res = asc
+                .launch_application(bundle_id, &[], true, false, None, None, Some(stdio_uuid))
+                .await
+                .expect("no launch");
+
+            println!("Launch response {res:#?}");
+
+            let (mut remote_reader, mut remote_writer) = tokio::io::split(stdio_conn.inner);
+            let mut local_stdin = tokio::io::stdin();
+            let mut local_stdout = tokio::io::stdout();
+
+            tokio::select! {
+                // Task 1: Copy data from the remote process to local stdout
+                res = tokio::io::copy(&mut remote_reader, &mut local_stdout) => {
+                    if let Err(e) = res {
+                        eprintln!("Error copying from remote to local: {}", e);
+                    }
+                    println!("\nRemote connection closed.");
                 }
-                println!("\nLocal stdin closed.");
-                return;
+                // Task 2: Copy data from local stdin to the remote process
+                res = tokio::io::copy(&mut local_stdin, &mut remote_writer) => {
+                    if let Err(e) = res {
+                        eprintln!("Error copying from local to remote: {}", e);
+                    }
+                    println!("\nLocal stdin closed.");
+                }
             }
         }
-    } else if matches.subcommand_matches("processes").is_some() {
-        let p = asc.list_processes().await.expect("no processes?");
-        println!("{p:#?}");
-    } else if let Some(matches) = matches.subcommand_matches("uninstall") {
-        let bundle_id: &String = match matches.get_one("bundle_id") {
-            Some(b) => b,
-            None => {
-                eprintln!("No bundle ID passed");
-                return;
-            }
-        };
+        "processes" => {
+            let p = asc.list_processes().await.expect("no processes?");
+            println!("{p:#?}");
+        }
+        "uninstall" => {
+            let bundle_id: String = match sub_args.next_argument() {
+                Some(b) => b,
+                None => {
+                    eprintln!("No bundle ID passed");
+                    return;
+                }
+            };
 
-        asc.uninstall_app(bundle_id).await.expect("no launch")
-    } else if let Some(matches) = matches.subcommand_matches("signal") {
-        let pid: u32 = match matches.get_one::<String>("pid") {
-            Some(b) => b.parse().expect("failed to parse PID as u32"),
-            None => {
-                eprintln!("No bundle PID passed");
-                return;
-            }
-        };
-        let signal: u32 = match matches.get_one::<String>("signal") {
-            Some(b) => b.parse().expect("failed to parse signal as u32"),
-            None => {
-                eprintln!("No bundle signal passed");
-                return;
-            }
-        };
+            asc.uninstall_app(bundle_id).await.expect("no launch")
+        }
+        "signal" => {
+            let pid: u32 = match sub_args.next_argument() {
+                Some(b) => b,
+                None => {
+                    eprintln!("No bundle PID passed");
+                    return;
+                }
+            };
+            let signal: u32 = match sub_args.next_argument() {
+                Some(b) => b,
+                None => {
+                    eprintln!("No bundle signal passed");
+                    return;
+                }
+            };
 
-        let res = asc.send_signal(pid, signal).await.expect("no signal");
-        println!("{res:#?}");
-    } else if let Some(matches) = matches.subcommand_matches("icon") {
-        let bundle_id: &String = match matches.get_one("bundle_id") {
-            Some(b) => b,
-            None => {
-                eprintln!("No bundle ID passed");
-                return;
-            }
-        };
-        let save_path: &String = match matches.get_one("path") {
-            Some(b) => b,
-            None => {
-                eprintln!("No bundle ID passed");
-                return;
-            }
-        };
-        let hw: f32 = match matches.get_one::<String>("hw") {
-            Some(b) => b.parse().expect("failed to parse PID as f32"),
-            None => 1.0,
-        };
-        let scale: f32 = match matches.get_one::<String>("scale") {
-            Some(b) => b.parse().expect("failed to parse signal as f32"),
-            None => 1.0,
-        };
+            let res = asc.send_signal(pid, signal).await.expect("no signal");
+            println!("{res:#?}");
+        }
+        "icon" => {
+            let bundle_id: String = match sub_args.next_argument() {
+                Some(b) => b,
+                None => {
+                    eprintln!("No bundle ID passed");
+                    return;
+                }
+            };
+            let save_path: String = match sub_args.next_argument() {
+                Some(b) => b,
+                None => {
+                    eprintln!("No bundle ID passed");
+                    return;
+                }
+            };
+            let hw: f32 = sub_args.next_argument().unwrap_or(1.0);
+            let scale: f32 = sub_args.next_argument().unwrap_or(1.0);
 
-        let res = asc
-            .fetch_app_icon(bundle_id, hw, hw, scale, true)
-            .await
-            .expect("no signal");
-        println!("{res:?}");
-        tokio::fs::write(save_path, res.data)
-            .await
-            .expect("failed to save");
-    } else {
-        eprintln!("Invalid usage, pass -h for help");
+            let res = asc
+                .fetch_app_icon(bundle_id, hw, hw, scale, true)
+                .await
+                .expect("no signal");
+            println!("{res:?}");
+            tokio::fs::write(save_path, res.data)
+                .await
+                .expect("failed to save");
+        }
+        _ => unreachable!(),
     }
 }

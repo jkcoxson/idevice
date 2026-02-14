@@ -5,8 +5,9 @@
 
 #[cfg(all(feature = "pair", feature = "rustls"))]
 mod ca;
+pub mod cursor;
+mod obfuscation;
 pub mod pairing_file;
-pub mod plist_macro;
 pub mod provider;
 #[cfg(feature = "remote_pairing")]
 pub mod remote_pairing;
@@ -20,7 +21,6 @@ pub mod tss;
 pub mod tunneld;
 #[cfg(feature = "usbmuxd")]
 pub mod usbmuxd;
-mod util;
 pub mod utils;
 #[cfg(feature = "xpc")]
 pub mod xpc;
@@ -31,6 +31,7 @@ pub use services::*;
 #[cfg(feature = "xpc")]
 pub use xpc::RemoteXpcClient;
 
+use plist_macro::{plist, pretty_print_dictionary, pretty_print_plist};
 use provider::{IdeviceProvider, RsdProvider};
 #[cfg(feature = "rustls")]
 use rustls::{crypto::CryptoProvider, pki_types::ServerName};
@@ -40,9 +41,7 @@ use std::{
 };
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tracing::{debug, error, trace};
-
-pub use util::{pretty_print_dictionary, pretty_print_plist};
+use tracing::{debug, trace};
 
 use crate::services::lockdown::LockdownClient;
 
@@ -79,6 +78,7 @@ pub trait IdeviceService: Sized {
     async fn connect(provider: &dyn IdeviceProvider) -> Result<Self, IdeviceError> {
         let mut lockdown = LockdownClient::connect(provider).await?;
 
+        #[cfg(feature = "openssl")]
         let legacy = lockdown
             .get_value(Some("ProductVersion"), None)
             .await
@@ -89,6 +89,9 @@ pub trait IdeviceService: Sized {
             .and_then(|x| x.parse::<u8>().ok())
             .map(|x| x < 5)
             .unwrap_or(false);
+
+        #[cfg(not(feature = "openssl"))]
+        let legacy = false;
 
         lockdown
             .start_session(&provider.get_pairing_file().await?)
@@ -194,7 +197,7 @@ impl Idevice {
     /// # Errors
     /// Returns `IdeviceError` if communication fails or response is invalid
     pub async fn get_type(&mut self) -> Result<String, IdeviceError> {
-        let req = crate::plist!({
+        let req = plist!({
             "Label": self.label.clone(),
             "Request": "QueryType",
         });
@@ -214,7 +217,7 @@ impl Idevice {
     /// # Errors
     /// Returns `IdeviceError` if the protocol sequence isn't followed correctly
     pub async fn rsd_checkin(&mut self) -> Result<(), IdeviceError> {
-        let req = crate::plist!({
+        let req = plist!({
             "Label": self.label.clone(),
             "ProtocolVersion": "2",
             "Request": "RSDCheckin",
@@ -484,7 +487,13 @@ impl Idevice {
             if let Some(e) = IdeviceError::from_device_error_type(e.as_str(), &res) {
                 return Err(e);
             } else {
-                return Err(IdeviceError::UnknownErrorType(e));
+                let msg =
+                    if let Some(desc) = res.get("ErrorDescription").and_then(|x| x.as_string()) {
+                        format!("{} ({})", e, desc)
+                    } else {
+                        e
+                    };
+                return Err(IdeviceError::UnknownErrorType(msg));
             }
         }
         Ok(res)
@@ -875,6 +884,9 @@ pub enum IdeviceError {
     #[cfg(feature = "remote_pairing")]
     #[error("Chacha encryption error")]
     ChachaEncryption(chacha20poly1305::Error) = -75,
+    #[cfg(feature = "notification_proxy")]
+    #[error("notification proxy died")]
+    NotificationProxyDeath = -76,
 }
 
 impl IdeviceError {
@@ -1048,6 +1060,9 @@ impl IdeviceError {
             IdeviceError::PairVerifyFailed => -73,
             IdeviceError::SrpAuthFailed => -74,
             IdeviceError::ChachaEncryption(_) => -75,
+
+            #[cfg(feature = "notification_proxy")]
+            IdeviceError::NotificationProxyDeath => -76,
         }
     }
 }

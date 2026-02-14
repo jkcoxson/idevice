@@ -47,6 +47,8 @@ To keep dependency bloat and compile time down, everything is contained in featu
 |------------------------|-----------------------------------------------------------------------------|
 | `afc`                  | Apple File Conduit for file system access.|
 | `amfi`                 | Apple mobile file integrity service |
+| `bt_packet_logger`     | Capture Bluetooth packets. |
+| `companion_proxy`      | Manage paired Apple Watches. |
 | `core_device_proxy`    | Start a secure tunnel to access protected services. |
 | `crashreportcopymobile`| Copy crash reports.|
 | `debug_proxy`          | Send GDB commands to the device.|
@@ -55,13 +57,19 @@ To keep dependency bloat and compile time down, everything is contained in featu
 | `heartbeat`            | Maintain a heartbeat connection.|
 | `house_arrest` | Manage files in app containers |
 | `installation_proxy`   | Manage app installation and uninstallation.|
-| `springboardservices`  | Control SpringBoard (e.g. UI interactions). Partial support.|
-| `misagent`             | Manage provisioning profiles on the device.|
-| `mobilebackup2`        | Manage backups.|
-| `mobile_image_mounter` | Manage DDI images.|
+| `installcoordination_proxy` | Manage app installation coordination.|
 | `location_simulation`  | Simulate GPS locations on the device.|
+| `misagent`             | Manage provisioning profiles on the device.|
+| `mobile_image_mounter` | Manage DDI images.|
+| `mobileactivationd`    | Activate/Deactivate device.|
+| `mobilebackup2`        | Manage backups.|
 | `pair`                 | Pair the device.|
-| `syslog_relay` | Relay system logs from the device |
+| `pcapd`                | Capture network packets.|
+| `preboard_service`     | Interface with Preboard.|
+| `restore_service`      | Restore service (recovery/reboot).|
+| `screenshotr`          | Take screenshots.|
+| `springboardservices`  | Control SpringBoard (icons, wallpaper, orientation, etc.).|
+| `syslog_relay` | Relay system logs and OS trace logs from the device. |
 | `tcp`                  | Connect to devices over TCP.|
 | `tunnel_tcp_stack`     | Naive in-process TCP stack for `core_device_proxy`.|
 | `tss`                  | Make requests to Apple's TSS servers. Partial support.|
@@ -73,16 +81,11 @@ To keep dependency bloat and compile time down, everything is contained in featu
 
 Finish the following:
 
-- springboard
+- webinspector
 
 Implement the following:
 
-- companion_proxy
-- diagnostics
-- mobilebackup2
 - notification_proxy
-- screenshot
-- webinspector
 
 As this project is done in my free time within my busy schedule, there
 is no ETA for any of these. Feel free to contribute or donate!

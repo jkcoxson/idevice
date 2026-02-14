@@ -30,8 +30,14 @@ jobs:
 
       - name: Install rustup targets
         run: |
+          rustup target add aarch64-apple-ios && \
+          rustup target add x86_64-apple-ios && \
+          rustup target add aarch64-apple-ios-sim && \
           rustup target add aarch64-apple-darwin && \
-          rustup target add x86_64-apple-darwin && cargo install --force --locked bindgen-cli
+          rustup target add x86_64-apple-darwin && \
+          rustup target add aarch64-apple-ios-macabi && \
+          rustup target add x86_64-apple-ios-macabi && \
+          cargo install --force --locked bindgen-cli
 
       - name: Build all Apple targets and examples/tools
         run: |
@@ -43,6 +49,12 @@ jobs:
           name: libidevice-macos-a
           path: |
             target/*apple*/release/libidevice_ffi.a
+
+      - name: Upload macOS+iOS XCFramework
+        uses: actions/upload-artifact@v4
+        with:
+          name: idevice-xcframework
+          path: swift/bundle.zip
 
       - name: Upload C examples/tools
         uses: actions/upload-artifact@v4

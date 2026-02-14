@@ -1,92 +1,79 @@
 // Jackson Coxson
 
-use clap::{Arg, Command, arg};
-use idevice::{IdeviceService, lockdown::LockdownClient, pretty_print_plist};
+use idevice::{IdeviceService, lockdown::LockdownClient, provider::IdeviceProvider};
+use jkcli::{CollectedArguments, JkArgument, JkCommand, JkFlag};
 use plist::Value;
+use plist_macro::pretty_print_plist;
 
-mod common;
-
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt::init();
-
-    let matches = Command::new("lockdown")
-        .about("Start a tunnel")
-        .arg(
-            Arg::new("host")
-                .long("host")
-                .value_name("HOST")
-                .help("IP address of the device"),
+pub fn register() -> JkCommand {
+    JkCommand::new()
+        .help("Interact with lockdown")
+        .with_subcommand(
+            "get",
+            JkCommand::new()
+                .help("Gets a value from lockdown")
+                .with_argument(JkArgument::new().with_help("The value to get")),
         )
-        .arg(
-            Arg::new("pairing_file")
-                .long("pairing-file")
-                .value_name("PATH")
-                .help("Path to the pairing file"),
+        .with_subcommand(
+            "set",
+            JkCommand::new()
+                .help("Gets a value from lockdown")
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("The value to set")
+                        .required(true),
+                )
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("The value key to set")
+                        .required(true),
+                ),
         )
-        .arg(
-            Arg::new("udid")
-                .value_name("UDID")
-                .help("UDID of the device (overrides host/pairing file)")
-                .index(1),
+        .with_subcommand(
+            "recovery",
+            JkCommand::new().help("Tell the device to enter recovery mode"),
         )
-        .arg(
-            Arg::new("about")
-                .long("about")
-                .help("Show about information")
-                .action(clap::ArgAction::SetTrue),
+        .with_flag(
+            JkFlag::new("domain")
+                .with_help("The domain to set/get in")
+                .with_argument(JkArgument::new().required(true)),
         )
-        .subcommand(
-            Command::new("get")
-                .about("Gets a value")
-                .arg(arg!(-v --value <STRING> "the value to get").required(false))
-                .arg(arg!(-d --domain <STRING> "the domain to get in").required(false)),
-        )
-        .subcommand(
-            Command::new("set")
-                .about("Sets a lockdown value")
-                .arg(arg!(-k --key <STRING> "the key to set").required(true))
-                .arg(arg!(-v --value <STRING> "the value to set the key to").required(true))
-                .arg(arg!(-d --domain <STRING> "the domain to get in").required(false)),
-        )
-        .get_matches();
+        .with_flag(JkFlag::new("no-session").with_help("Don't start a TLS session"))
+        .subcommand_required(true)
+}
 
-    if matches.get_flag("about") {
-        println!(
-            "lockdown - query and manage values on a device. Reimplementation of libimobiledevice's binary."
-        );
-        println!("Copyright (c) 2025 Jackson Coxson");
-        return;
-    }
-
-    let udid = matches.get_one::<String>("udid");
-    let host = matches.get_one::<String>("host");
-    let pairing_file = matches.get_one::<String>("pairing_file");
-
-    let provider =
-        match common::get_provider(udid, host, pairing_file, "ideviceinfo-jkcoxson").await {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("{e}");
-                return;
-            }
-        };
-
+pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvider>) {
     let mut lockdown_client = LockdownClient::connect(&*provider)
         .await
         .expect("Unable to connect to lockdown");
 
-    lockdown_client
-        .start_session(&provider.get_pairing_file().await.expect("no pairing file"))
-        .await
-        .expect("no session");
+    if !arguments.has_flag("no-session") {
+        lockdown_client
+            .start_session(&provider.get_pairing_file().await.expect("no pairing file"))
+            .await
+            .expect("no session");
+    }
 
-    match matches.subcommand() {
-        Some(("get", sub_m)) => {
-            let key = sub_m.get_one::<String>("value").map(|x| x.as_str());
-            let domain = sub_m.get_one::<String>("domain").map(|x| x.as_str());
+    let domain: Option<String> = arguments.get_flag("domain");
+    let domain = domain.as_deref();
 
-            match lockdown_client.get_value(key, domain).await {
+    let (sub_name, sub_args) = arguments.first_subcommand().expect("No subcommand");
+    let mut sub_args = sub_args.clone();
+
+    match sub_name.as_str() {
+        "get" => {
+            let key: Option<String> = sub_args.next_argument();
+
+            match lockdown_client
+                .get_value(
+                    match &key {
+                        Some(k) => Some(k.as_str()),
+                        None => None,
+                    },
+                    domain,
+                )
+                .await
+            {
                 Ok(value) => {
                     println!("{}", pretty_print_plist(&value));
                 }
@@ -95,25 +82,21 @@ async fn main() {
                 }
             }
         }
-
-        Some(("set", sub_m)) => {
-            let key = sub_m.get_one::<String>("key").unwrap();
-            let value_str = sub_m.get_one::<String>("value").unwrap();
-            let domain = sub_m.get_one::<String>("domain");
+        "set" => {
+            let value_str: String = sub_args.next_argument().unwrap();
+            let key: String = sub_args.next_argument().unwrap();
 
             let value = Value::String(value_str.clone());
 
-            match lockdown_client
-                .set_value(key, value, domain.map(|x| x.as_str()))
-                .await
-            {
+            match lockdown_client.set_value(key, value, domain).await {
                 Ok(()) => println!("Successfully set"),
                 Err(e) => eprintln!("Error setting value: {e}"),
             }
         }
-
-        _ => {
-            eprintln!("No subcommand provided. Try `--help` for usage.");
-        }
+        "recovery" => lockdown_client
+            .enter_recovery()
+            .await
+            .expect("Failed to enter recovery"),
+        _ => unreachable!(),
     }
 }

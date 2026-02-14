@@ -19,6 +19,8 @@ pub mod dvt;
 mod errors;
 #[cfg(feature = "heartbeat")]
 pub mod heartbeat;
+#[cfg(feature = "house_arrest")]
+pub mod house_arrest;
 #[cfg(feature = "installation_proxy")]
 pub mod installation_proxy;
 pub mod lockdown;
@@ -27,12 +29,16 @@ pub mod logging;
 pub mod misagent;
 #[cfg(feature = "mobile_image_mounter")]
 pub mod mobile_image_mounter;
+#[cfg(feature = "notification_proxy")]
+pub mod notification_proxy;
 #[cfg(feature = "syslog_relay")]
 pub mod os_trace_relay;
 mod pairing_file;
 pub mod provider;
 #[cfg(feature = "xpc")]
 pub mod rsd;
+#[cfg(feature = "screenshotr")]
+pub mod screenshotr;
 #[cfg(feature = "springboardservices")]
 pub mod springboardservices;
 #[cfg(feature = "syslog_relay")]

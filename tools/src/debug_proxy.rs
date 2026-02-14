@@ -2,70 +2,17 @@
 
 use std::io::Write;
 
-use clap::{Arg, Command};
 use idevice::{
     IdeviceService, RsdService, core_device_proxy::CoreDeviceProxy, debug_proxy::DebugProxyClient,
-    rsd::RsdHandshake,
+    provider::IdeviceProvider, rsd::RsdHandshake,
 };
+use jkcli::{CollectedArguments, JkCommand};
 
-mod common;
+pub fn register() -> JkCommand {
+    JkCommand::new().help("Start a debug proxy shell")
+}
 
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt::init();
-
-    let matches = Command::new("remotexpc")
-        .about("Get services from RemoteXPC")
-        .arg(
-            Arg::new("host")
-                .long("host")
-                .value_name("HOST")
-                .help("IP address of the device"),
-        )
-        .arg(
-            Arg::new("pairing_file")
-                .long("pairing-file")
-                .value_name("PATH")
-                .help("Path to the pairing file"),
-        )
-        .arg(
-            Arg::new("udid")
-                .value_name("UDID")
-                .help("UDID of the device (overrides host/pairing file)")
-                .index(1),
-        )
-        .arg(
-            Arg::new("tunneld")
-                .long("tunneld")
-                .help("Use tunneld")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("about")
-                .long("about")
-                .help("Show about information")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .get_matches();
-
-    if matches.get_flag("about") {
-        println!("debug_proxy - connect to the debug proxy and run commands");
-        println!("Copyright (c) 2025 Jackson Coxson");
-        return;
-    }
-
-    let udid = matches.get_one::<String>("udid");
-    let pairing_file = matches.get_one::<String>("pairing_file");
-    let host = matches.get_one::<String>("host");
-
-    let provider =
-        match common::get_provider(udid, host, pairing_file, "debug-proxy-jkcoxson").await {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("{e}");
-                return;
-            }
-        };
+pub async fn main(_arguments: &CollectedArguments, provider: Box<dyn IdeviceProvider>) {
     let proxy = CoreDeviceProxy::connect(&*provider)
         .await
         .expect("no core proxy");

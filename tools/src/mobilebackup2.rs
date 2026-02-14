@@ -1,191 +1,135 @@
 // Jackson Coxson
 // Mobile Backup 2 tool for iOS devices
 
-use clap::{Arg, Command};
 use idevice::{
     IdeviceService,
     mobilebackup2::{MobileBackup2Client, RestoreOptions},
+    provider::IdeviceProvider,
 };
+use jkcli::{CollectedArguments, JkArgument, JkCommand, JkFlag};
 use plist::Dictionary;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
 
-mod common;
-
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt::init();
-
-    let matches = Command::new("mobilebackup2")
-        .about("Mobile Backup 2 tool for iOS devices")
-        .arg(
-            Arg::new("host")
-                .long("host")
-                .value_name("HOST")
-                .help("IP address of the device"),
-        )
-        .arg(
-            Arg::new("pairing_file")
-                .long("pairing-file")
-                .value_name("PATH")
-                .help("Path to the pairing file"),
-        )
-        .arg(
-            Arg::new("udid")
-                .value_name("UDID")
-                .help("UDID of the device (overrides host/pairing file)")
-                .index(1),
-        )
-        .arg(
-            Arg::new("about")
-                .long("about")
-                .help("Show about information")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .subcommand(
-            Command::new("info")
-                .about("Get backup information from a local backup directory")
-                .arg(Arg::new("dir").long("dir").value_name("DIR").required(true))
-                .arg(
-                    Arg::new("source")
-                        .long("source")
-                        .value_name("SOURCE")
-                        .help("Source identifier (defaults to current UDID)"),
-                ),
-        )
-        .subcommand(
-            Command::new("list")
-                .about("List files of the last backup from a local backup directory")
-                .arg(Arg::new("dir").long("dir").value_name("DIR").required(true))
-                .arg(Arg::new("source").long("source").value_name("SOURCE")),
-        )
-        .subcommand(
-            Command::new("backup")
-                .about("Start a backup operation")
-                .arg(
-                    Arg::new("dir")
-                        .long("dir")
-                        .value_name("DIR")
-                        .help("Backup directory on host")
+pub fn register() -> JkCommand {
+    JkCommand::new()
+        .help("Mobile Backup 2 tool for iOS devices")
+        .with_subcommand(
+            "info",
+            JkCommand::new()
+                .help("Get backup information from a local backup directory")
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("Backup DIR to read from")
                         .required(true),
                 )
-                .arg(
-                    Arg::new("target")
-                        .long("target")
-                        .value_name("TARGET")
-                        .help("Target identifier for the backup"),
-                )
-                .arg(
-                    Arg::new("source")
-                        .long("source")
-                        .value_name("SOURCE")
-                        .help("Source identifier for the backup"),
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("Source identifier (defaults to current UDID)")
+                        .required(true),
                 ),
         )
-        .subcommand(
-            Command::new("restore")
-                .about("Restore from a local backup directory (DeviceLink)")
-                .arg(Arg::new("dir").long("dir").value_name("DIR").required(true))
-                .arg(
-                    Arg::new("source")
-                        .long("source")
-                        .value_name("SOURCE")
-                        .help("Source UDID; defaults to current device UDID"),
+        .with_subcommand(
+            "list",
+            JkCommand::new()
+                .help("List files of the last backup from a local backup directory")
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("Backup DIR to read from")
+                        .required(true),
                 )
-                .arg(
-                    Arg::new("password")
-                        .long("password")
-                        .value_name("PWD")
-                        .help("Backup password if encrypted"),
-                )
-                .arg(
-                    Arg::new("no-reboot")
-                        .long("no-reboot")
-                        .action(clap::ArgAction::SetTrue),
-                )
-                .arg(
-                    Arg::new("no-copy")
-                        .long("no-copy")
-                        .action(clap::ArgAction::SetTrue),
-                )
-                .arg(
-                    Arg::new("no-settings")
-                        .long("no-settings")
-                        .action(clap::ArgAction::SetTrue),
-                )
-                .arg(
-                    Arg::new("system")
-                        .long("system")
-                        .action(clap::ArgAction::SetTrue),
-                )
-                .arg(
-                    Arg::new("remove")
-                        .long("remove")
-                        .action(clap::ArgAction::SetTrue),
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("Source identifier (defaults to current UDID)")
+                        .required(true),
                 ),
         )
-        .subcommand(
-            Command::new("unback")
-                .about("Unpack a complete backup to device hierarchy")
-                .arg(Arg::new("dir").long("dir").value_name("DIR").required(true))
-                .arg(Arg::new("source").long("source").value_name("SOURCE"))
-                .arg(Arg::new("password").long("password").value_name("PWD")),
-        )
-        .subcommand(
-            Command::new("extract")
-                .about("Extract a file from a previous backup")
-                .arg(Arg::new("dir").long("dir").value_name("DIR").required(true))
-                .arg(Arg::new("source").long("source").value_name("SOURCE"))
-                .arg(
-                    Arg::new("domain")
-                        .long("domain")
-                        .value_name("DOMAIN")
+        .with_subcommand(
+            "backup",
+            JkCommand::new()
+                .help("Start a backup operation")
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("Backup directory on host")
                         .required(true),
                 )
-                .arg(
-                    Arg::new("path")
-                        .long("path")
-                        .value_name("REL_PATH")
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("Target identifier for the backup")
                         .required(true),
                 )
-                .arg(Arg::new("password").long("password").value_name("PWD")),
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("Source identifier for the backup")
+                        .required(true),
+                ),
         )
-        .subcommand(
-            Command::new("change-password")
-                .about("Change backup password")
-                .arg(Arg::new("dir").long("dir").value_name("DIR").required(true))
-                .arg(Arg::new("old").long("old").value_name("OLD"))
-                .arg(Arg::new("new").long("new").value_name("NEW")),
+        .with_subcommand(
+            "restore",
+            JkCommand::new()
+                .help("Restore from a local backup directory (DeviceLink)")
+                .with_argument(JkArgument::new().with_help("DIR").required(true))
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("Source UDID; defaults to current device UDID")
+                        .required(true),
+                )
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("Backup password if encrypted")
+                        .required(true),
+                )
+                .with_flag(JkFlag::new("no-reboot"))
+                .with_flag(JkFlag::new("no-copy"))
+                .with_flag(JkFlag::new("no-settings"))
+                .with_flag(JkFlag::new("system"))
+                .with_flag(JkFlag::new("remove")),
         )
-        .subcommand(
-            Command::new("erase-device")
-                .about("Erase the device via mobilebackup2")
-                .arg(Arg::new("dir").long("dir").value_name("DIR").required(true)),
+        .with_subcommand(
+            "unback",
+            JkCommand::new()
+                .help("Unpack a complete backup to device hierarchy")
+                .with_argument(JkArgument::new().with_help("DIR").required(true))
+                .with_argument(JkArgument::new().with_help("Source"))
+                .with_argument(JkArgument::new().with_help("Password")),
         )
-        .subcommand(Command::new("freespace").about("Get free space information"))
-        .subcommand(Command::new("encryption").about("Check backup encryption status"))
-        .get_matches();
+        .with_subcommand(
+            "extract",
+            JkCommand::new()
+                .help("Extract a file from a previous backup")
+                .with_argument(JkArgument::new().with_help("DIR").required(true))
+                .with_argument(JkArgument::new().with_help("Source").required(true))
+                .with_argument(JkArgument::new().with_help("Domain").required(true))
+                .with_argument(JkArgument::new().with_help("Path").required(true))
+                .with_argument(JkArgument::new().with_help("Password").required(true)),
+        )
+        .with_subcommand(
+            "change-password",
+            JkCommand::new()
+                .help("Change backup password")
+                .with_argument(JkArgument::new().with_help("DIR").required(true))
+                .with_argument(JkArgument::new().with_help("Old password").required(true))
+                .with_argument(JkArgument::new().with_help("New password").required(true)),
+        )
+        .with_subcommand(
+            "erase-device",
+            JkCommand::new()
+                .help("Erase the device via mobilebackup2")
+                .with_argument(JkArgument::new().with_help("DIR").required(true)),
+        )
+        .with_subcommand(
+            "freespace",
+            JkCommand::new().help("Get free space information"),
+        )
+        .with_subcommand(
+            "encryption",
+            JkCommand::new().help("Check backup encryption status"),
+        )
+        .subcommand_required(true)
+}
 
-    if matches.get_flag("about") {
-        println!("mobilebackup2 - manage device backups using Mobile Backup 2 service");
-        println!("Copyright (c) 2025 Jackson Coxson");
-        return;
-    }
-
-    let udid = matches.get_one::<String>("udid");
-    let host = matches.get_one::<String>("host");
-    let pairing_file = matches.get_one::<String>("pairing_file");
-
-    let provider =
-        match common::get_provider(udid, host, pairing_file, "mobilebackup2-jkcoxson").await {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("Error creating provider: {e}");
-                return;
-            }
-        };
-
+pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvider>) {
     let mut backup_client = match MobileBackup2Client::connect(&*provider).await {
         Ok(client) => client,
         Err(e) => {
@@ -194,11 +138,16 @@ async fn main() {
         }
     };
 
-    match matches.subcommand() {
-        Some(("info", sub)) => {
-            let dir = sub.get_one::<String>("dir").unwrap();
-            let source = sub.get_one::<String>("source").map(|s| s.as_str());
-            match backup_client.info_from_path(Path::new(dir), source).await {
+    let (sub_name, sub_args) = arguments.first_subcommand().unwrap();
+    let mut sub_args = sub_args.clone();
+
+    match sub_name.as_str() {
+        "info" => {
+            let dir = sub_args.next_argument::<String>().unwrap();
+            let source = sub_args.next_argument::<String>();
+            let source = source.as_deref();
+
+            match backup_client.info_from_path(Path::new(&dir), source).await {
                 Ok(dict) => {
                     println!("Backup Information:");
                     for (k, v) in dict {
@@ -208,10 +157,12 @@ async fn main() {
                 Err(e) => eprintln!("Failed to get info: {e}"),
             }
         }
-        Some(("list", sub)) => {
-            let dir = sub.get_one::<String>("dir").unwrap();
-            let source = sub.get_one::<String>("source").map(|s| s.as_str());
-            match backup_client.list_from_path(Path::new(dir), source).await {
+        "list" => {
+            let dir = sub_args.next_argument::<String>().unwrap();
+            let source = sub_args.next_argument::<String>();
+            let source = source.as_deref();
+
+            match backup_client.list_from_path(Path::new(&dir), source).await {
                 Ok(dict) => {
                     println!("List Response:");
                     for (k, v) in dict {
@@ -221,12 +172,12 @@ async fn main() {
                 Err(e) => eprintln!("Failed to list: {e}"),
             }
         }
-        Some(("backup", sub_matches)) => {
-            let target = sub_matches.get_one::<String>("target").map(|s| s.as_str());
-            let source = sub_matches.get_one::<String>("source").map(|s| s.as_str());
-            let dir = sub_matches
-                .get_one::<String>("dir")
-                .expect("dir is required");
+        "backup" => {
+            let target = sub_args.next_argument::<String>();
+            let target = target.as_deref();
+            let source = sub_args.next_argument::<String>();
+            let source = source.as_deref();
+            let dir = sub_args.next_argument::<String>().expect("dir is required");
 
             println!("Starting backup operation...");
             let res = backup_client
@@ -234,95 +185,112 @@ async fn main() {
                 .await;
             if let Err(e) = res {
                 eprintln!("Failed to send backup request: {e}");
-            } else if let Err(e) = process_dl_loop(&mut backup_client, Path::new(dir)).await {
+            } else if let Err(e) = process_dl_loop(&mut backup_client, Path::new(&dir)).await {
                 eprintln!("Backup failed during DL loop: {e}");
             } else {
                 println!("Backup flow finished");
             }
         }
-        Some(("restore", sub)) => {
-            let dir = sub.get_one::<String>("dir").unwrap();
-            let source = sub.get_one::<String>("source").map(|s| s.as_str());
+        "restore" => {
+            let dir = sub_args.next_argument::<String>().unwrap();
+            let source = sub_args.next_argument::<String>();
+            let source = source.as_deref();
+
             let mut ropts = RestoreOptions::new();
-            if sub.get_flag("no-reboot") {
+            if sub_args.has_flag("no-reboot") {
                 ropts = ropts.with_reboot(false);
             }
-            if sub.get_flag("no-copy") {
+            if sub_args.has_flag("no-copy") {
                 ropts = ropts.with_copy(false);
             }
-            if sub.get_flag("no-settings") {
+            if sub_args.has_flag("no-settings") {
                 ropts = ropts.with_preserve_settings(false);
             }
-            if sub.get_flag("system") {
+            if sub_args.has_flag("system") {
                 ropts = ropts.with_system_files(true);
             }
-            if sub.get_flag("remove") {
+            if sub_args.has_flag("remove") {
                 ropts = ropts.with_remove_items_not_restored(true);
             }
-            if let Some(pw) = sub.get_one::<String>("password") {
+            if let Some(pw) = sub_args.next_argument::<String>() {
                 ropts = ropts.with_password(pw);
             }
             match backup_client
-                .restore_from_path(Path::new(dir), source, Some(ropts))
+                .restore_from_path(Path::new(&dir), source, Some(ropts))
                 .await
             {
                 Ok(_) => println!("Restore flow finished"),
                 Err(e) => eprintln!("Restore failed: {e}"),
             }
         }
-        Some(("unback", sub)) => {
-            let dir = sub.get_one::<String>("dir").unwrap();
-            let source = sub.get_one::<String>("source").map(|s| s.as_str());
-            let password = sub.get_one::<String>("password").map(|s| s.as_str());
+        "unback" => {
+            let dir = sub_args.next_argument::<String>().unwrap();
+            let source = sub_args.next_argument::<String>();
+            let source = source.as_deref();
+            let password = sub_args.next_argument::<String>();
+            let password = password.as_deref();
+
             match backup_client
-                .unback_from_path(Path::new(dir), password, source)
+                .unback_from_path(Path::new(&dir), password, source)
                 .await
             {
                 Ok(_) => println!("Unback finished"),
                 Err(e) => eprintln!("Unback failed: {e}"),
             }
         }
-        Some(("extract", sub)) => {
-            let dir = sub.get_one::<String>("dir").unwrap();
-            let source = sub.get_one::<String>("source").map(|s| s.as_str());
-            let domain = sub.get_one::<String>("domain").unwrap();
-            let rel = sub.get_one::<String>("path").unwrap();
-            let password = sub.get_one::<String>("password").map(|s| s.as_str());
+        "extract" => {
+            let dir = sub_args.next_argument::<String>().unwrap();
+            let source = sub_args.next_argument::<String>();
+            let source = source.as_deref();
+            let domain = sub_args.next_argument::<String>().unwrap();
+            let rel = sub_args.next_argument::<String>().unwrap();
+            let password = sub_args.next_argument::<String>();
+            let password = password.as_deref();
+
             match backup_client
-                .extract_from_path(domain, rel, Path::new(dir), password, source)
+                .extract_from_path(
+                    domain.as_str(),
+                    rel.as_str(),
+                    Path::new(&dir),
+                    password,
+                    source,
+                )
                 .await
             {
                 Ok(_) => println!("Extract finished"),
                 Err(e) => eprintln!("Extract failed: {e}"),
             }
         }
-        Some(("change-password", sub)) => {
-            let dir = sub.get_one::<String>("dir").unwrap();
-            let old = sub.get_one::<String>("old").map(|s| s.as_str());
-            let newv = sub.get_one::<String>("new").map(|s| s.as_str());
+        "change-password" => {
+            let dir = sub_args.next_argument::<String>().unwrap();
+            let old = sub_args.next_argument::<String>();
+            let old = old.as_deref();
+            let newv = sub_args.next_argument::<String>();
+            let newv = newv.as_deref();
+
             match backup_client
-                .change_password_from_path(Path::new(dir), old, newv)
+                .change_password_from_path(Path::new(&dir), old, newv)
                 .await
             {
                 Ok(_) => println!("Change password finished"),
                 Err(e) => eprintln!("Change password failed: {e}"),
             }
         }
-        Some(("erase-device", sub)) => {
-            let dir = sub.get_one::<String>("dir").unwrap();
-            match backup_client.erase_device_from_path(Path::new(dir)).await {
+        "erase-device" => {
+            let dir = sub_args.next_argument::<String>().unwrap();
+            match backup_client.erase_device_from_path(Path::new(&dir)).await {
                 Ok(_) => println!("Erase device command sent"),
                 Err(e) => eprintln!("Erase device failed: {e}"),
             }
         }
-        Some(("freespace", _)) => match backup_client.get_freespace().await {
+        "freespace" => match backup_client.get_freespace().await {
             Ok(freespace) => {
                 let freespace_gb = freespace as f64 / (1024.0 * 1024.0 * 1024.0);
                 println!("Free space: {freespace} bytes ({freespace_gb:.2} GB)");
             }
             Err(e) => eprintln!("Failed to get free space: {e}"),
         },
-        Some(("encryption", _)) => match backup_client.check_backup_encryption().await {
+        "encryption" => match backup_client.check_backup_encryption().await {
             Ok(is_encrypted) => {
                 println!(
                     "Backup encryption: {}",

@@ -1,10 +1,22 @@
 // Jackson Coxson
 
-use idevice::dvt::message::Message;
+use idevice::{dvt::message::Message, provider::IdeviceProvider};
+use jkcli::{CollectedArguments, JkArgument, JkCommand};
 
-#[tokio::main]
-async fn main() {
-    let file = std::env::args().nth(1).expect("No file passed");
+pub fn register() -> JkCommand {
+    JkCommand::new()
+        .help("Parse a DVT packet from a file")
+        .with_argument(
+            JkArgument::new()
+                .required(true)
+                .with_help("Path the the packet file"),
+        )
+}
+
+pub async fn main(arguments: &CollectedArguments, _provider: Box<dyn IdeviceProvider>) {
+    let mut arguments = arguments.clone();
+
+    let file: String = arguments.next_argument().expect("No file passed");
     let mut bytes = tokio::fs::File::open(file).await.unwrap();
 
     let message = Message::from_reader(&mut bytes).await.unwrap();

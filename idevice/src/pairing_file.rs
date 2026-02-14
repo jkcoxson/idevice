@@ -38,7 +38,7 @@ pub struct PairingFile {
     /// Host identifier
     pub host_id: String,
     /// Escrow bag allowing for access while locked
-    pub escrow_bag: Vec<u8>,
+    pub escrow_bag: Option<Vec<u8>>,
     /// Device's WiFi MAC address
     pub wifi_mac_address: String,
     /// Device's Unique Device Identifier (optional)
@@ -73,7 +73,7 @@ struct RawPairingFile {
     system_buid: String,
     #[serde(rename = "HostID")]
     host_id: String,
-    escrow_bag: Data,
+    escrow_bag: Option<Data>, // None on Apple Watch
     #[serde(rename = "WiFiMACAddress")]
     wifi_mac_address: String,
     #[serde(rename = "UDID")]
@@ -206,7 +206,7 @@ impl TryFrom<RawPairingFile> for PairingFile {
             root_certificate: CertificateDer::from_pem_slice(&root_certificate_pem)?,
             system_buid: value.system_buid,
             host_id: value.host_id,
-            escrow_bag: value.escrow_bag.into(),
+            escrow_bag: value.escrow_bag.map(|x| x.into()),
             wifi_mac_address: value.wifi_mac_address,
             udid: value.udid,
         })
@@ -230,7 +230,7 @@ impl TryFrom<RawPairingFile> for PairingFile {
             root_certificate: X509::from_pem(&Into::<Vec<u8>>::into(value.root_certificate))?,
             system_buid: value.system_buid,
             host_id: value.host_id,
-            escrow_bag: value.escrow_bag.into(),
+            escrow_bag: value.escrow_bag.map(|x| x.into()),
             wifi_mac_address: value.wifi_mac_address,
             udid: value.udid,
         })
@@ -258,7 +258,7 @@ impl From<PairingFile> for RawPairingFile {
             root_certificate: Data::new(root_cert_data),
             system_buid: value.system_buid,
             host_id: value.host_id.clone(),
-            escrow_bag: Data::new(value.escrow_bag),
+            escrow_bag: value.escrow_bag.map(Data::new),
             wifi_mac_address: value.wifi_mac_address,
             udid: value.udid,
         }
@@ -278,7 +278,7 @@ impl TryFrom<PairingFile> for RawPairingFile {
             root_certificate: Data::new(value.root_certificate.to_pem()?),
             system_buid: value.system_buid,
             host_id: value.host_id.clone(),
-            escrow_bag: Data::new(value.escrow_bag),
+            escrow_bag: value.escrow_bag.map(Data::new),
             wifi_mac_address: value.wifi_mac_address,
             udid: value.udid,
         })

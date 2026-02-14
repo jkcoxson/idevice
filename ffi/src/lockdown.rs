@@ -179,7 +179,7 @@ pub unsafe extern "C" fn lockdownd_get_value(
     domain: *const libc::c_char,
     out_plist: *mut plist_t,
 ) -> *mut IdeviceFfiError {
-    if out_plist.is_null() {
+    if client.is_null() || out_plist.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
@@ -217,6 +217,89 @@ pub unsafe extern "C" fn lockdownd_get_value(
             }
             null_mut()
         }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Tells the device to enter recovery mode
+///
+/// # Arguments
+/// * `client` - A valid LockdowndClient handle
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `client` must be a valid pointer to a handle allocated by this library
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lockdownd_enter_recovery(
+    client: *mut LockdowndClientHandle,
+) -> *mut IdeviceFfiError {
+    if client.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.enter_recovery().await
+    });
+
+    match res {
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Sets a value in lockdownd  
+///  
+/// # Arguments  
+/// * `client` - A valid LockdowndClient handle  
+/// * `key` - The key to set (null-terminated string)  
+/// * `value` - The value to set as a plist  
+/// * `domain` - The domain to set in (null-terminated string, optional)  
+///  
+/// # Returns  
+/// An IdeviceFfiError on error, null on success  
+///  
+/// # Safety  
+/// `client` must be a valid pointer to a handle allocated by this library  
+/// `key` must be a valid null-terminated string  
+/// `value` must be a valid plist  
+/// `domain` must be a valid null-terminated string or NULL  
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lockdownd_set_value(
+    client: *mut LockdowndClientHandle,
+    key: *const libc::c_char,
+    value: plist_t,
+    domain: *const libc::c_char,
+) -> *mut IdeviceFfiError {
+    if client.is_null() || key.is_null() || value.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let key = match unsafe { std::ffi::CStr::from_ptr(key) }.to_str() {
+        Ok(k) => k,
+        Err(_) => return ffi_err!(IdeviceError::InvalidCString),
+    };
+
+    let domain = if domain.is_null() {
+        None
+    } else {
+        Some(match unsafe { std::ffi::CStr::from_ptr(domain) }.to_str() {
+            Ok(d) => d,
+            Err(_) => return ffi_err!(IdeviceError::InvalidCString),
+        })
+    };
+
+    let value = unsafe { &mut *value }.borrow_self().clone();
+
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.set_value(key, value, domain).await
+    });
+
+    match res {
+        Ok(_) => null_mut(),
         Err(e) => ffi_err!(e),
     }
 }

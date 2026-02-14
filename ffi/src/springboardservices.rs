@@ -7,6 +7,7 @@ use idevice::{
     IdeviceError, IdeviceService, provider::IdeviceProvider,
     springboardservices::SpringBoardServicesClient,
 };
+use plist_ffi::plist_t;
 
 use crate::{
     IdeviceFfiError, IdeviceHandle, ffi_err, provider::IdeviceProviderHandle, run_sync,
@@ -130,6 +131,169 @@ pub unsafe extern "C" fn springboard_services_get_icon(
             unsafe {
                 *out_result = ptr as *mut c_void;
                 *out_result_len = len;
+            }
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Gets the home screen wallpaper preview as PNG image
+///
+/// # Arguments
+/// * `client` - A valid SpringBoardServicesClient handle
+/// * `out_result` - On success, will be set to point to newly allocated png image
+/// * `out_result_len` - On success, will contain the size of the data in bytes
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `client` must be a valid pointer to a handle allocated by this library
+/// `out_result` and `out_result_len` must be valid, non-null pointers
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn springboard_services_get_home_screen_wallpaper_preview(
+    client: *mut SpringBoardServicesClientHandle,
+    out_result: *mut *mut c_void,
+    out_result_len: *mut libc::size_t,
+) -> *mut IdeviceFfiError {
+    if client.is_null() || out_result.is_null() || out_result_len.is_null() {
+        tracing::error!("Invalid arguments: {client:?}, {out_result:?}");
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let client = unsafe { &mut *client };
+
+    let res: Result<Vec<u8>, IdeviceError> =
+        run_sync(async { client.0.get_home_screen_wallpaper_preview_pngdata().await });
+
+    match res {
+        Ok(r) => {
+            let len = r.len();
+            let boxed_slice = r.into_boxed_slice();
+            let ptr = boxed_slice.as_ptr();
+            std::mem::forget(boxed_slice);
+
+            unsafe {
+                *out_result = ptr as *mut c_void;
+                *out_result_len = len;
+            }
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Gets the lock screen wallpaper preview as PNG image
+///
+/// # Arguments
+/// * `client` - A valid SpringBoardServicesClient handle
+/// * `out_result` - On success, will be set to point to newly allocated png image
+/// * `out_result_len` - On success, will contain the size of the data in bytes
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `client` must be a valid pointer to a handle allocated by this library
+/// `out_result` and `out_result_len` must be valid, non-null pointers
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn springboard_services_get_lock_screen_wallpaper_preview(
+    client: *mut SpringBoardServicesClientHandle,
+    out_result: *mut *mut c_void,
+    out_result_len: *mut libc::size_t,
+) -> *mut IdeviceFfiError {
+    if client.is_null() || out_result.is_null() || out_result_len.is_null() {
+        tracing::error!("Invalid arguments: {client:?}, {out_result:?}");
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let client = unsafe { &mut *client };
+
+    let res: Result<Vec<u8>, IdeviceError> =
+        run_sync(async { client.0.get_lock_screen_wallpaper_preview_pngdata().await });
+
+    match res {
+        Ok(r) => {
+            let len = r.len();
+            let boxed_slice = r.into_boxed_slice();
+            let ptr = boxed_slice.as_ptr();
+            std::mem::forget(boxed_slice);
+
+            unsafe {
+                *out_result = ptr as *mut c_void;
+                *out_result_len = len;
+            }
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Gets the current interface orientation of the device
+///
+/// # Arguments
+/// * `client` - A valid SpringBoardServicesClient handle
+/// * `out_orientation` - On success, will contain the orientation value (0-4)
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `client` must be a valid pointer to a handle allocated by this library
+/// `out_orientation` must be a valid, non-null pointer
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn springboard_services_get_interface_orientation(
+    client: *mut SpringBoardServicesClientHandle,
+    out_orientation: *mut u8,
+) -> *mut IdeviceFfiError {
+    if client.is_null() || out_orientation.is_null() {
+        tracing::error!("Invalid arguments: {client:?}, {out_orientation:?}");
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let client = unsafe { &mut *client };
+
+    let res = run_sync(async { client.0.get_interface_orientation().await });
+
+    match res {
+        Ok(orientation) => {
+            unsafe {
+                *out_orientation = orientation as u8;
+            }
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Gets the home screen icon layout metrics
+///
+/// # Arguments
+/// * `client` - A valid SpringBoardServicesClient handle
+/// * `res` - On success, will point to a plist dictionary node containing the metrics
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `client` must be a valid pointer to a handle allocated by this library
+/// `res` must be a valid, non-null pointer
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn springboard_services_get_homescreen_icon_metrics(
+    client: *mut SpringBoardServicesClientHandle,
+    res: *mut plist_t,
+) -> *mut IdeviceFfiError {
+    if client.is_null() || res.is_null() {
+        tracing::error!("Invalid arguments: {client:?}, {res:?}");
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let client = unsafe { &mut *client };
+
+    let output = run_sync(async { client.0.get_homescreen_icon_metrics().await });
+
+    match output {
+        Ok(metrics) => {
+            unsafe {
+                *res =
+                    plist_ffi::PlistWrapper::new_node(plist::Value::Dictionary(metrics)).into_ptr();
             }
             null_mut()
         }

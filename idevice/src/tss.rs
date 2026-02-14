@@ -6,9 +6,10 @@
 //! - Handle cryptographic signing operations
 
 use plist::Value;
+use plist_macro::plist_to_xml_bytes;
 use tracing::{debug, warn};
 
-use crate::{IdeviceError, util::plist_to_xml_bytes};
+use crate::IdeviceError;
 
 /// TSS client version string sent in requests
 const TSS_CLIENT_VERSION_STRING: &str = "libauthinstall-1033.0.2";
@@ -30,7 +31,7 @@ impl TSSRequest {
     /// - Client version string
     /// - Random UUID for request identification
     pub fn new() -> Self {
-        let inner = crate::plist!(dict {
+        let inner = plist_macro::plist!(dict {
             "@HostPlatformInfo": "mac",
             "@VersionInfo": TSS_CLIENT_VERSION_STRING,
             "@UUID": uuid::Uuid::new_v4().to_string().to_uppercase()
