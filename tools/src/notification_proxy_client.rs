@@ -1,6 +1,8 @@
 // Jackson Coxson
 
-use idevice::{IdeviceService, notification_proxy::NotificationProxyClient, provider::IdeviceProvider};
+use idevice::{
+    IdeviceService, notification_proxy::NotificationProxyClient, provider::IdeviceProvider,
+};
 use jkcli::{CollectedArguments, JkArgument, JkCommand};
 
 pub fn register() -> JkCommand {
