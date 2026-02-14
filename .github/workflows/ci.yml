@@ -35,6 +35,8 @@ jobs:
           rustup target add aarch64-apple-ios-sim && \
           rustup target add aarch64-apple-darwin && \
           rustup target add x86_64-apple-darwin && \
+          rustup target add aarch64-apple-ios-macabi && \
+          rustup target add x86_64-apple-ios-macabi && \
           cargo install --force --locked bindgen-cli
 
       - name: Build all Apple targets and examples/tools
