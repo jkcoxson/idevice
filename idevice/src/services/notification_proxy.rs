@@ -29,6 +29,9 @@
 //!   - `com.apple.mobile.application_installed`          - App installed
 //!   - `com.apple.mobile.application_uninstalled`        - App uninstalled
 
+use std::pin::Pin;
+
+use futures::Stream;
 use tracing::warn;
 
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
@@ -44,12 +47,6 @@ use crate::{Idevice, IdeviceError, IdeviceService, obf};
 pub struct NotificationProxyClient {
     /// The underlying device connection with established notification_proxy service
     pub idevice: Idevice,
-}
-
-/// Stream of notifications from a notification proxy client
-#[derive(Debug)]
-pub struct NotificationProxyStream {
-    client: NotificationProxyClient,
 }
 
 impl IdeviceService for NotificationProxyClient {
@@ -132,7 +129,8 @@ impl NotificationProxyClient {
     /// The name of the received notification
     ///
     /// # Errors
-    /// - `UnexpectedResponse` if the response format is invalid or ProxyDeath
+    /// - `NotificationProxyDeath` if the proxy connection died
+    /// - `UnexpectedResponse` if the response format is invalid
     pub async fn receive_notification(&mut self) -> Result<String, IdeviceError> {
         let response = self.idevice.read_plist().await?;
 
@@ -143,7 +141,7 @@ impl NotificationProxyClient {
             },
             Some("ProxyDeath") => {
                 warn!("NotificationProxy died!");
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::NotificationProxyDeath)
             }
             _ => Err(IdeviceError::UnexpectedResponse),
         }
@@ -158,7 +156,8 @@ impl NotificationProxyClient {
     /// The name of the received notification
     ///
     /// # Errors
-    /// - `UnexpectedResponse` if the response format is invalid or ProxyDeath
+    /// - `NotificationProxyDeath` if the proxy connection died
+    /// - `UnexpectedResponse` if the response format is invalid
     /// - `HeartbeatTimeout` if no notification received before interval
     pub async fn receive_notification_with_timeout(
         &mut self,
@@ -172,11 +171,29 @@ impl NotificationProxyClient {
         }
     }
 
-    /// Converts this client into a notification stream
-    ///
-    /// The stream will yield notifications as they arrive.
-    pub fn into_stream(self) -> NotificationProxyStream {
-        NotificationProxyStream { client: self }
+    /// Continuous stream of notifications.
+    pub fn into_stream(
+        mut self,
+    ) -> Pin<Box<dyn Stream<Item = Result<String, IdeviceError>> + Send>> {
+        Box::pin(async_stream::try_stream! {
+            loop {
+                let response = self.idevice.read_plist().await?;
+
+                match response.get("Command").and_then(|c| c.as_string()) {
+                    Some("RelayNotification") => {
+                        match response.get("Name").and_then(|n| n.as_string()) {
+                            Some(name) => yield name.to_string(),
+                            None => Err(IdeviceError::UnexpectedResponse)?,
+                        }
+                    }
+                    Some("ProxyDeath") => {
+                        warn!("NotificationProxy died!");
+                        Err(IdeviceError::NotificationProxyDeath)?;
+                    }
+                    _ => Err(IdeviceError::UnexpectedResponse)?,
+                }
+            }
+        })
     }
 
     /// Shuts down the notification proxy connection
@@ -191,11 +208,5 @@ impl NotificationProxyClient {
         // Best-effort: wait for ProxyDeath ack
         let _ = self.idevice.read_plist().await;
         Ok(())
-    }
-}
-
-impl NotificationProxyStream {
-    pub async fn next(&mut self) -> Result<String, IdeviceError> {
-        self.client.receive_notification().await
     }
 }

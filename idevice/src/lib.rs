@@ -865,6 +865,10 @@ pub enum IdeviceError {
 
     #[error("Developer mode is not enabled")]
     DeveloperModeNotEnabled = -68,
+
+    #[cfg(feature = "notification_proxy")]
+    #[error("notification proxy died")]
+    NotificationProxyDeath = -69,
 }
 
 impl IdeviceError {
@@ -1030,6 +1034,9 @@ impl IdeviceError {
             #[cfg(feature = "installation_proxy")]
             IdeviceError::MalformedPackageArchive(_) => -67,
             IdeviceError::DeveloperModeNotEnabled => -68,
+
+            #[cfg(feature = "notification_proxy")]
+            IdeviceError::NotificationProxyDeath => -69,
         }
     }
 }
