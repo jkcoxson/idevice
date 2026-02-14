@@ -29,11 +29,13 @@
 //!   - `com.apple.mobile.application_installed`          - App installed
 //!   - `com.apple.mobile.application_uninstalled`        - App uninstalled
 
+use tracing::warn;
+
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 /// Client for interacting with the iOS notification proxy service
 ///
-/// The notification proxy service provides a mecasism to observe and post
+/// The notification proxy service provides a mechanism to observe and post
 /// system notifications.
 ///
 /// Use `observe_notification` to register for events, then `receive_notification`
@@ -42,6 +44,12 @@ use crate::{Idevice, IdeviceError, IdeviceService, obf};
 pub struct NotificationProxyClient {
     /// The underlying device connection with established notification_proxy service
     pub idevice: Idevice,
+}
+
+/// Stream of notifications from a notification proxy client
+#[derive(Debug)]
+pub struct NotificationProxyStream {
+    client: NotificationProxyClient,
 }
 
 impl IdeviceService for NotificationProxyClient {
@@ -101,6 +109,23 @@ impl NotificationProxyClient {
         self.idevice.send_plist(request).await
     }
 
+    /// Registers to observe multiple notifications at once
+    ///
+    /// # Arguments
+    /// * `notification_names` - Slice of notification names to observe
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if any registration fails
+    pub async fn observe_notifications(
+        &mut self,
+        notification_names: &[&str],
+    ) -> Result<(), IdeviceError> {
+        for name in notification_names {
+            self.observe_notification(*name).await?;
+        }
+        Ok(())
+    }
+
     /// Waits for and receives the next notification from the device
     ///
     /// # Returns
@@ -116,8 +141,42 @@ impl NotificationProxyClient {
                 Some(name) => Ok(name.to_string()),
                 None => Err(IdeviceError::UnexpectedResponse),
             },
+            Some("ProxyDeath") => {
+                warn!("NotificationProxy died!");
+                Err(IdeviceError::UnexpectedResponse)
+            }
             _ => Err(IdeviceError::UnexpectedResponse),
         }
+    }
+
+    /// Waits for a notification with a timeout
+    ///
+    /// # Arguments
+    /// * `interval` - Timeout in seconds to wait for a notification
+    ///
+    /// # Returns
+    /// The name of the received notification
+    ///
+    /// # Errors
+    /// - `UnexpectedResponse` if the response format is invalid or ProxyDeath
+    /// - `HeartbeatTimeout` if no notification received before interval
+    pub async fn receive_notification_with_timeout(
+        &mut self,
+        interval: u64,
+    ) -> Result<String, IdeviceError> {
+        tokio::select! {
+            result = self.receive_notification() => result,
+            _ = tokio::time::sleep(tokio::time::Duration::from_secs(interval)) => {
+                Err(IdeviceError::HeartbeatTimeout)
+            }
+        }
+    }
+
+    /// Converts this client into a notification stream
+    ///
+    /// The stream will yield notifications as they arrive.
+    pub fn into_stream(self) -> NotificationProxyStream {
+        NotificationProxyStream { client: self }
     }
 
     /// Shuts down the notification proxy connection
@@ -132,5 +191,11 @@ impl NotificationProxyClient {
         // Best-effort: wait for ProxyDeath ack
         let _ = self.idevice.read_plist().await;
         Ok(())
+    }
+}
+
+impl NotificationProxyStream {
+    pub async fn next(&mut self) -> Result<String, IdeviceError> {
+        self.client.receive_notification().await
     }
 }

@@ -155,6 +155,54 @@ pub unsafe extern "C" fn notification_proxy_observe(
     }
 }
 
+/// Observes multiple notifications at once
+///
+/// # Arguments
+/// * `client` - A valid NotificationProxyClient handle
+/// * `names` - A null-terminated array of C strings containing notification names
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `client` must be a valid pointer to a handle allocated by this library
+/// `names` must be a valid pointer to a null-terminated array of null-terminated C strings
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn notification_proxy_observe_multiple(
+    client: *mut NotificationProxyClientHandle,
+    names: *const *const c_char,
+) -> *mut IdeviceFfiError {
+    if client.is_null() || names.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let mut notification_names: Vec<String> = Vec::new();
+    let mut i = 0;
+    loop {
+        let ptr = unsafe { *names.add(i) };
+        if ptr.is_null() {
+            break;
+        }
+        match unsafe { CStr::from_ptr(ptr) }.to_str() {
+            Ok(s) => notification_names.push(s.to_string()),
+            Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
+        }
+        i += 1;
+    }
+
+    let refs: Vec<&str> = notification_names.iter().map(|s| s.as_str()).collect();
+
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.observe_notifications(&refs).await
+    });
+
+    match res {
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
+    }
+}
+
 /// Receives the next notification from the device
 ///
 /// # Arguments
@@ -182,15 +230,53 @@ pub unsafe extern "C" fn notification_proxy_receive(
     });
 
     match res {
-        Ok(name) => {
-            match CString::new(name) {
-                Ok(c_string) => {
-                    unsafe { *name_out = c_string.into_raw() };
-                    null_mut()
-                }
-                Err(_) => ffi_err!(IdeviceError::FfiInvalidString),
+        Ok(name) => match CString::new(name) {
+            Ok(c_string) => {
+                unsafe { *name_out = c_string.into_raw() };
+                null_mut()
             }
-        }
+            Err(_) => ffi_err!(IdeviceError::FfiInvalidString),
+        },
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Receives the next notification with a timeout
+///
+/// # Arguments
+/// * `client` - A valid NotificationProxyClient handle
+/// * `interval` - Timeout in seconds to wait for a notification
+/// * `name_out` - On success, will be set to a newly allocated C string containing the notification name
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `client` must be a valid pointer to a handle allocated by this library
+/// `name_out` must be a valid pointer. The returned string must be freed with `notification_proxy_free_string`
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn notification_proxy_receive_with_timeout(
+    client: *mut NotificationProxyClientHandle,
+    interval: u64,
+    name_out: *mut *mut c_char,
+) -> *mut IdeviceFfiError {
+    if client.is_null() || name_out.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let res: Result<String, IdeviceError> = run_sync_local(async move {
+        let client_ref = unsafe { &mut (*client).0 };
+        client_ref.receive_notification_with_timeout(interval).await
+    });
+
+    match res {
+        Ok(name) => match CString::new(name) {
+            Ok(c_string) => {
+                unsafe { *name_out = c_string.into_raw() };
+                null_mut()
+            }
+            Err(_) => ffi_err!(IdeviceError::FfiInvalidString),
+        },
         Err(e) => ffi_err!(e),
     }
 }

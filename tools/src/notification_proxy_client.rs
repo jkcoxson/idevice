@@ -45,12 +45,11 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
                 .next_argument::<String>()
                 .expect("No notification ID passed");
 
-            for notif in input.split_whitespace() {
-                client
-                    .observe_notification(notif)
-                    .await
-                    .expect("Failed to observe notification");
-            }
+            let notifications: Vec<&str> = input.split_whitespace().collect();
+            client
+                .observe_notifications(&notifications)
+                .await
+                .expect("Failed to observe notifications");
 
             loop {
                 tokio::select! {

@@ -4,6 +4,7 @@
 #include <idevice++/provider.hpp>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace IdeviceFFI {
 
@@ -21,7 +22,9 @@ class NotificationProxy {
     // Ops
     Result<void, FfiError>        post_notification(const std::string& name);
     Result<void, FfiError>        observe_notification(const std::string& name);
+    Result<void, FfiError>        observe_notifications(const std::vector<std::string>& names);
     Result<std::string, FfiError> receive_notification();
+    Result<std::string, FfiError> receive_notification_with_timeout(u_int64_t interval);
 
     // RAII / moves
     ~NotificationProxy() noexcept                                      = default;
