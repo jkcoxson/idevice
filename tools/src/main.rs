@@ -34,6 +34,7 @@ mod misagent;
 mod mobilebackup2;
 mod mounter;
 mod notifications;
+mod notification_proxy_client;
 mod os_trace_relay;
 mod pair;
 mod pcapd;
@@ -113,6 +114,7 @@ async fn main() {
         .with_subcommand("mobilebackup2", mobilebackup2::register())
         .with_subcommand("mounter", mounter::register())
         .with_subcommand("notifications", notifications::register())
+        .with_subcommand("notification_proxy", notification_proxy_client::register())
         .with_subcommand("os_trace_relay", os_trace_relay::register())
         .with_subcommand("pair", pair::register())
         .with_subcommand("pcapd", pcapd::register())
@@ -213,6 +215,9 @@ async fn main() {
         }
         "notifications" => {
             notifications::main(sub_args, provider).await;
+        }
+        "notification_proxy" => {
+            notification_proxy_client::main(sub_args, provider).await;
         }
         "os_trace_relay" => {
             os_trace_relay::main(sub_args, provider).await;

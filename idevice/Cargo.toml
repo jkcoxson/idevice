@@ -97,6 +97,7 @@ misagent = []
 mobile_image_mounter = ["dep:sha2"]
 mobileactivationd = ["dep:reqwest"]
 mobilebackup2 = []
+notification_proxy = []
 location_simulation = []
 pair = ["chrono/default", "tokio/time", "dep:sha2", "dep:rsa", "dep:x509-cert"]
 pcapd = []
@@ -138,6 +139,7 @@ full = [
   "mobile_image_mounter",
   "mobileactivationd",
   "mobilebackup2",
+  "notification_proxy",
   "pair",
   "pcapd",
   "preboard_service",

@@ -19,6 +19,8 @@ pub mod dvt;
 mod errors;
 #[cfg(feature = "heartbeat")]
 pub mod heartbeat;
+#[cfg(feature = "notification_proxy")]
+pub mod notification_proxy;
 #[cfg(feature = "house_arrest")]
 pub mod house_arrest;
 #[cfg(feature = "installation_proxy")]
