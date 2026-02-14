@@ -35,6 +35,8 @@ pub mod mobile_image_mounter;
 pub mod mobileactivationd;
 #[cfg(feature = "mobilebackup2")]
 pub mod mobilebackup2;
+#[cfg(feature = "notification_proxy")]
+pub mod notification_proxy;
 #[cfg(feature = "syslog_relay")]
 pub mod os_trace_relay;
 #[cfg(feature = "pcapd")]

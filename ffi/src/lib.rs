@@ -29,6 +29,8 @@ pub mod logging;
 pub mod misagent;
 #[cfg(feature = "mobile_image_mounter")]
 pub mod mobile_image_mounter;
+#[cfg(feature = "notification_proxy")]
+pub mod notification_proxy;
 #[cfg(feature = "syslog_relay")]
 pub mod os_trace_relay;
 mod pairing_file;
