@@ -53,6 +53,21 @@ pub fn register() -> JkCommand {
             "get_homescreen_icon_metrics",
             JkCommand::new().help("Gets home screen icon layout metrics"),
         )
+        .with_subcommand(
+            "get_icon",
+            JkCommand::new()
+                .help("Gets an app's icon as PNG")
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("Bundle identifier (e.g. com.apple.Maps)")
+                        .required(true),
+                )
+                .with_flag(
+                    JkFlag::new("save")
+                        .with_help("Path to save the icon PNG file, or icon.png by default")
+                        .with_argument(JkArgument::new().required(true)),
+                ),
+        )
         .subcommand_required(true)
 }
 
@@ -124,6 +139,22 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
                 .expect("Failed to get homescreen icon metrics");
             let metrics_value = plist::Value::Dictionary(metrics);
             println!("{}", pretty_print_plist(&metrics_value));
+        }
+        "get_icon" => {
+            let bundle_id = sub_args.next_argument::<String>().unwrap();
+
+            let icon_data = sbc
+                .get_icon_pngdata(bundle_id)
+                .await
+                .expect("Failed to get icon");
+
+            let save_path = sub_args
+                .get_flag::<String>("save")
+                .unwrap_or("icon.png".to_string());
+
+            tokio::fs::write(&save_path, icon_data)
+                .await
+                .expect("Failed to save icon");
         }
         _ => unreachable!(),
     }
