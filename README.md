@@ -76,6 +76,7 @@ To keep dependency bloat and compile time down, everything is contained in featu
 | `tunneld`              | Interface with [pymobiledevice3](https://github.com/doronz88/pymobiledevice3)'s tunneld. |
 | `usbmuxd`              | Connect using the usbmuxd daemon.|
 | `xpc`                  | Access protected services via XPC over RSD. |
+| `notification_proxy`   | Post and observe iOS notifications. |
 
 ### Planned/TODO
 
@@ -85,7 +86,7 @@ Finish the following:
 
 Implement the following:
 
-- notification_proxy
+- file_relay
 
 As this project is done in my free time within my busy schedule, there
 is no ETA for any of these. Feel free to contribute or donate!
