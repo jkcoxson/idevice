@@ -4,11 +4,12 @@ use std::path::Path;
 
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use plist::Dictionary;
+use plist_macro::plist_to_xml_bytes;
 use rsa::rand_core::OsRng;
 use serde::de::Error;
 use tracing::{debug, warn};
 
-use crate::{IdeviceError, util::plist_to_xml_bytes};
+use crate::IdeviceError;
 
 #[derive(Clone)]
 pub struct RpPairingFile {

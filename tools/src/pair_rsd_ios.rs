@@ -4,13 +4,12 @@
 
 // Jackson Coxson
 
-use std::{any::Any, io::Write, net::IpAddr, str::FromStr, sync::Arc, time::Duration};
+use std::{any::Any, sync::Arc, time::Duration};
 
 use clap::{Arg, Command};
-use futures_util::{StreamExt, pin_mut};
-use idevice::remote_pairing::{RemotePairingClient, RpPairingFile};
+use idevice::{RemoteXpcClient, rsd::RsdHandshake, xpc};
 use zeroconf::{
-    BrowserEvent, MdnsBrowser, ServiceDiscovery, ServiceType,
+    BrowserEvent, MdnsBrowser, ServiceType,
     prelude::{TEventLoop, TMdnsBrowser},
 };
 
@@ -56,7 +55,40 @@ fn on_service_discovered(
 ) {
     if let Ok(BrowserEvent::Add(result)) = result {
         tokio::task::spawn(async move {
-            println!("{result:?}");
+            println!("Found iOS device to pair with!! - {result:?}");
+
+            let looked_up = tokio::net::lookup_host(format!("{}:{}", result.host_name(), 58783))
+                .await
+                .unwrap();
+
+            let mut stream = None;
+            for l in looked_up {
+                if l.is_ipv4() {
+                    continue;
+                }
+
+                println!("Found IP: {l:?}");
+
+                match tokio::net::TcpStream::connect(l).await {
+                    Ok(s) => {
+                        println!("connected with local addr {:?}", s.local_addr());
+                        stream = Some(s);
+                        break;
+                    }
+                    Err(e) => println!("failed to connect: {e:?}"),
+                }
+            }
+            let stream = match stream {
+                Some(s) => s,
+                None => {
+                    println!("Couldn't open TCP port on device");
+                    return;
+                }
+            };
+
+            let handshake = RsdHandshake::new(stream).await.expect("no rsd");
+
+            println!("handshake: {handshake:?}");
         });
     }
 }
