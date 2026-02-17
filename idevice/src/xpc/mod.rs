@@ -53,10 +53,6 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
         ))
         .await?;
 
-        debug!("Sending weird flags");
-        self.send_root(XPCMessage::new(Some(XPCFlag::Custom(0x201)), None, None))
-            .await?;
-
         debug!("Opening reply stream");
         self.h2_client.open_stream(REPLY_CHANNEL).await?;
         self.send_reply(XPCMessage::new(
@@ -65,6 +61,10 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
             None,
         ))
         .await?;
+
+        debug!("Sending weird flags");
+        self.send_root(XPCMessage::new(Some(XPCFlag::Custom(0x201)), None, None))
+            .await?;
 
         Ok(())
     }
