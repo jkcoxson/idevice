@@ -916,6 +916,7 @@ impl IdeviceError {
                     Some(Self::InternalError(detailed_error))
                 }
             }
+            #[cfg(feature = "installation_proxy")]
             "ApplicationVerificationFailed" => {
                 let msg = context
                     .get("ErrorDescription")
