@@ -4,7 +4,14 @@
 
 // Jackson Coxson
 
-use std::{any::Any, sync::Arc, time::Duration};
+use std::{
+    any::Any,
+    net::{IpAddr, SocketAddr, SocketAddrV6},
+    sync::Arc,
+    time::Duration,
+};
+#[cfg(target_os = "linux")]
+use std::{fs, process::Command as OsCommand};
 
 use clap::{Arg, Command};
 use idevice::{
@@ -62,7 +69,18 @@ fn on_service_discovered(
         tokio::task::spawn(async move {
             println!("Found iOS device to pair with!! - {result:?}");
 
-            let stream = match lookup_host_and_connect(result.host_name(), 58783).await {
+            let host_name = result.host_name().to_string();
+            let service_address = result.address().to_string();
+            let scope_id = link_local_scope_id_from_avahi(&host_name, &service_address);
+
+            let stream = match connect_to_service_port(
+                &host_name,
+                &service_address,
+                scope_id,
+                *result.port(),
+            )
+            .await
+            {
                 Some(s) => s,
                 None => {
                     println!("Couldn't open TCP port on device");
@@ -80,7 +98,7 @@ fn on_service_discovered(
                 .unwrap();
 
             println!("connecting to tunnel service");
-            let stream = lookup_host_and_connect(result.host_name(), ts.port)
+            let stream = connect_to_service_port(&host_name, &service_address, scope_id, ts.port)
                 .await
                 .expect("failed to connect to tunnselservice");
             let mut conn = RemoteXpcClient::new(stream).await.unwrap();
@@ -109,10 +127,53 @@ fn on_service_discovered(
     }
 }
 
+async fn connect_to_service_port(
+    host_name: &str,
+    service_address: &str,
+    scope_id: Option<u32>,
+    port: u16,
+) -> Option<TcpStream> {
+    if let Some(stream) = lookup_host_and_connect(host_name, port).await {
+        return Some(stream);
+    }
+
+    let addr: IpAddr = match service_address.parse() {
+        Ok(addr) => addr,
+        Err(e) => {
+            println!("failed to parse resolved service address {service_address}: {e}");
+            return None;
+        }
+    };
+
+    let socket = match addr {
+        IpAddr::V6(v6) if v6.is_unicast_link_local() => {
+            SocketAddr::V6(SocketAddrV6::new(v6, port, 0, scope_id.unwrap_or(0)))
+        }
+        _ => SocketAddr::new(addr, port),
+    };
+
+    println!("using resolved service address fallback: {socket}");
+
+    match TcpStream::connect(socket).await {
+        Ok(s) => {
+            println!("connected with local addr {:?}", s.local_addr());
+            Some(s)
+        }
+        Err(e) => {
+            println!("failed to connect with service address fallback: {e:?}");
+            None
+        }
+    }
+}
+
 async fn lookup_host_and_connect(host: &str, port: u16) -> Option<TcpStream> {
-    let looked_up = tokio::net::lookup_host(format!("{}:{}", host, port))
-        .await
-        .unwrap();
+    let looked_up = match tokio::net::lookup_host((host, port)).await {
+        Ok(addrs) => addrs,
+        Err(e) => {
+            println!("hostname lookup failed for {host}:{port}: {e}");
+            return None;
+        }
+    };
 
     let mut stream = None;
     for l in looked_up {
@@ -133,4 +194,42 @@ async fn lookup_host_and_connect(host: &str, port: u16) -> Option<TcpStream> {
     }
 
     stream
+}
+
+#[cfg(target_os = "linux")]
+fn link_local_scope_id_from_avahi(host_name: &str, service_address: &str) -> Option<u32> {
+    let output = OsCommand::new("avahi-browse")
+        .args(["-rpt", "_remoted._tcp"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        if !line.starts_with("=;") {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.split(';').collect();
+        if parts.len() < 9 {
+            continue;
+        }
+
+        let ifname = parts[1];
+        let resolved_host = parts[6];
+        let resolved_addr = parts[7];
+        if resolved_host == host_name && resolved_addr == service_address {
+            let ifindex_path = format!("/sys/class/net/{ifname}/ifindex");
+            return fs::read_to_string(ifindex_path).ok()?.trim().parse().ok();
+        }
+    }
+
+    None
+}
+
+#[cfg(not(target_os = "linux"))]
+fn link_local_scope_id_from_avahi(_host_name: &str, _service_address: &str) -> Option<u32> {
+    None
 }
