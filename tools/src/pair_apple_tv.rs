@@ -5,7 +5,7 @@
 use std::{io::Write, net::IpAddr, str::FromStr};
 
 use clap::{Arg, Command};
-use idevice::remote_pairing::{RemotePairingClient, RpPairingFile};
+use idevice::remote_pairing::{RemotePairingClient, RpPairingFile, RpPairingSocket};
 
 #[tokio::main]
 async fn main() {
@@ -49,6 +49,7 @@ async fn main() {
         tokio::net::TcpStream::connect((IpAddr::from_str(ip).expect("failed to parse IP"), port))
             .await
             .expect("Failed to connect");
+    let conn = RpPairingSocket::new(conn);
 
     let host = "idevice-rs-jkcoxson";
     let mut rpf = RpPairingFile::generate(host);
@@ -74,6 +75,8 @@ async fn main() {
         tokio::net::TcpStream::connect((IpAddr::from_str(ip).expect("failed to parse IP"), port))
             .await
             .expect("Failed to connect");
+    let conn = RpPairingSocket::new(conn);
+
     let mut rpc = RemotePairingClient::new(conn, host, &mut rpf);
     rpc.connect(
         async |_| {

@@ -28,7 +28,7 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
     pub async fn new(socket: R) -> Result<Self, IdeviceError> {
         Ok(Self {
             h2_client: http2::Http2Client::new(socket).await?,
-            root_id: 0,
+            root_id: 1,
         })
     }
 

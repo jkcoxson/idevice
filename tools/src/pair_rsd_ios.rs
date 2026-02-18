@@ -7,7 +7,12 @@
 use std::{any::Any, sync::Arc, time::Duration};
 
 use clap::{Arg, Command};
-use idevice::{RemoteXpcClient, rsd::RsdHandshake, xpc};
+use idevice::{
+    RemoteXpcClient,
+    remote_pairing::{RemotePairingClient, RpPairingFile},
+    rsd::RsdHandshake,
+};
+use tokio::net::TcpStream;
 use zeroconf::{
     BrowserEvent, MdnsBrowser, ServiceType,
     prelude::{TEventLoop, TMdnsBrowser},
@@ -57,28 +62,7 @@ fn on_service_discovered(
         tokio::task::spawn(async move {
             println!("Found iOS device to pair with!! - {result:?}");
 
-            let looked_up = tokio::net::lookup_host(format!("{}:{}", result.host_name(), 58783))
-                .await
-                .unwrap();
-
-            let mut stream = None;
-            for l in looked_up {
-                if l.is_ipv4() {
-                    continue;
-                }
-
-                println!("Found IP: {l:?}");
-
-                match tokio::net::TcpStream::connect(l).await {
-                    Ok(s) => {
-                        println!("connected with local addr {:?}", s.local_addr());
-                        stream = Some(s);
-                        break;
-                    }
-                    Err(e) => println!("failed to connect: {e:?}"),
-                }
-            }
-            let stream = match stream {
+            let stream = match lookup_host_and_connect(result.host_name(), 58783).await {
                 Some(s) => s,
                 None => {
                     println!("Couldn't open TCP port on device");
@@ -88,7 +72,65 @@ fn on_service_discovered(
 
             let handshake = RsdHandshake::new(stream).await.expect("no rsd");
 
-            println!("handshake: {handshake:?}");
+            println!("handshake: {handshake:#?}");
+
+            let ts = handshake
+                .services
+                .get("com.apple.internal.dt.coredevice.untrusted.tunnelservice")
+                .unwrap();
+
+            println!("connecting to tunnel service");
+            let stream = lookup_host_and_connect(result.host_name(), ts.port)
+                .await
+                .expect("failed to connect to tunnselservice");
+            let mut conn = RemoteXpcClient::new(stream).await.unwrap();
+
+            println!("doing tunnel service handshake");
+            conn.do_handshake().await.unwrap();
+
+            let msg = conn.recv_root().await.unwrap();
+            println!("{msg:#?}");
+
+            let host = "idevice-rs-jkcoxson";
+            let mut rpf = RpPairingFile::generate(host);
+            let mut rpc = RemotePairingClient::new(conn, host, &mut rpf);
+            rpc.connect(
+                async |_| "000000".to_string(),
+                0u8, // we need no state, so pass a single byte that will hopefully get optimized out
+            )
+            .await
+            .expect("no pair");
+
+            rpf.write_to_file("ios_pairing_file.plist").await.unwrap();
+            println!(
+                "congrats you're paired now, the rppairing record has been saved. Have a nice day."
+            );
         });
     }
+}
+
+async fn lookup_host_and_connect(host: &str, port: u16) -> Option<TcpStream> {
+    let looked_up = tokio::net::lookup_host(format!("{}:{}", host, port))
+        .await
+        .unwrap();
+
+    let mut stream = None;
+    for l in looked_up {
+        if l.is_ipv4() {
+            continue;
+        }
+
+        println!("Found IP: {l:?}");
+
+        match tokio::net::TcpStream::connect(l).await {
+            Ok(s) => {
+                println!("connected with local addr {:?}", s.local_addr());
+                stream = Some(s);
+                break;
+            }
+            Err(e) => println!("failed to connect: {e:?}"),
+        }
+    }
+
+    stream
 }

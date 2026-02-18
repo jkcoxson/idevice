@@ -1,8 +1,7 @@
 //! Remote Pairing
 
-use crate::{IdeviceError, ReadWrite};
+use crate::IdeviceError;
 
-use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 use chacha20poly1305::{
     ChaCha20Poly1305, Key, KeyInit, Nonce,
     aead::{Aead, Payload},
@@ -10,26 +9,28 @@ use chacha20poly1305::{
 use ed25519_dalek::Signature;
 use hkdf::Hkdf;
 use idevice_srp::{client::SrpClient, groups::G_3072};
+use plist_macro::plist;
+use plist_macro::{PlistConvertible, PlistExt};
 use rand::RngCore;
 use rsa::{rand_core::OsRng, signature::SignerMut};
 use serde::Serialize;
-use serde_json::json;
 use sha2::Sha512;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{debug, warn};
 use x25519_dalek::{EphemeralSecret, PublicKey as X25519PublicKey};
 
 mod opack;
 mod rp_pairing_file;
+mod socket;
 mod tlv;
 
 // export
 pub use rp_pairing_file::RpPairingFile;
+pub use socket::{RpPairingSocket, RpPairingSocketProvider};
 
 const RPPAIRING_MAGIC: &[u8] = b"RPPairing";
 const WIRE_PROTOCOL_VERSION: u8 = 19;
 
-pub struct RemotePairingClient<'a, R: ReadWrite> {
+pub struct RemotePairingClient<'a, R: RpPairingSocketProvider> {
     inner: R,
     sequence_number: usize,
     pairing_file: &'a mut RpPairingFile,
@@ -39,7 +40,7 @@ pub struct RemotePairingClient<'a, R: ReadWrite> {
     server_cipher: ChaCha20Poly1305,
 }
 
-impl<'a, R: ReadWrite> RemotePairingClient<'a, R> {
+impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
     pub fn new(inner: R, sending_host: &str, pairing_file: &'a mut RpPairingFile) -> Self {
         let hk = Hkdf::<sha2::Sha512>::new(None, pairing_file.e_private_key.as_bytes());
         let mut okm = [0u8; 32];
@@ -92,22 +93,24 @@ impl<'a, R: ReadWrite> RemotePairingClient<'a, R> {
                 data: x_public_key.to_bytes().to_vec(),
             },
         ]);
-        let pairing_data = B64.encode(pairing_data);
-        self.send_pairing_data(json! {{
+        let pairing_data = R::serialize_bytes(&pairing_data);
+        self.send_pairing_data(plist!({
             "data": pairing_data,
             "kind": "verifyManualPairing",
             "startNewSession": true
-        }})
+        }))
         .await?;
         debug!("Waiting for response from verifyManualPairing");
 
         let pairing_data = self.receive_pairing_data().await?;
-        let pairing_data = match pairing_data.as_str() {
-            Some(p) => p,
-            None => return Err(IdeviceError::UnexpectedResponse),
+
+        let data = match R::deserialize_bytes(pairing_data) {
+            Some(d) => d,
+            None => {
+                return Err(IdeviceError::UnexpectedResponse);
+            }
         };
 
-        let data = B64.decode(pairing_data)?;
         let data = tlv::deserialize_tlv8(&data)?;
 
         if data
@@ -194,23 +197,18 @@ impl<'a, R: ReadWrite> RemotePairingClient<'a, R> {
         ];
 
         debug!("Waiting for signbuf response");
-        self.send_pairing_data(json! {{
-            "data": B64.encode(tlv::serialize_tlv8(&msg)),
+        self.send_pairing_data(plist! ({
+            "data": R::serialize_bytes(&tlv::serialize_tlv8(&msg)),
             "kind": "verifyManualPairing",
             "startNewSession": false
-        }})
+        }))
         .await?;
         let res = self.receive_pairing_data().await?;
-        let res = match res.as_str() {
-            Some(r) => r,
-            None => {
-                warn!("Pairing data response was not a string");
-                return Err(IdeviceError::UnexpectedResponse);
-            }
-        };
-        debug!("Verify response: {res:#}");
 
-        let data = B64.decode(res)?;
+        let data = match R::deserialize_bytes(res) {
+            Some(d) => d,
+            None => return Err(IdeviceError::UnexpectedResponse),
+        };
         let data = tlv::deserialize_tlv8(&data)?;
         debug!("Verify TLV: {data:#?}");
 
@@ -231,34 +229,56 @@ impl<'a, R: ReadWrite> RemotePairingClient<'a, R> {
     }
 
     pub async fn send_pair_verified_failed(&mut self) -> Result<(), IdeviceError> {
-        self.send_plain_request(json! {{"event": {"_0": {"pairVerifyFailed": {}}}}})
-            .await
-    }
-
-    pub async fn attempt_pair_verify(&mut self) -> Result<serde_json::Value, IdeviceError> {
-        debug!("Sending attemptPairVerify");
-        self.send_plain_request(json! {
-        {
-            "request": {
-                "_0": {
-                    "handshake": {
+        self.inner
+            .send_plain(
+                plist!({
+                    "event": {
                         "_0": {
-                            "hostOptions": {"attemptPairVerify": true},
-                            "wireProtocolVersion": WIRE_PROTOCOL_VERSION,
+                            "pairVerifyFailed": {}
                         }
                     }
-                }
-            }
-        }
-        })
-        .await?;
+                }),
+                self.sequence_number,
+            )
+            .await?;
+        self.sequence_number += 1;
+        Ok(())
+    }
+
+    pub async fn attempt_pair_verify(&mut self) -> Result<plist::Value, IdeviceError> {
+        debug!("Sending attemptPairVerify");
+        self.inner
+            .send_plain(
+                plist!({
+                    "request": {
+                        "_0": {
+                            "handshake": {
+                                "_0": {
+                                    "hostOptions": {
+                                        "attemptPairVerify": true
+                                    },
+                                    "wireProtocolVersion": plist::Value::Integer(WIRE_PROTOCOL_VERSION.into()),
+                                }
+                            }
+                        }
+                    }
+                }),
+                self.sequence_number,
+            )
+            .await?;
+        self.sequence_number += 1;
+
         debug!("Waiting for attemptPairVerify response");
-        let response = self.receive_plain_request().await?;
+        let response = self.inner.recv_plain().await?;
 
         let response = response
-            .get("response")
+            .as_dictionary()
+            .and_then(|x| x.get("response"))
+            .and_then(|x| x.as_dictionary())
             .and_then(|x| x.get("_1"))
+            .and_then(|x| x.as_dictionary())
             .and_then(|x| x.get("handshake"))
+            .and_then(|x| x.as_dictionary())
             .and_then(|x| x.get("_0"));
 
         match response {
@@ -301,38 +321,47 @@ impl<'a, R: ReadWrite> RemotePairingClient<'a, R> {
                 data: vec![0x01],
             },
         ]);
-        let tlv = B64.encode(tlv);
-        self.send_pairing_data(json! {{
+        let tlv = R::serialize_bytes(&tlv);
+        self.send_pairing_data(plist!({
             "data": tlv,
             "kind": "setupManualPairing",
-            "sendingHost": self.sending_host,
+            "sendingHost": &self.sending_host,
             "startNewSession": true
-        }})
+        }))
         .await?;
 
-        let response = self.receive_plain_request().await?;
-        let response = &response["event"]["_0"];
+        let response = self.inner.recv_plain().await?;
+        let response = match response
+            .get_by("event")
+            .and_then(|x| x.get_by("_0"))
+            .and_then(|x| x.as_dictionary())
+        {
+            Some(r) => r,
+            None => {
+                return Err(IdeviceError::UnexpectedResponse);
+            }
+        };
+
         let mut pin = None;
 
         let pairing_data = match if let Some(err) = response.get("pairingRejectedWithError") {
             let context = err
-                .get("wrappedError")
-                .and_then(|x| x.get("userInfo"))
-                .and_then(|x| x.get("NSLocalizedDescription"))
-                .and_then(|x| x.as_str())
+                .get_by("wrappedError")
+                .and_then(|x| x.get_by("userInfo"))
+                .and_then(|x| x.get_by("NSLocalizedDescription"))
+                .and_then(|x| x.as_string())
                 .map(|x| x.to_string());
             return Err(IdeviceError::PairingRejected(context.unwrap_or_default()));
         } else if response.get("awaitingUserConsent").is_some() {
             pin = Some("000000".to_string());
-            self.receive_pairing_data()
-                .await?
-                .as_str()
-                .map(|x| x.to_string())
+            Some(self.receive_pairing_data().await?)
         } else {
             // On Apple TV, we can get the pin now
-            response["pairingData"]["_0"]["data"]
-                .as_str()
-                .map(|x| x.to_string())
+            response
+                .get_by("pairingData")
+                .and_then(|x| x.get_by("_0"))
+                .and_then(|x| x.get_by("data"))
+                .map(|x| x.to_owned())
         } {
             Some(p) => p,
             None => {
@@ -340,7 +369,10 @@ impl<'a, R: ReadWrite> RemotePairingClient<'a, R> {
             }
         };
 
-        let tlv = tlv::deserialize_tlv8(&B64.decode(pairing_data)?)?;
+        let tlv = tlv::deserialize_tlv8(&match R::deserialize_bytes(pairing_data) {
+            Some(t) => t,
+            None => return Err(IdeviceError::UnexpectedResponse),
+        })?;
         debug!("Received pairingData response: {tlv:#?}");
 
         let mut salt = Vec::new();
@@ -427,25 +459,22 @@ impl<'a, R: ReadWrite> RemotePairingClient<'a, R> {
                 data: client_proof.to_vec(),
             },
         ]);
-        let tlv = B64.encode(tlv);
+        let tlv = R::serialize_bytes(&tlv);
 
-        self.send_pairing_data(json! {{
+        self.send_pairing_data(plist!({
             "data": tlv,
             "kind": "setupManualPairing",
-            "sendingHost": self.sending_host,
+            "sendingHost": &self.sending_host,
             "startNewSession": false,
 
-        }})
+        }))
         .await?;
 
         let response = self.receive_pairing_data().await?;
-        let response = match response.as_str() {
-            Some(r) => tlv::deserialize_tlv8(&B64.decode(r)?)?,
-            None => {
-                warn!("Pairing data proof response was not a string");
-                return Err(IdeviceError::UnexpectedResponse);
-            }
-        };
+        let response = tlv::deserialize_tlv8(&match R::deserialize_bytes(response.to_owned()) {
+            Some(r) => r,
+            None => return Err(IdeviceError::UnexpectedResponse),
+        })?;
 
         debug!("Proof response: {response:#?}");
 
@@ -576,22 +605,22 @@ impl<'a, R: ReadWrite> RemotePairingClient<'a, R> {
                 data: vec![0x05],
             },
         ]);
-        let tlv = B64.encode(&tlv);
+        let tlv = R::serialize_bytes(&tlv);
 
         debug!("Sending encrypted data");
-        self.send_pairing_data(json! {{
+        self.send_pairing_data(plist!({
             "data": tlv,
             "kind": "setupManualPairing",
-            "sendingHost": self.sending_host,
+            "sendingHost": &self.sending_host,
             "startNewSession": false,
-        }})
+        }))
         .await?;
 
         debug!("Waiting for encrypted data");
-        let response = match self.receive_pairing_data().await?.as_str() {
-            Some(r) => B64.decode(r)?,
+        let response = match R::deserialize_bytes(self.receive_pairing_data().await?) {
+            Some(r) => r,
             None => {
-                warn!("Pairing data response was not base64");
+                warn!("Pairing data response was not deserializable");
                 return Err(IdeviceError::UnexpectedResponse);
             }
         };
@@ -630,89 +659,56 @@ impl<'a, R: ReadWrite> RemotePairingClient<'a, R> {
 
     async fn send_pairing_data(
         &mut self,
-        pairing_data: impl Serialize,
+        pairing_data: impl Serialize + PlistConvertible,
     ) -> Result<(), IdeviceError> {
-        self.send_plain_request(json! {{"event": {"_0": {"pairingData": {"_0": pairing_data}}}}})
-            .await
+        self.inner
+            .send_plain(
+                plist!({
+                    "event": {
+                        "_0": {
+                            "pairingData": {
+                                "_0": pairing_data
+                            }
+                        }
+                    }
+                }),
+                self.sequence_number,
+            )
+            .await?;
+
+        self.sequence_number += 1;
+        Ok(())
     }
 
-    async fn receive_pairing_data(&mut self) -> Result<serde_json::Value, IdeviceError> {
-        let response = self.receive_plain_request().await?;
+    async fn receive_pairing_data(&mut self) -> Result<plist::Value, IdeviceError> {
+        let response = self.inner.recv_plain().await?;
 
-        let response = match response.get("event").and_then(|x| x.get("_0")) {
+        let response = match response.get_by("event").and_then(|x| x.get_by("_0")) {
             Some(r) => r,
             None => return Err(IdeviceError::UnexpectedResponse),
         };
 
         if let Some(data) = response
-            .get("pairingData")
-            .and_then(|x| x.get("_0"))
-            .and_then(|x| x.get("data"))
+            .get_by("pairingData")
+            .and_then(|x| x.get_by("_0"))
+            .and_then(|x| x.get_by("data"))
         {
             Ok(data.to_owned())
-        } else if let Some(err) = response.get("pairingRejectedWithError") {
+        } else if let Some(err) = response.get_by("pairingRejectedWithError") {
             let context = err
-                .get("wrappedError")
-                .and_then(|x| x.get("userInfo"))
-                .and_then(|x| x.get("NSLocalizedDescription"))
-                .and_then(|x| x.as_str())
+                .get_by("wrappedError")
+                .and_then(|x| x.get_by("userInfo"))
+                .and_then(|x| x.get_by("NSLocalizedDescription"))
+                .and_then(|x| x.as_string())
                 .map(|x| x.to_string());
             Err(IdeviceError::PairingRejected(context.unwrap_or_default()))
         } else {
             Err(IdeviceError::UnexpectedResponse)
         }
     }
-
-    async fn send_plain_request(&mut self, value: impl Serialize) -> Result<(), IdeviceError> {
-        self.send_rppairing(json!({
-            "message": {"plain": {"_0": value}},
-            "originatedBy": "host",
-            "sequenceNumber": self.sequence_number
-        }))
-        .await?;
-
-        self.sequence_number += 1;
-        Ok(())
-    }
-
-    async fn receive_plain_request(&mut self) -> Result<serde_json::Value, IdeviceError> {
-        self.inner
-            .read_exact(&mut vec![0u8; RPPAIRING_MAGIC.len()])
-            .await?;
-
-        let mut packet_len_bytes = [0u8; 2];
-        self.inner.read_exact(&mut packet_len_bytes).await?;
-        let packet_len = u16::from_be_bytes(packet_len_bytes);
-
-        let mut value = vec![0u8; packet_len as usize];
-        self.inner.read_exact(&mut value).await?;
-
-        let value: serde_json::Value = serde_json::from_slice(&value)?;
-        let value = value
-            .get("message")
-            .and_then(|x| x.get("plain"))
-            .and_then(|x| x.get("_0"));
-
-        match value {
-            Some(v) => Ok(v.to_owned()),
-            None => Err(IdeviceError::UnexpectedResponse),
-        }
-    }
-
-    async fn send_rppairing(&mut self, value: impl Serialize) -> Result<(), IdeviceError> {
-        let value = serde_json::to_string(&value)?;
-        let x = value.as_bytes();
-
-        self.inner.write_all(RPPAIRING_MAGIC).await?;
-        self.inner
-            .write_all(&(x.len() as u16).to_be_bytes())
-            .await?;
-        self.inner.write_all(x).await?;
-        Ok(())
-    }
 }
 
-impl<R: ReadWrite> std::fmt::Debug for RemotePairingClient<'_, R> {
+impl<R: RpPairingSocketProvider> std::fmt::Debug for RemotePairingClient<'_, R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RemotePairingClient")
             .field("inner", &self.inner)

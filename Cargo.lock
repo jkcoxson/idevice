@@ -2190,9 +2190,9 @@ dependencies = [
 
 [[package]]
 name = "plist-macro"
-version = "0.1.4"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68ef85ea642f18d31023a2b2c4a3fd823a985b0ab344d1a8fb70d5e122c28544"
+checksum = "82c39e020f2d8d361e91a434cfe26bc7c3e21ae54414379816d0110f3f7ca121"
 dependencies = [
  "plist",
 ]

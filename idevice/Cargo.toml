@@ -21,7 +21,7 @@ tokio-openssl = { version = "0.6", optional = true }
 openssl = { version = "0.10", optional = true }
 
 plist = { version = "1.8" }
-plist-macro = { version = "0.1.3" }
+plist-macro = { version = "0.1.6" }
 serde = { version = "1", features = ["derive"] }
 ns-keyed-archive = { version = "0.1.4", optional = true }
 crossfire = { version = "2.1", optional = true }
@@ -102,7 +102,12 @@ misagent = []
 mobile_image_mounter = ["dep:sha2"]
 mobileactivationd = ["dep:reqwest"]
 mobilebackup2 = []
-notification_proxy = ["tokio/macros", "tokio/time", "dep:async-stream", "dep:futures"]
+notification_proxy = [
+  "tokio/macros",
+  "tokio/time",
+  "dep:async-stream",
+  "dep:futures",
+]
 location_simulation = []
 pair = ["chrono/default", "tokio/time", "dep:sha2", "dep:rsa", "dep:x509-cert"]
 pcapd = []
