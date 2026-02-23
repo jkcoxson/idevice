@@ -157,6 +157,74 @@ pub unsafe extern "C" fn lockdownd_start_service(
     }
 }
 
+/// Pairs with the device using lockdownd
+///
+/// # Arguments
+/// * `client` - A valid LockdowndClient handle
+/// * `host_id` - The host ID (null-terminated string)
+/// * `system_buid` - The system BUID (null-terminated string)
+/// * `pairing_file` - On success, will be set to point to a newly allocated IdevicePairingFile handle
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `client` must be a valid pointer to a handle allocated by this library
+/// `host_id` must be a valid null-terminated string
+/// `system_buid` must be a valid null-terminated string
+/// `pairing_file` must be a valid, non-null pointer to a location where the handle will be stored
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lockdownd_pair(
+    client: *mut LockdowndClientHandle,
+    host_id: *const libc::c_char,
+    system_buid: *const libc::c_char,
+    host_name: *const libc::c_char,
+    pairing_file: *mut *mut IdevicePairingFile,
+) -> *mut IdeviceFfiError {
+    if client.is_null() || host_id.is_null() || system_buid.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let host_id = unsafe {
+        std::ffi::CStr::from_ptr(host_id)
+            .to_string_lossy()
+            .into_owned()
+    };
+    let system_buid = unsafe {
+        std::ffi::CStr::from_ptr(system_buid)
+            .to_string_lossy()
+            .into_owned()
+    };
+
+    let host_name = if host_name.is_null() {
+        None
+    } else {
+        Some(
+            match unsafe { std::ffi::CStr::from_ptr(host_name) }.to_str() {
+                Ok(v) => v,
+                Err(_) => {
+                    return ffi_err!(IdeviceError::InvalidCString);
+                }
+            },
+        )
+    };
+
+    let res = run_sync_local(async move {
+        let client_ref = unsafe { &mut (*client).0 };
+
+        client_ref.pair(host_id, system_buid, host_name).await
+    });
+
+    match res {
+        Ok(pairing_file_res) => {
+            let boxed_pairing_file = Box::new(IdevicePairingFile(pairing_file_res));
+            unsafe { *pairing_file = Box::into_raw(boxed_pairing_file) };
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
 /// Gets a value from lockdownd
 ///
 /// # Arguments
