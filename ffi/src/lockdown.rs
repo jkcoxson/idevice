@@ -178,6 +178,7 @@ pub unsafe extern "C" fn lockdownd_pair(
     client: *mut LockdowndClientHandle,
     host_id: *const libc::c_char,
     system_buid: *const libc::c_char,
+    host_name: *const libc::c_char,
     pairing_file: *mut *mut IdevicePairingFile,
 ) -> *mut IdeviceFfiError {
     if client.is_null() || host_id.is_null() || system_buid.is_null() {
@@ -195,10 +196,23 @@ pub unsafe extern "C" fn lockdownd_pair(
             .into_owned()
     };
 
+    let host_name = if host_name.is_null() {
+        None
+    } else {
+        Some(
+            match unsafe { std::ffi::CStr::from_ptr(host_name) }.to_str() {
+                Ok(v) => v,
+                Err(_) => {
+                    return ffi_err!(IdeviceError::InvalidCString);
+                }
+            },
+        )
+    };
+
     let res = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
 
-        client_ref.pair(host_id, system_buid).await
+        client_ref.pair(host_id, system_buid, host_name).await
     });
 
     match res {
