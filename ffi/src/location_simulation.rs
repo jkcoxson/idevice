@@ -1,4 +1,6 @@
-use crate::{IdeviceFfiError, ffi_err, provider::IdeviceProviderHandle, run_sync_local};
+use crate::{
+    IdeviceFfiError, IdeviceHandle, ffi_err, provider::IdeviceProviderHandle, run_sync_local,
+};
 use idevice::{
     IdeviceError, IdeviceService, provider::IdeviceProvider,
     services::simulate_location::LocationSimulationService,
@@ -39,6 +41,30 @@ pub unsafe extern "C" fn lockdown_location_simulation_connect(
     }
 }
 
+/// Creates a new Location Simulation service client directly from an existing `IdeviceHandle` (socket).
+///
+/// # Safety
+/// - `socket` must be a valid, unowned pointer to an `IdeviceHandle` that has been properly
+///   initialized and represents an open connection to the Location Simulation service.
+///   Ownership of the `IdeviceHandle` is transferred to this function.
+/// - `client` must be a non-null pointer to a location where the newly created
+///   `*mut LocationSimulationServiceHandle` will be stored.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lockdown_location_simulation_new(
+    socket: *mut IdeviceHandle,
+    client: *mut *mut LocationSimulationServiceHandle,
+) -> *mut IdeviceFfiError {
+    if socket.is_null() || client.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let socket = unsafe { Box::from_raw(socket) }.0;
+    let r = LocationSimulationService::new(socket);
+    let boxed = Box::new(LocationSimulationServiceHandle(r));
+    unsafe { *client = Box::into_raw(boxed) };
+    null_mut()
+}
+
 /// Sets the device's simulated location.
 /// This is the location_simulation api for iOS 16 and below.
 ///
@@ -47,25 +73,25 @@ pub unsafe extern "C" fn lockdown_location_simulation_connect(
 /// `latitude` and `longitude` must be valid, null-terminated C strings.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lockdown_location_simulation_set(
-    handle: *mut *mut LocationSimulationServiceHandle,
+    handle: *mut LocationSimulationServiceHandle,
     latitude: *const libc::c_char,
-    longtiude: *const libc::c_char,
+    longitude: *const libc::c_char,
 ) -> *mut IdeviceFfiError {
-    if handle.is_null() || latitude.is_null() || longtiude.is_null() {
+    if handle.is_null() || latitude.is_null() || longitude.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let latitude = unsafe { std::ffi::CStr::from_ptr(latitude) }
         .to_string_lossy()
         .into_owned();
-    let longtiude = unsafe { std::ffi::CStr::from_ptr(longtiude) }
+    let longitude = unsafe { std::ffi::CStr::from_ptr(longitude) }
         .to_string_lossy()
         .into_owned();
 
     let res = run_sync_local(async move {
-        let client_ref = unsafe { &mut (**handle).0 };
+        let client_ref = unsafe { &mut (*handle).0 };
 
-        client_ref.set(&latitude, &longtiude).await
+        client_ref.set(&latitude, &longitude).await
     });
 
     match res {
