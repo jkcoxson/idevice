@@ -107,14 +107,14 @@ pub unsafe extern "C" fn lockdown_location_simulation_set(
 /// `handle` must be a valid pointer to a `LocationSimulationServiceHandle` returned by `lockdown_location_simulation_connect`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lockdown_location_simulation_clear(
-    handle: *mut *mut LocationSimulationServiceHandle,
+    handle: *mut LocationSimulationServiceHandle,
 ) -> *mut IdeviceFfiError {
     if handle.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
     let res = run_sync_local(async move {
-        let client_ref = unsafe { &mut (**handle).0 };
+        let client_ref = unsafe { &mut (*handle).0 };
 
         client_ref.clear().await
     });
