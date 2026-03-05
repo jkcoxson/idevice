@@ -25,6 +25,8 @@ pub mod heartbeat;
 pub mod house_arrest;
 #[cfg(feature = "installation_proxy")]
 pub mod installation_proxy;
+#[cfg(feature = "location_simulation")]
+pub mod location_simulation;
 pub mod lockdown;
 pub mod logging;
 #[cfg(feature = "misagent")]
