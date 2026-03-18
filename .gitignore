@@ -5,7 +5,6 @@ Image.dmg.trustcache
 .DS_Store
 *.pcap
 idevice.h
-plist.h
 /ffi/examples/build
 /.cache
 /ffi/examples/.cache

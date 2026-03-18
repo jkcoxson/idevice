@@ -40,13 +40,7 @@ fn main() {
     let h = if std::path::Path::new(plist_h_path).exists() {
         std::fs::read_to_string(plist_h_path).expect("failed to read plist.h")
     } else {
-        // download plist.h
-        let h = ureq::get("https://raw.githubusercontent.com/libimobiledevice/libplist/refs/heads/master/include/plist/plist.h")
-            .call()
-            .expect("failed to download plist.h");
-        h.into_body()
-            .read_to_string()
-            .expect("failed to get string content")
+        panic!("plist.h missing");
     };
 
     let mut f = OpenOptions::new().append(true).open("idevice.h").unwrap();
