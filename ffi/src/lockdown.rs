@@ -174,6 +174,7 @@ pub unsafe extern "C" fn lockdownd_start_service(
 /// `system_buid` must be a valid null-terminated string
 /// `pairing_file` must be a valid, non-null pointer to a location where the handle will be stored
 #[unsafe(no_mangle)]
+#[cfg(feature = "pair")]
 pub unsafe extern "C" fn lockdownd_pair(
     client: *mut LockdowndClientHandle,
     host_id: *const libc::c_char,
