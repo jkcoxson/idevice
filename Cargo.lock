@@ -1099,16 +1099,15 @@ dependencies = [
  "byteorder",
  "bytes",
  "chrono",
- "crossfire",
  "futures",
  "indexmap",
+ "jktcp",
  "json",
  "ns-keyed-archive",
  "obfstr",
  "openssl",
  "plist",
  "plist-macro",
- "rand 0.9.2",
  "reqwest",
  "rsa",
  "rustls",
@@ -1241,6 +1240,19 @@ checksum = "80352668d7fb7afdf101bcedf2ec2ae77887f550114dd38502a3c9365189c06f"
 dependencies = [
  "dialoguer",
  "owo-colors",
+]
+
+[[package]]
+name = "jktcp"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb06e56eaacb9a57f445a639681fb829cbfd95ad65f0d1867610bb0bd7c3b2de"
+dependencies = [
+ "crossfire",
+ "futures",
+ "rand 0.9.2",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
