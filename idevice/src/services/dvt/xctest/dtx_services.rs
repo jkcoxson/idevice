@@ -19,6 +19,23 @@ pub const TESTMANAGERD_SECURE_SERVICE: &str = "com.apple.testmanagerd.lockdown.s
 pub const TESTMANAGERD_RSD_SERVICE: &str = "com.apple.dt.testmanagerd.remote";
 
 // ---------------------------------------------------------------------------
+// DVT (instruments) service names
+// ---------------------------------------------------------------------------
+
+/// iOS < 14 — legacy instruments remote server, lockdown, no SSL.
+pub const DVT_LEGACY_SERVICE: &str = "com.apple.instruments.remoteserver";
+
+/// iOS 14+ — instruments remote server with DVT secure socket proxy.
+pub const DVT_SERVICE: &str = "com.apple.instruments.remoteserver.DVTSecureSocketProxy";
+
+// ---------------------------------------------------------------------------
+// DTX channel identifiers
+// ---------------------------------------------------------------------------
+
+/// Channel identifier for the XCTest IDE ↔ daemon interface.
+pub const XCTEST_MANAGER_IDE_INTERFACE: &str = "XCTestManager_IDEInterface";
+
+// ---------------------------------------------------------------------------
 // Xcode version reported to testmanagerd
 // ---------------------------------------------------------------------------
 

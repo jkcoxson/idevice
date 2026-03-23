@@ -263,6 +263,19 @@ impl XCTCapabilities {
         Some(Self { capabilities: caps })
     }
 
+    /// Converts to a `plist::Value` dict with the `capabilities-dictionary` wrapper.
+    ///
+    /// This is the form expected by `_IDE_initiateControlSessionWithCapabilities:` and
+    /// `_IDE_initiateSessionWithIdentifier:capabilities:`.
+    pub fn to_plist_value(&self) -> Value {
+        let mut d = Dictionary::new();
+        d.insert(
+            "capabilities-dictionary".into(),
+            Value::Dictionary(self.capabilities.clone()),
+        );
+        Value::Dictionary(d)
+    }
+
     /// Encodes this `XCTCapabilities` into the provided [`ArchiveBuilder`] and
     /// returns the `Uid` of the resulting object entry.
     fn encode_with_builder(&self, builder: &mut ArchiveBuilder) -> Uid {

@@ -173,6 +173,36 @@ impl<R: ReadWrite> RemoteServerClient<R> {
         })
     }
 
+    /// Registers an incoming (runner-initiated) reverse channel and returns a handle.
+    ///
+    /// Used when the test runner opens a channel back to the IDE (e.g.
+    /// `XCTestDriverInterface`).
+    pub(crate) fn accept_channel<'c>(&'c mut self, code: u32) -> Channel<'c, R> {
+        self.channels.insert(code, VecDeque::new());
+        Channel {
+            client: self,
+            channel: code,
+        }
+    }
+
+    /// Sends a raw reply to an incoming message.
+    ///
+    /// `data_bytes` is sent verbatim as the message payload without any
+    /// additional NSKeyedArchive encoding.  Pass an empty slice to send an
+    /// acknowledgement with no payload.
+    pub(crate) async fn send_raw_reply(
+        &mut self,
+        channel: u32,
+        incoming_msg_id: u32,
+        data_bytes: &[u8],
+    ) -> Result<(), IdeviceError> {
+        use crate::dvt::message::Message;
+        let buf = Message::build_raw_reply(channel, incoming_msg_id, data_bytes);
+        self.idevice.write_all(&buf).await?;
+        self.idevice.flush().await?;
+        Ok(())
+    }
+
     /// Calls a method on the specified channel
     ///
     /// # Arguments
@@ -254,6 +284,11 @@ impl<R: ReadWrite> RemoteServerClient<R> {
 }
 
 impl<R: ReadWrite> Channel<'_, R> {
+    /// Returns the channel code number.
+    pub(crate) fn channel_code(&self) -> u32 {
+        self.channel
+    }
+
     /// Reads the next message from the remote server on this channel
     ///
     /// # Returns

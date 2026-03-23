@@ -332,6 +332,11 @@ impl MessageHeader {
         }
     }
 
+    /// Returns the unique message identifier.
+    pub(crate) fn identifier(&self) -> u32 {
+        self.identifier
+    }
+
     /// Serializes header to bytes
     pub fn serialize(&self) -> Vec<u8> {
         let mut res = Vec::new();
@@ -507,6 +512,52 @@ impl Message {
         res.extend_from_slice(&data);
 
         res
+    }
+
+    /// Builds a raw reply frame for an incoming message, sending `data_bytes`
+    /// verbatim as the payload without additional NSKeyedArchive encoding.
+    ///
+    /// This is used for replies where the payload is already a serialised
+    /// NSKeyedArchive (e.g. `XCTestConfiguration`).  Pass an empty slice to
+    /// send an acknowledgement with no payload.
+    pub(crate) fn build_raw_reply(
+        channel: u32,
+        incoming_msg_id: u32,
+        data_bytes: &[u8],
+    ) -> Vec<u8> {
+        // Payload header (16 bytes): flags=0, aux_len=0, total_len
+        let flags: u32 = 0;
+        let aux_len: u32 = 0;
+        let total_len: u64 = data_bytes.len() as u64;
+
+        let payload_total = 16usize + data_bytes.len(); // payload_hdr + data
+
+        // Message header (32 bytes)
+        let magic: u32 = 0x1F3D5B79;
+        let header_len: u32 = 32;
+        let fragment_id: u16 = 0;
+        let fragment_count: u16 = 1;
+        let length: u32 = payload_total as u32;
+        let conversation_index: u32 = 1; // reply in conversation
+        let expects_reply: u32 = 0;
+
+        let mut buf = Vec::with_capacity(32 + 16 + data_bytes.len());
+        buf.extend_from_slice(&magic.to_le_bytes());
+        buf.extend_from_slice(&header_len.to_le_bytes());
+        buf.extend_from_slice(&fragment_id.to_le_bytes());
+        buf.extend_from_slice(&fragment_count.to_le_bytes());
+        buf.extend_from_slice(&length.to_le_bytes());
+        buf.extend_from_slice(&incoming_msg_id.to_le_bytes());
+        buf.extend_from_slice(&conversation_index.to_le_bytes());
+        buf.extend_from_slice(&channel.to_le_bytes());
+        buf.extend_from_slice(&expects_reply.to_le_bytes());
+        // Payload header
+        buf.extend_from_slice(&flags.to_le_bytes());
+        buf.extend_from_slice(&aux_len.to_le_bytes());
+        buf.extend_from_slice(&total_len.to_le_bytes());
+        // Data
+        buf.extend_from_slice(data_bytes);
+        buf
     }
 }
 

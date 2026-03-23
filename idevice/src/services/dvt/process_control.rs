@@ -144,6 +144,60 @@ impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
         }
     }
 
+    /// Launches a process with fully customisable options.
+    ///
+    /// This is a lower-level variant of [`launch_app`](Self::launch_app) that
+    /// accepts a pre-built `args` array (`Vec<plist::Value>`) and a custom
+    /// `options` dictionary (e.g. `{"StartSuspendedKey": false, "ActivateSuspended": true}`).
+    ///
+    /// # Arguments
+    /// * `bundle_id`  - Bundle identifier of the app to launch
+    /// * `env`        - Environment variables
+    /// * `args`       - Launch arguments (each element already a `plist::Value::String`)
+    /// * `options`    - Launch options dictionary
+    ///
+    /// # Returns
+    /// * `Ok(u64)` - PID of the launched process
+    pub(crate) async fn launch_with_options(
+        &mut self,
+        bundle_id: impl Into<String>,
+        env: Dictionary,
+        args: Vec<Value>,
+        options: Dictionary,
+    ) -> Result<u64, IdeviceError> {
+        self.channel
+            .call_method(
+                Some(Value::String(
+                    "launchSuspendedProcessWithDevicePath:bundleIdentifier:environment:arguments:options:"
+                        .into(),
+                )),
+                Some(vec![
+                    AuxValue::archived_value(Value::String(String::new())), // device_path = ""
+                    AuxValue::archived_value(bundle_id.into()),
+                    AuxValue::archived_value(Value::Dictionary(env)),
+                    AuxValue::archived_value(Value::Array(args)),
+                    AuxValue::archived_value(Value::Dictionary(options)),
+                ]),
+                true,
+            )
+            .await?;
+
+        let res = self.channel.read_message().await?;
+        match res.data {
+            Some(Value::Integer(p)) => match p.as_unsigned() {
+                Some(p) => Ok(p),
+                None => {
+                    warn!("PID wasn't unsigned");
+                    Err(IdeviceError::UnexpectedResponse)
+                }
+            },
+            _ => {
+                warn!("Did not get integer response from launchSuspendedProcess");
+                Err(IdeviceError::UnexpectedResponse)
+            }
+        }
+    }
+
     /// Kills a running process
     ///
     /// # Arguments
