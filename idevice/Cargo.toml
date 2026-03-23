@@ -91,6 +91,7 @@ installation_proxy = [
   "tokio/fs",
 ]
 installcoordination_proxy = []
+xctest = ["dvt", "installation_proxy", "afc", "dep:uuid", "dep:ns-keyed-archive"]
 springboardservices = []
 misagent = []
 mobile_image_mounter = ["dep:sha2"]
@@ -132,6 +133,7 @@ full = [
   "house_arrest",
   "installation_proxy",
   "installcoordination_proxy",
+  "xctest",
   "location_simulation",
   "misagent",
   "mobile_image_mounter",
