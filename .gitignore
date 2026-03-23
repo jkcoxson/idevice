@@ -22,4 +22,3 @@ xcuserdata
 ._*
 *.vcxproj.user
 .vs
-xctest-*.log
