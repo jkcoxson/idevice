@@ -294,6 +294,10 @@ impl XPCObject {
         let mut buf_32: [u8; 4] = Default::default();
         cursor.read_exact(&mut buf_32)?;
         let xpc_type = u32::from_le_bytes(buf_32);
+        debug!(
+            "Decoding XPC object type raw=0x{xpc_type:08X} remaining={}",
+            cursor.get_ref().len().saturating_sub(cursor.position() as usize)
+        );
         let xpc_type: XPCType = xpc_type.try_into()?;
         match xpc_type {
             XPCType::Null => Ok(XPCObject::Null),
@@ -496,8 +500,8 @@ impl XPCMessage {
     }
 
     pub fn decode(data: &[u8]) -> Result<XPCMessage, IdeviceError> {
-        if data.len() < 24 {
-            Err(IdeviceError::NotEnoughBytes(data.len(), 24))?
+        if data.len() < 16 {
+            Err(IdeviceError::NotEnoughBytes(data.len(), 16))?
         }
 
         let magic = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
@@ -511,10 +515,8 @@ impl XPCMessage {
             data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15],
         ]);
         debug!("Body_len: {body_len}");
-        let message_id = u64::from_le_bytes([
-            data[16], data[17], data[18], data[19], data[20], data[21], data[22], data[23],
-        ]);
-        if body_len + 24 > data.len() as u64 {
+        let required_len = 24 + body_len;
+        if required_len > data.len() as u64 {
             warn!(
                 "Body length is {body_len}, but received bytes is {}",
                 data.len()
@@ -522,13 +524,24 @@ impl XPCMessage {
             Err(IdeviceError::PacketSizeMismatch)?
         }
 
+        let message_id = u64::from_le_bytes([
+            data[16], data[17], data[18], data[19], data[20], data[21], data[22], data[23],
+        ]);
+        let message = if body_len == 0 {
+            None
+        } else {
+            let payload_end = 24 + body_len as usize;
+            debug!(
+                "XPC payload bytes (len={}): {:02X?}",
+                body_len,
+                &data[24..payload_end]
+            );
+            Some(XPCObject::decode(&data[24..payload_end])?)
+        };
+
         let res = XPCMessage {
             flags,
-            message: if body_len > 0 {
-                Some(XPCObject::decode(&data[24..24 + body_len as usize])?)
-            } else {
-                None
-            },
+            message,
             message_id: Some(message_id),
         };
 
@@ -537,19 +550,17 @@ impl XPCMessage {
     }
 
     pub fn encode(self, message_id: u64) -> Result<Vec<u8>, IdeviceError> {
+        let body = match self.message {
+            Some(message) => Some(message.encode()?),
+            None => None,
+        };
+
         let mut out = 0x29b00b92_u32.to_le_bytes().to_vec();
         out.extend_from_slice(&self.flags.to_le_bytes());
-        match self.message {
-            Some(message) => {
-                let body = message.encode()?;
-                out.extend_from_slice(&(body.len() as u64).to_le_bytes()); // body length
-                out.extend_from_slice(&message_id.to_le_bytes()); // messageId
-                out.extend_from_slice(&body);
-            }
-            _ => {
-                out.extend_from_slice(&0_u64.to_le_bytes());
-                out.extend_from_slice(&message_id.to_le_bytes());
-            }
+        out.extend_from_slice(&(body.as_ref().map_or(0, |body| body.len()) as u64).to_le_bytes());
+        out.extend_from_slice(&message_id.to_le_bytes());
+        if let Some(body) = body {
+            out.extend_from_slice(&body);
         }
         Ok(out)
     }

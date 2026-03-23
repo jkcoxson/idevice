@@ -45,6 +45,7 @@ mod restore_service;
 mod screenshot;
 mod springboardservices;
 mod syslog_relay;
+mod xctest;
 
 mod pcap;
 
@@ -125,6 +126,7 @@ async fn main() {
         .with_subcommand("screenshot", screenshot::register())
         .with_subcommand("springboard", springboardservices::register())
         .with_subcommand("syslog_relay", syslog_relay::register())
+        .with_subcommand("xctest", xctest::register())
         .subcommand_required(true)
         .collect()
         .expect("Failed to collect CLI args");
@@ -248,6 +250,9 @@ async fn main() {
         }
         "syslog_relay" => {
             syslog_relay::main(sub_args, provider).await;
+        }
+        "xctest" => {
+            xctest::main(sub_args, provider).await;
         }
         _ => unreachable!(),
     }

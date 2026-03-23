@@ -65,6 +65,11 @@ pub trait XCUITestListener: Send {
         Ok(())
     }
 
+    /// Invoked when the runner announces readiness together with its capability set.
+    async fn test_runner_ready_with_capabilities(&mut self) -> Result<(), IdeviceError> {
+        Ok(())
+    }
+
     // --- suite lifecycle ----------------------------------------------------
 
     /// Invoked when a test suite starts.
@@ -199,6 +204,16 @@ pub trait XCUITestListener: Send {
 
     /// Invoked when initialization for UI testing begins.
     async fn did_begin_initializing_for_ui_testing(&mut self) -> Result<(), IdeviceError> {
+        Ok(())
+    }
+
+    /// Invoked when the runner forms a test plan payload.
+    async fn did_form_plan(&mut self, _data: &str) -> Result<(), IdeviceError> {
+        Ok(())
+    }
+
+    /// Invoked when the runner asks for launch progress.
+    async fn get_progress_for_launch(&mut self, _token: &str) -> Result<(), IdeviceError> {
         Ok(())
     }
 

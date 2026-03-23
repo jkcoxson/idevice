@@ -33,7 +33,24 @@ pub const DVT_SERVICE: &str = "com.apple.instruments.remoteserver.DVTSecureSocke
 // ---------------------------------------------------------------------------
 
 /// Channel identifier for the XCTest IDE ↔ daemon interface.
+/// Used on iOS < 17 (lockdown path).
 pub const XCTEST_MANAGER_IDE_INTERFACE: &str = "XCTestManager_IDEInterface";
+
+/// Service identifier for the daemon-facing side of the XCTest proxy channel.
+pub const XCTEST_MANAGER_DAEMON_CONNECTION_INTERFACE: &str =
+    "XCTestManager_DaemonConnectionInterface";
+
+/// Service identifier for the runner-facing side of the XCTest proxy channel.
+pub const XCTEST_DRIVER_INTERFACE: &str = "XCTestDriverInterface";
+
+/// iOS 17+ proxy channel: IDE ↔ DaemonConnectionInterface.
+/// Format used by pymobiledevice3's DtxProxyService over RSD.
+pub const XCTEST_PROXY_IDE_TO_DAEMON: &str =
+    "dtxproxy:XCTestManager_IDEInterface:XCTestManager_DaemonConnectionInterface";
+
+/// iOS 17+ proxy channel: IDE ↔ XCTestDriverInterface (reverse channel from runner).
+pub const XCTEST_PROXY_IDE_TO_DRIVER: &str =
+    "dtxproxy:XCTestManager_IDEInterface:XCTestDriverInterface";
 
 // ---------------------------------------------------------------------------
 // Xcode version reported to testmanagerd
@@ -116,6 +133,12 @@ pub const XCT_BUNDLE_READY_WITH_PROTOCOL_VERSION: &str =
 /// UI testing initialization began.
 pub const XCT_DID_BEGIN_UI_INIT: &str = "_XCT_didBeginInitializingForUITesting";
 
+/// Test runner formed the test plan payload.
+pub const XCT_DID_FORM_PLAN: &str = "_XCT_didFormPlanWithData:";
+
+/// Runner requested launch progress for a token.
+pub const XCT_GET_PROGRESS_FOR_LAUNCH: &str = "_XCT_getProgressForLaunch:";
+
 /// UI testing initialization failed.
 pub const XCT_UI_INIT_DID_FAIL: &str = "_XCT_initializationForUITestingDidFailWithError_";
 
@@ -157,32 +180,32 @@ pub const XCT_CASE_DID_FINISH_ACTIVITY: &str = "_XCT_testCase_method_didFinishAc
 // --- suite lifecycle (identifier-based, iOS 14+) --------------------------
 
 /// Test suite started, identified by XCTTestIdentifier.
-pub const XCT_SUITE_DID_START_ID: &str = "_XCT_testSuiteWithIdentifier_didStartAt_";
+pub const XCT_SUITE_DID_START_ID: &str = "_XCT_testSuiteWithIdentifier:didStartAt:";
 
 /// Test suite finished, identified by XCTTestIdentifier.
 pub const XCT_SUITE_DID_FINISH_ID: &str =
-    "_XCT_testSuiteWithIdentifier_didFinishAt_runCount_skipCount_failureCount_expectedFailureCount_uncaughtExceptionCount_testDuration_totalDuration_";
+    "_XCT_testSuiteWithIdentifier:didFinishAt:runCount:skipCount:failureCount:expectedFailureCount:uncaughtExceptionCount:testDuration:totalDuration:";
 
 // --- case lifecycle (identifier-based, iOS 14+) ---------------------------
 
 /// Test case started, identified by XCTTestIdentifier.
 pub const XCT_CASE_DID_START_ID: &str =
-    "_XCT_testCaseDidStartWithIdentifier_testCaseRunConfiguration_";
+    "_XCT_testCaseDidStartWithIdentifier:testCaseRunConfiguration:";
 
 /// Test case finished, identified by XCTTestIdentifier.
 pub const XCT_CASE_DID_FINISH_ID: &str =
-    "_XCT_testCaseWithIdentifier_didFinishWithStatus_duration_";
+    "_XCT_testCaseWithIdentifier:didFinishWithStatus:duration:";
 
 /// Test case recorded an XCTIssue, identified by XCTTestIdentifier.
-pub const XCT_CASE_DID_RECORD_ISSUE: &str = "_XCT_testCaseWithIdentifier_didRecordIssue_";
+pub const XCT_CASE_DID_RECORD_ISSUE: &str = "_XCT_testCaseWithIdentifier:didRecordIssue:";
 
 /// Test case will start an activity, identified by XCTTestIdentifier.
 pub const XCT_CASE_WILL_START_ACTIVITY_ID: &str =
-    "_XCT_testCaseWithIdentifier_willStartActivity_";
+    "_XCT_testCaseWithIdentifier:willStartActivity:";
 
 /// Test case finished an activity, identified by XCTTestIdentifier.
 pub const XCT_CASE_DID_FINISH_ACTIVITY_ID: &str =
-    "_XCT_testCaseWithIdentifier_didFinishActivity_";
+    "_XCT_testCaseWithIdentifier:didFinishActivity:";
 
 /// Performance metric measured during a test method.
 pub const XCT_METHOD_DID_MEASURE_METRIC: &str =

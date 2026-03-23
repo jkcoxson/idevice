@@ -819,7 +819,7 @@ pub enum IdeviceError {
 
     #[cfg(feature = "dvt")]
     #[error("unknown channel")]
-    UnknownChannel(u32) = -52,
+    UnknownChannel(i32) = -52,
 
     #[error("cannot parse string as IpAddr")]
     AddrParseError(#[from] std::net::AddrParseError) = -53,

@@ -52,7 +52,7 @@ pub struct LocationSimulationClient<'a, R: ReadWrite> {
     channel: Channel<'a, R>,
 }
 
-impl<'a, R: ReadWrite> LocationSimulationClient<'a, R> {
+impl<'a, R: ReadWrite + 'static> LocationSimulationClient<'a, R> {
     /// Opens a new channel on the remote server client for location simulation
     ///
     /// # Arguments

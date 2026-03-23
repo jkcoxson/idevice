@@ -51,7 +51,15 @@ pub struct ProcessControlClient<'a, R: ReadWrite> {
     channel: Channel<'a, R>,
 }
 
-impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
+fn parse_u64_value(value: &Value) -> Option<u64> {
+    match value {
+        Value::Integer(v) => v.as_unsigned(),
+        Value::String(s) => s.parse().ok(),
+        _ => None,
+    }
+}
+
+impl<'a, R: ReadWrite + 'static> ProcessControlClient<'a, R> {
     /// Creates a new ProcessControlClient
     ///
     /// # Arguments
@@ -113,30 +121,27 @@ impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
             None => Dictionary::new(),
         };
 
-        self.channel
-            .call_method(
+        let res = self
+            .channel
+            .call_method_with_reply(
                 Some(method),
                 Some(vec![
-                    AuxValue::archived_value("/private/"),
+                    AuxValue::archived_value(""),
                     AuxValue::archived_value(bundle_id.into()),
                     AuxValue::archived_value(env_vars),
-                    AuxValue::archived_value(arguments),
+                    AuxValue::archived_value(Value::Array(
+                        arguments.into_iter().map(|(_, value)| value).collect::<Vec<_>>(),
+                    )),
                     AuxValue::archived_value(options),
                 ]),
-                true,
             )
             .await?;
 
-        let res = self.channel.read_message().await?;
-
         match res.data {
-            Some(Value::Integer(p)) => match p.as_unsigned() {
-                Some(p) => Ok(p),
-                None => {
-                    warn!("PID wasn't unsigned");
-                    Err(IdeviceError::UnexpectedResponse)
-                }
-            },
+            Some(v) => parse_u64_value(&v).ok_or_else(|| {
+                warn!("PID wasn't parseable: {v:?}");
+                IdeviceError::UnexpectedResponse
+            }),
             _ => {
                 warn!("Did not get integer response");
                 Err(IdeviceError::UnexpectedResponse)
@@ -165,8 +170,9 @@ impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
         args: Vec<Value>,
         options: Dictionary,
     ) -> Result<u64, IdeviceError> {
-        self.channel
-            .call_method(
+        let res = self
+            .channel
+            .call_method_with_reply(
                 Some(Value::String(
                     "launchSuspendedProcessWithDevicePath:bundleIdentifier:environment:arguments:options:"
                         .into(),
@@ -178,19 +184,13 @@ impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
                     AuxValue::archived_value(Value::Array(args)),
                     AuxValue::archived_value(Value::Dictionary(options)),
                 ]),
-                true,
             )
             .await?;
-
-        let res = self.channel.read_message().await?;
         match res.data {
-            Some(Value::Integer(p)) => match p.as_unsigned() {
-                Some(p) => Ok(p),
-                None => {
-                    warn!("PID wasn't unsigned");
-                    Err(IdeviceError::UnexpectedResponse)
-                }
-            },
+            Some(v) => parse_u64_value(&v).ok_or_else(|| {
+                warn!("PID wasn't parseable: {v:?}");
+                IdeviceError::UnexpectedResponse
+            }),
             _ => {
                 warn!("Did not get integer response from launchSuspendedProcess");
                 Err(IdeviceError::UnexpectedResponse)
@@ -235,15 +235,13 @@ impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
     /// * `IdeviceError::UnexpectedResponse` for invalid responses
     /// * Other communication errors
     pub async fn disable_memory_limit(&mut self, pid: u64) -> Result<(), IdeviceError> {
-        self.channel
-            .call_method(
+        let res = self
+            .channel
+            .call_method_with_reply(
                 "requestDisableMemoryLimitsForPid:".into(),
                 Some(vec![AuxValue::U32(pid as u32)]),
-                true,
             )
             .await?;
-
-        let res = self.channel.read_message().await?;
         match res.data {
             Some(Value::Boolean(b)) => {
                 if b {

@@ -1,4 +1,5 @@
 /target
+/alt-target
 BuildManifest.plist
 Image.dmg
 Image.dmg.trustcache
@@ -21,3 +22,4 @@ xcuserdata
 ._*
 *.vcxproj.user
 .vs
+xctest-*.log

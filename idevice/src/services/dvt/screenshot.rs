@@ -22,7 +22,7 @@ pub struct ScreenshotClient<'a, R: ReadWrite> {
     channel: Channel<'a, R>,
 }
 
-impl<'a, R: ReadWrite> ScreenshotClient<'a, R> {
+impl<'a, R: ReadWrite + 'static> ScreenshotClient<'a, R> {
     /// Creates a new ScreenshotClient
     ///
     /// # Arguments

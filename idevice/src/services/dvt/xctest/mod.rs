@@ -26,44 +26,86 @@ pub mod dtx_services;
 pub mod listener;
 pub mod types;
 
-use std::sync::Arc;
+use std::{
+    sync::{Arc, OnceLock},
+};
 
 use plist::{Dictionary, Value};
-use tracing::{debug, warn};
+#[cfg(feature = "wda")]
+use serde_json::Value as JsonValue;
+use tracing::warn;
+
+fn xctest_debug_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        matches!(
+            std::env::var("IDEVICE_XCTEST_DEBUG")
+                .ok()
+                .as_deref()
+                .map(str::to_ascii_lowercase)
+                .as_deref(),
+            Some("1" | "true" | "yes" | "on" | "debug")
+        )
+    })
+}
+
+macro_rules! xctest_debug {
+    ($($arg:tt)*) => {
+        if xctest_debug_enabled() {
+            tracing::debug!($($arg)*);
+        }
+    };
+}
 
 use crate::{
     IdeviceError, IdeviceService, ReadWrite,
-    dvt::message::AuxValue,
-    provider::IdeviceProvider,
+    dvt::message::{AuxValue, Message},
+    provider::{IdeviceProvider, RsdProvider},
     services::{
+        core_device_proxy::CoreDeviceProxy,
         dvt::{
             process_control::ProcessControlClient,
-            remote_server::{Channel, RemoteServerClient},
+            remote_server::{IncomingHandlerOutcome, OwnedChannel, RemoteServerClient},
         },
         installation_proxy::InstallationProxyClient,
         lockdown::LockdownClient,
+        rsd::RsdHandshake,
     },
 };
+#[cfg(feature = "wda")]
+use crate::services::wda::{WdaClient, WdaPorts};
+#[cfg(feature = "wda")]
+use crate::services::wda_bridge::WdaBridge;
 use dtx_services::{
-    DVT_LEGACY_SERVICE, DVT_SERVICE, IDE_AUTHORIZE_TEST_SESSION,
+    DVT_LEGACY_SERVICE, DVT_SERVICE, IDE_AUTHORIZE_TEST_SESSION, TESTMANAGERD_RSD_SERVICE,
     IDE_INITIATE_CTRL_SESSION_FOR_PID, IDE_INITIATE_CTRL_SESSION_FOR_PID_PROTOCOL_VERSION,
     IDE_INITIATE_CTRL_SESSION_WITH_CAPABILITIES, IDE_INITIATE_CTRL_SESSION_WITH_PROTOCOL_VERSION,
     IDE_INITIATE_SESSION_WITH_IDENTIFIER_CAPABILITIES,
     IDE_INITIATE_SESSION_WITH_IDENTIFIER_FOR_CLIENT_AT_PATH_PROTOCOL_VERSION,
     IDE_START_EXECUTING_TEST_PLAN, TESTMANAGERD_SECURE_SERVICE, TESTMANAGERD_SERVICE,
-    XCTEST_MANAGER_IDE_INTERFACE, XCODE_VERSION, XCT_BUNDLE_READY,
+    XCTEST_PROXY_IDE_TO_DRIVER,
+    XCTEST_DRIVER_INTERFACE, XCTEST_MANAGER_DAEMON_CONNECTION_INTERFACE,
+    XCTEST_MANAGER_IDE_INTERFACE,
+    XCODE_VERSION, XCT_BUNDLE_READY,
     XCT_BUNDLE_READY_WITH_PROTOCOL_VERSION, XCT_CASE_DID_FAIL, XCT_CASE_DID_FINISH,
     XCT_CASE_DID_FINISH_ACTIVITY, XCT_CASE_DID_FINISH_ACTIVITY_ID, XCT_CASE_DID_FINISH_ID,
     XCT_CASE_DID_RECORD_ISSUE, XCT_CASE_DID_STALL, XCT_CASE_DID_START,
     XCT_CASE_DID_START_ID, XCT_CASE_WILL_START_ACTIVITY, XCT_CASE_WILL_START_ACTIVITY_ID,
-    XCT_DID_BEGIN_TEST_PLAN, XCT_DID_BEGIN_UI_INIT, XCT_DID_FAIL_BOOTSTRAP,
-    XCT_DID_FINISH_TEST_PLAN, XCT_EXCHANGE_PROTOCOL_VERSION, XCT_LOG_DEBUG_MESSAGE,
-    XCT_LOG_MESSAGE, XCT_METHOD_DID_MEASURE_METRIC, XCT_RUNNER_READY_WITH_CAPABILITIES,
+    XCT_DID_BEGIN_TEST_PLAN, XCT_DID_BEGIN_UI_INIT, XCT_DID_FAIL_BOOTSTRAP, XCT_DID_FORM_PLAN,
+    XCT_DID_FINISH_TEST_PLAN, XCT_EXCHANGE_PROTOCOL_VERSION, XCT_GET_PROGRESS_FOR_LAUNCH,
+    XCT_LOG_DEBUG_MESSAGE, XCT_LOG_MESSAGE, XCT_METHOD_DID_MEASURE_METRIC,
+    XCT_RUNNER_READY_WITH_CAPABILITIES,
     XCT_SUITE_DID_FINISH, XCT_SUITE_DID_FINISH_ID, XCT_SUITE_DID_START,
     XCT_SUITE_DID_START_ID, XCT_UI_INIT_DID_FAIL,
 };
 use listener::{XCTestCaseResult, XCUITestListener};
-use types::{XCActivityRecord, XCTCapabilities, XCTIssue, XCTTestIdentifier, XCTestConfiguration};
+use types::{
+    XCActivityRecord, XCTCapabilities, XCTIssue, XCTTestIdentifier, XCTestConfiguration,
+    archive_nsuuid_to_bytes, archive_xct_capabilities_to_bytes,
+};
+
+#[cfg(all(feature = "xctest", feature = "wda"))]
+use tokio::task::JoinHandle;
 
 // ---------------------------------------------------------------------------
 // TestConfig
@@ -435,6 +477,7 @@ pub(super) struct TestManagerConnections {
     pub ctrl: RemoteServerClient<Box<dyn ReadWrite>>,
     pub main: RemoteServerClient<Box<dyn ReadWrite>>,
     pub dvt: RemoteServerClient<Box<dyn ReadWrite>>,
+    _rsd_handles: Vec<crate::tcp::handle::AdapterHandle>,
 }
 
 /// Connects to a lockdown-based DTX service, trying each name in order.
@@ -464,10 +507,13 @@ async fn connect_dtx_service(
                 let socket = idevice
                     .get_socket()
                     .ok_or(IdeviceError::NoEstablishedConnection)?;
-                let mut client = RemoteServerClient::new(socket);
+                let label = format!("lockdown:{name}");
+                let mut client = RemoteServerClient::with_label(socket, label);
                 if read_greeting {
-                    // testmanagerd sends a capabilities hello on connect; discard it.
-                    client.read_message(0).await.ok();
+                    // testmanagerd sends a capabilities hello on connect.
+                    let _ = client
+                        .wait_for_capabilities(std::time::Duration::from_secs(10))
+                        .await;
                 }
                 return Ok(client);
             }
@@ -479,7 +525,181 @@ async fn connect_dtx_service(
     Err(last_err.unwrap_or(IdeviceError::ServiceNotFound))
 }
 
+/// Establishes the three DTX connections for iOS 17+ via CoreDeviceProxy + RSD.
+///
+/// Opens a software TCP tunnel through CoreDeviceProxy, does the RSD handshake
+/// to discover service ports, then connects to testmanagerd (×2) and
+/// `dtservicehub` on their advertised ports.
+#[cfg(feature = "xctest")]
+async fn connect_testmanagerd_rsd(
+    provider: &dyn IdeviceProvider,
+) -> Result<TestManagerConnections, IdeviceError> {
+    const RSD_GREETING_TIMEOUT_SECS: u64 = 30;
+    const RSD_STACK_ATTEMPTS: usize = 3;
+
+    // DTX capabilities dict that we announce to the daemon.
+    // Mirrors pymobiledevice3's DTXConnection.DEFAULT_CAPABILITIES.
+    fn dtx_capabilities_dict(include_process_control_callback: bool) -> plist::Dictionary {
+        let mut caps = plist::Dictionary::new();
+        caps.insert(
+            "com.apple.private.DTXBlockCompression".into(),
+            plist::Value::Integer(0i64.into()),
+        );
+        caps.insert(
+            "com.apple.private.DTXConnection".into(),
+            plist::Value::Integer(1i64.into()),
+        );
+        if include_process_control_callback {
+            caps.insert(
+                "com.apple.instruments.client.processcontrol.capability.terminationCallback".into(),
+                plist::Value::Integer(1i64.into()),
+            );
+        }
+        caps
+    }
+
+    async fn rsd_connect(
+        handle: &mut crate::tcp::handle::AdapterHandle,
+        handshake: &RsdHandshake,
+        service_name: &str,
+        label: &str,
+        include_process_control_callback: bool,
+    ) -> Result<RemoteServerClient<Box<dyn ReadWrite>>, IdeviceError> {
+        const MAX_ATTEMPTS: usize = 5;
+        let service = handshake
+            .services
+            .get(service_name)
+            .ok_or_else(|| {
+                warn!("RSD service not found: {}", service_name);
+                IdeviceError::ServiceNotFound
+            })?
+            .clone();
+        let port = service.port;
+
+        let mut last_err = None;
+        for attempt in 1..=MAX_ATTEMPTS {
+            xctest_debug!(
+                "[{}] opening service '{}' on remote port {} (attempt {}/{})",
+                label, service_name, port, attempt, MAX_ATTEMPTS
+            );
+            let stream = handle.connect_to_service_port(port).await?;
+            xctest_debug!("[{}] service port {} connected", label, port);
+            let mut client = RemoteServerClient::with_label(stream, label);
+            match client
+                .perform_handshake(
+                    Some(dtx_capabilities_dict(include_process_control_callback)),
+                    std::time::Duration::from_secs(RSD_GREETING_TIMEOUT_SECS),
+                )
+                .await
+            {
+                Ok(remote_capabilities) => {
+                    xctest_debug!(
+                        "[{}] RSD DTX capabilities exchange complete: {:?}",
+                        label,
+                        remote_capabilities
+                    );
+                    return Ok(client);
+                }
+                Err(error) => {
+                    warn!(
+                        "[{}] RSD DTX handshake failed on attempt {}/{}: {}",
+                        label, attempt, MAX_ATTEMPTS, error
+                    );
+                    last_err = Some(error);
+                    if attempt < MAX_ATTEMPTS {
+                        tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+                    }
+                }
+            }
+        }
+
+        Err(last_err.unwrap_or(IdeviceError::UnexpectedResponse))
+    }
+
+    async fn connect_rsd_stack_once(
+        provider: &dyn IdeviceProvider,
+    ) -> Result<TestManagerConnections, IdeviceError> {
+        let proxy = CoreDeviceProxy::connect(provider).await?;
+        let rsd_port = proxy.handshake.server_rsd_port;
+        let adapter = proxy.create_software_tunnel()?;
+        let mut handle = adapter.to_async_handle();
+
+        xctest_debug!("[rsd] connecting to shared RSD port {}", rsd_port);
+        let rsd_stream = handle.connect_to_service_port(rsd_port).await?;
+        let handshake = RsdHandshake::new(rsd_stream).await?;
+        xctest_debug!(
+            "[rsd] shared RSD handshake OK — {} services advertised",
+            handshake.services.len()
+        );
+
+        let dvt = match rsd_connect(
+            &mut handle,
+            &handshake,
+            "com.apple.instruments.dtservicehub",
+            "dtservicehub",
+            true,
+        )
+        .await
+        {
+            Ok(client) => client,
+            Err(e) => {
+                warn!("RSD dtservicehub connect failed ({}), falling back to lockdown DVT", e);
+                connect_dtx_service(provider, &[DVT_SERVICE, DVT_LEGACY_SERVICE], false).await?
+            }
+        };
+        let ctrl = rsd_connect(
+            &mut handle,
+            &handshake,
+            TESTMANAGERD_RSD_SERVICE,
+            "testmanagerd-ctrl",
+            false,
+        )
+        .await?;
+        let main = rsd_connect(
+            &mut handle,
+            &handshake,
+            TESTMANAGERD_RSD_SERVICE,
+            "testmanagerd-main",
+            false,
+        )
+        .await?;
+
+        Ok(TestManagerConnections {
+            ctrl,
+            main,
+            dvt,
+            _rsd_handles: vec![handle],
+        })
+    }
+
+    let mut last_err = None;
+    for attempt in 1..=RSD_STACK_ATTEMPTS {
+        xctest_debug!(
+            "[rsd] establishing CoreDeviceProxy/software tunnel stack (attempt {}/{})",
+            attempt, RSD_STACK_ATTEMPTS
+        );
+        match connect_rsd_stack_once(provider).await {
+            Ok(connections) => return Ok(connections),
+            Err(error) => {
+                warn!(
+                    "[rsd] CoreDeviceProxy/software tunnel stack attempt {}/{} failed: {}",
+                    attempt, RSD_STACK_ATTEMPTS, error
+                );
+                last_err = Some(error);
+                if attempt < RSD_STACK_ATTEMPTS {
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+            }
+        }
+    }
+
+    Err(last_err.unwrap_or(IdeviceError::UnexpectedResponse))
+}
+
 /// Establishes the three DTX connections required for an XCTest run.
+///
+/// For iOS 17+ tries `CoreDeviceProxy` + RSD first. Falls back to lockdown
+/// for iOS < 17 or if CoreDeviceProxy is unavailable.
 ///
 /// # Arguments
 /// * `provider` - Device connection provider
@@ -489,6 +709,12 @@ pub(super) async fn connect_testmanagerd(
     provider: &dyn IdeviceProvider,
     ios_major_version: u8,
 ) -> Result<TestManagerConnections, IdeviceError> {
+    // iOS 17+ must use RSD tunnel path
+    if ios_major_version >= 17 {
+        return connect_testmanagerd_rsd(provider).await;
+    }
+
+    // iOS < 17 (or fallback): lockdown path
     let tm_service = if ios_major_version >= 14 {
         TESTMANAGERD_SECURE_SERVICE
     } else {
@@ -504,7 +730,12 @@ pub(super) async fn connect_testmanagerd(
     )
     .await?;
 
-    Ok(TestManagerConnections { ctrl, main, dvt })
+    Ok(TestManagerConnections {
+        ctrl,
+        main,
+        dvt,
+        _rsd_handles: Vec::new(),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -515,32 +746,28 @@ pub(super) async fn connect_testmanagerd(
 ///
 /// Sends the appropriate IDE-initiation method based on `ios_major_version`.
 #[cfg(feature = "xctest")]
-pub(super) async fn init_ctrl_session<R: ReadWrite>(
-    ctrl_channel: &mut Channel<'_, R>,
+pub(super) async fn init_ctrl_session<R: ReadWrite + 'static>(
+    ctrl_channel: &mut OwnedChannel<R>,
     ios_major_version: u8,
 ) -> Result<(), IdeviceError> {
     if ios_major_version >= 17 {
-        let caps_bytes = AuxValue::archived_value(XCTCapabilities::empty().to_plist_value());
-        ctrl_channel
-            .call_method(
+        let caps_bytes = AuxValue::Array(archive_xct_capabilities_to_bytes(&XCTCapabilities::empty())?);
+        let reply = ctrl_channel
+            .call_method_with_reply(
                 Some(IDE_INITIATE_CTRL_SESSION_WITH_CAPABILITIES),
                 Some(vec![caps_bytes]),
-                true,
             )
             .await?;
-        let reply = ctrl_channel.read_message().await?;
-        debug!("init_ctrl_session (iOS 17+) reply: {:?}", reply.data);
+        xctest_debug!("init_ctrl_session (iOS 17+) reply: {:?}", reply.data);
     } else if ios_major_version >= 11 {
         let version_bytes = AuxValue::archived_value(Value::Integer((XCODE_VERSION as i64).into()));
-        ctrl_channel
-            .call_method(
+        let reply = ctrl_channel
+            .call_method_with_reply(
                 Some(IDE_INITIATE_CTRL_SESSION_WITH_PROTOCOL_VERSION),
                 Some(vec![version_bytes]),
-                true,
             )
             .await?;
-        let reply = ctrl_channel.read_message().await?;
-        debug!("init_ctrl_session (iOS 11-16) reply: {:?}", reply.data);
+        xctest_debug!("init_ctrl_session (iOS 11-16) reply: {:?}", reply.data);
     }
     // iOS < 11: nothing to do
     Ok(())
@@ -548,24 +775,24 @@ pub(super) async fn init_ctrl_session<R: ReadWrite>(
 
 /// Initialises the main test session on the main DTX channel.
 #[cfg(feature = "xctest")]
-pub(super) async fn init_session<R: ReadWrite>(
-    main_channel: &mut Channel<'_, R>,
+pub(super) async fn init_session<R: ReadWrite + 'static>(
+    main_channel: &mut OwnedChannel<R>,
     ios_major_version: u8,
     session_id: &uuid::Uuid,
     xctest_config: &XCTestConfiguration,
 ) -> Result<(), IdeviceError> {
-    let uuid_bytes = AuxValue::archived_value(Value::Data(session_id.as_bytes().to_vec()));
+    let uuid_bytes = AuxValue::Array(archive_nsuuid_to_bytes(session_id)?);
 
     if ios_major_version >= 17 {
         let caps_bytes =
-            AuxValue::archived_value(XCTCapabilities::ide_defaults().to_plist_value());
-        main_channel
-            .call_method(
+            AuxValue::Array(archive_xct_capabilities_to_bytes(&XCTCapabilities::ide_defaults())?);
+        let reply = main_channel
+            .call_method_with_reply(
                 Some(IDE_INITIATE_SESSION_WITH_IDENTIFIER_CAPABILITIES),
                 Some(vec![uuid_bytes, caps_bytes]),
-                true,
             )
             .await?;
+        xctest_debug!("init_session (iOS 17+) reply: {:?}", reply.data);
     } else if ios_major_version >= 11 {
         let client_bytes =
             AuxValue::archived_value(Value::String("not-very-important".into()));
@@ -574,20 +801,18 @@ pub(super) async fn init_session<R: ReadWrite>(
         ));
         let version_bytes =
             AuxValue::archived_value(Value::Integer((XCODE_VERSION as i64).into()));
-        main_channel
-            .call_method(
+        let reply = main_channel
+            .call_method_with_reply(
                 Some(IDE_INITIATE_SESSION_WITH_IDENTIFIER_FOR_CLIENT_AT_PATH_PROTOCOL_VERSION),
                 Some(vec![uuid_bytes, client_bytes, path_bytes, version_bytes]),
-                true,
             )
             .await?;
+        xctest_debug!("init_session (iOS 11-16) reply: {:?}", reply.data);
     } else {
         return Ok(());
     }
 
-    let _ = xctest_config; // used by caller for reply in iOS 17+; here we just wait
-    let reply = main_channel.read_message().await?;
-    debug!("init_session reply: {:?}", reply.data);
+    let _ = xctest_config; // used by caller for bootstrap reply handling
     Ok(())
 }
 
@@ -599,7 +824,7 @@ pub(super) async fn init_session<R: ReadWrite>(
 /// # Returns
 /// PID of the launched process.
 #[cfg(feature = "xctest")]
-pub(super) async fn launch_runner<R: ReadWrite>(
+pub(super) async fn launch_runner<R: ReadWrite + 'static>(
     process_control: &mut ProcessControlClient<'_, R>,
     bundle_id: &str,
     launch_args: Vec<String>,
@@ -622,56 +847,164 @@ pub(super) async fn launch_runner<R: ReadWrite>(
 
 /// Authorises the test session for the launched runner process.
 #[cfg(feature = "xctest")]
-pub(super) async fn authorize_test<R: ReadWrite>(
-    ctrl_channel: &mut Channel<'_, R>,
+pub(super) async fn authorize_test<R: ReadWrite + 'static>(
+    ctrl_channel: &mut OwnedChannel<R>,
     ios_major_version: u8,
     pid: u64,
 ) -> Result<(), IdeviceError> {
     let pid_bytes = AuxValue::archived_value(Value::Integer((pid as i64).into()));
 
     if ios_major_version >= 12 {
-        ctrl_channel
-            .call_method(
+        let reply = ctrl_channel
+            .call_method_with_reply(
                 Some(IDE_AUTHORIZE_TEST_SESSION),
                 Some(vec![pid_bytes]),
-                true,
             )
             .await?;
-        let reply = ctrl_channel.read_message().await?;
         match reply.data {
             Some(Value::Boolean(true)) | None => {
-                debug!("authorize_test: OK");
+                xctest_debug!("authorize_test: OK");
             }
             Some(Value::Boolean(false)) => {
                 warn!("authorize_test returned false");
                 return Err(IdeviceError::UnexpectedResponse);
             }
             other => {
-                debug!("authorize_test reply: {:?}", other);
+                xctest_debug!("authorize_test reply: {:?}", other);
             }
         }
     } else if ios_major_version >= 10 {
         let version_bytes =
             AuxValue::archived_value(Value::Integer((XCODE_VERSION as i64).into()));
-        ctrl_channel
-            .call_method(
+        let reply = ctrl_channel
+            .call_method_with_reply(
                 Some(IDE_INITIATE_CTRL_SESSION_FOR_PID_PROTOCOL_VERSION),
                 Some(vec![pid_bytes, version_bytes]),
-                true,
             )
             .await?;
-        ctrl_channel.read_message().await?;
+        xctest_debug!("authorize_test (<12, >=10) reply: {:?}", reply.data);
     } else {
-        ctrl_channel
-            .call_method(
+        let reply = ctrl_channel
+            .call_method_with_reply(
                 Some(IDE_INITIATE_CTRL_SESSION_FOR_PID),
                 Some(vec![pid_bytes]),
-                true,
             )
             .await?;
-        ctrl_channel.read_message().await?;
+        xctest_debug!("authorize_test (<10) reply: {:?}", reply.data);
     }
     Ok(())
+}
+
+#[cfg(feature = "xctest")]
+struct TestManagerProxy<R: ReadWrite> {
+    channel: OwnedChannel<R>,
+}
+
+#[cfg(feature = "xctest")]
+impl<R: ReadWrite + 'static> TestManagerProxy<R> {
+    async fn open(
+        client: &mut RemoteServerClient<R>,
+        ios_major_version: u8,
+    ) -> Result<Self, IdeviceError> {
+        let channel = if testmanager_uses_proxy(ios_major_version) {
+            client
+                .open_proxied_service_channel(
+                    XCTEST_MANAGER_IDE_INTERFACE,
+                    XCTEST_MANAGER_DAEMON_CONNECTION_INTERFACE,
+                )
+                .await?
+        } else {
+            client.open_service_channel(XCTEST_MANAGER_IDE_INTERFACE).await?
+        };
+
+        Ok(Self {
+            channel: channel.detach(),
+        })
+    }
+
+    async fn install_bootstrap_handler(
+        &mut self,
+        xctest_config: XCTestConfiguration,
+    ) {
+        install_early_xctest_handler(&mut self.channel, xctest_config).await;
+    }
+
+    async fn init_ctrl_session(&mut self, ios_major_version: u8) -> Result<(), IdeviceError> {
+        init_ctrl_session(&mut self.channel, ios_major_version).await
+    }
+
+    async fn init_session(
+        &mut self,
+        ios_major_version: u8,
+        session_id: &uuid::Uuid,
+        xctest_config: &XCTestConfiguration,
+    ) -> Result<(), IdeviceError> {
+        init_session(&mut self.channel, ios_major_version, session_id, xctest_config).await
+    }
+
+    async fn authorize_test(
+        &mut self,
+        ios_major_version: u8,
+        pid: u64,
+    ) -> Result<(), IdeviceError> {
+        authorize_test(&mut self.channel, ios_major_version, pid).await
+    }
+
+    fn channel_code(&self) -> i32 {
+        self.channel.channel_code()
+    }
+}
+
+#[cfg(feature = "xctest")]
+struct DriverProxy {
+    channel: OwnedChannel<Box<dyn ReadWrite>>,
+}
+
+#[cfg(feature = "xctest")]
+impl DriverProxy {
+    async fn wait(
+        client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
+        timeout_secs: f64,
+    ) -> Result<Self, IdeviceError> {
+        Ok(Self {
+            channel: wait_for_driver_channel(client, timeout_secs).await?,
+        })
+    }
+
+    async fn start_executing_test_plan(&mut self) -> Result<(), IdeviceError> {
+        start_executing_test_plan(&mut self.channel).await
+    }
+}
+
+#[cfg(feature = "xctest")]
+struct XCTestProcessControlChannel<'a, R: ReadWrite> {
+    service: ProcessControlClient<'a, R>,
+}
+
+#[cfg(feature = "xctest")]
+impl<'a, R: ReadWrite + 'static> XCTestProcessControlChannel<'a, R> {
+    async fn open(client: &'a mut RemoteServerClient<R>) -> Result<Self, IdeviceError> {
+        Ok(Self {
+            service: ProcessControlClient::new(client).await?,
+        })
+    }
+
+    async fn launch_suspended_process(
+        &mut self,
+        bundle_id: &str,
+        launch_args: Vec<String>,
+        launch_env: Dictionary,
+        launch_options: Dictionary,
+    ) -> Result<u64, IdeviceError> {
+        launch_runner(
+            &mut self.service,
+            bundle_id,
+            launch_args,
+            launch_env,
+            launch_options,
+        )
+        .await
+    }
 }
 
 /// Waits for the test runner to open the reverse `XCTestDriverInterface` channel.
@@ -681,82 +1014,162 @@ pub(super) async fn authorize_test<R: ReadWrite>(
 /// replies with an empty acknowledgement, registers the channel, and returns a
 /// `Channel` handle to it.
 #[cfg(feature = "xctest")]
+fn testmanager_uses_proxy(ios_major_version: u8) -> bool {
+    ios_major_version >= 17
+}
+
+#[cfg(feature = "xctest")]
+#[cfg(feature = "xctest")]
+async fn wait_for_xctest_service_channel<'a>(
+    main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
+    plain_identifiers: &[&str],
+    proxy_remote_identifiers: &[&str],
+    timeout_secs: f64,
+) -> Result<OwnedChannel<Box<dyn ReadWrite>>, IdeviceError> {
+    let timeout = Some(std::time::Duration::from_secs_f64(timeout_secs));
+
+    let code = match main_client
+        .wait_for_proxied_service_channel_code(
+            proxy_remote_identifiers,
+            true,
+            Some(true),
+            timeout,
+        )
+        .await
+    {
+        Ok(code) => code,
+        Err(IdeviceError::XcTestTimeout(_)) => match main_client
+            .wait_for_service_channel_code(plain_identifiers, Some(true), timeout)
+            .await
+        {
+            Ok(code) => code,
+            Err(IdeviceError::XcTestTimeout(_)) => return Err(IdeviceError::TestRunnerTimeout),
+            Err(error) => return Err(error),
+        },
+        Err(error) => return Err(error),
+    };
+
+    Ok(main_client.accept_owned_channel(code))
+}
+
+#[cfg(feature = "xctest")]
+async fn register_early_driver_channel_handler(
+    main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
+    xctest_config: &XCTestConfiguration,
+) {
+    let xctest_config = xctest_config.clone();
+    main_client
+        .register_incoming_channel_initializer(
+            &[XCTEST_DRIVER_INTERFACE, XCTEST_PROXY_IDE_TO_DRIVER],
+            move |mut channel, _identifier| {
+                let xctest_config = xctest_config.clone();
+                Box::pin(async move {
+                    install_early_xctest_handler(&mut channel, xctest_config).await;
+                    Ok(())
+                })
+            },
+        )
+        .await;
+}
+
+#[cfg(feature = "xctest")]
+async fn initialize_testmanager_sessions(
+    ctrl_proxy: &mut TestManagerProxy<Box<dyn ReadWrite>>,
+    main_proxy: &mut TestManagerProxy<Box<dyn ReadWrite>>,
+    xctest_config: &XCTestConfiguration,
+) -> Result<(), IdeviceError> {
+    ctrl_proxy
+        .install_bootstrap_handler(xctest_config.clone())
+        .await;
+    main_proxy
+        .install_bootstrap_handler(xctest_config.clone())
+        .await;
+    Ok(())
+}
+
+#[cfg(feature = "xctest")]
+async fn initialize_testmanager_daemon_sessions(
+    ctrl_proxy: &mut TestManagerProxy<Box<dyn ReadWrite>>,
+    main_proxy: &mut TestManagerProxy<Box<dyn ReadWrite>>,
+    ios_major_version: u8,
+    session_id: &uuid::Uuid,
+    xctest_config: &XCTestConfiguration,
+) -> Result<(), IdeviceError> {
+    ctrl_proxy.init_ctrl_session(ios_major_version).await?;
+    main_proxy
+        .init_session(ios_major_version, session_id, xctest_config)
+        .await?;
+
+    Ok(())
+}
+
+#[cfg(feature = "xctest")]
+async fn launch_and_authorize_test_runner(
+    ctrl_proxy: &mut TestManagerProxy<Box<dyn ReadWrite>>,
+    process_control: &mut XCTestProcessControlChannel<'_, Box<dyn ReadWrite>>,
+    ios_major_version: u8,
+    runner_bundle_id: &str,
+    launch_args: Vec<String>,
+    launch_env: Dictionary,
+    launch_options: Dictionary,
+) -> Result<u64, IdeviceError> {
+    let pid = process_control
+        .launch_suspended_process(
+        runner_bundle_id,
+        launch_args,
+        launch_env,
+        launch_options,
+    )
+    .await?;
+    xctest_debug!("Launched test runner pid={}", pid);
+
+    if ios_major_version < 17 {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
+
+    ctrl_proxy.authorize_test(ios_major_version, pid).await?;
+    Ok(pid)
+}
+
+#[cfg(feature = "xctest")]
+async fn start_test_plan_session(
+    main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
+    _main_proxy: &mut TestManagerProxy<Box<dyn ReadWrite>>,
+) -> Result<OwnedChannel<Box<dyn ReadWrite>>, IdeviceError> {
+    let mut driver_proxy = DriverProxy::wait(main_client, 30.0).await?;
+    driver_proxy.start_executing_test_plan().await?;
+    driver_proxy.channel.clear_incoming_handler().await;
+    Ok(driver_proxy.channel)
+}
+
+#[cfg(feature = "xctest")]
 pub(super) async fn wait_for_driver_channel(
     main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
     timeout_secs: f64,
-) -> Result<Channel<'_, Box<dyn ReadWrite>>, IdeviceError> {
-    let deadline = std::time::Instant::now()
-        + std::time::Duration::from_secs_f64(timeout_secs);
-
-    loop {
-        let remaining = deadline
-            .checked_duration_since(std::time::Instant::now())
-            .ok_or(IdeviceError::TestRunnerTimeout)?;
-
-        let msg = tokio::time::timeout(remaining, main_client.read_message(0))
-            .await
-            .map_err(|_| IdeviceError::TestRunnerTimeout)??;
-
-        let method = match &msg.data {
-            Some(Value::String(s)) => s.clone(),
-            _ => continue,
-        };
-
-        if method == "_requestChannelWithCode:identifier:" {
-            let aux = msg
-                .aux
-                .as_ref()
-                .map(|a| a.values.as_slice())
-                .unwrap_or(&[]);
-            if aux.len() < 2 {
-                warn!("_requestChannelWithCode: not enough aux values");
-                continue;
-            }
-            let channel_code = match &aux[0] {
-                AuxValue::U32(v) => *v,
-                _ => {
-                    warn!("_requestChannelWithCode: aux[0] is not U32");
-                    continue;
-                }
-            };
-            let identifier = match aux_as_string(&aux[1]) {
-                Ok(s) => s,
-                Err(_) => {
-                    warn!("_requestChannelWithCode: failed to decode identifier");
-                    continue;
-                }
-            };
-
-            if identifier == "XCTestDriverInterface" {
-                debug!("Runner opened XCTestDriverInterface on channel {}", channel_code);
-                // Reply with empty acknowledgement
-                main_client
-                    .send_raw_reply(0, msg.message_header.identifier(), &[])
-                    .await?;
-                // Register the channel and return a handle
-                return Ok(main_client.accept_channel(channel_code));
-            }
-            // Non-driver channel request — acknowledge and continue
-            main_client
-                .send_raw_reply(0, msg.message_header.identifier(), &[])
-                .await?;
-        }
-    }
+) -> Result<OwnedChannel<Box<dyn ReadWrite>>, IdeviceError> {
+    const DRIVER_SERVICE_IDENTIFIERS: &[&str] = &[XCTEST_DRIVER_INTERFACE];
+    wait_for_xctest_service_channel(
+        main_client,
+        DRIVER_SERVICE_IDENTIFIERS,
+        DRIVER_SERVICE_IDENTIFIERS,
+        timeout_secs,
+    )
+    .await
 }
 
 /// Signals the test runner to begin executing the test plan.
 #[cfg(feature = "xctest")]
-pub(super) async fn start_executing_test_plan<R: ReadWrite>(
-    driver_channel: &mut Channel<'_, R>,
+pub(super) async fn start_executing_test_plan<R: ReadWrite + 'static>(
+    driver_channel: &mut OwnedChannel<R>,
 ) -> Result<(), IdeviceError> {
     let version_bytes = AuxValue::archived_value(Value::Integer((XCODE_VERSION as i64).into()));
-    driver_channel
-        .call_method(
+    let reply = driver_channel
+        .call_method_with_reply(
             Some(IDE_START_EXECUTING_TEST_PLAN),
             Some(vec![version_bytes]),
-            false,
         )
         .await?;
+    xctest_debug!("start_executing_test_plan reply: {:?}", reply.data);
     Ok(())
 }
 
@@ -789,6 +1202,7 @@ fn aux_as_u64(aux: &AuxValue) -> Result<u64, IdeviceError> {
     match aux {
         AuxValue::U32(v) => return Ok(*v as u64),
         AuxValue::I64(v) => return Ok(*v as u64),
+        AuxValue::U64(v) => return Ok(*v),
         _ => {}
     }
     match decode_aux_archive(aux)? {
@@ -806,6 +1220,8 @@ fn aux_as_f64(aux: &AuxValue) -> Result<f64, IdeviceError> {
     match aux {
         AuxValue::U32(v) => Ok(*v as f64),
         AuxValue::I64(v) => Ok(*v as f64),
+        AuxValue::U64(v) => Ok(*v as f64),
+        AuxValue::F64(v) => Ok(*v),
         _ => Err(IdeviceError::UnexpectedResponse),
     }
 }
@@ -860,10 +1276,11 @@ pub(super) async fn dispatch_xct_message<L: XCUITestListener>(
             if let Some(raw) = aux.first() {
                 if let Ok(decoded) = decode_aux_archive(raw) {
                     if let Some(caps) = XCTCapabilities::from_plist(&decoded) {
-                        debug!("testRunnerReadyWithCapabilities: {:?}", caps.capabilities);
+                        xctest_debug!("testRunnerReadyWithCapabilities: {:?}", caps.capabilities);
                     }
                 }
             }
+            listener.test_runner_ready_with_capabilities().await?;
             let reply = xctest_config.to_archive_bytes()?;
             return Ok(Some(reply));
         }
@@ -1159,6 +1576,20 @@ pub(super) async fn dispatch_xct_message<L: XCUITestListener>(
         m if m == XCT_DID_BEGIN_UI_INIT => {
             listener.did_begin_initializing_for_ui_testing().await?;
         }
+        m if m == XCT_DID_FORM_PLAN => {
+            let data = aux
+                .first()
+                .and_then(|value| aux_as_string(value).ok())
+                .unwrap_or_default();
+            listener.did_form_plan(&data).await?;
+        }
+        m if m == XCT_GET_PROGRESS_FOR_LAUNCH => {
+            let token = aux
+                .first()
+                .and_then(|value| aux_as_string(value).ok())
+                .unwrap_or_default();
+            listener.get_progress_for_launch(&token).await?;
+        }
         m if m == XCT_UI_INIT_DID_FAIL => {
             let desc = aux.first().map(aux_as_string).transpose()?.unwrap_or_default();
             listener
@@ -1178,12 +1609,74 @@ pub(super) async fn dispatch_xct_message<L: XCUITestListener>(
     Ok(None)
 }
 
+#[cfg(feature = "xctest")]
+struct EarlyXCTestBootstrapListener;
+
+#[cfg(feature = "xctest")]
+impl XCUITestListener for EarlyXCTestBootstrapListener {}
+
+#[cfg(feature = "xctest")]
+fn should_handle_in_bootstrap(method: &str) -> bool {
+    matches!(
+        method,
+        XCT_EXCHANGE_PROTOCOL_VERSION
+            | XCT_RUNNER_READY_WITH_CAPABILITIES
+            | XCT_BUNDLE_READY
+            | XCT_BUNDLE_READY_WITH_PROTOCOL_VERSION
+            | XCT_LOG_MESSAGE
+            | XCT_LOG_DEBUG_MESSAGE
+    )
+}
+
+#[cfg(feature = "xctest")]
+async fn install_early_xctest_handler<R: ReadWrite + 'static>(
+    main_channel: &mut OwnedChannel<R>,
+    xctest_config: XCTestConfiguration,
+) {
+    main_channel
+        .set_incoming_handler(move |msg: Message| {
+            let xctest_config = xctest_config.clone();
+            Box::pin(async move {
+                let method = match msg.data.as_ref() {
+                    Some(Value::String(method)) => method.as_str(),
+                    _ => return Ok(IncomingHandlerOutcome::Unhandled),
+                };
+
+                if !should_handle_in_bootstrap(method) {
+                    return Ok(IncomingHandlerOutcome::Unhandled);
+                }
+
+                let aux = msg
+                    .aux
+                    .as_ref()
+                    .map(|a| a.values.as_slice())
+                    .unwrap_or(&[]);
+
+                let mut listener = EarlyXCTestBootstrapListener;
+                let mut done = false;
+                let reply = dispatch_xct_message(
+                    method,
+                    aux,
+                    &xctest_config,
+                    &mut listener,
+                    &mut done,
+                )
+                .await?;
+
+                Ok(match reply {
+                    Some(reply_bytes) => IncomingHandlerOutcome::Reply(reply_bytes),
+                    None => IncomingHandlerOutcome::HandledNoReply,
+                })
+            })
+        })
+        .await;
+}
+
 /// Main event loop: reads incoming `_XCT_*` messages and dispatches them until
 /// `_XCT_didFinishExecutingTestPlan` or `timeout` elapses.
 #[cfg(feature = "xctest")]
 pub(super) async fn run_dispatch_loop<L: XCUITestListener>(
-    main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
-    channel_code: u32,
+    driver_channel: &mut OwnedChannel<Box<dyn ReadWrite>>,
     xctest_config: &XCTestConfiguration,
     listener: &mut L,
     timeout: Option<std::time::Duration>,
@@ -1204,12 +1697,8 @@ pub(super) async fn run_dispatch_loop<L: XCUITestListener>(
         };
 
         let msg = match remaining {
-            Some(r) => {
-                tokio::time::timeout(r, main_client.read_message(channel_code))
-                    .await
-                    .map_err(|_| IdeviceError::XcTestTimeout(timeout.unwrap().as_secs_f64()))??
-            }
-            None => main_client.read_message(channel_code).await?,
+            Some(r) => driver_channel.read_message_timeout(r).await?,
+            None => driver_channel.read_message().await?,
         };
 
         let method = match &msg.data {
@@ -1228,18 +1717,50 @@ pub(super) async fn run_dispatch_loop<L: XCUITestListener>(
             .unwrap_or(&[]);
 
         let msg_id = msg.message_header.identifier();
+        let conversation_index = msg.message_header.conversation_index();
         let reply_opt =
             dispatch_xct_message(&method, aux, xctest_config, listener, &mut done).await?;
 
-        if let Some(reply_bytes) = reply_opt {
-            main_client
-                .send_raw_reply(channel_code, msg_id, &reply_bytes)
-                .await?;
+        if msg.message_header.expects_reply() {
+            match reply_opt {
+                Some(reply_bytes) => {
+                    driver_channel
+                        .send_raw_reply_for(msg_id, conversation_index, &reply_bytes)
+                        .await?;
+                }
+                None => {
+                    driver_channel
+                        .send_raw_reply_for(msg_id, conversation_index, &[])
+                        .await?;
+                }
+            }
         }
 
         if done {
             return Ok(());
         }
+    }
+}
+
+/// Mirrors pymobiledevice3's "test done vs disconnect" race.
+///
+/// Once the test plan has started, the runner may terminate its own DTX
+/// connection before `_XCT_didFinishExecutingTestPlan` is delivered. In that
+/// case we surface `TestRunnerDisconnected` rather than hanging until timeout.
+#[cfg(feature = "xctest")]
+async fn run_dispatch_loop_until_done_or_disconnect<L: XCUITestListener>(
+    main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
+    mut driver_channel: OwnedChannel<Box<dyn ReadWrite>>,
+    xctest_config: &XCTestConfiguration,
+    listener: &mut L,
+    timeout: Option<std::time::Duration>,
+) -> Result<(), IdeviceError> {
+    let disconnected = main_client.disconnect_waiter();
+    tokio::pin!(disconnected);
+
+    tokio::select! {
+        result = run_dispatch_loop(&mut driver_channel, xctest_config, listener, timeout) => result,
+        _ = &mut disconnected => Err(IdeviceError::TestRunnerDisconnected),
     }
 }
 
@@ -1262,6 +1783,93 @@ pub(super) async fn run_dispatch_loop<L: XCUITestListener>(
 pub struct XCUITestService {
     provider: Arc<dyn IdeviceProvider>,
 }
+
+#[cfg(all(feature = "xctest", feature = "wda"))]
+#[derive(Debug)]
+pub struct WdaRunHandle {
+    task: JoinHandle<Result<(), IdeviceError>>,
+    ports: WdaPorts,
+    status: JsonValue,
+}
+
+#[cfg(all(feature = "xctest", feature = "wda"))]
+#[derive(Debug)]
+pub struct WdaBridgedRunHandle {
+    runner: WdaRunHandle,
+    bridge: WdaBridge,
+}
+
+#[cfg(all(feature = "xctest", feature = "wda"))]
+impl WdaRunHandle {
+    /// Returns the device-side ports used by the running WDA instance.
+    pub fn ports(&self) -> WdaPorts {
+        self.ports
+    }
+
+    /// Returns the `/status` payload observed when WDA became reachable.
+    pub fn status(&self) -> &JsonValue {
+        &self.status
+    }
+
+    /// Waits for the underlying xctrunner task to complete.
+    pub async fn wait(self) -> Result<(), IdeviceError> {
+        match self.task.await {
+            Ok(result) => result,
+            Err(error) => Err(IdeviceError::UnknownErrorType(format!(
+                "wda runner task join failed: {error}"
+            ))),
+        }
+    }
+
+    /// Aborts the underlying xctrunner task.
+    pub fn abort(&self) {
+        self.task.abort();
+    }
+}
+
+#[cfg(all(feature = "xctest", feature = "wda"))]
+impl WdaBridgedRunHandle {
+    /// Returns the localhost bridge for this WDA runner.
+    pub fn bridge(&self) -> &WdaBridge {
+        &self.bridge
+    }
+
+    /// Returns the device-side ports used by the running WDA instance.
+    pub fn ports(&self) -> WdaPorts {
+        self.runner.ports()
+    }
+
+    /// Returns the `/status` payload observed when WDA became reachable.
+    pub fn status(&self) -> &JsonValue {
+        self.runner.status()
+    }
+
+    /// Returns the localhost WDA HTTP URL.
+    pub fn wda_url(&self) -> &str {
+        self.bridge.wda_url()
+    }
+
+    /// Returns the localhost MJPEG URL.
+    pub fn mjpeg_url(&self) -> &str {
+        self.bridge.mjpeg_url()
+    }
+
+    /// Waits for the underlying xctrunner task to complete.
+    pub async fn wait(self) -> Result<(), IdeviceError> {
+        self.runner.wait().await
+    }
+
+    /// Aborts the underlying xctrunner task.
+    pub fn abort(&self) {
+        self.runner.abort();
+    }
+}
+
+#[cfg(all(feature = "xctest", feature = "wda"))]
+struct NoopXCTestListener;
+
+#[cfg(all(feature = "xctest", feature = "wda"))]
+impl XCUITestListener for NoopXCTestListener {}
 
 #[cfg(feature = "xctest")]
 impl std::fmt::Debug for XCUITestService {
@@ -1321,70 +1929,57 @@ impl XCUITestService {
 
         // 4. Connect to testmanagerd (ctrl + main) and DVT
         let mut conns = connect_testmanagerd(&*self.provider, ios_major_version).await?;
+        let mut ctrl_proxy = TestManagerProxy::open(&mut conns.ctrl, ios_major_version).await?;
+        let mut main_proxy = TestManagerProxy::open(&mut conns.main, ios_major_version).await?;
+        let mut process_control = XCTestProcessControlChannel::open(&mut conns.dvt).await?;
 
-        // 5. Open channels, init sessions, launch runner (all in scoped borrows)
         let config_name = cfg.config_name().to_owned();
-        let main_channel_code: u32;
-        let pid: u64;
-        {
-            let mut ctrl_ch = conns
-                .ctrl
-                .make_channel(XCTEST_MANAGER_IDE_INTERFACE)
-                .await?;
+        initialize_testmanager_sessions(
+            &mut ctrl_proxy,
+            &mut main_proxy,
+            &xctest_config,
+        )
+        .await?;
+        register_early_driver_channel_handler(&mut conns.main, &xctest_config).await;
+        initialize_testmanager_daemon_sessions(
+            &mut ctrl_proxy,
+            &mut main_proxy,
+            ios_major_version,
+            &session_id,
+            &xctest_config,
+        )
+        .await?;
 
-            main_channel_code = {
-                let mut main_ch = conns
-                    .main
-                    .make_channel(XCTEST_MANAGER_IDE_INTERFACE)
-                    .await?;
-                init_ctrl_session(&mut ctrl_ch, ios_major_version).await?;
-                init_session(
-                    &mut main_ch,
-                    ios_major_version,
-                    &session_id,
-                    &xctest_config,
-                )
-                .await?;
-                main_ch.channel_code()
-            };
+        // Build launch environment from the config
+        let (launch_args, launch_env, launch_options) = build_launch_env(
+            ios_major_version,
+            &session_id,
+            &cfg.runner_app_path,
+            &cfg.runner_app_container,
+            &config_name,
+            &xctest_path,
+            cfg.runner_env.as_ref(),
+            cfg.runner_args.as_deref(),
+        );
 
-            // Build launch environment from the config
-            let (launch_args, launch_env, launch_options) = build_launch_env(
-                ios_major_version,
-                &session_id,
-                &cfg.runner_app_path,
-                &cfg.runner_app_container,
-                &config_name,
-                &xctest_path,
-                cfg.runner_env.as_ref(),
-                cfg.runner_args.as_deref(),
-            );
+        let _pid = launch_and_authorize_test_runner(
+            &mut ctrl_proxy,
+            &mut process_control,
+            ios_major_version,
+            &cfg.runner_bundle_id,
+            launch_args,
+            launch_env,
+            launch_options,
+        )
+        .await?;
 
-            pid = {
-                let mut pc = ProcessControlClient::new(&mut conns.dvt).await?;
-                launch_runner(&mut pc, &cfg.runner_bundle_id, launch_args, launch_env, launch_options).await?
-            };
-            debug!("Launched test runner pid={}", pid);
+        // 6-7. Wait for driver channel and start the test plan.
+        let driver_channel = start_test_plan_session(&mut conns.main, &mut main_proxy).await?;
 
-            if ios_major_version < 17 {
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            }
-
-            authorize_test(&mut ctrl_ch, ios_major_version, pid).await?;
-            // ctrl_ch and its borrow of conns.ctrl released here
-        }
-
-        // 6. Wait for driver channel
-        let mut driver_ch = wait_for_driver_channel(&mut conns.main, 30.0).await?;
-
-        // 7. Start test plan
-        start_executing_test_plan(&mut driver_ch).await?;
-        drop(driver_ch);
-
-        // 8. Dispatch loop
-        run_dispatch_loop(
+        // 8. Dispatch loop, raced against the runner connection dropping.
+        run_dispatch_loop_until_done_or_disconnect(
             &mut conns.main,
-            main_channel_code,
+            driver_channel,
             &xctest_config,
             listener,
             timeout,
@@ -1392,5 +1987,75 @@ impl XCUITestService {
         .await?;
 
         Ok(())
+    }
+
+    /// Starts an XCTest runner intended to host WebDriverAgent and waits
+    /// until WDA responds on its device-side HTTP port.
+    ///
+    /// The xctrunner orchestration continues on a background task. This is
+    /// designed for automation use cases where callers want a durable WDA
+    /// session instead of waiting for the XCTest plan to terminate.
+    #[cfg(feature = "wda")]
+    pub async fn run_until_wda_ready(
+        &self,
+        cfg: TestConfig,
+        readiness_timeout: std::time::Duration,
+    ) -> Result<WdaRunHandle, IdeviceError> {
+        let provider = self.provider.clone();
+        let runner_cfg = cfg.clone();
+        let task = tokio::spawn(async move {
+            let service = XCUITestService::new(provider);
+            let mut listener = NoopXCTestListener;
+            service.run(runner_cfg, &mut listener, None).await
+        });
+
+        let wda = WdaClient::new(&*self.provider);
+        let deadline = std::time::Instant::now() + readiness_timeout;
+        let poll_interval = std::time::Duration::from_millis(100);
+
+        let status = loop {
+            if task.is_finished() {
+                let result = match task.await {
+                    Ok(result) => result,
+                    Err(error) => {
+                        return Err(IdeviceError::UnknownErrorType(format!(
+                            "wda runner task join failed: {error}"
+                        )));
+                    }
+                };
+                result?;
+                return Err(IdeviceError::UnexpectedResponse);
+            }
+
+            match wda.status().await {
+                Ok(status) => break status,
+                Err(_) if std::time::Instant::now() < deadline => {
+                    tokio::time::sleep(poll_interval).await;
+                }
+                Err(error) => {
+                    task.abort();
+                    return Err(error);
+                }
+            }
+        };
+
+        Ok(WdaRunHandle {
+            task,
+            ports: wda.ports(),
+            status,
+        })
+    }
+
+    /// Starts an XCTest-hosted WDA runner, waits until WDA is reachable, and
+    /// exposes localhost URLs suitable for GUI/web consumers.
+    #[cfg(feature = "wda")]
+    pub async fn run_until_wda_ready_with_bridge(
+        &self,
+        cfg: TestConfig,
+        readiness_timeout: std::time::Duration,
+    ) -> Result<WdaBridgedRunHandle, IdeviceError> {
+        let runner = self.run_until_wda_ready(cfg, readiness_timeout).await?;
+        let bridge = WdaBridge::start_with_ports(self.provider.clone(), runner.ports()).await?;
+        Ok(WdaBridgedRunHandle { runner, bridge })
     }
 }

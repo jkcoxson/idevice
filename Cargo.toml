@@ -8,3 +8,6 @@ opt-level = "z"
 codegen-units = 1
 lto = true
 panic = "abort"
+
+[patch.crates-io]
+jktcp = { path = "..\\vendor\\jktcp-0.1.0" }

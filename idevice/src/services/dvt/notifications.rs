@@ -29,7 +29,7 @@ pub struct NotificationsClient<'a, R: ReadWrite> {
     pub channel: Channel<'a, R>,
 }
 
-impl<'a, R: ReadWrite> NotificationsClient<'a, R> {
+impl<'a, R: ReadWrite + 'static> NotificationsClient<'a, R> {
     /// Opens a new channel on the remote server client for app notifications
     ///
     /// # Arguments
