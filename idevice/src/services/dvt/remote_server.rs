@@ -68,13 +68,7 @@ use tokio::{
     sync::{Mutex, Notify, oneshot},
     task::JoinHandle,
 };
-use tracing::warn;
-
-macro_rules! xctest_debug {
-    ($($arg:tt)*) => {
-        tracing::debug!($($arg)*);
-    };
-}
+use tracing::{debug, warn};
 
 #[cfg(feature = "xctest")]
 fn remote_timeout_error(timeout: std::time::Duration) -> IdeviceError {
@@ -749,7 +743,7 @@ impl<R: ReadWrite> RemoteServerClient<R> {
         let data: Option<plist::Value> = data.map(Into::into);
 
         let message = Message::new(mheader, pheader, aux, data);
-        xctest_debug!("[{}] Sending message: {message:#?}", self.label);
+        debug!("[{}] Sending message: {message:#?}", self.label);
 
         let receiver = if correlate_reply {
             let (sender, receiver) = oneshot::channel();
@@ -763,10 +757,11 @@ impl<R: ReadWrite> RemoteServerClient<R> {
             None
         };
 
-        if let Err(error) = self.shared.write_all(&message.serialize()).await {
+        let write_result = self.shared.write_all(&message.serialize()).await;
+        if write_result.is_err() {
             self.shared.pending_replies.lock().await.remove(&identifier);
-            return Err(error);
         }
+        write_result?;
 
         Ok(receiver)
     }
@@ -882,7 +877,7 @@ impl<R: ReadWrite> RemoteServerClient<R> {
             loop {
                 match Message::from_reader(&mut reader).await {
                     Ok(msg) => {
-                        xctest_debug!("[{}] Read message: {msg:#?}", label);
+                        debug!("[{}] Read message: {msg:#?}", label);
                         if Self::dispatch_pending_reply(&shared, msg.clone()).await {
                             continue;
                         }
@@ -933,7 +928,7 @@ impl<R: ReadWrite> RemoteServerClient<R> {
 
                 match Self::decode_capabilities(first) {
                     Ok(capabilities) => {
-                        xctest_debug!("Received remote capabilities: {:?}", capabilities);
+                        debug!("Received remote capabilities: {:?}", capabilities);
                         *shared.supported_identifiers.lock().await =
                             CapabilityHandshakeState::Received(capabilities);
                         shared.handshake_notify.notify_waiters();
@@ -962,7 +957,7 @@ impl<R: ReadWrite> RemoteServerClient<R> {
 
                 match Self::decode_channel_code(first) {
                     Ok(channel_code) => {
-                        xctest_debug!("Remote cancelled channel {}", channel_code);
+                        debug!("Remote cancelled channel {}", channel_code);
                         Self::remove_channel(shared, channel_code).await;
                     }
                     Err(e) => warn!("Failed to decode incoming channel cancellation: {}", e),
@@ -1003,7 +998,7 @@ impl<R: ReadWrite> RemoteServerClient<R> {
             }
         };
 
-        xctest_debug!(
+        debug!(
             "Remote requested channel {} with identifier '{}'",
             code,
             identifier
@@ -1073,7 +1068,7 @@ impl<R: ReadWrite> RemoteServerClient<R> {
 
     async fn enqueue_message(shared: &Arc<RemoteServerShared<WriteHalf<R>>>, msg: Message) {
         if msg.message_header.conversation_index() == 0 {
-            xctest_debug!(
+            debug!(
                 "Queueing unhandled incoming message on channel {} expects_reply={} data={:?}",
                 msg.message_header.channel,
                 msg.message_header.expects_reply(),
@@ -1395,11 +1390,9 @@ impl<R: ReadWrite + 'static> OwnedChannel<R> {
         let aux = args.map(Aux::from_values);
         let data: Option<plist::Value> = method.map(Into::into);
         let message = Message::new(mheader, pheader, aux, data);
-        xctest_debug!("[{}] Sending message: {message:#?}", self.label);
+        debug!("[{}] Sending message: {message:#?}", self.label);
 
-        if let Err(error) = self.shared.write_all(&message.serialize()).await {
-            return Err(error);
-        }
+        self.shared.write_all(&message.serialize()).await?;
 
         Ok(())
     }
@@ -1416,7 +1409,7 @@ impl<R: ReadWrite + 'static> OwnedChannel<R> {
         let aux = args.map(Aux::from_values);
         let data: Option<plist::Value> = method.map(Into::into);
         let message = Message::new(mheader, pheader, aux, data);
-        xctest_debug!("[{}] Sending message: {message:#?}", self.label);
+        debug!("[{}] Sending message: {message:#?}", self.label);
 
         let (sender, receiver) = oneshot::channel::<Message>();
         self.shared
@@ -1425,10 +1418,11 @@ impl<R: ReadWrite + 'static> OwnedChannel<R> {
             .await
             .insert(identifier, sender);
 
-        if let Err(error) = self.shared.write_all(&message.serialize()).await {
+        let write_result = self.shared.write_all(&message.serialize()).await;
+        if write_result.is_err() {
             self.shared.pending_replies.lock().await.remove(&identifier);
-            return Err(error);
         }
+        write_result?;
 
         match receiver.await {
             Ok(message) => Ok(message),

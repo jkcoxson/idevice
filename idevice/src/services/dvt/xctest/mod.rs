@@ -31,13 +31,7 @@ use std::sync::Arc;
 use plist::{Dictionary, Value};
 #[cfg(feature = "wda")]
 use serde_json::Value as JsonValue;
-use tracing::warn;
-
-macro_rules! xctest_debug {
-    ($($arg:tt)*) => {
-        tracing::debug!($($arg)*);
-    };
-}
+use tracing::{debug, warn};
 
 #[cfg(feature = "wda")]
 use crate::services::wda::{WdaClient, WdaPorts};
@@ -533,7 +527,7 @@ async fn connect_testmanagerd_rsd(
 
         let mut last_err = None;
         for attempt in 1..=MAX_ATTEMPTS {
-            xctest_debug!(
+            debug!(
                 "[{}] opening service '{}' on remote port {} (attempt {}/{})",
                 label,
                 service_name,
@@ -542,7 +536,7 @@ async fn connect_testmanagerd_rsd(
                 MAX_ATTEMPTS
             );
             let stream = handle.connect_to_service_port(port).await?;
-            xctest_debug!("[{}] service port {} connected", label, port);
+            debug!("[{}] service port {} connected", label, port);
             let mut client = RemoteServerClient::with_label(stream, label);
             match client
                 .perform_handshake(
@@ -552,7 +546,7 @@ async fn connect_testmanagerd_rsd(
                 .await
             {
                 Ok(remote_capabilities) => {
-                    xctest_debug!(
+                    debug!(
                         "[{}] RSD DTX capabilities exchange complete: {:?}",
                         label,
                         remote_capabilities
@@ -583,10 +577,10 @@ async fn connect_testmanagerd_rsd(
         let adapter = proxy.create_software_tunnel()?;
         let mut handle = adapter.to_async_handle();
 
-        xctest_debug!("[rsd] connecting to shared RSD port {}", rsd_port);
+        debug!("[rsd] connecting to shared RSD port {}", rsd_port);
         let rsd_stream = handle.connect_to_service_port(rsd_port).await?;
         let handshake = RsdHandshake::new(rsd_stream).await?;
-        xctest_debug!(
+        debug!(
             "[rsd] shared RSD handshake OK — {} services advertised",
             handshake.services.len()
         );
@@ -636,7 +630,7 @@ async fn connect_testmanagerd_rsd(
 
     let mut last_err = None;
     for attempt in 1..=RSD_STACK_ATTEMPTS {
-        xctest_debug!(
+        debug!(
             "[rsd] establishing CoreDeviceProxy/software tunnel stack (attempt {}/{})",
             attempt,
             RSD_STACK_ATTEMPTS
@@ -715,7 +709,7 @@ pub(super) async fn init_ctrl_session<R: ReadWrite + 'static>(
                 Some(vec![caps_bytes]),
             )
             .await?;
-        xctest_debug!("init_ctrl_session (iOS 17+) reply: {:?}", reply.data);
+        debug!("init_ctrl_session (iOS 17+) reply: {:?}", reply.data);
     } else if ios_major_version >= 11 {
         let version_bytes = AuxValue::archived_value(Value::Integer((XCODE_VERSION as i64).into()));
         let reply = ctrl_channel
@@ -724,7 +718,7 @@ pub(super) async fn init_ctrl_session<R: ReadWrite + 'static>(
                 Some(vec![version_bytes]),
             )
             .await?;
-        xctest_debug!("init_ctrl_session (iOS 11-16) reply: {:?}", reply.data);
+        debug!("init_ctrl_session (iOS 11-16) reply: {:?}", reply.data);
     }
     // iOS < 11: nothing to do
     Ok(())
@@ -749,7 +743,7 @@ pub(super) async fn init_session<R: ReadWrite + 'static>(
                 Some(vec![uuid_bytes, caps_bytes]),
             )
             .await?;
-        xctest_debug!("init_session (iOS 17+) reply: {:?}", reply.data);
+        debug!("init_session (iOS 17+) reply: {:?}", reply.data);
     } else if ios_major_version >= 11 {
         let client_bytes = AuxValue::archived_value(Value::String("not-very-important".into()));
         let path_bytes = AuxValue::archived_value(Value::String(
@@ -762,7 +756,7 @@ pub(super) async fn init_session<R: ReadWrite + 'static>(
                 Some(vec![uuid_bytes, client_bytes, path_bytes, version_bytes]),
             )
             .await?;
-        xctest_debug!("init_session (iOS 11-16) reply: {:?}", reply.data);
+        debug!("init_session (iOS 11-16) reply: {:?}", reply.data);
     } else {
         return Ok(());
     }
@@ -797,7 +791,6 @@ pub(super) async fn launch_runner<R: ReadWrite + 'static>(
 // ---------------------------------------------------------------------------
 
 /// Authorises the test session for the launched runner process.
-#[cfg(feature = "xctest")]
 pub(super) async fn authorize_test<R: ReadWrite + 'static>(
     ctrl_channel: &mut OwnedChannel<R>,
     ios_major_version: u8,
@@ -811,14 +804,14 @@ pub(super) async fn authorize_test<R: ReadWrite + 'static>(
             .await?;
         match reply.data {
             Some(Value::Boolean(true)) | None => {
-                xctest_debug!("authorize_test: OK");
+                debug!("authorize_test: OK");
             }
             Some(Value::Boolean(false)) => {
                 warn!("authorize_test returned false");
                 return Err(IdeviceError::UnexpectedResponse);
             }
             other => {
-                xctest_debug!("authorize_test reply: {:?}", other);
+                debug!("authorize_test reply: {:?}", other);
             }
         }
     } else if ios_major_version >= 10 {
@@ -829,7 +822,7 @@ pub(super) async fn authorize_test<R: ReadWrite + 'static>(
                 Some(vec![pid_bytes, version_bytes]),
             )
             .await?;
-        xctest_debug!("authorize_test (<12, >=10) reply: {:?}", reply.data);
+        debug!("authorize_test (<12, >=10) reply: {:?}", reply.data);
     } else {
         let reply = ctrl_channel
             .call_method_with_reply(
@@ -837,7 +830,7 @@ pub(super) async fn authorize_test<R: ReadWrite + 'static>(
                 Some(vec![pid_bytes]),
             )
             .await?;
-        xctest_debug!("authorize_test (<10) reply: {:?}", reply.data);
+        debug!("authorize_test (<10) reply: {:?}", reply.data);
     }
     Ok(())
 }
@@ -1046,7 +1039,7 @@ async fn launch_and_authorize_test_runner(
     let pid = process_control
         .launch_suspended_process(runner_bundle_id, launch_args, launch_env, launch_options)
         .await?;
-    xctest_debug!("Launched test runner pid={}", pid);
+    debug!("Launched test runner pid={}", pid);
 
     if ios_major_version < 17 {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
@@ -1091,7 +1084,7 @@ pub(super) async fn start_executing_test_plan<R: ReadWrite + 'static>(
             Some(vec![version_bytes]),
         )
         .await?;
-    xctest_debug!("start_executing_test_plan reply: {:?}", reply.data);
+    debug!("start_executing_test_plan reply: {:?}", reply.data);
     Ok(())
 }
 
@@ -1197,7 +1190,7 @@ pub(super) async fn dispatch_xct_message<L: XCUITestListener>(
                 && let Ok(decoded) = decode_aux_archive(raw)
                 && let Some(caps) = XCTCapabilities::from_plist(&decoded)
             {
-                xctest_debug!("testRunnerReadyWithCapabilities: {:?}", caps.capabilities);
+                debug!("testRunnerReadyWithCapabilities: {:?}", caps.capabilities);
             }
             listener.test_runner_ready_with_capabilities().await?;
             let reply = xctest_config.to_archive_bytes()?;
