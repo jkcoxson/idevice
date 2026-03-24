@@ -59,6 +59,9 @@ use std::{
     },
 };
 
+#[cfg(not(feature = "xctest"))]
+use std::io;
+
 use plist::Dictionary;
 use tokio::{
     io::{AsyncWriteExt, ReadHalf, WriteHalf},
@@ -87,6 +90,19 @@ macro_rules! xctest_debug {
             tracing::debug!($($arg)*);
         }
     };
+}
+
+#[cfg(feature = "xctest")]
+fn remote_timeout_error(timeout: std::time::Duration) -> IdeviceError {
+    IdeviceError::XcTestTimeout(timeout.as_secs_f64())
+}
+
+#[cfg(not(feature = "xctest"))]
+fn remote_timeout_error(timeout: std::time::Duration) -> IdeviceError {
+    IdeviceError::Socket(io::Error::new(
+        io::ErrorKind::TimedOut,
+        format!("remote server operation timed out after {:.1}s", timeout.as_secs_f64()),
+    ))
 }
 
 use crate::{
@@ -336,7 +352,7 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
             }
         })
         .await
-        .map_err(|_| IdeviceError::XcTestTimeout(timeout.as_secs_f64()))?
+        .map_err(|_| remote_timeout_error(timeout))?
     }
 
     /// Performs the DTX capability handshake, mirroring pymobiledevice3's
@@ -394,7 +410,7 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
             }
         })
         .await
-        .map_err(|_| IdeviceError::XcTestTimeout(timeout.as_secs_f64()))?
+        .map_err(|_| remote_timeout_error(timeout))?
     }
 
     /// Creates a new channel with the given identifier
@@ -593,7 +609,7 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
         match timeout {
             Some(timeout) => tokio::time::timeout(timeout, wait_future)
                 .await
-                .map_err(|_| IdeviceError::XcTestTimeout(timeout.as_secs_f64()))?,
+                .map_err(|_| remote_timeout_error(timeout))?,
             None => wait_future.await,
         }
     }
@@ -639,7 +655,7 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
         match timeout {
             Some(timeout) => tokio::time::timeout(timeout, wait_future)
                 .await
-                .map_err(|_| IdeviceError::XcTestTimeout(timeout.as_secs_f64()))?,
+                .map_err(|_| remote_timeout_error(timeout))?,
             None => wait_future.await,
         }
     }
@@ -1343,7 +1359,7 @@ impl<R: ReadWrite + 'static> OwnedChannel<R> {
     ) -> Result<Message, IdeviceError> {
         tokio::time::timeout(timeout, self.read_message())
             .await
-            .map_err(|_| IdeviceError::XcTestTimeout(timeout.as_secs_f64()))?
+            .map_err(|_| remote_timeout_error(timeout))?
     }
 
     /// Calls a method on this channel.

@@ -91,9 +91,7 @@ pub unsafe extern "C" fn remote_server_connect_rsd(
 
     match res {
         Ok(d) => {
-            let boxed = Box::new(RemoteServerHandle(RemoteServerClient::new(Box::new(
-                d.into_inner(),
-            ))));
+            let boxed = Box::new(RemoteServerHandle(d));
             unsafe { *handle = Box::into_raw(boxed) };
             null_mut()
         }
