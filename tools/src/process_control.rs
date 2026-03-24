@@ -19,6 +19,7 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
     let mut arguments = arguments.clone();
 
     let bundle_id: String = arguments.next_argument().expect("No bundle ID specified");
+    let mut root_hello_read = false;
 
     let mut rs_client_opt: Option<
         idevice::dvt::remote_server::RemoteServerClient<Box<dyn idevice::ReadWrite>>,
@@ -39,6 +40,7 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
         .await
         .expect("no connect");
         rs_client.read_message(0).await.expect("no read??");
+        root_hello_read = true;
         rs_client_opt = Some(rs_client);
     }
 
@@ -76,8 +78,11 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
             .expect("failed to connect to Instruments Remote Server over Lockdown (iOS16-). Ensure Developer Disk Image is mounted.")
     };
 
-    // Note: On both transports, protocol requires reading the initial message on root channel (0)
-    rs_client.read_message(0).await.expect("no read??");
+    if !root_hello_read {
+        // Legacy remoteserver transport still expects the initial hello to be
+        // consumed explicitly on the root channel.
+        rs_client.read_message(0).await.expect("no read??");
+    }
     let mut pc_client = idevice::dvt::process_control::ProcessControlClient::new(&mut rs_client)
         .await
         .unwrap();

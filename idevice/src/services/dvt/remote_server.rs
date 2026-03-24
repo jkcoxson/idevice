@@ -54,7 +54,7 @@ use std::{
     future::Future,
     pin::Pin,
     sync::{
-        Arc, OnceLock,
+        Arc,
         atomic::{AtomicBool, AtomicU32, Ordering},
     },
 };
@@ -70,25 +70,9 @@ use tokio::{
 };
 use tracing::warn;
 
-fn xctest_debug_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        matches!(
-            std::env::var("IDEVICE_XCTEST_DEBUG")
-                .ok()
-                .as_deref()
-                .map(str::to_ascii_lowercase)
-                .as_deref(),
-            Some("1" | "true" | "yes" | "on" | "debug")
-        )
-    })
-}
-
 macro_rules! xctest_debug {
     ($($arg:tt)*) => {
-        if xctest_debug_enabled() {
-            tracing::debug!($($arg)*);
-        }
+        tracing::debug!($($arg)*);
     };
 }
 
@@ -953,6 +937,10 @@ impl<R: ReadWrite> RemoteServerClient<R> {
                         *shared.supported_identifiers.lock().await =
                             CapabilityHandshakeState::Received(capabilities);
                         shared.handshake_notify.notify_waiters();
+                        // Preserve pre-XCTest behavior: older DVT callers expect the
+                        // initial capabilities hello to remain observable via
+                        // `read_message(0)` on the root channel.
+                        Self::enqueue_message(shared, msg.clone()).await;
                     }
                     Err(e) => warn!("Failed to decode remote capabilities: {}", e),
                 }

@@ -114,7 +114,7 @@ fn extract_ns_error_message(value: &Value) -> Option<String> {
     }
 }
 
-impl<'a, R: ReadWrite + 'static> ProcessControlClient<'a, R> {
+impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
     /// Creates a new ProcessControlClient
     ///
     /// # Arguments

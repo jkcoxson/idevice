@@ -157,6 +157,16 @@ impl TestConfig {
         runner_bundle_id: &str,
         target_bundle_id: Option<&str>,
     ) -> Result<Self, IdeviceError> {
+        let app_string = |dict: &Dictionary, key: &str| -> Result<String, IdeviceError> {
+            dict.get(key)
+                .and_then(|value| value.as_string())
+                .map(ToOwned::to_owned)
+                .ok_or_else(|| {
+                    warn!("Missing or non-string key '{}' in app info dict", key);
+                    IdeviceError::UnexpectedResponse
+                })
+        };
+
         // Build the bundle ID list to look up in one request
         let mut ids = vec![runner_bundle_id.to_owned()];
         if let Some(t) = target_bundle_id {
@@ -176,9 +186,9 @@ impl TestConfig {
             IdeviceError::UnexpectedResponse
         })?;
 
-        let runner_app_path = extract_str(runner_dict, "Path")?;
-        let runner_app_container = extract_str(runner_dict, "Container")?;
-        let runner_bundle_executable = extract_str(runner_dict, "CFBundleExecutable")?;
+        let runner_app_path = app_string(runner_dict, "Path")?;
+        let runner_app_container = app_string(runner_dict, "Container")?;
+        let runner_bundle_executable = app_string(runner_dict, "CFBundleExecutable")?;
 
         if !runner_bundle_executable.ends_with("-Runner") {
             warn!(
@@ -198,7 +208,7 @@ impl TestConfig {
                 warn!("Target info is not a dictionary");
                 IdeviceError::UnexpectedResponse
             })?;
-            let path = extract_str(target_dict, "Path")?;
+            let path = app_string(target_dict, "Path")?;
             (Some(t.to_owned()), Some(path))
         } else {
             (None, None)
@@ -337,11 +347,13 @@ pub(crate) fn build_launch_env(
 
     // iOS >= 11
     if ios_major_version >= 11 {
-        env.insert(
-            "DYLD_INSERT_LIBRARIES".into(),
-            Value::String("/Developer/usr/lib/libMainThreadChecker.dylib".to_owned()),
-        );
-        env.insert("OS_ACTIVITY_DT_MODE".into(), Value::String("YES".to_owned()));
+        let ios11_env = crate::plist!(dict {
+            "DYLD_INSERT_LIBRARIES": "/Developer/usr/lib/libMainThreadChecker.dylib",
+            "OS_ACTIVITY_DT_MODE": "YES",
+        });
+        for (key, value) in ios11_env {
+            env.insert(key, value);
+        }
     }
 
     // iOS >= 17 — extend DYLD paths and clear config path (sent via capabilities)
@@ -358,23 +370,19 @@ pub(crate) fn build_launch_env(
             .to_owned();
         // Prepend '$' so dyld expands the existing path value at launch time,
         // matching Python: f"${app_env['DYLD_FRAMEWORK_PATH']}/System/..."
-        env.insert(
-            "DYLD_FRAMEWORK_PATH".into(),
-            Value::String(format!(
+        let ios17_env = crate::plist!(dict {
+            "DYLD_FRAMEWORK_PATH": format!(
                 "${}/System/Developer/Library/Frameworks:",
                 existing_fw
-            )),
-        );
-        env.insert(
-            "DYLD_LIBRARY_PATH".into(),
-            Value::String(format!("${}:/System/Developer/usr/lib", existing_lib)),
-        );
-        // Config path is sent as return value of _XCT_testRunnerReadyWithCapabilities_
-        env.insert(
-            "XCTestConfigurationFilePath".into(),
-            Value::String(String::new()),
-        );
-        env.insert("XCTestManagerVariant".into(), Value::String("DDI".to_owned()));
+            ),
+            "DYLD_LIBRARY_PATH": format!("${}:/System/Developer/usr/lib", existing_lib),
+            // Config path is sent as return value of _XCT_testRunnerReadyWithCapabilities_
+            "XCTestConfigurationFilePath": "",
+            "XCTestManagerVariant": "DDI",
+        });
+        for (key, value) in ios17_env {
+            env.insert(key, value);
+        }
     }
 
     // Merge caller-provided overrides
@@ -396,29 +404,18 @@ pub(crate) fn build_launch_env(
     }
 
     // Launch options
-    let mut opts = crate::plist!(dict {
-        "StartSuspendedKey": false
-    });
-    if ios_major_version >= 12 {
-        opts.insert("ActivateSuspended".into(), Value::Boolean(true));
-    }
+    let opts = if ios_major_version >= 12 {
+        crate::plist!(dict {
+            "StartSuspendedKey": false,
+            "ActivateSuspended": true,
+        })
+    } else {
+        crate::plist!(dict {
+            "StartSuspendedKey": false,
+        })
+    };
 
     (args, env, opts)
-}
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-/// Extracts a `String` from `dict[key]`, returning `UnexpectedResponse` on failure.
-fn extract_str(dict: &Dictionary, key: &str) -> Result<String, IdeviceError> {
-    dict.get(key)
-        .and_then(|v| v.as_string())
-        .map(|s| s.to_owned())
-        .ok_or_else(|| {
-            warn!("Missing or non-string key '{}' in app info dict", key);
-            IdeviceError::UnexpectedResponse
-        })
 }
 
 // ---------------------------------------------------------------------------
@@ -435,7 +432,9 @@ pub(super) struct TestManagerConnections {
     pub ctrl: RemoteServerClient<Box<dyn ReadWrite>>,
     pub main: RemoteServerClient<Box<dyn ReadWrite>>,
     pub dvt: RemoteServerClient<Box<dyn ReadWrite>>,
-    _rsd_handles: Vec<crate::tcp::handle::AdapterHandle>,
+    /// Keeps the software tunnel/adapter handles alive for the duration of the session.
+    #[allow(dead_code)]
+    rsd_handles: Vec<crate::tcp::handle::AdapterHandle>,
 }
 
 /// Connects to a lockdown-based DTX service, trying each name in order.
@@ -631,7 +630,7 @@ async fn connect_testmanagerd_rsd(
             ctrl,
             main,
             dvt,
-            _rsd_handles: vec![handle],
+            rsd_handles: vec![handle],
         })
     }
 
@@ -692,7 +691,7 @@ pub(super) async fn connect_testmanagerd(
         ctrl,
         main,
         dvt,
-        _rsd_handles: Vec::new(),
+        rsd_handles: Vec::new(),
     })
 }
 
