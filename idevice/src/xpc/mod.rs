@@ -3,7 +3,6 @@
 use async_stream::try_stream;
 use futures::Stream;
 use http2::Setting;
-use std::collections::HashMap;
 use tracing::debug;
 
 use crate::{IdeviceError, ReadWrite};
@@ -21,20 +20,15 @@ const REPLY_CHANNEL: u32 = 3;
 #[derive(Debug)]
 pub struct RemoteXpcClient<R: ReadWrite> {
     h2_client: http2::Http2Client<R>,
-    next_message_id: HashMap<u32, u64>,
-    previous_frame_data: Vec<u8>,
+    root_id: u64,
+    // reply_id: u64 // maybe not used?
 }
 
 impl<R: ReadWrite> RemoteXpcClient<R> {
-    fn should_set_data_flag(msg: &XPCObject) -> bool {
-        !matches!(msg, XPCObject::Dictionary(dict) if dict.is_empty())
-    }
-
     pub async fn new(socket: R) -> Result<Self, IdeviceError> {
         Ok(Self {
             h2_client: http2::Http2Client::new(socket).await?,
-            next_message_id: HashMap::from([(ROOT_CHANNEL, 0), (REPLY_CHANNEL, 0)]),
-            previous_frame_data: Vec::new(),
+            root_id: 1,
         })
     }
 
@@ -62,7 +56,6 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
         debug!("Sending weird flags");
         self.send_root(XPCMessage::new(Some(XPCFlag::Custom(0x201)), None, None))
             .await?;
-        self.next_message_id.insert(ROOT_CHANNEL, 1);
 
         debug!("Opening reply stream");
         self.h2_client.open_stream(REPLY_CHANNEL).await?;
@@ -72,8 +65,6 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
             None,
         ))
         .await?;
-        self.next_message_id.insert(REPLY_CHANNEL, 1);
-        self.h2_client.await_peer_settings().await?;
 
         Ok(())
     }
@@ -86,53 +77,17 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
         self.recv_from_channel(ROOT_CHANNEL).await
     }
 
-    pub async fn receive_response(&mut self) -> Result<plist::Value, IdeviceError> {
-        loop {
-            let (stream_id, bytes) = self.h2_client.next_data_frame().await?;
-            self.previous_frame_data.extend(bytes);
-
-            let xpc_message = match XPCMessage::decode(&self.previous_frame_data) {
-                Ok(m) => {
-                    self.previous_frame_data.clear();
-                    m
-                }
-                Err(IdeviceError::PacketSizeMismatch) => continue,
-                Err(e) => return Err(e),
-            };
-
-            if let Some(message_id) = xpc_message.message_id {
-                self.next_message_id.insert(stream_id, message_id + 1);
-            }
-
-            match xpc_message.message {
-                Some(msg) => {
-                    if let Some(d) = msg.as_dictionary()
-                        && d.is_empty()
-                    {
-                        continue;
-                    }
-                    return Ok(msg.to_plist());
-                }
-                None => continue,
-            }
-        }
-    }
-
     async fn recv_from_channel(&mut self, channel: u32) -> Result<plist::Value, IdeviceError> {
         let mut msg_buffer = Vec::new();
         loop {
             msg_buffer.extend(self.h2_client.read(channel).await?);
-            let xpc_message = match XPCMessage::decode(&msg_buffer) {
+            let msg = match XPCMessage::decode(&msg_buffer) {
                 Ok(m) => m,
                 Err(IdeviceError::PacketSizeMismatch) => continue,
                 Err(e) => break Err(e),
             };
 
-            if let Some(message_id) = xpc_message.message_id {
-                self.next_message_id.insert(channel, message_id + 1);
-            }
-
-            match xpc_message.message {
+            match msg.message {
                 Some(msg) => {
                     if let Some(d) = msg.as_dictionary()
                         && d.is_empty()
@@ -158,40 +113,28 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
     ) -> Result<(), IdeviceError> {
         let msg: XPCObject = msg.into();
 
-        let mut flag = XPCFlag::AlwaysSet;
-        if Self::should_set_data_flag(&msg) {
-            flag |= XPCFlag::DataFlag;
-        }
+        let mut flag = XPCFlag::DataFlag | XPCFlag::AlwaysSet;
         if expect_reply {
             flag |= XPCFlag::WantingReply;
         }
 
-        let message_id = *self.next_message_id.get(&ROOT_CHANNEL).unwrap_or(&0);
-        let msg = XPCMessage::new(Some(flag), Some(msg), Some(message_id));
+        let msg = XPCMessage::new(Some(flag), Some(msg), Some(self.root_id));
         self.send_root(msg).await?;
 
         Ok(())
     }
 
     async fn send_root(&mut self, msg: XPCMessage) -> Result<(), IdeviceError> {
-        let message_id = *self.next_message_id.get(&ROOT_CHANNEL).unwrap_or(&0);
-        let bytes = msg.encode(message_id)?;
-        debug!(
-            "Sending root wrapper (msg_id={}): {:02X?}",
-            message_id, &bytes
-        );
-        self.h2_client.send(bytes, ROOT_CHANNEL).await?;
+        self.h2_client
+            .send(msg.encode(self.root_id)?, ROOT_CHANNEL)
+            .await?;
         Ok(())
     }
 
     async fn send_reply(&mut self, msg: XPCMessage) -> Result<(), IdeviceError> {
-        let message_id = *self.next_message_id.get(&REPLY_CHANNEL).unwrap_or(&0);
-        let bytes = msg.encode(message_id)?;
-        debug!(
-            "Sending reply wrapper (msg_id={}): {:02X?}",
-            message_id, &bytes
-        );
-        self.h2_client.send(bytes, REPLY_CHANNEL).await?;
+        self.h2_client
+            .send(msg.encode(self.root_id)?, REPLY_CHANNEL)
+            .await?;
         Ok(())
     }
 

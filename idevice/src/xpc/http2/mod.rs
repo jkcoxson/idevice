@@ -76,41 +76,6 @@ impl<R: ReadWrite> Http2Client<R> {
         Ok(())
     }
 
-    pub async fn await_peer_settings(&mut self) -> Result<(), IdeviceError> {
-        loop {
-            let frame = frame::Frame::next(&mut self.inner).await?;
-            match frame {
-                frame::Frame::Settings(settings_frame) => {
-                    debug!(
-                        "Got peer settings frame on stream {} with flags {}",
-                        settings_frame.stream_id, settings_frame.flags
-                    );
-                    if settings_frame.flags != 1 {
-                        let ack = frame::SettingsFrame {
-                            settings: Vec::new(),
-                            stream_id: 0,
-                            flags: 1,
-                        }
-                        .serialize();
-                        self.inner.write_all(&ack).await?;
-                        self.inner.flush().await?;
-                    }
-                    return Ok(());
-                }
-                frame::Frame::Data(data_frame) => {
-                    debug!(
-                        "Caching early data frame for {} with {} bytes while waiting for settings",
-                        data_frame.stream_id,
-                        data_frame.payload.len()
-                    );
-                    let cache = self.cache.entry(data_frame.stream_id).or_default();
-                    cache.push_back(data_frame.payload);
-                }
-                _ => {}
-            }
-        }
-    }
-
     pub async fn read(&mut self, stream_id: u32) -> Result<Vec<u8>, IdeviceError> {
         // See if we already have a cached message from another read
         match self.cache.get_mut(&stream_id) {
@@ -134,7 +99,7 @@ impl<R: ReadWrite> Http2Client<R> {
                         // ack that
                         let frame = frame::SettingsFrame {
                             settings: Vec::new(),
-                            stream_id: 0,
+                            stream_id: settings_frame.stream_id,
                             flags: 1,
                         }
                         .serialize();
@@ -177,42 +142,6 @@ impl<R: ReadWrite> Http2Client<R> {
                 _ => {
                     // do nothing, we shouldn't receive these frames
                 }
-            }
-        }
-    }
-
-    pub async fn next_data_frame(&mut self) -> Result<(u32, Vec<u8>), IdeviceError> {
-        loop {
-            let frame = frame::Frame::next(&mut self.inner).await?;
-            match frame {
-                frame::Frame::Settings(settings_frame) => {
-                    if settings_frame.flags != 1 {
-                        let ack = frame::SettingsFrame {
-                            settings: Vec::new(),
-                            stream_id: 0,
-                            flags: 1,
-                        }
-                        .serialize();
-                        self.inner.write_all(&ack).await?;
-                        self.inner.flush().await?;
-                    }
-                }
-                frame::Frame::Data(data_frame) => {
-                    debug!(
-                        "Got data frame for {} with {} bytes",
-                        data_frame.stream_id,
-                        data_frame.payload.len()
-                    );
-
-                    if data_frame.stream_id % 2 == 0 {
-                        self.window_update(data_frame.payload.len() as u32, 0)
-                            .await?;
-                        self.window_update(data_frame.payload.len() as u32, data_frame.stream_id)
-                            .await?;
-                    }
-                    return Ok((data_frame.stream_id, data_frame.payload));
-                }
-                _ => {}
             }
         }
     }
