@@ -154,8 +154,8 @@ async fn run(
     let mut arguments = arguments.clone();
     let use_bridge = arguments.has_flag("bridge");
     let show_wda_debug_logs = arguments.has_flag("wda-debug-log");
-    let wda_timeout = parse_wda_timeout(&arguments)?;
-    let runner_bundle_id = required_argument(&mut arguments, "runner bundle ID")?;
+    let wda_timeout = arguments.get_flag::<f64>("wda-timeout").unwrap_or(30.0);
+    let runner_bundle_id: String = arguments.next_argument().expect("runner bundle ID is required");
     let target_bundle_id: Option<String> = arguments.next_argument();
 
     println!("[XCTest] Runner:  {}", runner_bundle_id);
@@ -209,29 +209,6 @@ async fn run(
 
     Ok(())
 }
-
-fn parse_wda_timeout(arguments: &CollectedArguments) -> Result<f64, IdeviceError> {
-    let Some(value) = arguments.get_flag::<String>("wda-timeout") else {
-        return Ok(30.0);
-    };
-
-    value.parse::<f64>().map_err(|_| {
-        IdeviceError::UnknownErrorType(format!(
-            "invalid --wda-timeout value '{}', expected a number of seconds",
-            value
-        ))
-    })
-}
-
-fn required_argument(
-    arguments: &mut CollectedArguments,
-    name: &str,
-) -> Result<String, IdeviceError> {
-    arguments
-        .next_argument()
-        .ok_or_else(|| IdeviceError::UnknownErrorType(format!("missing required argument: {name}")))
-}
-
 async fn build_test_config(
     provider: &dyn IdeviceProvider,
     runner_bundle_id: &str,

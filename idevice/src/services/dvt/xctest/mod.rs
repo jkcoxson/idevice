@@ -26,32 +26,16 @@ pub mod dtx_services;
 pub mod listener;
 pub mod types;
 
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use plist::{Dictionary, Value};
 #[cfg(feature = "wda")]
 use serde_json::Value as JsonValue;
 use tracing::warn;
 
-fn xctest_debug_enabled() -> bool {
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        matches!(
-            std::env::var("IDEVICE_XCTEST_DEBUG")
-                .ok()
-                .as_deref()
-                .map(str::to_ascii_lowercase)
-                .as_deref(),
-            Some("1" | "true" | "yes" | "on" | "debug")
-        )
-    })
-}
-
 macro_rules! xctest_debug {
     ($($arg:tt)*) => {
-        if xctest_debug_enabled() {
-            tracing::debug!($($arg)*);
-        }
+        tracing::debug!($($arg)*);
     };
 }
 
@@ -119,7 +103,6 @@ use tokio::task::JoinHandle;
 /// # Ok(())
 /// # }
 /// ```
-#[cfg(feature = "xctest")]
 #[derive(Debug, Clone)]
 pub struct TestConfig {
     // --- Runner app info (from installation_proxy) -------------------------
@@ -156,7 +139,6 @@ pub struct TestConfig {
     pub runner_args: Option<Vec<String>>,
 }
 
-#[cfg(feature = "xctest")]
 impl TestConfig {
     /// Constructs a `TestConfig` by querying `InstallationProxyClient` for
     /// the runner (and optionally target) application information.
@@ -324,7 +306,6 @@ impl TestConfig {
 ///
 /// # Returns
 /// `(launch_args, launch_env, launch_options)` as `(Vec<String>, Dictionary, Dictionary)`
-#[cfg(feature = "xctest")]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn build_launch_env(
     ios_major_version: u8,
@@ -339,47 +320,28 @@ pub(crate) fn build_launch_env(
     let session_upper = session_id.to_string().to_uppercase();
 
     // Base environment
-    let mut env = Dictionary::new();
-    let s = |v: &str| Value::String(v.to_owned());
-
-    env.insert("CA_ASSERT_MAIN_THREAD_TRANSACTIONS".into(), s("0"));
-    env.insert("CA_DEBUG_TRANSACTIONS".into(), s("0"));
-    env.insert(
-        "DYLD_FRAMEWORK_PATH".into(),
-        s(&format!("{}/Frameworks:", runner_app_path)),
-    );
-    env.insert(
-        "DYLD_LIBRARY_PATH".into(),
-        s(&format!("{}/Frameworks", runner_app_path)),
-    );
-    env.insert("MTC_CRASH_ON_REPORT".into(), s("1"));
-    env.insert("NSUnbufferedIO".into(), s("YES"));
-    env.insert("SQLITE_ENABLE_THREAD_ASSERTIONS".into(), s("1"));
-    env.insert("WDA_PRODUCT_BUNDLE_IDENTIFIER".into(), s(""));
-    env.insert(
-        "XCTestBundlePath".into(),
-        s(&format!(
-            "{}/PlugIns/{}.xctest",
-            runner_app_path, target_name
-        )),
-    );
-    env.insert(
-        "XCTestConfigurationFilePath".into(),
-        s(&format!("{}{}", runner_app_container, xctest_config_path)),
-    );
-    env.insert(
-        "XCODE_DBG_XPC_EXCLUSIONS".into(),
-        s("com.apple.dt.xctestSymbolicator"),
-    );
-    env.insert("XCTestSessionIdentifier".into(), s(&session_upper));
+    let mut env = crate::plist!(dict {
+        "CA_ASSERT_MAIN_THREAD_TRANSACTIONS": "0",
+        "CA_DEBUG_TRANSACTIONS": "0",
+        "DYLD_FRAMEWORK_PATH": format!("{}/Frameworks:", runner_app_path),
+        "DYLD_LIBRARY_PATH": format!("{}/Frameworks", runner_app_path),
+        "MTC_CRASH_ON_REPORT": "1",
+        "NSUnbufferedIO": "YES",
+        "SQLITE_ENABLE_THREAD_ASSERTIONS": "1",
+        "WDA_PRODUCT_BUNDLE_IDENTIFIER": "",
+        "XCTestBundlePath": format!("{}/PlugIns/{}.xctest", runner_app_path, target_name),
+        "XCTestConfigurationFilePath": format!("{}{}", runner_app_container, xctest_config_path),
+        "XCODE_DBG_XPC_EXCLUSIONS": "com.apple.dt.xctestSymbolicator",
+        "XCTestSessionIdentifier": session_upper.clone(),
+    });
 
     // iOS >= 11
     if ios_major_version >= 11 {
         env.insert(
             "DYLD_INSERT_LIBRARIES".into(),
-            s("/Developer/usr/lib/libMainThreadChecker.dylib"),
+            Value::String("/Developer/usr/lib/libMainThreadChecker.dylib".to_owned()),
         );
-        env.insert("OS_ACTIVITY_DT_MODE".into(), s("YES"));
+        env.insert("OS_ACTIVITY_DT_MODE".into(), Value::String("YES".to_owned()));
     }
 
     // iOS >= 17 — extend DYLD paths and clear config path (sent via capabilities)
@@ -398,18 +360,21 @@ pub(crate) fn build_launch_env(
         // matching Python: f"${app_env['DYLD_FRAMEWORK_PATH']}/System/..."
         env.insert(
             "DYLD_FRAMEWORK_PATH".into(),
-            s(&format!(
+            Value::String(format!(
                 "${}/System/Developer/Library/Frameworks:",
                 existing_fw
             )),
         );
         env.insert(
             "DYLD_LIBRARY_PATH".into(),
-            s(&format!("${}:/System/Developer/usr/lib", existing_lib)),
+            Value::String(format!("${}:/System/Developer/usr/lib", existing_lib)),
         );
         // Config path is sent as return value of _XCT_testRunnerReadyWithCapabilities_
-        env.insert("XCTestConfigurationFilePath".into(), s(""));
-        env.insert("XCTestManagerVariant".into(), s("DDI"));
+        env.insert(
+            "XCTestConfigurationFilePath".into(),
+            Value::String(String::new()),
+        );
+        env.insert("XCTestManagerVariant".into(), Value::String("DDI".to_owned()));
     }
 
     // Merge caller-provided overrides
@@ -431,8 +396,9 @@ pub(crate) fn build_launch_env(
     }
 
     // Launch options
-    let mut opts = Dictionary::new();
-    opts.insert("StartSuspendedKey".into(), Value::Boolean(false));
+    let mut opts = crate::plist!(dict {
+        "StartSuspendedKey": false
+    });
     if ios_major_version >= 12 {
         opts.insert("ActivateSuspended".into(), Value::Boolean(true));
     }
@@ -465,7 +431,6 @@ fn extract_str(dict: &Dictionary, key: &str) -> Result<String, IdeviceError> {
 /// - `ctrl`  — testmanagerd control channel connection
 /// - `main`  — testmanagerd main channel connection
 /// - `dvt`   — DVT instruments connection (for `ProcessControl`)
-#[cfg(feature = "xctest")]
 pub(super) struct TestManagerConnections {
     pub ctrl: RemoteServerClient<Box<dyn ReadWrite>>,
     pub main: RemoteServerClient<Box<dyn ReadWrite>>,
@@ -476,7 +441,6 @@ pub(super) struct TestManagerConnections {
 /// Connects to a lockdown-based DTX service, trying each name in order.
 ///
 /// Returns the first successful `RemoteServerClient`.
-#[cfg(feature = "xctest")]
 async fn connect_dtx_service(
     provider: &dyn IdeviceProvider,
     service_names: &[&str],
@@ -523,7 +487,6 @@ async fn connect_dtx_service(
 /// Opens a software TCP tunnel through CoreDeviceProxy, does the RSD handshake
 /// to discover service ports, then connects to testmanagerd (×2) and
 /// `dtservicehub` on their advertised ports.
-#[cfg(feature = "xctest")]
 async fn connect_testmanagerd_rsd(
     provider: &dyn IdeviceProvider,
 ) -> Result<TestManagerConnections, IdeviceError> {
@@ -705,7 +668,6 @@ async fn connect_testmanagerd_rsd(
 /// # Arguments
 /// * `provider` - Device connection provider
 /// * `ios_major_version` - iOS major version (used to select service names)
-#[cfg(feature = "xctest")]
 pub(super) async fn connect_testmanagerd(
     provider: &dyn IdeviceProvider,
     ios_major_version: u8,
@@ -741,7 +703,6 @@ pub(super) async fn connect_testmanagerd(
 /// Initialises the control session on the ctrl DTX channel.
 ///
 /// Sends the appropriate IDE-initiation method based on `ios_major_version`.
-#[cfg(feature = "xctest")]
 pub(super) async fn init_ctrl_session<R: ReadWrite + 'static>(
     ctrl_channel: &mut OwnedChannel<R>,
     ios_major_version: u8,
@@ -771,7 +732,6 @@ pub(super) async fn init_ctrl_session<R: ReadWrite + 'static>(
 }
 
 /// Initialises the main test session on the main DTX channel.
-#[cfg(feature = "xctest")]
 pub(super) async fn init_session<R: ReadWrite + 'static>(
     main_channel: &mut OwnedChannel<R>,
     ios_major_version: u8,
@@ -819,7 +779,6 @@ pub(super) async fn init_session<R: ReadWrite + 'static>(
 ///
 /// # Returns
 /// PID of the launched process.
-#[cfg(feature = "xctest")]
 pub(super) async fn launch_runner<R: ReadWrite + 'static>(
     process_control: &mut ProcessControlClient<'_, R>,
     bundle_id: &str,
@@ -884,12 +843,10 @@ pub(super) async fn authorize_test<R: ReadWrite + 'static>(
     Ok(())
 }
 
-#[cfg(feature = "xctest")]
 struct TestManagerProxy<R: ReadWrite> {
     channel: OwnedChannel<R>,
 }
 
-#[cfg(feature = "xctest")]
 impl<R: ReadWrite + 'static> TestManagerProxy<R> {
     async fn open(
         client: &mut RemoteServerClient<R>,
@@ -945,12 +902,10 @@ impl<R: ReadWrite + 'static> TestManagerProxy<R> {
     }
 }
 
-#[cfg(feature = "xctest")]
 struct DriverProxy {
     channel: OwnedChannel<Box<dyn ReadWrite>>,
 }
 
-#[cfg(feature = "xctest")]
 impl DriverProxy {
     async fn wait(
         client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
@@ -966,12 +921,10 @@ impl DriverProxy {
     }
 }
 
-#[cfg(feature = "xctest")]
 struct XCTestProcessControlChannel<'a, R: ReadWrite> {
     service: ProcessControlClient<'a, R>,
 }
 
-#[cfg(feature = "xctest")]
 impl<'a, R: ReadWrite + 'static> XCTestProcessControlChannel<'a, R> {
     async fn open(client: &'a mut RemoteServerClient<R>) -> Result<Self, IdeviceError> {
         Ok(Self {
@@ -1003,12 +956,10 @@ impl<'a, R: ReadWrite + 'static> XCTestProcessControlChannel<'a, R> {
 /// channel 0.  This function reads root-channel messages until that request arrives,
 /// replies with an empty acknowledgement, registers the channel, and returns a
 /// `Channel` handle to it.
-#[cfg(feature = "xctest")]
 fn testmanager_uses_proxy(ios_major_version: u8) -> bool {
     ios_major_version >= 17
 }
 
-#[cfg(feature = "xctest")]
 async fn wait_for_xctest_service_channel(
     main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
     plain_identifiers: &[&str],
@@ -1036,7 +987,6 @@ async fn wait_for_xctest_service_channel(
     Ok(main_client.accept_owned_channel(code))
 }
 
-#[cfg(feature = "xctest")]
 async fn register_early_driver_channel_handler(
     main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
     xctest_config: &XCTestConfiguration,
@@ -1056,7 +1006,6 @@ async fn register_early_driver_channel_handler(
         .await;
 }
 
-#[cfg(feature = "xctest")]
 async fn initialize_testmanager_sessions(
     ctrl_proxy: &mut TestManagerProxy<Box<dyn ReadWrite>>,
     main_proxy: &mut TestManagerProxy<Box<dyn ReadWrite>>,
@@ -1071,7 +1020,6 @@ async fn initialize_testmanager_sessions(
     Ok(())
 }
 
-#[cfg(feature = "xctest")]
 async fn initialize_testmanager_daemon_sessions(
     ctrl_proxy: &mut TestManagerProxy<Box<dyn ReadWrite>>,
     main_proxy: &mut TestManagerProxy<Box<dyn ReadWrite>>,
@@ -1087,7 +1035,6 @@ async fn initialize_testmanager_daemon_sessions(
     Ok(())
 }
 
-#[cfg(feature = "xctest")]
 async fn launch_and_authorize_test_runner(
     ctrl_proxy: &mut TestManagerProxy<Box<dyn ReadWrite>>,
     process_control: &mut XCTestProcessControlChannel<'_, Box<dyn ReadWrite>>,
@@ -1110,7 +1057,6 @@ async fn launch_and_authorize_test_runner(
     Ok(pid)
 }
 
-#[cfg(feature = "xctest")]
 async fn start_test_plan_session(
     main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
     _main_proxy: &mut TestManagerProxy<Box<dyn ReadWrite>>,
@@ -1121,7 +1067,6 @@ async fn start_test_plan_session(
     Ok(driver_proxy.channel)
 }
 
-#[cfg(feature = "xctest")]
 pub(super) async fn wait_for_driver_channel(
     main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
     timeout_secs: f64,
@@ -1137,7 +1082,6 @@ pub(super) async fn wait_for_driver_channel(
 }
 
 /// Signals the test runner to begin executing the test plan.
-#[cfg(feature = "xctest")]
 pub(super) async fn start_executing_test_plan<R: ReadWrite + 'static>(
     driver_channel: &mut OwnedChannel<R>,
 ) -> Result<(), IdeviceError> {
@@ -1211,7 +1155,6 @@ fn aux_as_f64(aux: &AuxValue) -> Result<f64, IdeviceError> {
 ///
 /// Returns `Some(reply_bytes)` if the caller must send a reply (only for
 /// `_XCT_testRunnerReadyWithCapabilities_`); `None` otherwise.
-#[cfg(feature = "xctest")]
 pub(super) async fn dispatch_xct_message<L: XCUITestListener>(
     method: &str,
     aux: &[AuxValue],
@@ -1691,13 +1634,10 @@ pub(super) async fn dispatch_xct_message<L: XCUITestListener>(
     Ok(None)
 }
 
-#[cfg(feature = "xctest")]
 struct EarlyXCTestBootstrapListener;
 
-#[cfg(feature = "xctest")]
 impl XCUITestListener for EarlyXCTestBootstrapListener {}
 
-#[cfg(feature = "xctest")]
 fn should_handle_in_bootstrap(method: &str) -> bool {
     matches!(
         method,
@@ -1710,7 +1650,6 @@ fn should_handle_in_bootstrap(method: &str) -> bool {
     )
 }
 
-#[cfg(feature = "xctest")]
 async fn install_early_xctest_handler<R: ReadWrite + 'static>(
     main_channel: &mut OwnedChannel<R>,
     xctest_config: XCTestConfiguration,
@@ -1747,7 +1686,6 @@ async fn install_early_xctest_handler<R: ReadWrite + 'static>(
 
 /// Main event loop: reads incoming `_XCT_*` messages and dispatches them until
 /// `_XCT_didFinishExecutingTestPlan` or `timeout` elapses.
-#[cfg(feature = "xctest")]
 pub(super) async fn run_dispatch_loop<L: XCUITestListener>(
     driver_channel: &mut OwnedChannel<Box<dyn ReadWrite>>,
     xctest_config: &XCTestConfiguration,
@@ -1814,7 +1752,6 @@ pub(super) async fn run_dispatch_loop<L: XCUITestListener>(
 /// Once the test plan has started, the runner may terminate its own DTX
 /// connection before `_XCT_didFinishExecutingTestPlan` is delivered. In that
 /// case we surface `TestRunnerDisconnected` rather than hanging until timeout.
-#[cfg(feature = "xctest")]
 async fn run_dispatch_loop_until_done_or_disconnect<L: XCUITestListener>(
     main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
     mut driver_channel: OwnedChannel<Box<dyn ReadWrite>>,
@@ -1846,7 +1783,6 @@ async fn run_dispatch_loop_until_done_or_disconnect<L: XCUITestListener>(
 /// # Ok(())
 /// # }
 /// ```
-#[cfg(feature = "xctest")]
 pub struct XCUITestService {
     provider: Arc<dyn IdeviceProvider>,
 }
@@ -1938,7 +1874,6 @@ struct NoopXCTestListener;
 #[cfg(all(feature = "xctest", feature = "wda"))]
 impl XCUITestListener for NoopXCTestListener {}
 
-#[cfg(feature = "xctest")]
 impl std::fmt::Debug for XCUITestService {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("XCUITestService")
@@ -1947,7 +1882,6 @@ impl std::fmt::Debug for XCUITestService {
     }
 }
 
-#[cfg(feature = "xctest")]
 impl XCUITestService {
     /// Creates a new `XCUITestService` backed by the given provider.
     pub fn new(provider: Arc<dyn IdeviceProvider>) -> Self {

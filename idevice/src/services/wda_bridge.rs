@@ -117,8 +117,8 @@ impl Drop for TcpPortForward {
 #[derive(Debug)]
 pub struct WdaBridge {
     endpoints: WdaBridgeEndpoints,
-    _wda_forward: TcpPortForward,
-    _mjpeg_forward: TcpPortForward,
+    wda_forward: TcpPortForward,
+    mjpeg_forward: TcpPortForward,
 }
 
 impl WdaBridge {
@@ -158,8 +158,8 @@ impl WdaBridge {
 
         Ok(Self {
             endpoints,
-            _wda_forward: wda_forward,
-            _mjpeg_forward: mjpeg_forward,
+            wda_forward,
+            mjpeg_forward,
         })
     }
 
@@ -183,7 +183,15 @@ impl WdaBridge {
     /// Dropping the bridge aborts the underlying accept loops, so an explicit
     /// shutdown method is only a convenience wrapper over normal drop
     /// semantics.
-    pub fn shutdown(self) {}
+    pub fn shutdown(self) {
+        let WdaBridge {
+            endpoints: _,
+            wda_forward,
+            mjpeg_forward,
+        } = self;
+        drop(wda_forward);
+        drop(mjpeg_forward);
+    }
 }
 
 fn bridge_endpoints(

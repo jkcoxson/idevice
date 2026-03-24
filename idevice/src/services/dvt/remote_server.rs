@@ -281,7 +281,7 @@ impl<R: ReadWrite> std::fmt::Debug for RemoteServerClient<R> {
     }
 }
 
-impl<R: ReadWrite + 'static> RemoteServerClient<R> {
+impl<R: ReadWrite> RemoteServerClient<R> {
     /// Creates a new RemoteServerClient with the given transport
     ///
     /// # Arguments
@@ -289,12 +289,18 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
     ///
     /// # Returns
     /// A new client instance with root channel (0) initialized
-    pub fn new(idevice: R) -> Self {
+    pub fn new(idevice: R) -> Self
+    where
+        R: 'static,
+    {
         Self::with_label(idevice, "remote-server")
     }
 
     /// Creates a new client with a debug label used in tracing output.
-    pub fn with_label(idevice: R, label: impl Into<String>) -> Self {
+    pub fn with_label(idevice: R, label: impl Into<String>) -> Self
+    where
+        R: 'static,
+    {
         let (reader, writer) = tokio::io::split(idevice);
         let label: Arc<str> = label.into().into();
         let shared = Arc::new(RemoteServerShared::new(label.clone(), writer));
@@ -318,7 +324,10 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
     ///
     /// This captures the shared state by clone so callers can await it
     /// alongside operations that hold a mutable borrow of the client.
-    pub(crate) fn disconnect_waiter(&self) -> impl Future<Output = ()> + Send + 'static {
+    pub(crate) fn disconnect_waiter(&self) -> impl Future<Output = ()> + Send + 'static
+    where
+        R: 'static,
+    {
         let shared = self.shared.clone();
         async move {
             if shared.closed.load(Ordering::Relaxed) {
@@ -881,7 +890,10 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
         label: Arc<str>,
         shared: Arc<RemoteServerShared<WriteHalf<R>>>,
         mut reader: ReadHalf<R>,
-    ) -> JoinHandle<()> {
+    ) -> JoinHandle<()>
+    where
+        R: 'static,
+    {
         tokio::spawn(async move {
             loop {
                 match Message::from_reader(&mut reader).await {
@@ -1284,7 +1296,7 @@ impl<W: tokio::io::AsyncWrite + Unpin> RemoteServerShared<W> {
     }
 }
 
-impl<R: ReadWrite + 'static> Channel<'_, R> {
+impl<R: ReadWrite> Channel<'_, R> {
     /// Converts this borrowed channel handle into an owned/shared one.
     pub(crate) fn detach(&self) -> OwnedChannel<R> {
         OwnedChannel {
