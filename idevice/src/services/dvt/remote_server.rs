@@ -748,6 +748,7 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
         data: Option<impl Into<plist::Value>>,
         args: Option<Vec<AuxValue>>,
         expect_reply: bool,
+        correlate_reply: bool,
     ) -> Result<Option<oneshot::Receiver<Message>>, IdeviceError> {
         let mheader = MessageHeader::new(0, 1, identifier, 0, channel, expect_reply);
         let pheader = PayloadHeader::method_invocation();
@@ -757,7 +758,7 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
         let message = Message::new(mheader, pheader, aux, data);
         xctest_debug!("[{}] Sending message: {message:#?}", self.label);
 
-        let receiver = if expect_reply {
+        let receiver = if correlate_reply {
             let (sender, receiver) = oneshot::channel();
             self.shared
                 .pending_replies
@@ -817,7 +818,7 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
         expect_reply: bool,
     ) -> Result<(), IdeviceError> {
         let identifier = self.shared.current_message.fetch_add(1, Ordering::Relaxed) + 1;
-        self.send_method(channel, identifier, data, args, expect_reply)
+        self.send_method(channel, identifier, data, args, expect_reply, false)
             .await?;
         Ok(())
     }
@@ -831,7 +832,7 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
     ) -> Result<Message, IdeviceError> {
         let identifier = self.shared.current_message.fetch_add(1, Ordering::Relaxed) + 1;
         let receiver = self
-            .send_method(channel, identifier, data, args, true)
+            .send_method(channel, identifier, data, args, true, true)
             .await?
             .ok_or(IdeviceError::UnexpectedResponse)?;
         self.wait_for_reply(identifier, receiver).await
@@ -1396,17 +1397,7 @@ impl<R: ReadWrite + 'static> OwnedChannel<R> {
         let message = Message::new(mheader, pheader, aux, data);
         xctest_debug!("[{}] Sending message: {message:#?}", self.label);
 
-        if expect_reply {
-            let (sender, _receiver) = oneshot::channel::<Message>();
-            self.shared
-                .pending_replies
-                .lock()
-                .await
-                .insert(identifier, sender);
-        }
-
         if let Err(error) = self.shared.write_all(&message.serialize()).await {
-            self.shared.pending_replies.lock().await.remove(&identifier);
             return Err(error);
         }
 

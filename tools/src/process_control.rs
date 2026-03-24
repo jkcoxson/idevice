@@ -16,8 +16,6 @@ pub fn register() -> JkCommand {
 }
 
 pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvider>) {
-    tracing_subscriber::fmt::init();
-
     let mut arguments = arguments.clone();
 
     let bundle_id: String = arguments.next_argument().expect("No bundle ID specified");
