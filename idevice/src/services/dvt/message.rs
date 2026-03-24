@@ -260,7 +260,9 @@ impl Aux {
         match type_code {
             0x01 => {
                 let len = Self::read_u32(cursor)? as usize;
-                Ok(AuxValue::String(String::from_utf8(Self::read_exact_vec(cursor, len)?)?))
+                Ok(AuxValue::String(String::from_utf8(Self::read_exact_vec(
+                    cursor, len,
+                )?)?))
             }
             0x02 => {
                 let len = Self::read_u32(cursor)? as usize;
@@ -478,11 +480,7 @@ impl PayloadHeader {
 
     /// Serializes header to bytes
     pub fn serialize(&self) -> Vec<u8> {
-        let mut res = Vec::new();
-        res.push(self.msg_type);
-        res.push(self.flags_a);
-        res.push(self.flags_b);
-        res.push(self.reserved);
+        let mut res = vec![self.msg_type, self.flags_a, self.flags_b, self.reserved];
         res.extend_from_slice(&self.aux_length.to_le_bytes());
         res.extend_from_slice(&self.total_length.to_le_bytes());
         res.extend_from_slice(&self.flags.to_le_bytes());
@@ -526,11 +524,10 @@ impl Message {
                 identifier: u32::from_le_bytes([buf[16], buf[17], buf[18], buf[19]]),
                 conversation_index: u32::from_le_bytes([buf[20], buf[21], buf[22], buf[23]]),
                 channel: {
-                    let wire_channel =
-                        i32::from_le_bytes([buf[24], buf[25], buf[26], buf[27]]);
+                    let wire_channel = i32::from_le_bytes([buf[24], buf[25], buf[26], buf[27]]);
                     let conversation_index =
                         u32::from_le_bytes([buf[20], buf[21], buf[22], buf[23]]);
-                    if conversation_index % 2 == 0 {
+                    if conversation_index.is_multiple_of(2) {
                         -wire_channel
                     } else {
                         wire_channel
@@ -669,7 +666,7 @@ impl Message {
         let length: u32 = payload_total as u32;
         let conversation_index = incoming_conversation_index + 1;
         let expects_reply: u32 = 0;
-        let wire_channel = if conversation_index % 2 == 0 {
+        let wire_channel = if conversation_index.is_multiple_of(2) {
             channel
         } else {
             -channel

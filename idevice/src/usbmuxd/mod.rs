@@ -62,6 +62,7 @@ pub struct UsbmuxdConnection {
 }
 
 /// Address of the usbmuxd service
+#[allow(missing_copy_implementations)]
 #[derive(Clone, Debug)]
 pub enum UsbmuxdAddr {
     /// Unix domain socket path (Unix systems only)

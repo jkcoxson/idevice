@@ -101,7 +101,10 @@ fn remote_timeout_error(timeout: std::time::Duration) -> IdeviceError {
 fn remote_timeout_error(timeout: std::time::Duration) -> IdeviceError {
     IdeviceError::Socket(io::Error::new(
         io::ErrorKind::TimedOut,
-        format!("remote server operation timed out after {:.1}s", timeout.as_secs_f64()),
+        format!(
+            "remote server operation timed out after {:.1}s",
+            timeout.as_secs_f64()
+        ),
     ))
 }
 
@@ -158,7 +161,9 @@ impl<R: ReadWrite> Clone for OwnedChannel<R> {
 }
 
 type IncomingMessageHandler = Arc<
-    dyn Fn(Message)
+    dyn Fn(
+            Message,
+        )
             -> Pin<Box<dyn Future<Output = Result<IncomingHandlerOutcome, IdeviceError>> + Send>>
         + Send
         + Sync,
@@ -226,7 +231,10 @@ struct RemoteServerShared<W> {
 impl<W> std::fmt::Debug for RemoteServerShared<W> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RemoteServerShared")
-            .field("current_message", &self.current_message.load(Ordering::Relaxed))
+            .field(
+                "current_message",
+                &self.current_message.load(Ordering::Relaxed),
+            )
             .field("new_channel", &self.new_channel.load(Ordering::Relaxed))
             .field("closed", &self.closed.load(Ordering::Relaxed))
             .finish_non_exhaustive()
@@ -337,7 +345,9 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
             loop {
                 match &*self.shared.supported_identifiers.lock().await {
                     CapabilityHandshakeState::Received(dict) => return Ok(dict.clone()),
-                    CapabilityHandshakeState::Skipped => return Err(IdeviceError::UnexpectedResponse),
+                    CapabilityHandshakeState::Skipped => {
+                        return Err(IdeviceError::UnexpectedResponse);
+                    }
                     CapabilityHandshakeState::Pending => {}
                 }
 
@@ -437,7 +447,10 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
         self.ensure_channel_registered(code).await;
 
         let args = vec![
-            AuxValue::U32(code.try_into().expect("locally opened channels are positive")),
+            AuxValue::U32(
+                code.try_into()
+                    .expect("locally opened channels are positive"),
+            ),
             AuxValue::Array(
                 ns_keyed_archive::encode::encode_to_bytes(plist::Value::String(identifier))
                     .expect("Failed to encode"),
@@ -548,16 +561,15 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
             .iter()
             .map(|identifier| (*identifier).to_owned())
             .collect();
-        let initializer: IncomingChannelInitializer<WriteHalf<R>> = Arc::new(
-            move |label, shared, channel, identifier| {
+        let initializer: IncomingChannelInitializer<WriteHalf<R>> =
+            Arc::new(move |label, shared, channel, identifier| {
                 let owned = OwnedChannel {
                     label,
                     shared,
                     channel,
                 };
                 Box::pin(initializer(owned, identifier))
-            },
-        );
+            });
         self.shared
             .incoming_channel_registrations
             .lock()
@@ -588,10 +600,7 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
     ) -> Result<i32, IdeviceError> {
         let wait_future = async {
             loop {
-                if let Some(code) = self
-                    .find_registered_channel_code(identifiers, remote)
-                    .await
-                {
+                if let Some(code) = self.find_registered_channel_code(identifiers, remote).await {
                     return Ok(code);
                 }
 
@@ -635,7 +644,11 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
         let wait_future = async {
             loop {
                 if let Some(code) = self
-                    .find_registered_proxied_channel_code(identifiers, remote_service, remote_channel)
+                    .find_registered_proxied_channel_code(
+                        identifiers,
+                        remote_service,
+                        remote_channel,
+                    )
                     .await
                 {
                     return Ok(code);
@@ -885,10 +898,7 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
                         Self::enqueue_message(&shared, msg).await;
                     }
                     Err(e) => {
-                        warn!(
-                            "[{}] RemoteServer reader exiting: {} ({:?})",
-                            label, e, e
-                        );
+                        warn!("[{}] RemoteServer reader exiting: {} ({:?})", label, e, e);
                         Self::fail_pending_replies(&shared).await;
                         shared.closed.store(true, Ordering::Relaxed);
                         shared.closed_notify.notify_waiters();
@@ -994,7 +1004,8 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
 
         xctest_debug!(
             "Remote requested channel {} with identifier '{}'",
-            code, identifier
+            code,
+            identifier
         );
 
         shared.channel_metadata.lock().await.insert(
@@ -1068,7 +1079,9 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
                 msg.data
             );
         }
-        if let Some(queue) = Self::get_channel_queue_shared(shared, msg.message_header.channel).await {
+        if let Some(queue) =
+            Self::get_channel_queue_shared(shared, msg.message_header.channel).await
+        {
             let notify = &queue.notify;
             {
                 let mut messages = queue.messages.lock().await;
@@ -1207,9 +1220,15 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
 
     fn decode_channel_code(aux: &AuxValue) -> Result<i32, IdeviceError> {
         match aux {
-            AuxValue::U32(code) => i32::try_from(*code).map_err(|_| IdeviceError::UnexpectedResponse),
-            AuxValue::I64(code) => i32::try_from(*code).map_err(|_| IdeviceError::UnexpectedResponse),
-            AuxValue::U64(code) => i32::try_from(*code).map_err(|_| IdeviceError::UnexpectedResponse),
+            AuxValue::U32(code) => {
+                i32::try_from(*code).map_err(|_| IdeviceError::UnexpectedResponse)
+            }
+            AuxValue::I64(code) => {
+                i32::try_from(*code).map_err(|_| IdeviceError::UnexpectedResponse)
+            }
+            AuxValue::U64(code) => {
+                i32::try_from(*code).map_err(|_| IdeviceError::UnexpectedResponse)
+            }
             _ => Err(IdeviceError::UnexpectedResponse),
         }
     }
@@ -1321,16 +1340,16 @@ impl<R: ReadWrite + 'static> Channel<'_, R> {
             .call_method_with_reply(self.channel, method, args)
             .await
     }
-
 }
 
 impl<R: ReadWrite + 'static> OwnedChannel<R> {
     /// Reads the next queued message from this channel.
     pub async fn read_message(&mut self) -> Result<Message, IdeviceError> {
         loop {
-            let queue = RemoteServerClient::<R>::get_channel_queue_shared(&self.shared, self.channel)
-                .await
-                .ok_or(IdeviceError::UnknownChannel(self.channel))?;
+            let queue =
+                RemoteServerClient::<R>::get_channel_queue_shared(&self.shared, self.channel)
+                    .await
+                    .ok_or(IdeviceError::UnknownChannel(self.channel))?;
 
             {
                 let mut messages = queue.messages.lock().await;
@@ -1440,7 +1459,11 @@ impl<R: ReadWrite + 'static> OwnedChannel<R> {
         Fut: Future<Output = Result<IncomingHandlerOutcome, IdeviceError>> + Send + 'static,
     {
         let handler: IncomingMessageHandler = Arc::new(move |msg| Box::pin(handler(msg)));
-        self.shared.handlers.lock().await.insert(self.channel, handler);
+        self.shared
+            .handlers
+            .lock()
+            .await
+            .insert(self.channel, handler);
     }
 
     /// Removes the incoming handler for this channel.
@@ -1464,5 +1487,4 @@ impl<R: ReadWrite + 'static> OwnedChannel<R> {
             )
             .await
     }
-
 }

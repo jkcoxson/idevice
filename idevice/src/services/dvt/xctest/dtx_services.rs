@@ -88,16 +88,14 @@ pub const IDE_INITIATE_CTRL_SESSION_FOR_PID_PROTOCOL_VERSION: &str =
     "_IDE_initiateControlSessionForTestProcessID:protocolVersion:";
 
 /// iOS < 10: authorise by PID only.
-pub const IDE_INITIATE_CTRL_SESSION_FOR_PID: &str =
-    "_IDE_initiateControlSessionForTestProcessID:";
+pub const IDE_INITIATE_CTRL_SESSION_FOR_PID: &str = "_IDE_initiateControlSessionForTestProcessID:";
 
 // ---------------------------------------------------------------------------
 // Outgoing IDE → driver selectors
 // ---------------------------------------------------------------------------
 
 /// Signal the test runner to begin executing its test plan.
-pub const IDE_START_EXECUTING_TEST_PLAN: &str =
-    "_IDE_startExecutingTestPlanWithProtocolVersion:";
+pub const IDE_START_EXECUTING_TEST_PLAN: &str = "_IDE_startExecutingTestPlanWithProtocolVersion:";
 
 // ---------------------------------------------------------------------------
 // Incoming runner → IDE callbacks (_XCT_*)
@@ -110,8 +108,7 @@ pub const XCT_DID_BEGIN_TEST_PLAN: &str = "_XCT_didBeginExecutingTestPlan";
 pub const XCT_DID_FINISH_TEST_PLAN: &str = "_XCT_didFinishExecutingTestPlan";
 
 /// Runner signals readiness and negotiates capabilities (iOS 17+ DDI variant).
-pub const XCT_RUNNER_READY_WITH_CAPABILITIES: &str =
-    "_XCT_testRunnerReadyWithCapabilities:";
+pub const XCT_RUNNER_READY_WITH_CAPABILITIES: &str = "_XCT_testRunnerReadyWithCapabilities:";
 
 /// Informational log message from the runner.
 pub const XCT_LOG_MESSAGE: &str = "_XCT_logMessage:";
@@ -168,8 +165,7 @@ pub const XCT_CASE_DID_FAIL: &str =
     "_XCT_testCaseDidFailForTestClass_method_withMessage_file_line_";
 
 /// Test case stalled on the main thread (legacy).
-pub const XCT_CASE_DID_STALL: &str =
-    "_XCT_testCase_method_didStallOnMainThreadInFile_line_";
+pub const XCT_CASE_DID_STALL: &str = "_XCT_testCase_method_didStallOnMainThreadInFile_line_";
 
 /// Test case will start an activity (legacy).
 pub const XCT_CASE_WILL_START_ACTIVITY: &str = "_XCT_testCase_method_willStartActivity_";
@@ -183,8 +179,7 @@ pub const XCT_CASE_DID_FINISH_ACTIVITY: &str = "_XCT_testCase_method_didFinishAc
 pub const XCT_SUITE_DID_START_ID: &str = "_XCT_testSuiteWithIdentifier:didStartAt:";
 
 /// Test suite finished, identified by XCTTestIdentifier.
-pub const XCT_SUITE_DID_FINISH_ID: &str =
-    "_XCT_testSuiteWithIdentifier:didFinishAt:runCount:skipCount:failureCount:expectedFailureCount:uncaughtExceptionCount:testDuration:totalDuration:";
+pub const XCT_SUITE_DID_FINISH_ID: &str = "_XCT_testSuiteWithIdentifier:didFinishAt:runCount:skipCount:failureCount:expectedFailureCount:uncaughtExceptionCount:testDuration:totalDuration:";
 
 // --- case lifecycle (identifier-based, iOS 14+) ---------------------------
 
@@ -200,12 +195,10 @@ pub const XCT_CASE_DID_FINISH_ID: &str =
 pub const XCT_CASE_DID_RECORD_ISSUE: &str = "_XCT_testCaseWithIdentifier:didRecordIssue:";
 
 /// Test case will start an activity, identified by XCTTestIdentifier.
-pub const XCT_CASE_WILL_START_ACTIVITY_ID: &str =
-    "_XCT_testCaseWithIdentifier:willStartActivity:";
+pub const XCT_CASE_WILL_START_ACTIVITY_ID: &str = "_XCT_testCaseWithIdentifier:willStartActivity:";
 
 /// Test case finished an activity, identified by XCTTestIdentifier.
-pub const XCT_CASE_DID_FINISH_ACTIVITY_ID: &str =
-    "_XCT_testCaseWithIdentifier:didFinishActivity:";
+pub const XCT_CASE_DID_FINISH_ACTIVITY_ID: &str = "_XCT_testCaseWithIdentifier:didFinishActivity:";
 
 /// Performance metric measured during a test method.
 pub const XCT_METHOD_DID_MEASURE_METRIC: &str =

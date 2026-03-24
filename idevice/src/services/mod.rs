@@ -35,10 +35,6 @@ pub mod mobile_image_mounter;
 pub mod mobileactivationd;
 #[cfg(feature = "mobilebackup2")]
 pub mod mobilebackup2;
-#[cfg(feature = "wda")]
-pub mod wda;
-#[cfg(feature = "wda")]
-pub mod wda_bridge;
 #[cfg(feature = "notification_proxy")]
 pub mod notification_proxy;
 #[cfg(feature = "syslog_relay")]
@@ -59,3 +55,7 @@ pub mod simulate_location;
 pub mod springboardservices;
 #[cfg(feature = "syslog_relay")]
 pub mod syslog_relay;
+#[cfg(feature = "wda")]
+pub mod wda;
+#[cfg(feature = "wda")]
+pub mod wda_bridge;

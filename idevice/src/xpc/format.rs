@@ -296,7 +296,10 @@ impl XPCObject {
         let xpc_type = u32::from_le_bytes(buf_32);
         debug!(
             "Decoding XPC object type raw=0x{xpc_type:08X} remaining={}",
-            cursor.get_ref().len().saturating_sub(cursor.position() as usize)
+            cursor
+                .get_ref()
+                .len()
+                .saturating_sub(cursor.position() as usize)
         );
         let xpc_type: XPCType = xpc_type.try_into()?;
         match xpc_type {

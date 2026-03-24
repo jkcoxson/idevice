@@ -2,8 +2,8 @@
 
 use async_stream::try_stream;
 use futures::Stream;
-use std::collections::HashMap;
 use http2::Setting;
+use std::collections::HashMap;
 use tracing::debug;
 
 use crate::{IdeviceError, ReadWrite};
@@ -176,10 +176,11 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
     async fn send_root(&mut self, msg: XPCMessage) -> Result<(), IdeviceError> {
         let message_id = *self.next_message_id.get(&ROOT_CHANNEL).unwrap_or(&0);
         let bytes = msg.encode(message_id)?;
-        debug!("Sending root wrapper (msg_id={}): {:02X?}", message_id, &bytes);
-        self.h2_client
-            .send(bytes, ROOT_CHANNEL)
-            .await?;
+        debug!(
+            "Sending root wrapper (msg_id={}): {:02X?}",
+            message_id, &bytes
+        );
+        self.h2_client.send(bytes, ROOT_CHANNEL).await?;
         Ok(())
     }
 
@@ -188,12 +189,9 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
         let bytes = msg.encode(message_id)?;
         debug!(
             "Sending reply wrapper (msg_id={}): {:02X?}",
-            message_id,
-            &bytes
+            message_id, &bytes
         );
-        self.h2_client
-            .send(bytes, REPLY_CHANNEL)
-            .await?;
+        self.h2_client.send(bytes, REPLY_CHANNEL).await?;
         Ok(())
     }
 

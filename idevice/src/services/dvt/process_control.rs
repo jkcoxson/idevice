@@ -130,7 +130,10 @@ impl<'a, R: ReadWrite + 'static> ProcessControlClient<'a, R> {
                     AuxValue::archived_value(bundle_id.into()),
                     AuxValue::archived_value(env_vars),
                     AuxValue::archived_value(Value::Array(
-                        arguments.into_iter().map(|(_, value)| value).collect::<Vec<_>>(),
+                        arguments
+                            .into_iter()
+                            .map(|(_, value)| value)
+                            .collect::<Vec<_>>(),
                     )),
                     AuxValue::archived_value(options),
                 ]),

@@ -98,7 +98,10 @@ impl<'a> WdaClient<'a> {
     ///
     /// This uses a modest polling interval to avoid hammering usbmux/device
     /// connects when many devices are starting up in parallel.
-    pub async fn wait_until_ready(&self, timeout_duration: Duration) -> Result<Value, IdeviceError> {
+    pub async fn wait_until_ready(
+        &self,
+        timeout_duration: Duration,
+    ) -> Result<Value, IdeviceError> {
         let deadline = Instant::now() + timeout_duration;
         loop {
             match self.status().await {
@@ -126,7 +129,9 @@ impl<'a> WdaClient<'a> {
             ("desiredCapabilities".into(), Value::Object(caps)),
         ]));
 
-        let response = self.request_json("POST", "/session", Some(&payload)).await?;
+        let response = self
+            .request_json("POST", "/session", Some(&payload))
+            .await?;
         let session_id = Self::extract_session_id(&response)?;
         self.session_id = Some(session_id.clone());
         Ok(session_id)
@@ -226,7 +231,11 @@ impl<'a> WdaClient<'a> {
     ) -> Result<Value, IdeviceError> {
         let session_id = self.require_session_id(session_id)?;
         let response = self
-            .request_json("GET", &format!("/session/{session_id}/element/{element_id}/rect"), None)
+            .request_json(
+                "GET",
+                &format!("/session/{session_id}/element/{element_id}/rect"),
+                None,
+            )
             .await?;
         Ok(Self::value_field(&response)?.clone())
     }
@@ -360,20 +369,32 @@ impl<'a> WdaClient<'a> {
     }
 
     /// Sends text input to the currently focused element.
-    pub async fn send_keys(&self, text: &str, session_id: Option<&str>) -> Result<(), IdeviceError> {
+    pub async fn send_keys(
+        &self,
+        text: &str,
+        session_id: Option<&str>,
+    ) -> Result<(), IdeviceError> {
         let session_id = self.require_session_id(session_id)?;
         let payload = json!({
             "value": text.chars().map(|ch| ch.to_string()).collect::<Vec<_>>()
         });
 
         match self
-            .request_json("POST", &format!("/session/{session_id}/wda/keys"), Some(&payload))
+            .request_json(
+                "POST",
+                &format!("/session/{session_id}/wda/keys"),
+                Some(&payload),
+            )
             .await
         {
             Ok(_) => Ok(()),
             Err(IdeviceError::UnknownErrorType(message)) if message.contains("404") => {
-                self.request_json("POST", &format!("/session/{session_id}/keys"), Some(&payload))
-                    .await?;
+                self.request_json(
+                    "POST",
+                    &format!("/session/{session_id}/keys"),
+                    Some(&payload),
+                )
+                .await?;
                 Ok(())
             }
             Err(error) => Err(error),
@@ -530,7 +551,11 @@ impl<'a> WdaClient<'a> {
     pub async fn viewport_rect(&self, session_id: Option<&str>) -> Result<Value, IdeviceError> {
         let session_id = self.require_session_id(session_id)?;
         let response = self
-            .execute_mobile_method(session_id, "viewportRect", Value::Object(Default::default()))
+            .execute_mobile_method(
+                session_id,
+                "viewportRect",
+                Value::Object(Default::default()),
+            )
             .await?;
         Ok(Self::value_field(&response)?.clone())
     }
@@ -581,11 +606,7 @@ impl<'a> WdaClient<'a> {
     ) -> Result<Value, IdeviceError> {
         let session_id = self.require_session_id(session_id)?;
         let response = self
-            .execute_mobile_method(
-                session_id,
-                "activateApp",
-                json!({ "bundleId": bundle_id }),
-            )
+            .execute_mobile_method(session_id, "activateApp", json!({ "bundleId": bundle_id }))
             .await?;
         Ok(Self::value_field(&response)?.clone())
     }
@@ -598,11 +619,7 @@ impl<'a> WdaClient<'a> {
     ) -> Result<bool, IdeviceError> {
         let session_id = self.require_session_id(session_id)?;
         let response = self
-            .execute_mobile_method(
-                session_id,
-                "terminateApp",
-                json!({ "bundleId": bundle_id }),
-            )
+            .execute_mobile_method(session_id, "terminateApp", json!({ "bundleId": bundle_id }))
             .await?;
         Self::value_field(&response)?
             .as_bool()
@@ -670,7 +687,9 @@ impl<'a> WdaClient<'a> {
         payload: Option<&Value>,
     ) -> Result<Value, IdeviceError> {
         let body = match payload {
-            Some(payload) => serde_json::to_vec(payload).map_err(|_| IdeviceError::UnexpectedResponse)?,
+            Some(payload) => {
+                serde_json::to_vec(payload).map_err(|_| IdeviceError::UnexpectedResponse)?
+            }
             None => Vec::new(),
         };
 
@@ -740,7 +759,8 @@ impl<'a> WdaClient<'a> {
             .ok_or(IdeviceError::UnexpectedResponse)?;
 
         let body = &response[header_end..];
-        let json: Value = serde_json::from_slice(body).map_err(|_| IdeviceError::UnexpectedResponse)?;
+        let json: Value =
+            serde_json::from_slice(body).map_err(|_| IdeviceError::UnexpectedResponse)?;
 
         if !(200..300).contains(&status_code) {
             return Err(IdeviceError::UnknownErrorType(Self::format_error(
@@ -757,21 +777,26 @@ impl<'a> WdaClient<'a> {
                 return Err(IdeviceError::UnknownErrorType(Self::format_error(
                     &json,
                     status_code,
-                )))
+                )));
             }
         }
 
         Ok(json)
     }
 
-    fn require_session_id<'b>(&'b self, session_id: Option<&'b str>) -> Result<&'b str, IdeviceError> {
+    fn require_session_id<'b>(
+        &'b self,
+        session_id: Option<&'b str>,
+    ) -> Result<&'b str, IdeviceError> {
         session_id
             .or(self.session_id())
             .ok_or_else(|| IdeviceError::UnknownErrorType("session_id is required".into()))
     }
 
     fn value_field(response: &Value) -> Result<&Value, IdeviceError> {
-        response.get("value").ok_or(IdeviceError::UnexpectedResponse)
+        response
+            .get("value")
+            .ok_or(IdeviceError::UnexpectedResponse)
     }
 
     fn extract_session_id(response: &Value) -> Result<String, IdeviceError> {
@@ -823,7 +848,11 @@ impl<'a> WdaClient<'a> {
         let key = normalize_wda_key_name(normalized);
         let payload = json!({ "keys": [key] });
         match self
-            .request_json("POST", &format!("/session/{session_id}/wda/keys"), Some(&payload))
+            .request_json(
+                "POST",
+                &format!("/session/{session_id}/wda/keys"),
+                Some(&payload),
+            )
             .await
         {
             Ok(_) => Ok(true),
@@ -943,8 +972,10 @@ impl<'a> WdaClient<'a> {
                     )
                 })?;
                 let rect = self.element_rect(element_id, Some(session_id)).await?;
-                let center_x = json_number_field(&rect, "x")? + json_number_field(&rect, "width")? / 2.0;
-                let center_y = json_number_field(&rect, "y")? + json_number_field(&rect, "height")? / 2.0;
+                let center_x =
+                    json_number_field(&rect, "x")? + json_number_field(&rect, "width")? / 2.0;
+                let center_y =
+                    json_number_field(&rect, "y")? + json_number_field(&rect, "height")? / 2.0;
                 Ok((center_x, center_y))
             }
             _ => Err(IdeviceError::UnknownErrorType(
@@ -1014,11 +1045,18 @@ fn parse_content_length(headers: &str) -> Option<usize> {
 }
 
 fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack.windows(needle.len()).position(|window| window == needle)
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
 fn normalize_wda_button_name(name: &str) -> String {
-    match name.trim().to_ascii_lowercase().replace(['-', '_'], "").as_str() {
+    match name
+        .trim()
+        .to_ascii_lowercase()
+        .replace(['-', '_'], "")
+        .as_str()
+    {
         "home" => "home".into(),
         "volumeup" | "volup" | "volumeupbutton" => "volumeUp".into(),
         "volumedown" | "voldown" | "volumedownbutton" => "volumeDown".into(),
@@ -1028,7 +1066,12 @@ fn normalize_wda_button_name(name: &str) -> String {
 }
 
 fn normalize_wda_key_name(name: &str) -> String {
-    match name.trim().to_ascii_lowercase().replace(['-', '_'], "").as_str() {
+    match name
+        .trim()
+        .to_ascii_lowercase()
+        .replace(['-', '_'], "")
+        .as_str()
+    {
         "home" => "HOME".into(),
         "volumeup" | "volup" => "VOLUME_UP".into(),
         "volumedown" | "voldown" => "VOLUME_DOWN".into(),
@@ -1038,11 +1081,7 @@ fn normalize_wda_key_name(name: &str) -> String {
 }
 
 fn timeout_error(context: &str) -> IdeviceError {
-    std::io::Error::new(
-        std::io::ErrorKind::TimedOut,
-        format!("{context} timed out"),
-    )
-    .into()
+    std::io::Error::new(std::io::ErrorKind::TimedOut, format!("{context} timed out")).into()
 }
 
 fn json_number_field(value: &Value, field: &str) -> Result<f64, IdeviceError> {
@@ -1109,7 +1148,10 @@ mod tests {
 
     #[test]
     fn ready_poll_interval_is_conservative() {
-        assert_eq!(WDA_READY_POLL_INTERVAL, std::time::Duration::from_millis(250));
+        assert_eq!(
+            WDA_READY_POLL_INTERVAL,
+            std::time::Duration::from_millis(250)
+        );
     }
 
     #[test]

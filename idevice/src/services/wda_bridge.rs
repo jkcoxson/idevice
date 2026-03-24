@@ -6,7 +6,11 @@
 
 use std::{net::SocketAddr, sync::Arc};
 
-use tokio::{io::copy_bidirectional, net::{TcpListener, TcpStream}, task::JoinHandle};
+use tokio::{
+    io::copy_bidirectional,
+    net::{TcpListener, TcpStream},
+    task::JoinHandle,
+};
 use tracing::{debug, warn};
 
 use crate::{IdeviceError, provider::IdeviceProvider};
@@ -84,7 +88,8 @@ impl TcpPortForward {
                         }
                     };
 
-                    if let Err(error) = proxy_connection(&mut client, device_socket.as_mut()).await {
+                    if let Err(error) = proxy_connection(&mut client, device_socket.as_mut()).await
+                    {
                         debug!(
                             "[{}] bridge connection {} -> {} closed with error: {}",
                             label, client_addr, device_port, error
@@ -134,8 +139,13 @@ impl WdaBridge {
         provider: Arc<dyn IdeviceProvider>,
         device_ports: WdaPorts,
     ) -> Result<Self, IdeviceError> {
-        let udid = provider.get_pairing_file().await.ok().and_then(|pairing| pairing.udid);
-        let wda_forward = TcpPortForward::start(provider.clone(), device_ports.http, "wda-http").await?;
+        let udid = provider
+            .get_pairing_file()
+            .await
+            .ok()
+            .and_then(|pairing| pairing.udid);
+        let wda_forward =
+            TcpPortForward::start(provider.clone(), device_ports.http, "wda-http").await?;
         let mjpeg_forward =
             TcpPortForward::start(provider, device_ports.mjpeg, "wda-mjpeg").await?;
 
@@ -200,7 +210,7 @@ async fn proxy_connection(
 
 #[cfg(test)]
 mod tests {
-    use super::{bridge_endpoints, WdaPorts};
+    use super::{WdaPorts, bridge_endpoints};
 
     #[test]
     fn bridge_endpoints_use_local_ports_in_urls() {

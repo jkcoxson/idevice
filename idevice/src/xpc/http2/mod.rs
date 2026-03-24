@@ -83,8 +83,7 @@ impl<R: ReadWrite> Http2Client<R> {
                 frame::Frame::Settings(settings_frame) => {
                     debug!(
                         "Got peer settings frame on stream {} with flags {}",
-                        settings_frame.stream_id,
-                        settings_frame.flags
+                        settings_frame.stream_id, settings_frame.flags
                     );
                     if settings_frame.flags != 1 {
                         let ack = frame::SettingsFrame {

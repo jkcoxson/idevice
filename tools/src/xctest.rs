@@ -9,10 +9,10 @@
 use std::{sync::Arc, time::Duration};
 
 use idevice::{
-    provider::IdeviceProvider,
-    services::dvt::xctest::{listener::XCUITestListener, TestConfig, XCUITestService},
-    services::installation_proxy::InstallationProxyClient,
     IdeviceError, IdeviceService,
+    provider::IdeviceProvider,
+    services::dvt::xctest::{TestConfig, XCUITestService, listener::XCUITestListener},
+    services::installation_proxy::InstallationProxyClient,
 };
 use jkcli::{CollectedArguments, JkArgument, JkCommand, JkFlag};
 
@@ -227,9 +227,9 @@ fn required_argument(
     arguments: &mut CollectedArguments,
     name: &str,
 ) -> Result<String, IdeviceError> {
-    arguments.next_argument().ok_or_else(|| {
-        IdeviceError::UnknownErrorType(format!("missing required argument: {name}"))
-    })
+    arguments
+        .next_argument()
+        .ok_or_else(|| IdeviceError::UnknownErrorType(format!("missing required argument: {name}")))
 }
 
 async fn build_test_config(
@@ -238,10 +238,6 @@ async fn build_test_config(
     target_bundle_id: Option<&str>,
 ) -> Result<TestConfig, IdeviceError> {
     let mut install_proxy = InstallationProxyClient::connect(provider).await?;
-    TestConfig::from_installation_proxy(
-        &mut install_proxy,
-        runner_bundle_id,
-        target_bundle_id,
-    )
-    .await
+    TestConfig::from_installation_proxy(&mut install_proxy, runner_bundle_id, target_bundle_id)
+        .await
 }

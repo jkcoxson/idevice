@@ -52,10 +52,10 @@ impl ArchiveBuilder {
     fn get_or_create_class(&mut self, class_name: &str, superclasses: &[&str]) -> Uid {
         // Reuse an existing class dict if present
         for (i, obj) in self.objects.iter().enumerate() {
-            if let Some(d) = obj.as_dictionary() {
-                if d.get("$classname").and_then(|v| v.as_string()) == Some(class_name) {
-                    return Uid::new(i as u64);
-                }
+            if let Some(d) = obj.as_dictionary()
+                && d.get("$classname").and_then(|v| v.as_string()) == Some(class_name)
+            {
+                return Uid::new(i as u64);
             }
         }
         let mut classes: Vec<Value> = std::iter::once(class_name)
@@ -206,7 +206,10 @@ fn archive_to_bytes(archive: Value) -> Result<Vec<u8>, IdeviceError> {
 /// Serialises an `NSUUID` object to NSKeyedArchive bytes.
 pub(crate) fn archive_nsuuid_to_bytes(uuid: &Uuid) -> Result<Vec<u8>, IdeviceError> {
     let mut class = Dictionary::new();
-    class.insert("$classes".into(), Value::Array(vec![Value::String("NSUUID".into())]));
+    class.insert(
+        "$classes".into(),
+        Value::Array(vec![Value::String("NSUUID".into())]),
+    );
     class.insert("$classname".into(), Value::String("NSUUID".into()));
 
     let mut obj = Dictionary::new();
@@ -282,7 +285,10 @@ pub(crate) fn archive_xct_capabilities_to_bytes(
         Value::Array(vec![Value::String("NSDictionary".into())]),
     );
     nsdict_class.insert("$classname".into(), Value::String("NSDictionary".into()));
-    objects.insert(nsdict_class_uid.get() as usize, Value::Dictionary(nsdict_class));
+    objects.insert(
+        nsdict_class_uid.get() as usize,
+        Value::Dictionary(nsdict_class),
+    );
 
     let mut top = Dictionary::new();
     top.insert("root".into(), Value::Uid(root_uid));
@@ -447,7 +453,10 @@ impl XCTestConfiguration {
 
         // aggregateStatisticsBeforeCrash: {"XCSuiteRecordsKey": {}}
         let mut agg_stats = Dictionary::new();
-        agg_stats.insert("XCSuiteRecordsKey".into(), Value::Dictionary(Dictionary::new()));
+        agg_stats.insert(
+            "XCSuiteRecordsKey".into(),
+            Value::Dictionary(Dictionary::new()),
+        );
         let agg_stats_uid = b.encode_nsdict(&agg_stats);
 
         // targetApplicationPath — default placeholder keeps field non-empty
@@ -457,8 +466,7 @@ impl XCTestConfiguration {
                 .or(Some("/whatever-it-does-not-matter/but-should-not-be-empty")),
         );
 
-        let target_bundle_uid =
-            b.encode_opt_str(self.target_application_bundle_id.as_deref());
+        let target_bundle_uid = b.encode_opt_str(self.target_application_bundle_id.as_deref());
 
         let target_env_uid = match &self.target_application_environment {
             Some(env) => b.encode_nsdict(env),
@@ -565,10 +573,7 @@ impl XCTestConfiguration {
             "initializeForUITesting".into(),
             ArchiveBuilder::bool_value(true),
         );
-        obj.insert(
-            "reportActivities".into(),
-            ArchiveBuilder::bool_value(true),
-        );
+        obj.insert("reportActivities".into(), ArchiveBuilder::bool_value(true));
         obj.insert(
             "reportResultsToIDE".into(),
             ArchiveBuilder::bool_value(true),
@@ -577,10 +582,7 @@ impl XCTestConfiguration {
             "testTimeoutsEnabled".into(),
             ArchiveBuilder::bool_value(false),
         );
-        obj.insert(
-            "testsDrivenByIDE".into(),
-            ArchiveBuilder::bool_value(false),
-        );
+        obj.insert("testsDrivenByIDE".into(), ArchiveBuilder::bool_value(false));
         obj.insert(
             "testsMustRunOnMainThread".into(),
             ArchiveBuilder::bool_value(true),
@@ -595,10 +597,7 @@ impl XCTestConfiguration {
             "systemAttachmentLifetime".into(),
             ArchiveBuilder::int_value(2),
         );
-        obj.insert(
-            "testExecutionOrdering".into(),
-            ArchiveBuilder::int_value(0),
-        );
+        obj.insert("testExecutionOrdering".into(), ArchiveBuilder::int_value(0));
         obj.insert(
             "userAttachmentLifetime".into(),
             ArchiveBuilder::int_value(0),
@@ -712,7 +711,7 @@ impl XCTSourceCodeContext {
         let dict = v.as_dictionary()?;
         let location = dict
             .get("location")
-            .and_then(|v| XCTSourceCodeLocation::from_plist(v));
+            .and_then(XCTSourceCodeLocation::from_plist);
         Some(Self { location })
     }
 }
@@ -748,7 +747,7 @@ impl XCTIssue {
             .map(|s| s.to_owned());
         let ctx = dict
             .get("source-code-context")
-            .and_then(|v| XCTSourceCodeContext::from_plist(v));
+            .and_then(XCTSourceCodeContext::from_plist);
         let issue_type = dict
             .get("type")
             .and_then(|v| v.as_signed_integer())

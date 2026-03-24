@@ -26,9 +26,7 @@ pub mod dtx_services;
 pub mod listener;
 pub mod types;
 
-use std::{
-    sync::{Arc, OnceLock},
-};
+use std::sync::{Arc, OnceLock};
 
 use plist::{Dictionary, Value};
 #[cfg(feature = "wda")]
@@ -57,6 +55,10 @@ macro_rules! xctest_debug {
     };
 }
 
+#[cfg(feature = "wda")]
+use crate::services::wda::{WdaClient, WdaPorts};
+#[cfg(feature = "wda")]
+use crate::services::wda_bridge::WdaBridge;
 use crate::{
     IdeviceError, IdeviceService, ReadWrite,
     dvt::message::{AuxValue, Message},
@@ -72,31 +74,24 @@ use crate::{
         rsd::RsdHandshake,
     },
 };
-#[cfg(feature = "wda")]
-use crate::services::wda::{WdaClient, WdaPorts};
-#[cfg(feature = "wda")]
-use crate::services::wda_bridge::WdaBridge;
 use dtx_services::{
-    DVT_LEGACY_SERVICE, DVT_SERVICE, IDE_AUTHORIZE_TEST_SESSION, TESTMANAGERD_RSD_SERVICE,
-    IDE_INITIATE_CTRL_SESSION_FOR_PID, IDE_INITIATE_CTRL_SESSION_FOR_PID_PROTOCOL_VERSION,
+    DVT_LEGACY_SERVICE, DVT_SERVICE, IDE_AUTHORIZE_TEST_SESSION, IDE_INITIATE_CTRL_SESSION_FOR_PID,
+    IDE_INITIATE_CTRL_SESSION_FOR_PID_PROTOCOL_VERSION,
     IDE_INITIATE_CTRL_SESSION_WITH_CAPABILITIES, IDE_INITIATE_CTRL_SESSION_WITH_PROTOCOL_VERSION,
     IDE_INITIATE_SESSION_WITH_IDENTIFIER_CAPABILITIES,
     IDE_INITIATE_SESSION_WITH_IDENTIFIER_FOR_CLIENT_AT_PATH_PROTOCOL_VERSION,
-    IDE_START_EXECUTING_TEST_PLAN, TESTMANAGERD_SECURE_SERVICE, TESTMANAGERD_SERVICE,
-    XCTEST_PROXY_IDE_TO_DRIVER,
-    XCTEST_DRIVER_INTERFACE, XCTEST_MANAGER_DAEMON_CONNECTION_INTERFACE,
-    XCTEST_MANAGER_IDE_INTERFACE,
-    XCODE_VERSION, XCT_BUNDLE_READY,
-    XCT_BUNDLE_READY_WITH_PROTOCOL_VERSION, XCT_CASE_DID_FAIL, XCT_CASE_DID_FINISH,
-    XCT_CASE_DID_FINISH_ACTIVITY, XCT_CASE_DID_FINISH_ACTIVITY_ID, XCT_CASE_DID_FINISH_ID,
-    XCT_CASE_DID_RECORD_ISSUE, XCT_CASE_DID_STALL, XCT_CASE_DID_START,
-    XCT_CASE_DID_START_ID, XCT_CASE_WILL_START_ACTIVITY, XCT_CASE_WILL_START_ACTIVITY_ID,
-    XCT_DID_BEGIN_TEST_PLAN, XCT_DID_BEGIN_UI_INIT, XCT_DID_FAIL_BOOTSTRAP, XCT_DID_FORM_PLAN,
-    XCT_DID_FINISH_TEST_PLAN, XCT_EXCHANGE_PROTOCOL_VERSION, XCT_GET_PROGRESS_FOR_LAUNCH,
-    XCT_LOG_DEBUG_MESSAGE, XCT_LOG_MESSAGE, XCT_METHOD_DID_MEASURE_METRIC,
-    XCT_RUNNER_READY_WITH_CAPABILITIES,
-    XCT_SUITE_DID_FINISH, XCT_SUITE_DID_FINISH_ID, XCT_SUITE_DID_START,
-    XCT_SUITE_DID_START_ID, XCT_UI_INIT_DID_FAIL,
+    IDE_START_EXECUTING_TEST_PLAN, TESTMANAGERD_RSD_SERVICE, TESTMANAGERD_SECURE_SERVICE,
+    TESTMANAGERD_SERVICE, XCODE_VERSION, XCT_BUNDLE_READY, XCT_BUNDLE_READY_WITH_PROTOCOL_VERSION,
+    XCT_CASE_DID_FAIL, XCT_CASE_DID_FINISH, XCT_CASE_DID_FINISH_ACTIVITY,
+    XCT_CASE_DID_FINISH_ACTIVITY_ID, XCT_CASE_DID_FINISH_ID, XCT_CASE_DID_RECORD_ISSUE,
+    XCT_CASE_DID_STALL, XCT_CASE_DID_START, XCT_CASE_DID_START_ID, XCT_CASE_WILL_START_ACTIVITY,
+    XCT_CASE_WILL_START_ACTIVITY_ID, XCT_DID_BEGIN_TEST_PLAN, XCT_DID_BEGIN_UI_INIT,
+    XCT_DID_FAIL_BOOTSTRAP, XCT_DID_FINISH_TEST_PLAN, XCT_DID_FORM_PLAN,
+    XCT_EXCHANGE_PROTOCOL_VERSION, XCT_GET_PROGRESS_FOR_LAUNCH, XCT_LOG_DEBUG_MESSAGE,
+    XCT_LOG_MESSAGE, XCT_METHOD_DID_MEASURE_METRIC, XCT_RUNNER_READY_WITH_CAPABILITIES,
+    XCT_SUITE_DID_FINISH, XCT_SUITE_DID_FINISH_ID, XCT_SUITE_DID_START, XCT_SUITE_DID_START_ID,
+    XCT_UI_INIT_DID_FAIL, XCTEST_DRIVER_INTERFACE, XCTEST_MANAGER_DAEMON_CONNECTION_INTERFACE,
+    XCTEST_MANAGER_IDE_INTERFACE, XCTEST_PROXY_IDE_TO_DRIVER,
 };
 use listener::{XCTestCaseResult, XCUITestListener};
 use types::{
@@ -186,9 +181,7 @@ impl TestConfig {
             ids.push(t.to_owned());
         }
 
-        let apps = install_proxy
-            .get_apps(None, Some(ids))
-            .await?;
+        let apps = install_proxy.get_apps(None, Some(ids)).await?;
 
         // --- Runner ---
         let runner_info = apps.get(runner_bundle_id).ok_or_else(|| {
@@ -290,11 +283,7 @@ impl TestConfig {
         // When a target app is specified, targetApplicationEnvironment must be at
         // least an empty dict (not null) — mirrors Python's `self.target_app_env or {}`
         let target_application_environment = if self.target_bundle_id.is_some() {
-            Some(
-                self.target_app_env
-                    .clone()
-                    .unwrap_or_default(),
-            )
+            Some(self.target_app_env.clone().unwrap_or_default())
         } else {
             None
         };
@@ -336,6 +325,7 @@ impl TestConfig {
 /// # Returns
 /// `(launch_args, launch_env, launch_options)` as `(Vec<String>, Dictionary, Dictionary)`
 #[cfg(feature = "xctest")]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_launch_env(
     ios_major_version: u8,
     session_id: &uuid::Uuid,
@@ -368,7 +358,10 @@ pub(crate) fn build_launch_env(
     env.insert("WDA_PRODUCT_BUNDLE_IDENTIFIER".into(), s(""));
     env.insert(
         "XCTestBundlePath".into(),
-        s(&format!("{}/PlugIns/{}.xctest", runner_app_path, target_name)),
+        s(&format!(
+            "{}/PlugIns/{}.xctest",
+            runner_app_path, target_name
+        )),
     );
     env.insert(
         "XCTestConfigurationFilePath".into(),
@@ -580,7 +573,11 @@ async fn connect_testmanagerd_rsd(
         for attempt in 1..=MAX_ATTEMPTS {
             xctest_debug!(
                 "[{}] opening service '{}' on remote port {} (attempt {}/{})",
-                label, service_name, port, attempt, MAX_ATTEMPTS
+                label,
+                service_name,
+                port,
+                attempt,
+                MAX_ATTEMPTS
             );
             let stream = handle.connect_to_service_port(port).await?;
             xctest_debug!("[{}] service port {} connected", label, port);
@@ -643,7 +640,10 @@ async fn connect_testmanagerd_rsd(
         {
             Ok(client) => client,
             Err(e) => {
-                warn!("RSD dtservicehub connect failed ({}), falling back to lockdown DVT", e);
+                warn!(
+                    "RSD dtservicehub connect failed ({}), falling back to lockdown DVT",
+                    e
+                );
                 connect_dtx_service(provider, &[DVT_SERVICE, DVT_LEGACY_SERVICE], false).await?
             }
         };
@@ -676,7 +676,8 @@ async fn connect_testmanagerd_rsd(
     for attempt in 1..=RSD_STACK_ATTEMPTS {
         xctest_debug!(
             "[rsd] establishing CoreDeviceProxy/software tunnel stack (attempt {}/{})",
-            attempt, RSD_STACK_ATTEMPTS
+            attempt,
+            RSD_STACK_ATTEMPTS
         );
         match connect_rsd_stack_once(provider).await {
             Ok(connections) => return Ok(connections),
@@ -723,12 +724,7 @@ pub(super) async fn connect_testmanagerd(
 
     let ctrl = connect_dtx_service(provider, &[tm_service], true).await?;
     let main = connect_dtx_service(provider, &[tm_service], true).await?;
-    let dvt = connect_dtx_service(
-        provider,
-        &[DVT_SERVICE, DVT_LEGACY_SERVICE],
-        false,
-    )
-    .await?;
+    let dvt = connect_dtx_service(provider, &[DVT_SERVICE, DVT_LEGACY_SERVICE], false).await?;
 
     Ok(TestManagerConnections {
         ctrl,
@@ -751,7 +747,8 @@ pub(super) async fn init_ctrl_session<R: ReadWrite + 'static>(
     ios_major_version: u8,
 ) -> Result<(), IdeviceError> {
     if ios_major_version >= 17 {
-        let caps_bytes = AuxValue::Array(archive_xct_capabilities_to_bytes(&XCTCapabilities::empty())?);
+        let caps_bytes =
+            AuxValue::Array(archive_xct_capabilities_to_bytes(&XCTCapabilities::empty())?);
         let reply = ctrl_channel
             .call_method_with_reply(
                 Some(IDE_INITIATE_CTRL_SESSION_WITH_CAPABILITIES),
@@ -784,8 +781,9 @@ pub(super) async fn init_session<R: ReadWrite + 'static>(
     let uuid_bytes = AuxValue::Array(archive_nsuuid_to_bytes(session_id)?);
 
     if ios_major_version >= 17 {
-        let caps_bytes =
-            AuxValue::Array(archive_xct_capabilities_to_bytes(&XCTCapabilities::ide_defaults())?);
+        let caps_bytes = AuxValue::Array(archive_xct_capabilities_to_bytes(
+            &XCTCapabilities::ide_defaults(),
+        )?);
         let reply = main_channel
             .call_method_with_reply(
                 Some(IDE_INITIATE_SESSION_WITH_IDENTIFIER_CAPABILITIES),
@@ -794,13 +792,11 @@ pub(super) async fn init_session<R: ReadWrite + 'static>(
             .await?;
         xctest_debug!("init_session (iOS 17+) reply: {:?}", reply.data);
     } else if ios_major_version >= 11 {
-        let client_bytes =
-            AuxValue::archived_value(Value::String("not-very-important".into()));
+        let client_bytes = AuxValue::archived_value(Value::String("not-very-important".into()));
         let path_bytes = AuxValue::archived_value(Value::String(
             "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild".into(),
         ));
-        let version_bytes =
-            AuxValue::archived_value(Value::Integer((XCODE_VERSION as i64).into()));
+        let version_bytes = AuxValue::archived_value(Value::Integer((XCODE_VERSION as i64).into()));
         let reply = main_channel
             .call_method_with_reply(
                 Some(IDE_INITIATE_SESSION_WITH_IDENTIFIER_FOR_CLIENT_AT_PATH_PROTOCOL_VERSION),
@@ -831,10 +827,7 @@ pub(super) async fn launch_runner<R: ReadWrite + 'static>(
     launch_env: Dictionary,
     launch_options: Dictionary,
 ) -> Result<u64, IdeviceError> {
-    let args_array: Vec<Value> = launch_args
-        .into_iter()
-        .map(Value::String)
-        .collect();
+    let args_array: Vec<Value> = launch_args.into_iter().map(Value::String).collect();
 
     process_control
         .launch_with_options(bundle_id, launch_env, args_array, launch_options)
@@ -856,10 +849,7 @@ pub(super) async fn authorize_test<R: ReadWrite + 'static>(
 
     if ios_major_version >= 12 {
         let reply = ctrl_channel
-            .call_method_with_reply(
-                Some(IDE_AUTHORIZE_TEST_SESSION),
-                Some(vec![pid_bytes]),
-            )
+            .call_method_with_reply(Some(IDE_AUTHORIZE_TEST_SESSION), Some(vec![pid_bytes]))
             .await?;
         match reply.data {
             Some(Value::Boolean(true)) | None => {
@@ -874,8 +864,7 @@ pub(super) async fn authorize_test<R: ReadWrite + 'static>(
             }
         }
     } else if ios_major_version >= 10 {
-        let version_bytes =
-            AuxValue::archived_value(Value::Integer((XCODE_VERSION as i64).into()));
+        let version_bytes = AuxValue::archived_value(Value::Integer((XCODE_VERSION as i64).into()));
         let reply = ctrl_channel
             .call_method_with_reply(
                 Some(IDE_INITIATE_CTRL_SESSION_FOR_PID_PROTOCOL_VERSION),
@@ -914,7 +903,9 @@ impl<R: ReadWrite + 'static> TestManagerProxy<R> {
                 )
                 .await?
         } else {
-            client.open_service_channel(XCTEST_MANAGER_IDE_INTERFACE).await?
+            client
+                .open_service_channel(XCTEST_MANAGER_IDE_INTERFACE)
+                .await?
         };
 
         Ok(Self {
@@ -922,10 +913,7 @@ impl<R: ReadWrite + 'static> TestManagerProxy<R> {
         })
     }
 
-    async fn install_bootstrap_handler(
-        &mut self,
-        xctest_config: XCTestConfiguration,
-    ) {
+    async fn install_bootstrap_handler(&mut self, xctest_config: XCTestConfiguration) {
         install_early_xctest_handler(&mut self.channel, xctest_config).await;
     }
 
@@ -939,7 +927,13 @@ impl<R: ReadWrite + 'static> TestManagerProxy<R> {
         session_id: &uuid::Uuid,
         xctest_config: &XCTestConfiguration,
     ) -> Result<(), IdeviceError> {
-        init_session(&mut self.channel, ios_major_version, session_id, xctest_config).await
+        init_session(
+            &mut self.channel,
+            ios_major_version,
+            session_id,
+            xctest_config,
+        )
+        .await
     }
 
     async fn authorize_test(
@@ -1015,8 +1009,7 @@ fn testmanager_uses_proxy(ios_major_version: u8) -> bool {
 }
 
 #[cfg(feature = "xctest")]
-#[cfg(feature = "xctest")]
-async fn wait_for_xctest_service_channel<'a>(
+async fn wait_for_xctest_service_channel(
     main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
     plain_identifiers: &[&str],
     proxy_remote_identifiers: &[&str],
@@ -1025,12 +1018,7 @@ async fn wait_for_xctest_service_channel<'a>(
     let timeout = Some(std::time::Duration::from_secs_f64(timeout_secs));
 
     let code = match main_client
-        .wait_for_proxied_service_channel_code(
-            proxy_remote_identifiers,
-            true,
-            Some(true),
-            timeout,
-        )
+        .wait_for_proxied_service_channel_code(proxy_remote_identifiers, true, Some(true), timeout)
         .await
     {
         Ok(code) => code,
@@ -1110,13 +1098,8 @@ async fn launch_and_authorize_test_runner(
     launch_options: Dictionary,
 ) -> Result<u64, IdeviceError> {
     let pid = process_control
-        .launch_suspended_process(
-        runner_bundle_id,
-        launch_args,
-        launch_env,
-        launch_options,
-    )
-    .await?;
+        .launch_suspended_process(runner_bundle_id, launch_args, launch_env, launch_options)
+        .await?;
     xctest_debug!("Launched test runner pid={}", pid);
 
     if ios_major_version < 17 {
@@ -1184,9 +1167,8 @@ fn decode_aux_archive(aux: &AuxValue) -> Result<Value, IdeviceError> {
 }
 
 fn aux_as_string(aux: &AuxValue) -> Result<String, IdeviceError> {
-    match aux {
-        AuxValue::String(s) => return Ok(s.clone()),
-        _ => {}
+    if let AuxValue::String(s) = aux {
+        return Ok(s.clone());
     }
     match decode_aux_archive(aux)? {
         Value::String(s) => Ok(s),
@@ -1269,12 +1251,11 @@ pub(super) async fn dispatch_xct_message<L: XCUITestListener>(
                 .await?;
         }
         m if m == XCT_RUNNER_READY_WITH_CAPABILITIES => {
-            if let Some(raw) = aux.first() {
-                if let Ok(decoded) = decode_aux_archive(raw) {
-                    if let Some(caps) = XCTCapabilities::from_plist(&decoded) {
-                        xctest_debug!("testRunnerReadyWithCapabilities: {:?}", caps.capabilities);
-                    }
-                }
+            if let Some(raw) = aux.first()
+                && let Ok(decoded) = decode_aux_archive(raw)
+                && let Some(caps) = XCTCapabilities::from_plist(&decoded)
+            {
+                xctest_debug!("testRunnerReadyWithCapabilities: {:?}", caps.capabilities);
             }
             listener.test_runner_ready_with_capabilities().await?;
             let reply = xctest_config.to_archive_bytes()?;
@@ -1292,13 +1273,29 @@ pub(super) async fn dispatch_xct_message<L: XCUITestListener>(
 
         // --- suite lifecycle (legacy string-based) ---
         m if m == XCT_SUITE_DID_START => {
-            let suite = aux.first().map(aux_as_string).transpose()?.unwrap_or_default();
-            let started_at = aux.get(1).map(aux_as_string).transpose()?.unwrap_or_default();
+            let suite = aux
+                .first()
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
+            let started_at = aux
+                .get(1)
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
             listener.test_suite_did_start(&suite, &started_at).await?;
         }
         m if m == XCT_SUITE_DID_FINISH => {
-            let suite = aux.first().map(aux_as_string).transpose()?.unwrap_or_default();
-            let finished_at = aux.get(1).map(aux_as_string).transpose()?.unwrap_or_default();
+            let suite = aux
+                .first()
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
+            let finished_at = aux
+                .get(1)
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
             let run_count = aux.get(2).map(aux_as_u64).transpose()?.unwrap_or(0);
             let failures = aux.get(3).map(aux_as_u64).transpose()?.unwrap_or(0);
             let unexpected = aux.get(4).map(aux_as_u64).transpose()?.unwrap_or(0);
@@ -1306,75 +1303,106 @@ pub(super) async fn dispatch_xct_message<L: XCUITestListener>(
             let total_dur = aux.get(6).map(aux_as_f64).transpose()?.unwrap_or(0.0);
             listener
                 .test_suite_did_finish(
-                    &suite, &finished_at, run_count, failures, unexpected,
-                    test_dur, total_dur, 0, 0, 0,
+                    &suite,
+                    &finished_at,
+                    run_count,
+                    failures,
+                    unexpected,
+                    test_dur,
+                    total_dur,
+                    0,
+                    0,
+                    0,
                 )
                 .await?;
         }
 
         // --- suite lifecycle (identifier-based, iOS 14+) ---
         m if m == XCT_SUITE_DID_START_ID => {
-            if let Some(raw) = aux.first() {
-                if let Ok(decoded) = decode_aux_archive(raw) {
-                    if let Some(id) = XCTTestIdentifier::from_plist(&decoded) {
-                        let tc = id.test_class();
-                        if !tc.is_empty() && tc != "All tests" {
-                            let started_at =
-                                aux.get(1).map(aux_as_string).transpose()?.unwrap_or_default();
-                            listener.test_suite_did_start(tc, &started_at).await?;
-                        }
-                    }
+            if let Some(raw) = aux.first()
+                && let Ok(decoded) = decode_aux_archive(raw)
+                && let Some(id) = XCTTestIdentifier::from_plist(&decoded)
+            {
+                let tc = id.test_class();
+                if !tc.is_empty() && tc != "All tests" {
+                    let started_at = aux
+                        .get(1)
+                        .map(aux_as_string)
+                        .transpose()?
+                        .unwrap_or_default();
+                    listener.test_suite_did_start(tc, &started_at).await?;
                 }
             }
         }
         m if m == XCT_SUITE_DID_FINISH_ID => {
-            if let Some(raw) = aux.first() {
-                if let Ok(decoded) = decode_aux_archive(raw) {
-                    if let Some(id) = XCTTestIdentifier::from_plist(&decoded) {
-                        let tc = id.test_class().to_owned();
-                        if !tc.is_empty() && tc != "All tests" {
-                            let finished_at =
-                                aux.get(1).map(aux_as_string).transpose()?.unwrap_or_default();
-                            let run_count =
-                                aux.get(2).map(aux_as_u64).transpose()?.unwrap_or(0);
-                            let skip_count =
-                                aux.get(3).map(aux_as_u64).transpose()?.unwrap_or(0);
-                            let fail_count =
-                                aux.get(4).map(aux_as_u64).transpose()?.unwrap_or(0);
-                            let expected_fail =
-                                aux.get(5).map(aux_as_u64).transpose()?.unwrap_or(0);
-                            let uncaught =
-                                aux.get(6).map(aux_as_u64).transpose()?.unwrap_or(0);
-                            let test_dur =
-                                aux.get(7).map(aux_as_f64).transpose()?.unwrap_or(0.0);
-                            let total_dur =
-                                aux.get(8).map(aux_as_f64).transpose()?.unwrap_or(0.0);
-                            listener
-                                .test_suite_did_finish(
-                                    &tc, &finished_at, run_count, fail_count, uncaught,
-                                    test_dur, total_dur, skip_count, expected_fail, 0,
-                                )
-                                .await?;
-                        }
-                    }
+            if let Some(raw) = aux.first()
+                && let Ok(decoded) = decode_aux_archive(raw)
+                && let Some(id) = XCTTestIdentifier::from_plist(&decoded)
+            {
+                let tc = id.test_class().to_owned();
+                if !tc.is_empty() && tc != "All tests" {
+                    let finished_at = aux
+                        .get(1)
+                        .map(aux_as_string)
+                        .transpose()?
+                        .unwrap_or_default();
+                    let run_count = aux.get(2).map(aux_as_u64).transpose()?.unwrap_or(0);
+                    let skip_count = aux.get(3).map(aux_as_u64).transpose()?.unwrap_or(0);
+                    let fail_count = aux.get(4).map(aux_as_u64).transpose()?.unwrap_or(0);
+                    let expected_fail = aux.get(5).map(aux_as_u64).transpose()?.unwrap_or(0);
+                    let uncaught = aux.get(6).map(aux_as_u64).transpose()?.unwrap_or(0);
+                    let test_dur = aux.get(7).map(aux_as_f64).transpose()?.unwrap_or(0.0);
+                    let total_dur = aux.get(8).map(aux_as_f64).transpose()?.unwrap_or(0.0);
+                    listener
+                        .test_suite_did_finish(
+                            &tc,
+                            &finished_at,
+                            run_count,
+                            fail_count,
+                            uncaught,
+                            test_dur,
+                            total_dur,
+                            skip_count,
+                            expected_fail,
+                            0,
+                        )
+                        .await?;
                 }
             }
         }
 
         // --- case lifecycle (legacy) ---
         m if m == XCT_CASE_DID_START => {
-            let test_class =
-                aux.first().map(aux_as_string).transpose()?.unwrap_or_default();
-            let method_name =
-                aux.get(1).map(aux_as_string).transpose()?.unwrap_or_default();
-            listener.test_case_did_start(&test_class, &method_name).await?;
+            let test_class = aux
+                .first()
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
+            let method_name = aux
+                .get(1)
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
+            listener
+                .test_case_did_start(&test_class, &method_name)
+                .await?;
         }
         m if m == XCT_CASE_DID_FINISH => {
-            let test_class =
-                aux.first().map(aux_as_string).transpose()?.unwrap_or_default();
-            let method_name =
-                aux.get(1).map(aux_as_string).transpose()?.unwrap_or_default();
-            let status = aux.get(2).map(aux_as_string).transpose()?.unwrap_or_default();
+            let test_class = aux
+                .first()
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
+            let method_name = aux
+                .get(1)
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
+            let status = aux
+                .get(2)
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
             let duration = aux.get(3).map(aux_as_f64).transpose()?.unwrap_or(0.0);
             listener
                 .test_case_did_finish(XCTestCaseResult {
@@ -1386,23 +1414,47 @@ pub(super) async fn dispatch_xct_message<L: XCUITestListener>(
                 .await?;
         }
         m if m == XCT_CASE_DID_FAIL => {
-            let test_class =
-                aux.first().map(aux_as_string).transpose()?.unwrap_or_default();
-            let method_name =
-                aux.get(1).map(aux_as_string).transpose()?.unwrap_or_default();
-            let message = aux.get(2).map(aux_as_string).transpose()?.unwrap_or_default();
-            let file = aux.get(3).map(aux_as_string).transpose()?.unwrap_or_default();
+            let test_class = aux
+                .first()
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
+            let method_name = aux
+                .get(1)
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
+            let message = aux
+                .get(2)
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
+            let file = aux
+                .get(3)
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
             let line = aux.get(4).map(aux_as_u64).transpose()?.unwrap_or(0);
             listener
                 .test_case_did_fail(&test_class, &method_name, &message, &file, line)
                 .await?;
         }
         m if m == XCT_CASE_DID_STALL => {
-            let test_class =
-                aux.first().map(aux_as_string).transpose()?.unwrap_or_default();
-            let method_name =
-                aux.get(1).map(aux_as_string).transpose()?.unwrap_or_default();
-            let file = aux.get(2).map(aux_as_string).transpose()?.unwrap_or_default();
+            let test_class = aux
+                .first()
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
+            let method_name = aux
+                .get(1)
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
+            let file = aux
+                .get(2)
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
             let line = aux.get(3).map(aux_as_u64).transpose()?.unwrap_or(0);
             listener
                 .test_case_did_stall(&test_class, &method_name, &file, line)
@@ -1411,85 +1463,90 @@ pub(super) async fn dispatch_xct_message<L: XCUITestListener>(
 
         // --- case lifecycle (identifier-based, iOS 14+) ---
         m if m == XCT_CASE_DID_START_ID => {
-            if let Some(raw) = aux.first() {
-                if let Ok(decoded) = decode_aux_archive(raw) {
-                    if let Some(id) = XCTTestIdentifier::from_plist(&decoded) {
-                        let method_name =
-                            id.test_method().unwrap_or("").to_owned();
-                        listener
-                            .test_case_did_start(id.test_class(), &method_name)
-                            .await?;
-                    }
-                }
+            if let Some(raw) = aux.first()
+                && let Ok(decoded) = decode_aux_archive(raw)
+                && let Some(id) = XCTTestIdentifier::from_plist(&decoded)
+            {
+                let method_name = id.test_method().unwrap_or("").to_owned();
+                listener
+                    .test_case_did_start(id.test_class(), &method_name)
+                    .await?;
             }
         }
         m if m == XCT_CASE_DID_FINISH_ID => {
-            if let Some(raw) = aux.first() {
-                if let Ok(decoded) = decode_aux_archive(raw) {
-                    if let Some(id) = XCTTestIdentifier::from_plist(&decoded) {
-                        let test_class = id.test_class().to_owned();
-                        let method_name = id.test_method().unwrap_or("").to_owned();
-                        let status =
-                            aux.get(1).map(aux_as_string).transpose()?.unwrap_or_default();
-                        let duration = aux.get(2).map(aux_as_f64).transpose()?.unwrap_or(0.0);
-                        listener
-                            .test_case_did_finish(XCTestCaseResult {
-                                test_class,
-                                method: method_name,
-                                status,
-                                duration,
-                            })
-                            .await?;
-                    }
-                }
+            if let Some(raw) = aux.first()
+                && let Ok(decoded) = decode_aux_archive(raw)
+                && let Some(id) = XCTTestIdentifier::from_plist(&decoded)
+            {
+                let test_class = id.test_class().to_owned();
+                let method_name = id.test_method().unwrap_or("").to_owned();
+                let status = aux
+                    .get(1)
+                    .map(aux_as_string)
+                    .transpose()?
+                    .unwrap_or_default();
+                let duration = aux.get(2).map(aux_as_f64).transpose()?.unwrap_or(0.0);
+                listener
+                    .test_case_did_finish(XCTestCaseResult {
+                        test_class,
+                        method: method_name,
+                        status,
+                        duration,
+                    })
+                    .await?;
             }
         }
         m if m == XCT_CASE_DID_RECORD_ISSUE => {
-            if let (Some(id_raw), Some(issue_raw)) = (aux.first(), aux.get(1)) {
-                if let (Ok(id_val), Ok(issue_val)) =
+            if let (Some(id_raw), Some(issue_raw)) = (aux.first(), aux.get(1))
+                && let (Ok(id_val), Ok(issue_val)) =
                     (decode_aux_archive(id_raw), decode_aux_archive(issue_raw))
-                {
-                    if let (Some(id), Some(issue)) = (
-                        XCTTestIdentifier::from_plist(&id_val),
-                        XCTIssue::from_plist(&issue_val),
-                    ) {
-                        let test_class = id.test_class().to_owned();
-                        let method_name = id.test_method().unwrap_or("").to_owned();
-                        let file = issue
-                            .source_code_context
-                            .as_ref()
-                            .and_then(|c| c.location.as_ref())
-                            .and_then(|l| l.file_path())
-                            .unwrap_or("")
-                            .to_owned();
-                        let line = issue
-                            .source_code_context
-                            .as_ref()
-                            .and_then(|c| c.location.as_ref())
-                            .map(|l| l.line_number)
-                            .unwrap_or(0);
-                        listener
-                            .test_case_did_fail(
-                                &test_class,
-                                &method_name,
-                                &issue.compact_description,
-                                &file,
-                                line,
-                            )
-                            .await?;
-                    }
-                }
+                && let (Some(id), Some(issue)) = (
+                    XCTTestIdentifier::from_plist(&id_val),
+                    XCTIssue::from_plist(&issue_val),
+                )
+            {
+                let test_class = id.test_class().to_owned();
+                let method_name = id.test_method().unwrap_or("").to_owned();
+                let file = issue
+                    .source_code_context
+                    .as_ref()
+                    .and_then(|c| c.location.as_ref())
+                    .and_then(|l| l.file_path())
+                    .unwrap_or("")
+                    .to_owned();
+                let line = issue
+                    .source_code_context
+                    .as_ref()
+                    .and_then(|c| c.location.as_ref())
+                    .map(|l| l.line_number)
+                    .unwrap_or(0);
+                listener
+                    .test_case_did_fail(
+                        &test_class,
+                        &method_name,
+                        &issue.compact_description,
+                        &file,
+                        line,
+                    )
+                    .await?;
             }
         }
 
         // --- activities (legacy) ---
         m if m == XCT_CASE_WILL_START_ACTIVITY => {
-            let test_class =
-                aux.first().map(aux_as_string).transpose()?.unwrap_or_default();
-            let method_name =
-                aux.get(1).map(aux_as_string).transpose()?.unwrap_or_default();
+            let test_class = aux
+                .first()
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
+            let method_name = aux
+                .get(1)
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
             // aux[2] is an XCActivityRecord NSKeyedArchive blob, not a plain string
-            let title = aux.get(2)
+            let title = aux
+                .get(2)
                 .and_then(|a| decode_aux_archive(a).ok())
                 .and_then(|v| XCActivityRecord::from_plist(&v))
                 .map(|r| r.title)
@@ -1499,12 +1556,19 @@ pub(super) async fn dispatch_xct_message<L: XCUITestListener>(
                 .await?;
         }
         m if m == XCT_CASE_DID_FINISH_ACTIVITY => {
-            let test_class =
-                aux.first().map(aux_as_string).transpose()?.unwrap_or_default();
-            let method_name =
-                aux.get(1).map(aux_as_string).transpose()?.unwrap_or_default();
+            let test_class = aux
+                .first()
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
+            let method_name = aux
+                .get(1)
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
             // aux[2] is an XCActivityRecord NSKeyedArchive blob, not a plain string
-            let title = aux.get(2)
+            let title = aux
+                .get(2)
                 .and_then(|a| decode_aux_archive(a).ok())
                 .and_then(|v| XCActivityRecord::from_plist(&v))
                 .map(|r| r.title)
@@ -1516,39 +1580,39 @@ pub(super) async fn dispatch_xct_message<L: XCUITestListener>(
 
         // --- activities (identifier-based) ---
         m if m == XCT_CASE_WILL_START_ACTIVITY_ID => {
-            if let Some(id_raw) = aux.first() {
-                if let Ok(id_val) = decode_aux_archive(id_raw) {
-                    if let Some(id) = XCTTestIdentifier::from_plist(&id_val) {
-                        let method_name = id.test_method().unwrap_or("").to_owned();
-                        // aux[1] is an XCActivityRecord NSKeyedArchive blob
-                        let title = aux.get(1)
-                            .and_then(|a| decode_aux_archive(a).ok())
-                            .and_then(|v| XCActivityRecord::from_plist(&v))
-                            .map(|r| r.title)
-                            .unwrap_or_default();
-                        listener
-                            .test_case_will_start_activity(id.test_class(), &method_name, &title)
-                            .await?;
-                    }
-                }
+            if let Some(id_raw) = aux.first()
+                && let Ok(id_val) = decode_aux_archive(id_raw)
+                && let Some(id) = XCTTestIdentifier::from_plist(&id_val)
+            {
+                let method_name = id.test_method().unwrap_or("").to_owned();
+                // aux[1] is an XCActivityRecord NSKeyedArchive blob
+                let title = aux
+                    .get(1)
+                    .and_then(|a| decode_aux_archive(a).ok())
+                    .and_then(|v| XCActivityRecord::from_plist(&v))
+                    .map(|r| r.title)
+                    .unwrap_or_default();
+                listener
+                    .test_case_will_start_activity(id.test_class(), &method_name, &title)
+                    .await?;
             }
         }
         m if m == XCT_CASE_DID_FINISH_ACTIVITY_ID => {
-            if let Some(id_raw) = aux.first() {
-                if let Ok(id_val) = decode_aux_archive(id_raw) {
-                    if let Some(id) = XCTTestIdentifier::from_plist(&id_val) {
-                        let method_name = id.test_method().unwrap_or("").to_owned();
-                        // aux[1] is an XCActivityRecord NSKeyedArchive blob
-                        let title = aux.get(1)
-                            .and_then(|a| decode_aux_archive(a).ok())
-                            .and_then(|v| XCActivityRecord::from_plist(&v))
-                            .map(|r| r.title)
-                            .unwrap_or_default();
-                        listener
-                            .test_case_did_finish_activity(id.test_class(), &method_name, &title)
-                            .await?;
-                    }
-                }
+            if let Some(id_raw) = aux.first()
+                && let Ok(id_val) = decode_aux_archive(id_raw)
+                && let Some(id) = XCTTestIdentifier::from_plist(&id_val)
+            {
+                let method_name = id.test_method().unwrap_or("").to_owned();
+                // aux[1] is an XCActivityRecord NSKeyedArchive blob
+                let title = aux
+                    .get(1)
+                    .and_then(|a| decode_aux_archive(a).ok())
+                    .and_then(|v| XCActivityRecord::from_plist(&v))
+                    .map(|r| r.title)
+                    .unwrap_or_default();
+                listener
+                    .test_case_did_finish_activity(id.test_class(), &method_name, &title)
+                    .await?;
             }
         }
 
@@ -1556,12 +1620,26 @@ pub(super) async fn dispatch_xct_message<L: XCUITestListener>(
         // Python selector: _XCT_testMethod:ofClass:didMeasureMetric:file:line:
         // → aux[0]=method, aux[1]=test_class, aux[2]=metric, aux[3]=file, aux[4]=line
         m if m == XCT_METHOD_DID_MEASURE_METRIC => {
-            let method_name =
-                aux.first().map(aux_as_string).transpose()?.unwrap_or_default();
-            let test_class =
-                aux.get(1).map(aux_as_string).transpose()?.unwrap_or_default();
-            let metric = aux.get(2).map(aux_as_string).transpose()?.unwrap_or_default();
-            let file = aux.get(3).map(aux_as_string).transpose()?.unwrap_or_default();
+            let method_name = aux
+                .first()
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
+            let test_class = aux
+                .get(1)
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
+            let metric = aux
+                .get(2)
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
+            let file = aux
+                .get(3)
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
             let line = aux.get(4).map(aux_as_u64).transpose()?.unwrap_or(0);
             listener
                 .test_method_did_measure_metric(&test_class, &method_name, &metric, &file, line)
@@ -1587,13 +1665,21 @@ pub(super) async fn dispatch_xct_message<L: XCUITestListener>(
             listener.get_progress_for_launch(&token).await?;
         }
         m if m == XCT_UI_INIT_DID_FAIL => {
-            let desc = aux.first().map(aux_as_string).transpose()?.unwrap_or_default();
+            let desc = aux
+                .first()
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
             listener
                 .initialization_for_ui_testing_did_fail(&desc)
                 .await?;
         }
         m if m == XCT_DID_FAIL_BOOTSTRAP => {
-            let desc = aux.first().map(aux_as_string).transpose()?.unwrap_or_default();
+            let desc = aux
+                .first()
+                .map(aux_as_string)
+                .transpose()?
+                .unwrap_or_default();
             listener.did_fail_to_bootstrap(&desc).await?;
         }
 
@@ -1642,22 +1728,13 @@ async fn install_early_xctest_handler<R: ReadWrite + 'static>(
                     return Ok(IncomingHandlerOutcome::Unhandled);
                 }
 
-                let aux = msg
-                    .aux
-                    .as_ref()
-                    .map(|a| a.values.as_slice())
-                    .unwrap_or(&[]);
+                let aux = msg.aux.as_ref().map(|a| a.values.as_slice()).unwrap_or(&[]);
 
                 let mut listener = EarlyXCTestBootstrapListener;
                 let mut done = false;
-                let reply = dispatch_xct_message(
-                    method,
-                    aux,
-                    &xctest_config,
-                    &mut listener,
-                    &mut done,
-                )
-                .await?;
+                let reply =
+                    dispatch_xct_message(method, aux, &xctest_config, &mut listener, &mut done)
+                        .await?;
 
                 Ok(match reply {
                     Some(reply_bytes) => IncomingHandlerOutcome::Reply(reply_bytes),
@@ -1684,9 +1761,7 @@ pub(super) async fn run_dispatch_loop<L: XCUITestListener>(
         let remaining = if let Some(dl) = deadline {
             let r = dl
                 .checked_duration_since(std::time::Instant::now())
-                .ok_or_else(|| {
-                    IdeviceError::XcTestTimeout(timeout.unwrap().as_secs_f64())
-                })?;
+                .ok_or_else(|| IdeviceError::XcTestTimeout(timeout.unwrap().as_secs_f64()))?;
             Some(r)
         } else {
             None
@@ -1706,11 +1781,7 @@ pub(super) async fn run_dispatch_loop<L: XCUITestListener>(
             }
         };
 
-        let aux = msg
-            .aux
-            .as_ref()
-            .map(|a| a.values.as_slice())
-            .unwrap_or(&[]);
+        let aux = msg.aux.as_ref().map(|a| a.values.as_slice()).unwrap_or(&[]);
 
         let msg_id = msg.message_header.identifier();
         let conversation_index = msg.message_header.conversation_index();
@@ -1930,12 +2001,7 @@ impl XCUITestService {
         let mut process_control = XCTestProcessControlChannel::open(&mut conns.dvt).await?;
 
         let config_name = cfg.config_name().to_owned();
-        initialize_testmanager_sessions(
-            &mut ctrl_proxy,
-            &mut main_proxy,
-            &xctest_config,
-        )
-        .await?;
+        initialize_testmanager_sessions(&mut ctrl_proxy, &mut main_proxy, &xctest_config).await?;
         register_early_driver_channel_handler(&mut conns.main, &xctest_config).await;
         initialize_testmanager_daemon_sessions(
             &mut ctrl_proxy,
