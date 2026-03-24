@@ -508,7 +508,7 @@ async fn connect_dtx_service(
                     .get_socket()
                     .ok_or(IdeviceError::NoEstablishedConnection)?;
                 let label = format!("lockdown:{name}");
-                let mut client = RemoteServerClient::with_label(socket, label);
+                let client = RemoteServerClient::with_label(socket, label);
                 if read_greeting {
                     // testmanagerd sends a capabilities hello on connect.
                     let _ = client
@@ -948,10 +948,6 @@ impl<R: ReadWrite + 'static> TestManagerProxy<R> {
         pid: u64,
     ) -> Result<(), IdeviceError> {
         authorize_test(&mut self.channel, ios_major_version, pid).await
-    }
-
-    fn channel_code(&self) -> i32 {
-        self.channel.channel_code()
     }
 }
 
@@ -1995,6 +1991,11 @@ impl XCUITestService {
     /// The xctrunner orchestration continues on a background task. This is
     /// designed for automation use cases where callers want a durable WDA
     /// session instead of waiting for the XCTest plan to terminate.
+    ///
+    /// Readiness detection currently uses a simple polling loop against
+    /// `WdaClient::status()`. This is intentionally conservative bootstrap
+    /// behavior for now; large-scale orchestration should still stagger or
+    /// back off parallel startup attempts at a higher layer.
     #[cfg(feature = "wda")]
     pub async fn run_until_wda_ready(
         &self,
@@ -2011,7 +2012,7 @@ impl XCUITestService {
 
         let wda = WdaClient::new(&*self.provider);
         let deadline = std::time::Instant::now() + readiness_timeout;
-        let poll_interval = std::time::Duration::from_millis(100);
+        let poll_interval = std::time::Duration::from_millis(250);
 
         let status = loop {
             if task.is_finished() {

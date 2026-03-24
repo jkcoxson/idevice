@@ -10,4 +10,6 @@ lto = true
 panic = "abort"
 
 [patch.crates-io]
-jktcp = { path = "..\\vendor\\jktcp-0.1.0" }
+# Temporary vendored patch until the tunnel/TCP buffering fix can be
+# upstreamed or the dependency can be updated without the local override.
+jktcp = { path = "../vendor/jktcp-0.1.0" }

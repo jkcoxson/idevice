@@ -76,6 +76,8 @@ To keep dependency bloat and compile time down, everything is contained in featu
 | `tunneld`              | Interface with [pymobiledevice3](https://github.com/doronz88/pymobiledevice3)'s tunneld. |
 | `usbmuxd`              | Connect using the usbmuxd daemon.|
 | `xpc`                  | Access protected services via XPC over RSD. |
+| `xctest`               | Launch XCTest runners and coordinate modern testmanagerd/XCTest sessions. |
+| `wda`                  | Minimal WebDriverAgent bootstrap helpers and localhost bridge support. |
 | `notification_proxy`   | Post and observe iOS notifications. |
 
 ### Planned/TODO
@@ -145,6 +147,28 @@ async fn main() {
 ```
 
 More examples are in the [`tools`](tools/) crate and in the crate documentation.
+
+### XCTest / WDA
+
+`idevice` also includes support for launching XCTest runners through the
+library's modern DVT/RSD path. This can be used to start
+WebDriverAgent-style runners on recent iOS versions.
+
+The bundled CLI exposes this through the `idevice-tools xctest` command:
+
+```bash
+idevice-tools --udid <device-udid> xctest io.github.kor1k1.WebDriverAgentRunner.xctrunner
+```
+
+To wait for WDA and expose localhost bridge URLs for HTTP and MJPEG:
+
+```bash
+idevice-tools --udid <device-udid> xctest --bridge io.github.kor1k1.WebDriverAgentRunner.xctrunner
+```
+
+The current `wda` support is intentionally a bootstrap layer for readiness
+checks and session startup, rather than a complete long-lived WebDriver
+client.
 
 ## FFI
 

@@ -3,8 +3,8 @@
 //   idevice-tools xctest <runner_bundle_id> [target_bundle_id]
 //
 // Example (WDA):
-//   idevice-tools xctest app.merin.uploader.xctrunner
-//   idevice-tools xctest --bridge app.merin.uploader.xctrunner
+//   idevice-tools xctest io.github.kor1k1.WebDriverAgentRunner.xctrunner
+//   idevice-tools xctest --bridge io.github.kor1k1.WebDriverAgentRunner.xctrunner
 
 use std::{sync::Arc, time::Duration};
 
@@ -35,7 +35,9 @@ pub fn register() -> JkCommand {
         .with_argument(
             JkArgument::new()
                 .required(true)
-                .with_help("Bundle ID of the .xctrunner app (e.g. app.merin.uploader.xctrunner)"),
+                .with_help(
+                    "Bundle ID of the .xctrunner app (e.g. io.github.kor1k1.WebDriverAgentRunner.xctrunner)",
+                ),
         )
         .with_argument(
             JkArgument::new()
@@ -139,16 +141,21 @@ impl XCUITestListener for PrintListener {
 }
 
 pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvider>) {
+    if let Err(e) = run(arguments, provider).await {
+        eprintln!("[XCTest] Error: {}", e);
+        std::process::exit(1);
+    }
+}
+
+async fn run(
+    arguments: &CollectedArguments,
+    provider: Box<dyn IdeviceProvider>,
+) -> Result<(), IdeviceError> {
     let mut arguments = arguments.clone();
     let use_bridge = arguments.has_flag("bridge");
     let show_wda_debug_logs = arguments.has_flag("wda-debug-log");
-    let wda_timeout = arguments
-        .get_flag::<String>("wda-timeout")
-        .and_then(|value| value.parse::<f64>().ok())
-        .unwrap_or(30.0);
-    let runner_bundle_id: String = arguments
-        .next_argument()
-        .expect("runner bundle ID required");
+    let wda_timeout = parse_wda_timeout(&arguments)?;
+    let runner_bundle_id = required_argument(&mut arguments, "runner bundle ID")?;
     let target_bundle_id: Option<String> = arguments.next_argument();
 
     println!("[XCTest] Runner:  {}", runner_bundle_id);
@@ -156,18 +163,12 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
         println!("[XCTest] Target:  {}", t);
     }
 
-    let cfg = {
-        let mut install_proxy = InstallationProxyClient::connect(provider.as_ref())
-            .await
-            .expect("installation proxy connect failed");
-        TestConfig::from_installation_proxy(
-            &mut install_proxy,
-            &runner_bundle_id,
-            target_bundle_id.as_deref(),
-        )
-        .await
-        .expect("TestConfig build failed")
-    };
+    let cfg = build_test_config(
+        provider.as_ref(),
+        &runner_bundle_id,
+        target_bundle_id.as_deref(),
+    )
+    .await?;
 
     println!("[XCTest] App path:      {}", cfg.runner_app_path);
     println!("[XCTest] Container:     {}", cfg.runner_app_container);
@@ -182,46 +183,65 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
     println!("[XCTest] Launching runner - this may take 15-30s ...");
 
     if use_bridge {
-        match svc
+        let handle = svc
             .run_until_wda_ready_with_bridge(cfg, Duration::from_secs_f64(wda_timeout))
-            .await
-        {
-            Ok(handle) => {
-                let endpoints = handle.bridge().endpoints();
-                println!("[XCTest] WDA is ready and bridged to localhost.");
-                if let Some(udid) = endpoints.udid.as_deref() {
-                    println!("[XCTest] Device UDID: {}", udid);
-                }
-                println!("[XCTest] WDA URL:    {}", endpoints.wda_url);
-                println!("[XCTest] MJPEG URL:  {}", endpoints.mjpeg_url);
-                println!(
-                    "[XCTest] Local ports: HTTP {} -> device {}, MJPEG {} -> device {}",
-                    endpoints.local_ports.http,
-                    endpoints.device_ports.http,
-                    endpoints.local_ports.mjpeg,
-                    endpoints.device_ports.mjpeg
-                );
-                println!("[XCTest] Bridge is live. Press Ctrl+C to stop.");
-
-                if let Err(e) = handle.wait().await {
-                    eprintln!("[XCTest] Error: {}", e);
-                    std::process::exit(1);
-                }
-            }
-            Err(e) => {
-                eprintln!("[XCTest] Error: {}", e);
-                std::process::exit(1);
-            }
+            .await?;
+        let endpoints = handle.bridge().endpoints();
+        println!("[XCTest] WDA is ready and bridged to localhost.");
+        if let Some(udid) = endpoints.udid.as_deref() {
+            println!("[XCTest] Device UDID: {}", udid);
         }
+        println!("[XCTest] WDA URL:    {}", endpoints.wda_url);
+        println!("[XCTest] MJPEG URL:  {}", endpoints.mjpeg_url);
+        println!(
+            "[XCTest] Local ports: HTTP {} -> device {}, MJPEG {} -> device {}",
+            endpoints.local_ports.http,
+            endpoints.device_ports.http,
+            endpoints.local_ports.mjpeg,
+            endpoints.device_ports.mjpeg
+        );
+        println!("[XCTest] Bridge is live. Press Ctrl+C to stop.");
+        handle.wait().await?;
     } else {
-        match svc.run(cfg, &mut listener, None).await {
-            Ok(()) => {
-                println!("[XCTest] Done.");
-            }
-            Err(e) => {
-                eprintln!("[XCTest] Error: {}", e);
-                std::process::exit(1);
-            }
-        }
+        svc.run(cfg, &mut listener, None).await?;
+        println!("[XCTest] Done.");
     }
+
+    Ok(())
+}
+
+fn parse_wda_timeout(arguments: &CollectedArguments) -> Result<f64, IdeviceError> {
+    let Some(value) = arguments.get_flag::<String>("wda-timeout") else {
+        return Ok(30.0);
+    };
+
+    value.parse::<f64>().map_err(|_| {
+        IdeviceError::UnknownErrorType(format!(
+            "invalid --wda-timeout value '{}', expected a number of seconds",
+            value
+        ))
+    })
+}
+
+fn required_argument(
+    arguments: &mut CollectedArguments,
+    name: &str,
+) -> Result<String, IdeviceError> {
+    arguments.next_argument().ok_or_else(|| {
+        IdeviceError::UnknownErrorType(format!("missing required argument: {name}"))
+    })
+}
+
+async fn build_test_config(
+    provider: &dyn IdeviceProvider,
+    runner_bundle_id: &str,
+    target_bundle_id: Option<&str>,
+) -> Result<TestConfig, IdeviceError> {
+    let mut install_proxy = InstallationProxyClient::connect(provider).await?;
+    TestConfig::from_installation_proxy(
+        &mut install_proxy,
+        runner_bundle_id,
+        target_bundle_id,
+    )
+    .await
 }

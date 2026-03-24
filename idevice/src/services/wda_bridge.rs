@@ -144,13 +144,7 @@ impl WdaBridge {
             mjpeg: mjpeg_forward.local_port(),
         };
 
-        let endpoints = WdaBridgeEndpoints {
-            udid,
-            wda_url: format!("http://127.0.0.1:{}", local_ports.http),
-            mjpeg_url: format!("http://127.0.0.1:{}", local_ports.mjpeg),
-            local_ports,
-            device_ports,
-        };
+        let endpoints = bridge_endpoints(udid, local_ports, device_ports);
 
         Ok(Self {
             endpoints,
@@ -173,6 +167,27 @@ impl WdaBridge {
     pub fn mjpeg_url(&self) -> &str {
         &self.endpoints.mjpeg_url
     }
+
+    /// Stops the localhost bridge by consuming the handle.
+    ///
+    /// Dropping the bridge aborts the underlying accept loops, so an explicit
+    /// shutdown method is only a convenience wrapper over normal drop
+    /// semantics.
+    pub fn shutdown(self) {}
+}
+
+fn bridge_endpoints(
+    udid: Option<String>,
+    local_ports: WdaPorts,
+    device_ports: WdaPorts,
+) -> WdaBridgeEndpoints {
+    WdaBridgeEndpoints {
+        udid,
+        wda_url: format!("http://127.0.0.1:{}", local_ports.http),
+        mjpeg_url: format!("http://127.0.0.1:{}", local_ports.mjpeg),
+        local_ports,
+        device_ports,
+    }
 }
 
 async fn proxy_connection(
@@ -181,4 +196,32 @@ async fn proxy_connection(
 ) -> Result<(), IdeviceError> {
     let _ = copy_bidirectional(client, device).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{bridge_endpoints, WdaPorts};
+
+    #[test]
+    fn bridge_endpoints_use_local_ports_in_urls() {
+        let endpoints = bridge_endpoints(
+            Some("test-udid".into()),
+            WdaPorts {
+                http: 38100,
+                mjpeg: 39100,
+            },
+            WdaPorts {
+                http: 8100,
+                mjpeg: 9100,
+            },
+        );
+
+        assert_eq!(endpoints.udid.as_deref(), Some("test-udid"));
+        assert_eq!(endpoints.wda_url, "http://127.0.0.1:38100");
+        assert_eq!(endpoints.mjpeg_url, "http://127.0.0.1:39100");
+        assert_eq!(endpoints.local_ports.http, 38100);
+        assert_eq!(endpoints.local_ports.mjpeg, 39100);
+        assert_eq!(endpoints.device_ports.http, 8100);
+        assert_eq!(endpoints.device_ports.mjpeg, 9100);
+    }
 }

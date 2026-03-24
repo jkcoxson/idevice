@@ -290,19 +290,10 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
         }
     }
 
-    /// Waits until the remote side disconnects this DTX connection.
-    pub(crate) async fn wait_disconnected(&self) {
-        if self.shared.closed.load(Ordering::Relaxed) {
-            return;
-        }
-        self.shared.closed_notify.notified().await;
-    }
-
     /// Returns a future that resolves when this DTX connection disconnects.
     ///
-    /// Unlike `wait_disconnected(&self)`, this captures the shared state by
-    /// clone so callers can await it alongside operations that hold a mutable
-    /// borrow of the client.
+    /// This captures the shared state by clone so callers can await it
+    /// alongside operations that hold a mutable borrow of the client.
     pub(crate) fn disconnect_waiter(&self) -> impl Future<Output = ()> + Send + 'static {
         let shared = self.shared.clone();
         async move {
@@ -513,17 +504,6 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
         })
     }
 
-    /// Registers an incoming (runner-initiated) reverse channel and returns a handle.
-    ///
-    /// Used when the test runner opens a channel back to the IDE (e.g.
-    /// `XCTestDriverInterface`).
-    pub(crate) fn accept_channel<'c>(&'c mut self, code: i32) -> Channel<'c, R> {
-        Channel {
-            client: self,
-            channel: code,
-        }
-    }
-
     /// Returns an owned handle for an existing registered channel.
     pub(crate) fn accept_owned_channel(&self, code: i32) -> OwnedChannel<R> {
         OwnedChannel {
@@ -531,59 +511,6 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
             shared: self.shared.clone(),
             channel: code,
         }
-    }
-
-    /// Cancels a previously opened channel and removes it from the local registry.
-    ///
-    /// Mirrors pymobiledevice3's `DTXConnection.cancel_channel()`: local
-    /// transport state is torn down first, then the control selector
-    /// `_channelCanceled:` is sent to the peer.
-    pub(crate) async fn cancel_channel(&mut self, channel: i32) -> Result<(), IdeviceError> {
-        if channel == 0 {
-            return Err(IdeviceError::UnexpectedResponse);
-        }
-
-        Self::remove_channel(&self.shared, channel).await;
-
-        self.root_channel()
-            .call_method(
-                Some("_channelCanceled:"),
-                Some(vec![AuxValue::I64(i64::from(channel))]),
-                false,
-            )
-            .await
-    }
-
-    /// Sends a raw reply to an incoming message.
-    ///
-    /// `data_bytes` is sent verbatim as the message payload without any
-    /// additional NSKeyedArchive encoding.  Pass an empty slice to send an
-    /// acknowledgement with no payload.
-    pub(crate) async fn send_raw_reply(
-        &mut self,
-        channel: i32,
-        incoming_msg_id: u32,
-        incoming_conversation_index: u32,
-        data_bytes: &[u8],
-    ) -> Result<(), IdeviceError> {
-        self.shared
-            .send_raw_reply(channel, incoming_msg_id, incoming_conversation_index, data_bytes)
-            .await
-    }
-
-    /// Registers an async handler for incoming remote-initiated messages on `channel`.
-    pub(crate) async fn set_incoming_handler<F, Fut>(&mut self, channel: i32, handler: F)
-    where
-        F: Fn(Message) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<IncomingHandlerOutcome, IdeviceError>> + Send + 'static,
-    {
-        let handler: IncomingMessageHandler = Arc::new(move |msg| Box::pin(handler(msg)));
-        self.shared.handlers.lock().await.insert(channel, handler);
-    }
-
-    /// Removes an incoming handler for `channel`.
-    pub(crate) async fn clear_incoming_handler(&mut self, channel: i32) {
-        self.shared.handlers.lock().await.remove(&channel);
     }
 
     /// Registers an initializer that runs as soon as the remote opens a
@@ -637,22 +564,6 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
         self.shared.registry_notify.notify_waiters();
     }
 
-    /// Waits for a registered channel matching one of the given identifiers.
-    ///
-    /// This is a transport-level primitive that mirrors the service/channel
-    /// registry wait semantics in pymobiledevice3's `DTXConnection`.
-    pub(crate) async fn wait_for_registered_channel<'c>(
-        &'c mut self,
-        identifiers: &[&str],
-        remote: Option<bool>,
-        timeout: Option<std::time::Duration>,
-    ) -> Result<Channel<'c, R>, IdeviceError> {
-        let code = self
-            .wait_for_registered_channel_code(identifiers, remote, timeout)
-            .await?;
-        self.build_channel(code)
-    }
-
     pub(crate) async fn wait_for_registered_channel_code(
         &self,
         identifiers: &[&str],
@@ -687,17 +598,6 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
         }
     }
 
-    /// Waits for a service channel matching one of the given identifiers.
-    pub(crate) async fn wait_for_service_channel<'c>(
-        &'c mut self,
-        identifiers: &[&str],
-        remote: Option<bool>,
-        timeout: Option<std::time::Duration>,
-    ) -> Result<Channel<'c, R>, IdeviceError> {
-        self.wait_for_registered_channel(identifiers, remote, timeout)
-            .await
-    }
-
     /// Waits for the code of a service channel matching one of the given identifiers.
     pub(crate) async fn wait_for_service_channel_code(
         &self,
@@ -707,24 +607,6 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
     ) -> Result<i32, IdeviceError> {
         self.wait_for_registered_channel_code(identifiers, remote, timeout)
             .await
-    }
-
-    /// Waits for a registered `dtxproxy:` channel whose local or remote
-    /// sub-service matches one of `identifiers`.
-    ///
-    /// This mirrors pymobiledevice3's `wait_for_proxied_service()` matching
-    /// logic at the transport metadata layer.
-    pub(crate) async fn wait_for_proxied_channel<'c>(
-        &'c mut self,
-        identifiers: &[&str],
-        remote_service: bool,
-        remote_channel: Option<bool>,
-        timeout: Option<std::time::Duration>,
-    ) -> Result<Channel<'c, R>, IdeviceError> {
-        let code = self
-            .wait_for_proxied_channel_code(identifiers, remote_service, remote_channel, timeout)
-            .await?;
-        self.build_channel(code)
     }
 
     pub(crate) async fn wait_for_proxied_channel_code(
@@ -760,19 +642,6 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
                 .map_err(|_| IdeviceError::XcTestTimeout(timeout.as_secs_f64()))?,
             None => wait_future.await,
         }
-    }
-
-    /// Waits for a proxied service channel whose local or remote sub-service
-    /// matches one of `identifiers`.
-    pub(crate) async fn wait_for_proxied_service_channel<'c>(
-        &'c mut self,
-        identifiers: &[&str],
-        remote_service: bool,
-        remote_channel: Option<bool>,
-        timeout: Option<std::time::Duration>,
-    ) -> Result<Channel<'c, R>, IdeviceError> {
-        self.wait_for_proxied_channel(identifiers, remote_service, remote_channel, timeout)
-            .await
     }
 
     /// Waits for the code of a proxied service channel whose local or remote
@@ -976,26 +845,6 @@ impl<R: ReadWrite + 'static> RemoteServerClient<R> {
                 _ = self.shared.closed_notify.notified() => return Err(Self::closed_error()),
             }
         }
-    }
-
-    /// Waits until the remote peer opens one of the requested channel identifiers.
-    pub(crate) async fn wait_for_incoming_channel<'c>(
-        &'c mut self,
-        identifiers: &[&str],
-    ) -> Result<Channel<'c, R>, IdeviceError> {
-        self.wait_for_registered_channel(identifiers, Some(true), None)
-            .await
-    }
-
-    /// Waits until the remote peer opens one of the requested channel
-    /// identifiers, failing with `XcTestTimeout` if the deadline elapses.
-    pub(crate) async fn wait_for_incoming_channel_timeout<'c>(
-        &'c mut self,
-        identifiers: &[&str],
-        timeout: std::time::Duration,
-    ) -> Result<Channel<'c, R>, IdeviceError> {
-        self.wait_for_registered_channel(identifiers, Some(true), Some(timeout))
-            .await
     }
 
     fn spawn_reader(
@@ -1409,11 +1258,6 @@ impl<R: ReadWrite + 'static> Channel<'_, R> {
         }
     }
 
-    /// Returns the channel code number.
-    pub(crate) fn channel_code(&self) -> i32 {
-        self.channel
-    }
-
     /// Reads the next message from the remote server on this channel
     ///
     /// # Returns
@@ -1425,17 +1269,6 @@ impl<R: ReadWrite + 'static> Channel<'_, R> {
     /// * Other IO or deserialization errors
     pub async fn read_message(&mut self) -> Result<Message, IdeviceError> {
         self.client.read_message(self.channel).await
-    }
-
-    /// Reads the next message from this channel, failing with
-    /// `IdeviceError::XcTestTimeout` if the timeout elapses.
-    pub(crate) async fn read_message_timeout(
-        &mut self,
-        timeout: std::time::Duration,
-    ) -> Result<Message, IdeviceError> {
-        tokio::time::timeout(timeout, self.read_message())
-            .await
-            .map_err(|_| IdeviceError::XcTestTimeout(timeout.as_secs_f64()))?
     }
 
     /// Calls a method on the specified channel
@@ -1473,49 +1306,9 @@ impl<R: ReadWrite + 'static> Channel<'_, R> {
             .await
     }
 
-    /// Registers an incoming handler for this channel.
-    pub(crate) async fn set_incoming_handler<F, Fut>(&mut self, handler: F)
-    where
-        F: Fn(Message) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<IncomingHandlerOutcome, IdeviceError>> + Send + 'static,
-    {
-        self.client.set_incoming_handler(self.channel, handler).await;
-    }
-
-    /// Removes the incoming handler for this channel.
-    pub(crate) async fn clear_incoming_handler(&mut self) {
-        self.client.clear_incoming_handler(self.channel).await;
-    }
-
-    /// Sends a raw reply for an incoming message on this channel.
-    pub(crate) async fn send_raw_reply_for(
-        &mut self,
-        incoming_msg_id: u32,
-        incoming_conversation_index: u32,
-        data_bytes: &[u8],
-    ) -> Result<(), IdeviceError> {
-        self.client
-            .send_raw_reply(
-                self.channel,
-                incoming_msg_id,
-                incoming_conversation_index,
-                data_bytes,
-            )
-            .await
-    }
-
-    /// Cancels this channel using the connection-level control channel.
-    pub(crate) async fn cancel(&mut self) -> Result<(), IdeviceError> {
-        self.client.cancel_channel(self.channel).await
-    }
 }
 
 impl<R: ReadWrite + 'static> OwnedChannel<R> {
-    /// Returns the channel code number.
-    pub(crate) fn channel_code(&self) -> i32 {
-        self.channel
-    }
-
     /// Reads the next queued message from this channel.
     pub async fn read_message(&mut self) -> Result<Message, IdeviceError> {
         loop {
@@ -1656,24 +1449,4 @@ impl<R: ReadWrite + 'static> OwnedChannel<R> {
             .await
     }
 
-    /// Cancels this channel via the control channel.
-    pub(crate) async fn cancel(&mut self) -> Result<(), IdeviceError> {
-        if self.channel == 0 {
-            return Err(IdeviceError::UnexpectedResponse);
-        }
-
-        RemoteServerClient::<R>::remove_channel(&self.shared, self.channel).await;
-
-        let identifier = self.shared.current_message.fetch_add(1, Ordering::Relaxed) + 1;
-        let mheader = MessageHeader::new(0, 1, identifier, 0, 0, false);
-        let pheader = PayloadHeader::method_invocation();
-        let message = Message::new(
-            mheader,
-            pheader,
-            Some(Aux::from_values(vec![AuxValue::I64(i64::from(self.channel))])),
-            Some(plist::Value::String("_channelCanceled:".into())),
-        );
-        xctest_debug!("[{}] Sending message: {message:#?}", self.label);
-        self.shared.write_all(&message.serialize()).await
-    }
 }

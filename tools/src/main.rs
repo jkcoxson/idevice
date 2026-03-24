@@ -128,8 +128,11 @@ async fn main() {
         .with_subcommand("syslog_relay", syslog_relay::register())
         .with_subcommand("xctest", xctest::register())
         .subcommand_required(true)
-        .collect()
-        .expect("Failed to collect CLI args");
+        .collect();
+
+    let Some(arguments) = arguments else {
+        return;
+    };
 
     let udid = arguments.get_flag::<String>("udid");
     let host = arguments.get_flag::<String>("host");
