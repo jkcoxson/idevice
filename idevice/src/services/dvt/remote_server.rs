@@ -260,22 +260,8 @@ impl<R: ReadWrite> std::fmt::Debug for RemoteServerClient<R> {
 }
 
 impl<R: ReadWrite> RemoteServerClient<R> {
-    /// Creates a new RemoteServerClient with the given transport
-    ///
-    /// # Arguments
-    /// * `idevice` - The underlying transport implementing ReadWrite
-    ///
-    /// # Returns
-    /// A new client instance with root channel (0) initialized
-    pub fn new(idevice: R) -> Self
-    where
-        R: 'static,
-    {
-        Self::with_label(idevice, "remote-server")
-    }
-
     /// Creates a new client with a debug label used in tracing output.
-    pub fn with_label(idevice: R, label: impl Into<String>) -> Self
+    fn with_label_typed(idevice: R, label: impl Into<String>) -> Self
     where
         R: 'static,
     {
@@ -1245,6 +1231,18 @@ impl<R: ReadWrite> RemoteServerClient<R> {
             std::io::ErrorKind::BrokenPipe,
             "remote server connection closed",
         ))
+    }
+}
+
+impl RemoteServerClient<Box<dyn ReadWrite>> {
+    /// Creates a new RemoteServerClient with the given transport.
+    pub fn new(idevice: impl ReadWrite + 'static) -> Self {
+        Self::with_label(idevice, "remote-server")
+    }
+
+    /// Creates a new client with a debug label used in tracing output.
+    pub fn with_label(idevice: impl ReadWrite + 'static, label: impl Into<String>) -> Self {
+        Self::with_label_typed(Box::new(idevice), label)
     }
 }
 
