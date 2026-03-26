@@ -2,7 +2,7 @@
 name = "idevice"
 description = "A Rust library to interact with services on iOS devices."
 authors = ["Jackson Coxson"]
-version = "0.1.53"
+version = "0.1.54"
 edition = "2024"
 license = "MIT"
 documentation = "https://docs.rs/idevice"
@@ -24,7 +24,7 @@ plist = { version = "1.8" }
 plist-macro = { version = "0.1.6" }
 serde = { version = "1", features = ["derive"] }
 ns-keyed-archive = { version = "0.1.4", optional = true }
-crossfire = { version = "2.1", optional = true }
+jktcp = { version = "0.1.0", optional = true }
 
 thiserror = { version = "2" }
 tracing = { version = "0.1.41" }
@@ -44,7 +44,6 @@ bytes = { version = "1.10", optional = true }
 reqwest = { version = "0.13", features = [
   "json",
 ], optional = true, default-features = false }
-rand = { version = "0.9", optional = true }
 futures = { version = "0.3", optional = true }
 async-stream = { version = "0.3.6", optional = true }
 
@@ -60,6 +59,7 @@ ed25519-dalek = { version = "2", features = ["rand_core"], optional = true }
 hkdf = { version = "0.12", optional = true }
 chacha20poly1305 = { version = "0.10", optional = true }
 idevice-srp = { version = "0.6", optional = true }
+rand = { version = "0.10" }
 
 obfstr = { version = "0.4", optional = true }
 
@@ -128,13 +128,7 @@ rsd = ["xpc"]
 screenshotr = []
 syslog_relay = ["dep:bytes"]
 tcp = ["tokio/net"]
-tunnel_tcp_stack = [
-  "dep:rand",
-  "dep:futures",
-  "tokio/fs",
-  "tokio/sync",
-  "dep:crossfire",
-]
+tunnel_tcp_stack = ["dep:jktcp"]
 tss = ["dep:uuid", "dep:reqwest"]
 tunneld = ["dep:serde_json", "dep:json", "dep:reqwest"]
 usbmuxd = ["tokio/net", "dep:futures"]

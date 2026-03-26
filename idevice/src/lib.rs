@@ -887,6 +887,10 @@ pub enum IdeviceError {
     #[cfg(feature = "notification_proxy")]
     #[error("notification proxy died")]
     NotificationProxyDeath = -76,
+
+    #[cfg(feature = "installation_proxy")]
+    #[error("Application verification failed: {0}")]
+    ApplicationVerificationFailed(String) = -78,
 }
 
 impl IdeviceError {
@@ -929,6 +933,15 @@ impl IdeviceError {
                 } else {
                     Some(Self::InternalError(detailed_error))
                 }
+            }
+            #[cfg(feature = "installation_proxy")]
+            "ApplicationVerificationFailed" => {
+                let msg = context
+                    .get("ErrorDescription")
+                    .and_then(|x| x.as_string())
+                    .unwrap_or("No context")
+                    .to_string();
+                Some(Self::ApplicationVerificationFailed(msg))
             }
             _ => None,
         }
@@ -1063,6 +1076,9 @@ impl IdeviceError {
 
             #[cfg(feature = "notification_proxy")]
             IdeviceError::NotificationProxyDeath => -76,
+
+            #[cfg(feature = "installation_proxy")]
+            IdeviceError::ApplicationVerificationFailed(_) => -78,
         }
     }
 }

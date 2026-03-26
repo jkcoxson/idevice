@@ -11,7 +11,7 @@ use hkdf::Hkdf;
 use idevice_srp::{client::SrpClient, groups::G_3072};
 use plist_macro::plist;
 use plist_macro::{PlistConvertible, PlistExt};
-use rand::RngCore;
+use rand::Rng as _;
 use rsa::{rand_core::OsRng, signature::SignerMut};
 use serde::Serialize;
 use sha2::Sha512;
