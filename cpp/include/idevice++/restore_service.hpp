@@ -17,6 +17,9 @@ using RestoreServicePtr =
 
 class RestoreService {
   public:
+    // Factory: connect via RSD tunnel
+    static Result<RestoreService, FfiError> connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake);
+
     // Factory: from ReadWrite stream (RSD-only, consumes the pointer)
     static Result<RestoreService, FfiError> from_readwrite_ptr(ReadWriteOpaque* consumed);
 

@@ -10,7 +10,7 @@
 //! Both also support creating an RPPairing file through the USB tunnel for
 //! future wireless use.
 
-use std::ffi::{CStr, c_char};
+use std::ffi::{CStr, c_char, c_void};
 use std::ptr::null_mut;
 
 use idevice::{
@@ -83,13 +83,20 @@ pub unsafe extern "C" fn rsd_tunnel_create_usb(
 ///
 /// The user will need to tap "Trust" on the device.
 ///
+/// For iOS devices, `pin_callback` can be NULL (defaults to "000000").
+/// For Apple TV / Vision Pro, provide a callback that returns the PIN shown on
+/// the device screen. The returned string must be null-terminated and remain
+/// valid until the next call or until pairing completes.
+///
 /// # Safety
-/// All pointer arguments must be valid and non-null.
+/// All pointer arguments must be valid and non-null (except `pin_callback`/`pin_context`).
 /// `out_pairing_file` receives a newly allocated handle that must be freed.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rsd_tunnel_pair_usb(
     lockdown_provider: *mut IdeviceProviderHandle,
     hostname: *const c_char,
+    pin_callback: Option<extern "C" fn(context: *mut c_void) -> *const c_char>,
+    pin_context: *mut c_void,
     out_pairing_file: *mut *mut RpPairingFileHandle,
 ) -> *mut IdeviceFfiError {
     if lockdown_provider.is_null() || hostname.is_null() || out_pairing_file.is_null() {
@@ -100,6 +107,12 @@ pub unsafe extern "C" fn rsd_tunnel_pair_usb(
         Ok(s) => s.to_string(),
         Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
     };
+
+    // Wrap context for Send safety
+    struct Ctx(*mut c_void);
+    unsafe impl Send for Ctx {}
+    unsafe impl Sync for Ctx {}
+    let ctx = Ctx(pin_context);
 
     let res = run_sync_local(async {
         use idevice::RemoteXpcClient;
@@ -120,13 +133,11 @@ pub unsafe extern "C" fn rsd_tunnel_pair_usb(
             .map_err(|e| IdeviceError::InternalError(format!("{e}")))?;
         let handshake = RsdHandshake::new(rsd_stream).await?;
 
-        // Find untrusted tunnel service
         let ts = handshake
             .services
             .get("com.apple.internal.dt.coredevice.untrusted.tunnelservice")
             .ok_or(IdeviceError::ServiceNotFound)?;
 
-        // Connect via RemoteXPC
         let ts_stream = adapter
             .connect(ts.port)
             .await
@@ -135,10 +146,23 @@ pub unsafe extern "C" fn rsd_tunnel_pair_usb(
         conn.do_handshake().await?;
         let _ = conn.recv_root().await?;
 
-        // RPPairing
         let mut rpf = RpPairingFile::generate(&host);
         let mut rpc = RemotePairingClient::new(conn, &host, &mut rpf);
-        rpc.connect(async |_| "000000".to_string(), 0u8).await?;
+        rpc.connect(
+            async |_| {
+                if let Some(cb) = pin_callback {
+                    let ptr = cb(ctx.0);
+                    if !ptr.is_null() {
+                        if let Ok(s) = unsafe { CStr::from_ptr(ptr) }.to_str() {
+                            return s.to_string();
+                        }
+                    }
+                }
+                "000000".to_string()
+            },
+            0u8,
+        )
+        .await?;
 
         Ok::<_, IdeviceError>(rpf)
     });
@@ -165,13 +189,15 @@ pub unsafe extern "C" fn rsd_tunnel_pair_usb(
 /// * `out_handshake` - Receives the RSD handshake handle
 ///
 /// # Safety
-/// All pointer arguments must be valid and non-null.
+/// All pointer arguments must be valid and non-null (except `pin_callback`/`pin_context`).
 /// `pairing_file` is borrowed, not consumed.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rsd_tunnel_create_network(
     addr: *const idevice_sockaddr,
     addr_len: idevice_socklen_t,
     pairing_file: *mut RpPairingFileHandle,
+    pin_callback: Option<extern "C" fn(context: *mut c_void) -> *const c_char>,
+    pin_context: *mut c_void,
     out_adapter: *mut *mut AdapterHandle,
     out_handshake: *mut *mut RsdHandshakeHandle,
 ) -> *mut IdeviceFfiError {
@@ -187,23 +213,25 @@ pub unsafe extern "C" fn rsd_tunnel_create_network(
 
     let rpf = unsafe { &mut (*pairing_file).0 };
 
+    struct Ctx(*mut c_void);
+    unsafe impl Send for Ctx {}
+    unsafe impl Sync for Ctx {}
+    let ctx = Ctx(pin_context);
+
     let res = run_sync_local(async {
         use idevice::RemoteXpcClient;
         use idevice::remote_pairing::{RemotePairingClient, connect_tls_psk_tunnel_native};
 
-        // Connect to RSD
         let rsd_stream = tokio::net::TcpStream::connect(socket_addr)
             .await
             .map_err(|e| IdeviceError::InternalError(format!("RSD connect: {e}")))?;
         let rsd_handshake = RsdHandshake::new(rsd_stream).await?;
 
-        // Find tunnel service
         let ts = rsd_handshake
             .services
             .get("com.apple.internal.dt.coredevice.untrusted.tunnelservice")
             .ok_or(IdeviceError::ServiceNotFound)?;
 
-        // RemoteXPC to tunnel service
         let ts_addr = std::net::SocketAddr::new(socket_addr.ip(), ts.port);
         let ts_stream = tokio::net::TcpStream::connect(ts_addr)
             .await
@@ -212,10 +240,23 @@ pub unsafe extern "C" fn rsd_tunnel_create_network(
         conn.do_handshake().await?;
         let _ = conn.recv_root().await?;
 
-        // Verify pairing
         let host = "idevice-ffi";
         let mut rpc = RemotePairingClient::new(conn, host, rpf);
-        rpc.connect(async |_| "000000".to_string(), 0u8).await?;
+        rpc.connect(
+            async |_| {
+                if let Some(cb) = pin_callback {
+                    let ptr = cb(ctx.0);
+                    if !ptr.is_null() {
+                        if let Ok(s) = unsafe { CStr::from_ptr(ptr) }.to_str() {
+                            return s.to_string();
+                        }
+                    }
+                }
+                "000000".to_string()
+            },
+            0u8,
+        )
+        .await?;
 
         // Create tunnel
         let tunnel_port = rpc.create_tcp_listener().await?;

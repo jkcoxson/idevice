@@ -17,6 +17,9 @@ class Screenshotr {
     // Factory: connect via Provider
     static Result<Screenshotr, FfiError>   connect(Provider& provider);
 
+    // Factory: connect via RSD tunnel
+    static Result<Screenshotr, FfiError>   connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake);
+
     // Ops
     Result<std::vector<uint8_t>, FfiError> take_screenshot();
 

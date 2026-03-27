@@ -19,6 +19,9 @@ class DiagnosticsRelay {
     // Factory: connect via Provider
     static Result<DiagnosticsRelay, FfiError> connect(Provider& provider);
 
+    // Factory: connect via RSD tunnel
+    static Result<DiagnosticsRelay, FfiError> connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake);
+
     // Factory: wrap an existing Idevice socket (consumes it on success)
     static Result<DiagnosticsRelay, FfiError> from_socket(Idevice&& socket);
 

@@ -33,6 +33,15 @@ Result<MobileImageMounter, FfiError> MobileImageMounter::connect(Provider& provi
     return Ok(MobileImageMounter::adopt(handle));
 }
 
+Result<MobileImageMounter, FfiError> MobileImageMounter::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    ImageMounterHandle* handle = nullptr;
+    FfiError            e(::image_mounter_connect_rsd(adapter, handshake, &handle));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(MobileImageMounter::adopt(handle));
+}
+
 Result<MobileImageMounter, FfiError> MobileImageMounter::from_socket(Idevice&& socket) {
     ImageMounterHandle* handle = nullptr;
     // The Rust FFI function consumes the socket, so we must release it from the

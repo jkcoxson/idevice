@@ -17,6 +17,15 @@ Result<Screenshotr, FfiError> Screenshotr::connect(Provider& provider) {
     return Ok(Screenshotr::adopt(out));
 }
 
+Result<Screenshotr, FfiError> Screenshotr::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    ScreenshotrClientHandle* out = nullptr;
+    FfiError                 e(::screenshotr_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(Screenshotr::adopt(out));
+}
+
 Result<std::vector<uint8_t>, FfiError> Screenshotr::take_screenshot() {
     ScreenshotData screenshot{};
     FfiError       e(::screenshotr_take_screenshot(handle_.get(), &screenshot));

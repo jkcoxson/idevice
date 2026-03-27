@@ -17,6 +17,15 @@ Result<CompanionProxy, FfiError> CompanionProxy::connect(Provider& provider) {
     return Ok(CompanionProxy::adopt(out));
 }
 
+Result<CompanionProxy, FfiError> CompanionProxy::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    CompanionProxyClientHandle* out = nullptr;
+    FfiError                    e(::companion_proxy_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(CompanionProxy::adopt(out));
+}
+
 Result<CompanionProxy, FfiError> CompanionProxy::from_socket(Idevice&& socket) {
     CompanionProxyClientHandle* out = nullptr;
     FfiError                    e(::companion_proxy_new(socket.raw(), &out));

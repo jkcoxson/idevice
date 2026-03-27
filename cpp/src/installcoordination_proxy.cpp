@@ -7,6 +7,16 @@
 namespace IdeviceFFI {
 
 Result<InstallcoordinationProxy, FfiError>
+InstallcoordinationProxy::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    InstallcoordinationProxyHandle* out = nullptr;
+    FfiError                        e(::installcoordination_proxy_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(InstallcoordinationProxy::adopt(out));
+}
+
+Result<InstallcoordinationProxy, FfiError>
 InstallcoordinationProxy::from_readwrite_ptr(ReadWriteOpaque* consumed) {
     InstallcoordinationProxyHandle* out = nullptr;
     if (IdeviceFfiError* e = ::installcoordination_proxy_new(consumed, &out)) {

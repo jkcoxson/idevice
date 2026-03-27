@@ -15,6 +15,9 @@ class Amfi {
     // Factory: connect via Provider
     static Result<Amfi, FfiError> connect(Provider& provider);
 
+    // Factory: connect via RSD tunnel
+    static Result<Amfi, FfiError> connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake);
+
     // Factory: wrap an existing Idevice socket (consumes it on success)
     static Result<Amfi, FfiError> from_socket(Idevice&& socket);
 

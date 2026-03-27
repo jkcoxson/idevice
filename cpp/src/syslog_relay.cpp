@@ -17,6 +17,15 @@ Result<SyslogRelay, FfiError> SyslogRelay::connect_tcp(Provider& provider) {
     return Ok(SyslogRelay::adopt(out));
 }
 
+Result<SyslogRelay, FfiError> SyslogRelay::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    SyslogRelayClientHandle* out = nullptr;
+    FfiError                 e(::syslog_relay_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(SyslogRelay::adopt(out));
+}
+
 Result<std::string, FfiError> SyslogRelay::next() {
     char*    log_message = nullptr;
     FfiError e(::syslog_relay_next(handle_.get(), &log_message));

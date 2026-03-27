@@ -20,6 +20,9 @@ class HouseArrest {
     // Factory: connect via Provider
     static Result<HouseArrest, FfiError> connect(Provider& provider);
 
+    // Factory: connect via RSD tunnel
+    static Result<HouseArrest, FfiError> connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake);
+
     // Factory: wrap an existing Idevice socket (consumes it on success)
     static Result<HouseArrest, FfiError> from_socket(Idevice&& socket);
 

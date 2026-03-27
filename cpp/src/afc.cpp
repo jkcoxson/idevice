@@ -20,6 +20,15 @@ Result<AfcClient, FfiError> AfcClient::connect(Provider& provider) {
     return Ok(AfcClient::adopt(out));
 }
 
+Result<AfcClient, FfiError> AfcClient::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    AfcClientHandle* out = nullptr;
+    FfiError         e(::afc_client_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(AfcClient::adopt(out));
+}
+
 Result<AfcClient, FfiError> AfcClient::connect_afc2(Provider& provider) {
     AfcClientHandle* out = nullptr;
     FfiError         e(::afc2_client_connect(provider.raw(), &out));

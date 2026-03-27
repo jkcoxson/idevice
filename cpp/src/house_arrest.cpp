@@ -17,6 +17,15 @@ Result<HouseArrest, FfiError> HouseArrest::connect(Provider& provider) {
     return Ok(HouseArrest::adopt(out));
 }
 
+Result<HouseArrest, FfiError> HouseArrest::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    HouseArrestClientHandle* out = nullptr;
+    FfiError                 e(::house_arrest_client_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(HouseArrest::adopt(out));
+}
+
 Result<HouseArrest, FfiError> HouseArrest::from_socket(Idevice&& socket) {
     HouseArrestClientHandle* out = nullptr;
     FfiError                 e(::house_arrest_client_new(socket.raw(), &out));

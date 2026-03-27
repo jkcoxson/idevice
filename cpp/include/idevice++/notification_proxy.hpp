@@ -16,6 +16,9 @@ class NotificationProxy {
     // Factory: connect via Provider
     static Result<NotificationProxy, FfiError> connect(Provider& provider);
 
+    // Factory: connect via RSD tunnel
+    static Result<NotificationProxy, FfiError> connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake);
+
     // Factory: wrap an existing Idevice socket (consumes it on success)
     static Result<NotificationProxy, FfiError> from_socket(Idevice&& socket);
 

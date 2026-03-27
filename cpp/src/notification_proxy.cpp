@@ -17,6 +17,15 @@ Result<NotificationProxy, FfiError> NotificationProxy::connect(Provider& provide
     return Ok(NotificationProxy::adopt(out));
 }
 
+Result<NotificationProxy, FfiError> NotificationProxy::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    NotificationProxyClientHandle* out = nullptr;
+    FfiError                       e(::notification_proxy_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(NotificationProxy::adopt(out));
+}
+
 Result<NotificationProxy, FfiError> NotificationProxy::from_socket(Idevice&& socket) {
     NotificationProxyClientHandle* out = nullptr;
     FfiError               e(::notification_proxy_new(socket.raw(), &out));

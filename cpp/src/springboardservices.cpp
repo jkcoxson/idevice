@@ -18,6 +18,15 @@ Result<SpringBoardServices, FfiError> SpringBoardServices::connect(Provider& pro
     return Ok(SpringBoardServices::adopt(out));
 }
 
+Result<SpringBoardServices, FfiError> SpringBoardServices::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    SpringBoardServicesClientHandle* out = nullptr;
+    FfiError                         e(::springboard_services_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(SpringBoardServices::adopt(out));
+}
+
 Result<SpringBoardServices, FfiError> SpringBoardServices::from_socket(Idevice&& socket) {
     SpringBoardServicesClientHandle* out = nullptr;
     FfiError                         e(::springboard_services_new(socket.raw(), &out));

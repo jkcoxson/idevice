@@ -17,6 +17,9 @@ using InstallcoordinationProxyPtr = std::unique_ptr<
 
 class InstallcoordinationProxy {
   public:
+    // Factory: connect via RSD tunnel
+    static Result<InstallcoordinationProxy, FfiError> connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake);
+
     // Factory: from ReadWrite stream (RSD-only, consumes the pointer)
     static Result<InstallcoordinationProxy, FfiError> from_readwrite_ptr(ReadWriteOpaque* consumed);
 

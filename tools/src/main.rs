@@ -41,6 +41,7 @@ mod pcapd;
 mod preboard;
 mod process_control;
 mod remotexpc;
+mod rppairing;
 mod restore_service;
 mod screenshot;
 mod springboardservices;
@@ -121,6 +122,7 @@ async fn main() {
         .with_subcommand("preboard", preboard::register())
         .with_subcommand("process_control", process_control::register())
         .with_subcommand("remotexpc", remotexpc::register())
+        .with_subcommand("rppairing", rppairing::register())
         .with_subcommand("restore_service", restore_service::register())
         .with_subcommand("screenshot", screenshot::register())
         .with_subcommand("springboard", springboardservices::register())
@@ -236,6 +238,9 @@ async fn main() {
         }
         "remotexpc" => {
             remotexpc::main(sub_args, provider).await;
+        }
+        "rppairing" => {
+            rppairing::main(sub_args, provider).await;
         }
         "restore_service" => {
             restore_service::main(sub_args, provider).await;

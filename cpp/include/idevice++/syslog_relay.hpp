@@ -18,6 +18,9 @@ class SyslogRelay {
     // Factory: connect via Provider (TCP)
     static Result<SyslogRelay, FfiError> connect_tcp(Provider& provider);
 
+    // Factory: connect via RSD tunnel
+    static Result<SyslogRelay, FfiError> connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake);
+
     // Ops
     Result<std::string, FfiError>        next();
 

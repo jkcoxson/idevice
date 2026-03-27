@@ -19,6 +19,9 @@ class CrashReportCopyMobile {
     // Factory: connect via Provider
     static Result<CrashReportCopyMobile, FfiError> connect(Provider& provider);
 
+    // Factory: connect via RSD tunnel
+    static Result<CrashReportCopyMobile, FfiError> connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake);
+
     // Factory: wrap an existing Idevice socket (consumes it on success)
     static Result<CrashReportCopyMobile, FfiError> from_socket(Idevice&& socket);
 

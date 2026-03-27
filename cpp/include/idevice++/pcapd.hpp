@@ -39,6 +39,9 @@ class Pcapd {
     // Factory: connect via Provider
     static Result<Pcapd, FfiError> connect(Provider& provider);
 
+    // Factory: connect via RSD tunnel
+    static Result<Pcapd, FfiError> connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake);
+
     // Factory: wrap an existing Idevice socket (consumes it on success)
     static Result<Pcapd, FfiError> from_socket(Idevice&& socket);
 

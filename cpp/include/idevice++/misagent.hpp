@@ -18,6 +18,9 @@ class Misagent {
     // Factory: connect via Provider
     static Result<Misagent, FfiError> connect(Provider& provider);
 
+    // Factory: connect via RSD tunnel
+    static Result<Misagent, FfiError> connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake);
+
     // Ops
     Result<void, FfiError>            install(const uint8_t* profile_data, size_t profile_len);
     Result<void, FfiError>            remove(const std::string& profile_id);

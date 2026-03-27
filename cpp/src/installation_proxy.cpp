@@ -34,6 +34,15 @@ Result<InstallationProxy, FfiError> InstallationProxy::connect(Provider& provide
     return Ok(InstallationProxy::adopt(handle));
 }
 
+Result<InstallationProxy, FfiError> InstallationProxy::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    InstallationProxyClientHandle* handle = nullptr;
+    FfiError                       e(::installation_proxy_connect_rsd(adapter, handshake, &handle));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(InstallationProxy::adopt(handle));
+}
+
 Result<InstallationProxy, FfiError> InstallationProxy::from_socket(Idevice&& socket) {
     InstallationProxyClientHandle* handle = nullptr;
     // The Rust FFI function consumes the socket, so we must release it from the

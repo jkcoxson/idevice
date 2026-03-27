@@ -17,6 +17,15 @@ Result<Pcapd, FfiError> Pcapd::connect(Provider& provider) {
     return Ok(Pcapd::adopt(out));
 }
 
+Result<Pcapd, FfiError> Pcapd::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    PcapdClientHandle* out = nullptr;
+    FfiError           e(::pcapd_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(Pcapd::adopt(out));
+}
+
 Result<Pcapd, FfiError> Pcapd::from_socket(Idevice&& socket) {
     PcapdClientHandle* out = nullptr;
     FfiError           e(::pcapd_new(socket.raw(), &out));

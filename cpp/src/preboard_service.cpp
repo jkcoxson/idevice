@@ -17,6 +17,15 @@ Result<PreboardService, FfiError> PreboardService::connect(Provider& provider) {
     return Ok(PreboardService::adopt(out));
 }
 
+Result<PreboardService, FfiError> PreboardService::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    PreboardServiceClientHandle* out = nullptr;
+    FfiError                     e(::preboard_service_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(PreboardService::adopt(out));
+}
+
 Result<PreboardService, FfiError> PreboardService::from_socket(Idevice&& socket) {
     PreboardServiceClientHandle* out = nullptr;
     FfiError                     e(::preboard_service_new(socket.raw(), &out));

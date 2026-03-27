@@ -17,6 +17,15 @@ Result<Misagent, FfiError> Misagent::connect(Provider& provider) {
     return Ok(Misagent::adopt(out));
 }
 
+Result<Misagent, FfiError> Misagent::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    MisagentClientHandle* out = nullptr;
+    FfiError              e(::misagent_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(Misagent::adopt(out));
+}
+
 Result<void, FfiError> Misagent::install(const uint8_t* profile_data, size_t profile_len) {
     FfiError e(::misagent_install(handle_.get(), profile_data, profile_len));
     if (e) {

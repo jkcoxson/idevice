@@ -183,6 +183,15 @@ Result<MobileBackup2, FfiError> MobileBackup2::connect(Provider& provider) {
     return Ok(MobileBackup2::adopt(handle));
 }
 
+Result<MobileBackup2, FfiError> MobileBackup2::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    MobileBackup2ClientHandle* handle = nullptr;
+    FfiError                   e(::mobilebackup2_connect_rsd(adapter, handshake, &handle));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(MobileBackup2::adopt(handle));
+}
+
 Result<MobileBackup2, FfiError> MobileBackup2::from_socket(Idevice&& socket) {
     MobileBackup2ClientHandle* handle = nullptr;
     FfiError                   e(::mobilebackup2_new(socket.release(), &handle));

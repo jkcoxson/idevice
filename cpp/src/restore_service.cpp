@@ -6,6 +6,15 @@
 
 namespace IdeviceFFI {
 
+Result<RestoreService, FfiError> RestoreService::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    RestoreServiceClientHandle* out = nullptr;
+    FfiError                    e(::restore_service_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(RestoreService::adopt(out));
+}
+
 Result<RestoreService, FfiError> RestoreService::from_readwrite_ptr(ReadWriteOpaque* consumed) {
     RestoreServiceClientHandle* out = nullptr;
     if (IdeviceFfiError* e = ::restore_service_new(consumed, &out)) {

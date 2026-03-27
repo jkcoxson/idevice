@@ -19,6 +19,9 @@ class SpringBoardServices {
     // Factory: connect via Provider
     static Result<SpringBoardServices, FfiError> connect(Provider& provider);
 
+    // Factory: connect via RSD tunnel
+    static Result<SpringBoardServices, FfiError> connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake);
+
     // Factory: wrap an existing Idevice socket (consumes it on success)
     static Result<SpringBoardServices, FfiError> from_socket(Idevice&& socket);
 

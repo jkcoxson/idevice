@@ -17,6 +17,15 @@ Result<BtPacketLogger, FfiError> BtPacketLogger::connect(Provider& provider) {
     return Ok(BtPacketLogger::adopt(out));
 }
 
+Result<BtPacketLogger, FfiError> BtPacketLogger::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    BtPacketLoggerClientHandle* out = nullptr;
+    FfiError                    e(::bt_packet_logger_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(BtPacketLogger::adopt(out));
+}
+
 Result<BtPacketLogger, FfiError> BtPacketLogger::from_socket(Idevice&& socket) {
     BtPacketLoggerClientHandle* out = nullptr;
     FfiError                    e(::bt_packet_logger_new(socket.raw(), &out));

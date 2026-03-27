@@ -18,6 +18,15 @@ Result<DiagnosticsRelay, FfiError> DiagnosticsRelay::connect(Provider& provider)
     return Ok(DiagnosticsRelay::adopt(out));
 }
 
+Result<DiagnosticsRelay, FfiError> DiagnosticsRelay::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    DiagnosticsRelayClientHandle* out = nullptr;
+    FfiError                      e(::diagnostics_relay_client_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(DiagnosticsRelay::adopt(out));
+}
+
 Result<DiagnosticsRelay, FfiError> DiagnosticsRelay::from_socket(Idevice&& socket) {
     DiagnosticsRelayClientHandle* out = nullptr;
     FfiError                      e(::diagnostics_relay_client_new(socket.raw(), &out));

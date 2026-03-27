@@ -59,6 +59,9 @@ class MobileBackup2 {
     // Factory: connect via Provider
     static Result<MobileBackup2, FfiError> connect(Provider& provider);
 
+    // Factory: connect via RSD tunnel
+    static Result<MobileBackup2, FfiError> connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake);
+
     // Factory: wrap an existing Idevice socket (consumes it on success)
     static Result<MobileBackup2, FfiError> from_socket(Idevice&& socket);
 

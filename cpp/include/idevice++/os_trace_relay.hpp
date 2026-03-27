@@ -23,6 +23,9 @@ class OsTraceRelay {
     // Factory: connect via Provider
     static Result<OsTraceRelay, FfiError>   connect(Provider& provider);
 
+    // Factory: connect via RSD tunnel
+    static Result<OsTraceRelay, FfiError>   connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake);
+
     // Ops
     Result<OsTraceRelayReceiver, FfiError>  start_trace(const uint32_t* pid = nullptr);
     Result<std::vector<uint64_t>, FfiError> get_pid_list();

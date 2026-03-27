@@ -19,6 +19,15 @@ Result<OsTraceRelay, FfiError> OsTraceRelay::connect(Provider& provider) {
     return Ok(OsTraceRelay::adopt(out));
 }
 
+Result<OsTraceRelay, FfiError> OsTraceRelay::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    OsTraceRelayClientHandle* out = nullptr;
+    FfiError                  e(::os_trace_relay_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(OsTraceRelay::adopt(out));
+}
+
 Result<OsTraceRelayReceiver, FfiError> OsTraceRelay::start_trace(const uint32_t* pid) {
     OsTraceRelayReceiverHandle* out = nullptr;
     // start_trace consumes the client handle

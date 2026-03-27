@@ -17,6 +17,15 @@ Result<Amfi, FfiError> Amfi::connect(Provider& provider) {
     return Ok(Amfi::adopt(out));
 }
 
+Result<Amfi, FfiError> Amfi::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    AmfiClientHandle* out = nullptr;
+    FfiError          e(::amfi_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(Amfi::adopt(out));
+}
+
 Result<Amfi, FfiError> Amfi::from_socket(Idevice&& socket) {
     AmfiClientHandle* out = nullptr;
     FfiError          e(::amfi_new(socket.raw(), &out));
