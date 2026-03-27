@@ -8,11 +8,12 @@ use std::pin::Pin;
 use std::ptr::null_mut;
 
 use idevice::mobilebackup2::{BackupDelegate, DirEntryInfo, MobileBackup2Client};
-use idevice::{IdeviceError, IdeviceService, provider::IdeviceProvider};
+use idevice::{IdeviceError, IdeviceService, RsdService, provider::IdeviceProvider};
 use plist_ffi::PlistWrapper;
 
 use crate::{
-    IdeviceFfiError, IdeviceHandle, ffi_err, provider::IdeviceProviderHandle, run_sync_local,
+    IdeviceFfiError, IdeviceHandle, core_device_proxy::AdapterHandle, ffi_err,
+    provider::IdeviceProviderHandle, rsd::RsdHandshakeHandle, run_sync_local,
 };
 
 pub struct MobileBackup2ClientHandle(pub MobileBackup2Client);
@@ -316,6 +317,44 @@ pub unsafe extern "C" fn mobilebackup2_connect(
     }
 }
 
+/// Creates a new MobileBackup2Client via RSD
+///
+/// # Arguments
+/// * [`provider`] - An adapter created by this library
+/// * [`handshake`] - An RSD handshake from the same provider
+/// * [`client`] - On success, will be set to point to a newly allocated MobileBackup2Client handle
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `provider` must be a valid pointer to a handle allocated by this library
+/// `handshake` must be a valid pointer to a handle allocated by this library
+/// `client` must be a valid, non-null pointer to a location where the handle will be stored
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mobilebackup2_connect_rsd(
+    provider: *mut AdapterHandle,
+    handshake: *mut RsdHandshakeHandle,
+    client: *mut *mut MobileBackup2ClientHandle,
+) -> *mut IdeviceFfiError {
+    if provider.is_null() || handshake.is_null() || client.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let res: Result<MobileBackup2Client, IdeviceError> = run_sync_local(async move {
+        let provider_ref = unsafe { &mut (*provider).0 };
+        let handshake_ref = unsafe { &mut (*handshake).0 };
+        MobileBackup2Client::connect_rsd(provider_ref, handshake_ref).await
+    });
+
+    match res {
+        Ok(r) => {
+            unsafe { *client = Box::into_raw(Box::new(MobileBackup2ClientHandle(r))) };
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
 /// Creates a mobilebackup2 client from an existing connection (consumes the socket)
 ///
 /// # Safety
@@ -330,7 +369,7 @@ pub unsafe extern "C" fn mobilebackup2_new(
     }
     let socket = unsafe { Box::from_raw(socket) }.0;
     let res: Result<MobileBackup2Client, IdeviceError> =
-        run_sync_local(async { MobileBackup2Client::from_stream(socket).await });
+        run_sync_local(async { <MobileBackup2Client as IdeviceService>::from_stream(socket).await });
     match res {
         Ok(r) => {
             unsafe { *client = Box::into_raw(Box::new(MobileBackup2ClientHandle(r))) };

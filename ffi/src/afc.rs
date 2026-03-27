@@ -3,15 +3,15 @@
 use std::{io::SeekFrom, ptr::null_mut};
 
 use idevice::{
-    IdeviceError, IdeviceService,
+    IdeviceError, IdeviceService, RsdService,
     afc::{AfcClient, DeviceInfo, FileInfo, file::FileDescriptor},
     provider::IdeviceProvider,
 };
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use crate::{
-    IdeviceFfiError, IdeviceHandle, LOCAL_RUNTIME, ffi_err, provider::IdeviceProviderHandle,
-    run_sync, run_sync_local,
+    IdeviceFfiError, IdeviceHandle, LOCAL_RUNTIME, core_device_proxy::AdapterHandle, ffi_err,
+    provider::IdeviceProviderHandle, rsd::RsdHandshakeHandle, run_sync, run_sync_local,
 };
 
 pub struct AfcClientHandle(pub AfcClient);
@@ -42,6 +42,45 @@ pub unsafe extern "C" fn afc_client_connect(
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
 
         AfcClient::connect(provider_ref).await
+    });
+
+    match res {
+        Ok(r) => {
+            let boxed = Box::new(AfcClientHandle(r));
+            unsafe { *client = Box::into_raw(boxed) };
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Creates a new AfcClient via RSD
+///
+/// # Arguments
+/// * [`provider`] - An adapter created by this library
+/// * [`handshake`] - An RSD handshake from the same provider
+/// * [`client`] - On success, will be set to point to a newly allocated AfcClient handle
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `provider` must be a valid pointer to a handle allocated by this library
+/// `handshake` must be a valid pointer to a handle allocated by this library
+/// `client` must be a valid, non-null pointer to a location where the handle will be stored
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn afc_client_connect_rsd(
+    provider: *mut AdapterHandle,
+    handshake: *mut RsdHandshakeHandle,
+    client: *mut *mut AfcClientHandle,
+) -> *mut IdeviceFfiError {
+    if provider.is_null() || handshake.is_null() || client.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let res: Result<AfcClient, IdeviceError> = run_sync_local(async move {
+        let provider_ref = unsafe { &mut (*provider).0 };
+        let handshake_ref = unsafe { &mut (*handshake).0 };
+        AfcClient::connect_rsd(provider_ref, handshake_ref).await
     });
 
     match res {

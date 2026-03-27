@@ -422,3 +422,15 @@ impl InstallationProxyClient {
         Ok(())
     }
 }
+
+#[cfg(feature = "rsd")]
+impl crate::RsdService for InstallationProxyClient {
+    fn rsd_service_name() -> std::borrow::Cow<'static, str> {
+        crate::obf!("com.apple.mobile.installation_proxy.shim.remote")
+    }
+    async fn from_stream(stream: Box<dyn crate::ReadWrite>) -> Result<Self, crate::IdeviceError> {
+        let mut idevice = crate::Idevice::new(stream, "");
+        idevice.rsd_checkin().await?;
+        Ok(Self::new(idevice))
+    }
+}

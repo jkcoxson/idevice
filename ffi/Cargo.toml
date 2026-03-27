@@ -51,6 +51,7 @@ pcapd = ["idevice/pcapd"]
 preboard_service = ["idevice/preboard_service"]
 obfuscate = ["idevice/obfuscate"]
 restore_service = ["idevice/restore_service"]
+remote_pairing = ["idevice/remote_pairing"]
 rsd = ["idevice/rsd"]
 syslog_relay = ["idevice/syslog_relay"]
 tcp = ["idevice/tcp"]
@@ -85,6 +86,7 @@ full = [
   "pcapd",
   "preboard_service",
   "restore_service",
+  "remote_pairing",
   "rsd",
   "screenshotr",
   "springboardservices",

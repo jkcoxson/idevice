@@ -13,12 +13,27 @@ use crate::IdeviceError;
 
 #[derive(Clone)]
 pub struct RpPairingFile {
-    pub(crate) e_private_key: SigningKey,
-    pub(crate) e_public_key: VerifyingKey,
-    pub(crate) identifier: String,
+    pub e_private_key: SigningKey,
+    pub e_public_key: VerifyingKey,
+    pub identifier: String,
 }
 
 impl RpPairingFile {
+    /// Returns the Ed25519 public key bytes (32 bytes).
+    pub fn public_key_bytes(&self) -> Vec<u8> {
+        self.e_public_key.to_bytes().to_vec()
+    }
+
+    /// Returns the Ed25519 private key bytes (32 bytes).
+    pub fn private_key_bytes(&self) -> Vec<u8> {
+        self.e_private_key.to_bytes().to_vec()
+    }
+
+    /// Returns the identifier string.
+    pub fn identifier(&self) -> &str {
+        &self.identifier
+    }
+
     pub fn generate(sending_host: &str) -> Self {
         // Ed25519 private key (persistent signing key)
         let ed25519_private_key = SigningKey::generate(&mut OsRng);
@@ -41,20 +56,19 @@ impl RpPairingFile {
         self.e_private_key = ed25519_private_key;
     }
 
-    pub async fn write_to_file(&self, path: impl AsRef<Path>) -> Result<(), IdeviceError> {
+    /// Serialize to XML plist bytes.
+    pub fn to_bytes(&self) -> Vec<u8> {
         let v = crate::plist!(dict {
             "public_key": self.e_public_key.to_bytes().to_vec(),
             "private_key": self.e_private_key.to_bytes().to_vec(),
             "identifier": self.identifier.as_str()
         });
-        tokio::fs::write(path, plist_to_xml_bytes(&v)).await?;
-
-        Ok(())
+        plist_to_xml_bytes(&v)
     }
 
-    pub async fn read_from_file(path: impl AsRef<Path>) -> Result<Self, IdeviceError> {
-        let s = tokio::fs::read_to_string(path).await?;
-        let mut p: Dictionary = plist::from_bytes(s.as_bytes())?;
+    /// Parse from plist bytes (XML or binary).
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, IdeviceError> {
+        let mut p: Dictionary = plist::from_bytes(bytes)?;
         debug!("Read dictionary for rppairingfile: {p:#?}");
 
         let public_key = match p
@@ -101,6 +115,16 @@ impl RpPairingFile {
             e_public_key: public_key,
             identifier,
         })
+    }
+
+    pub async fn write_to_file(&self, path: impl AsRef<Path>) -> Result<(), IdeviceError> {
+        tokio::fs::write(path, self.to_bytes()).await?;
+        Ok(())
+    }
+
+    pub async fn read_from_file(path: impl AsRef<Path>) -> Result<Self, IdeviceError> {
+        let bytes = tokio::fs::read(path).await?;
+        Self::from_bytes(&bytes)
     }
 }
 

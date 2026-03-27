@@ -353,3 +353,15 @@ impl SpringBoardServicesClient {
         Ok(res)
     }
 }
+
+#[cfg(feature = "rsd")]
+impl crate::RsdService for SpringBoardServicesClient {
+    fn rsd_service_name() -> std::borrow::Cow<'static, str> {
+        crate::obf!("com.apple.springboardservices.shim.remote")
+    }
+    async fn from_stream(stream: Box<dyn crate::ReadWrite>) -> Result<Self, crate::IdeviceError> {
+        let mut idevice = crate::Idevice::new(stream, "");
+        idevice.rsd_checkin().await?;
+        Ok(Self::new(idevice))
+    }
+}

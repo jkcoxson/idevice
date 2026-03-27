@@ -6,14 +6,14 @@ use std::{
 };
 
 use idevice::{
-    IdeviceError, IdeviceService,
+    IdeviceError, IdeviceService, RsdService,
     provider::IdeviceProvider,
     services::crashreportcopymobile::{CrashReportCopyMobileClient, flush_reports},
 };
 
 use crate::{
-    IdeviceFfiError, IdeviceHandle, afc::AfcClientHandle, ffi_err, provider::IdeviceProviderHandle,
-    run_sync_local,
+    IdeviceFfiError, IdeviceHandle, afc::AfcClientHandle, core_device_proxy::AdapterHandle, ffi_err,
+    provider::IdeviceProviderHandle, rsd::RsdHandshakeHandle, run_sync_local,
 };
 
 pub struct CrashReportCopyMobileHandle(pub CrashReportCopyMobileClient);
@@ -44,6 +44,45 @@ pub unsafe extern "C" fn crash_report_client_connect(
     let res: Result<CrashReportCopyMobileClient, IdeviceError> = run_sync_local(async move {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
         CrashReportCopyMobileClient::connect(provider_ref).await
+    });
+
+    match res {
+        Ok(r) => {
+            let boxed = Box::new(CrashReportCopyMobileHandle(r));
+            unsafe { *client = Box::into_raw(boxed) };
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Creates a new CrashReportCopyMobileClient via RSD
+///
+/// # Arguments
+/// * [`provider`] - An adapter created by this library
+/// * [`handshake`] - An RSD handshake from the same provider
+/// * [`client`] - On success, will be set to point to a newly allocated handle
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `provider` must be a valid pointer to a handle allocated by this library
+/// `handshake` must be a valid pointer to a handle allocated by this library
+/// `client` must be a valid, non-null pointer to a location where the handle will be stored
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn crash_report_client_connect_rsd(
+    provider: *mut AdapterHandle,
+    handshake: *mut RsdHandshakeHandle,
+    client: *mut *mut CrashReportCopyMobileHandle,
+) -> *mut IdeviceFfiError {
+    if provider.is_null() || handshake.is_null() || client.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let res: Result<CrashReportCopyMobileClient, IdeviceError> = run_sync_local(async move {
+        let provider_ref = unsafe { &mut (*provider).0 };
+        let handshake_ref = unsafe { &mut (*handshake).0 };
+        CrashReportCopyMobileClient::connect_rsd(provider_ref, handshake_ref).await
     });
 
     match res {

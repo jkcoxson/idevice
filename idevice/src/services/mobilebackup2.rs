@@ -1648,3 +1648,18 @@ impl MobileBackup2Client {
         Ok(())
     }
 }
+
+#[cfg(feature = "rsd")]
+impl crate::RsdService for MobileBackup2Client {
+    fn rsd_service_name() -> std::borrow::Cow<'static, str> {
+        crate::obf!("com.apple.mobilebackup2.shim.remote")
+    }
+    async fn from_stream(stream: Box<dyn crate::ReadWrite>) -> Result<Self, crate::IdeviceError> {
+        let mut idevice = crate::Idevice::new(stream, "");
+        idevice.rsd_checkin().await?;
+        let mut client = Self::new(idevice);
+        client.dl_version_exchange().await?;
+        client.version_exchange().await?;
+        Ok(client)
+    }
+}
