@@ -30,6 +30,10 @@ path = "src/idevice_id.rs"
 name = "iproxy"
 path = "src/iproxy.rs"
 
+[[bin]]
+name = "pair_via_usb_tunnel"
+path = "src/pair_via_usb_tunnel.rs"
+
 [dependencies]
 idevice = { path = "../idevice", features = ["full"], default-features = false }
 tokio = { version = "1.43", features = ["full"] }

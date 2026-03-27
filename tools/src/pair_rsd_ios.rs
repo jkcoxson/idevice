@@ -15,12 +15,14 @@ use std::{fs, process::Command as OsCommand};
 
 use clap::{Arg, Command};
 use idevice::{
-    RemoteXpcClient,
+    RemoteXpcClient, RsdService,
     core_device::AppServiceClient,
-    remote_pairing::{RemotePairingClient, RpPairingFile, connect_tls_psk_tunnel_native},
+    remote_pairing::{
+        RemotePairingClient, RpPairingFile, RpPairingSocket,
+        connect_tls_psk_tunnel_native,
+    },
     rsd::RsdHandshake,
     tcp,
-    IdeviceService, RsdService,
 };
 use tokio::net::TcpStream;
 use zeroconf::{
@@ -28,10 +30,10 @@ use zeroconf::{
     prelude::{TEventLoop, TMdnsBrowser},
 };
 
-const SERVICE_NAME: &str = "remoted";
 const SERVICE_PROTOCOL: &str = "tcp";
 
 static TUNNEL_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static WIFI_PAIR_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[tokio::main]
 async fn main() {
@@ -51,6 +53,12 @@ async fn main() {
                 .help("Test tunnel with existing pairing file")
                 .action(clap::ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("wifi-pair")
+                .long("wifi-pair")
+                .help("Pair wirelessly via _remotepairing._tcp (no USB needed)")
+                .action(clap::ArgAction::SetTrue),
+        )
         .get_matches();
 
     if matches.get_flag("about") {
@@ -59,11 +67,19 @@ async fn main() {
         return;
     }
 
-    // Store tunnel flag for the callback
-    TUNNEL_MODE.store(matches.get_flag("tunnel"), std::sync::atomic::Ordering::Relaxed);
+    // Store flags for the callback
+    TUNNEL_MODE.store(
+        matches.get_flag("tunnel"),
+        std::sync::atomic::Ordering::Relaxed,
+    );
+    let wifi_pair = matches.get_flag("wifi-pair");
+    WIFI_PAIR_MODE.store(wifi_pair, std::sync::atomic::Ordering::Relaxed);
+
+    let service_name = if wifi_pair { "remotepairing" } else { "remoted" };
+    println!("Browsing for _{service_name}._tcp ...");
 
     let mut browser = MdnsBrowser::new(
-        ServiceType::new(SERVICE_NAME, SERVICE_PROTOCOL).expect("Unable to start mDNS browse"),
+        ServiceType::new(service_name, SERVICE_PROTOCOL).expect("Unable to start mDNS browse"),
     );
     browser.set_service_callback(Box::new(on_service_discovered));
 
@@ -81,12 +97,20 @@ fn on_service_discovered(
 ) {
     if let Ok(BrowserEvent::Add(result)) = result {
         tokio::task::spawn(async move {
-            println!("Found iOS device to pair with!! - {result:?}");
+            let wifi_pair = WIFI_PAIR_MODE.load(std::sync::atomic::Ordering::Relaxed);
+            println!("Found device: {result:?}");
 
             let host_name = result.host_name().to_string();
             let service_address = result.address().to_string();
             let scope_id = link_local_scope_id_from_avahi(&host_name, &service_address);
 
+            if wifi_pair {
+                // Wi-Fi pairing: connect directly, use RPPairing socket protocol
+                wifi_pair_flow(&host_name, &service_address, scope_id, *result.port()).await;
+                return;
+            }
+
+            // USB/remoted flow: RSD → tunnel service → RemoteXPC → RPPairing
             let stream = match connect_to_service_port(
                 &host_name,
                 &service_address,
@@ -143,12 +167,9 @@ fn on_service_discovered(
             };
 
             let mut rpc = RemotePairingClient::new(conn, host, &mut rpf);
-            rpc.connect(
-                async |_| "000000".to_string(),
-                0u8,
-            )
-            .await
-            .expect("pairing/verification failed");
+            rpc.connect(async |_| "000000".to_string(), 0u8)
+                .await
+                .expect("pairing/verification failed");
 
             if !tunnel_mode {
                 rpf.write_to_file("ios_pairing_file.plist").await.unwrap();
@@ -212,7 +233,7 @@ fn on_service_discovered(
                         };
 
                         println!("Performing RSD handshake through tunnel...");
-                        let mut handshake = match RsdHandshake::new(rsd_stream).await {
+                        let handshake = match RsdHandshake::new(rsd_stream).await {
                             Ok(hs) => {
                                 println!("RSD: {} services, UUID: {}", hs.services.len(), hs.uuid);
                                 hs
@@ -224,7 +245,8 @@ fn on_service_discovered(
                         };
 
                         // Connect to AppService through the tunnel
-                        let app_port = match handshake.services
+                        let app_port = match handshake
+                            .services
                             .get("com.apple.coredevice.appservice")
                             .map(|s| s.port)
                         {
@@ -242,7 +264,11 @@ fn on_service_discovered(
                                 return;
                             }
                         };
-                        let mut asc = match AppServiceClient::from_stream(Box::new(app_stream) as Box<dyn idevice::ReadWrite>).await {
+                        let mut asc = match AppServiceClient::from_stream(
+                            Box::new(app_stream) as Box<dyn idevice::ReadWrite>
+                        )
+                        .await
+                        {
                             Ok(c) => c,
                             Err(e) => {
                                 eprintln!("AppService handshake failed: {e:?}");
@@ -256,7 +282,10 @@ fn on_service_discovered(
                             Ok(apps) => {
                                 for app in &apps {
                                     let version = app.version.as_deref().unwrap_or("?");
-                                    println!("  {} ({}) v{version}", app.name, app.bundle_identifier);
+                                    println!(
+                                        "  {} ({}) v{version}",
+                                        app.name, app.bundle_identifier
+                                    );
                                 }
                                 println!("\nTotal: {} apps", apps.len());
                             }
@@ -270,8 +299,63 @@ fn on_service_discovered(
                     }
                 }
             }
-
         });
+    }
+}
+
+async fn wifi_pair_flow(
+    host_name: &str,
+    service_address: &str,
+    scope_id: Option<u32>,
+    port: u16,
+) {
+    println!("Wi-Fi pairing: connecting to {host_name} port {port}...");
+
+    let stream = match connect_to_service_port(host_name, service_address, scope_id, port).await {
+        Some(s) => s,
+        None => {
+            eprintln!("Couldn't connect to remotepairing service");
+            return;
+        }
+    };
+
+    println!("Connected! Starting RPPairing protocol...");
+
+    let conn = RpPairingSocket::new(stream);
+    let host = "idevice-rs-jkcoxson";
+    let mut rpf = RpPairingFile::generate(host);
+
+    let mut rpc = RemotePairingClient::new(conn, host, &mut rpf);
+
+    println!("Attempting pair verify / pair setup...");
+    println!("(You may need to tap Trust on the device)");
+
+    match rpc
+        .connect(
+            async |_| {
+                println!("Enter the PIN shown on the device (or press enter for 000000):");
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input).ok();
+                let pin = input.trim().to_string();
+                if pin.is_empty() {
+                    "000000".to_string()
+                } else {
+                    pin
+                }
+            },
+            0u8,
+        )
+        .await
+    {
+        Ok(()) => {
+            rpf.write_to_file("ios_pairing_file.plist")
+                .await
+                .unwrap();
+            println!("Paired! Pairing file saved to ios_pairing_file.plist");
+        }
+        Err(e) => {
+            eprintln!("Pairing failed: {e:?}");
+        }
     }
 }
 
