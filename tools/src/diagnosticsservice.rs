@@ -16,7 +16,7 @@ pub async fn main(_arguments: &CollectedArguments, provider: Box<dyn IdeviceProv
     let proxy = CoreDeviceProxy::connect(&*provider)
         .await
         .expect("no core proxy");
-    let rsd_port = proxy.handshake.server_rsd_port;
+    let rsd_port = proxy.tunnel_info().server_rsd_port;
 
     let adapter = proxy.create_software_tunnel().expect("no software tunnel");
     let mut adapter = adapter.to_async_handle();

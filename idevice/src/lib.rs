@@ -27,6 +27,8 @@ pub mod xpc;
 
 pub mod services;
 pub use services::*;
+#[cfg(any(feature = "core_device_proxy", feature = "remote_pairing"))]
+pub mod tunnel;
 
 #[cfg(feature = "xpc")]
 pub use xpc::RemoteXpcClient;

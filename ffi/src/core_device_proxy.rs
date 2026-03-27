@@ -6,7 +6,9 @@ use std::{
 };
 
 use idevice::{
-    IdeviceError, IdeviceService, core_device_proxy::CoreDeviceProxy, provider::IdeviceProvider,
+    IdeviceError, IdeviceService,
+    core_device_proxy::CoreDeviceProxy,
+    provider::IdeviceProvider,
 };
 
 use crate::{
@@ -200,19 +202,19 @@ pub unsafe extern "C" fn core_device_proxy_get_client_parameters(
     }
 
     let proxy = unsafe { &(*handle).0 };
-    let params = &proxy.handshake.client_parameters;
+    let info = proxy.tunnel_info();
 
     unsafe {
-        *mtu = params.mtu;
+        *mtu = info.mtu;
     }
 
     // Allocate both strings, but handle partial failure
-    let address_cstring = match CString::new(params.address.clone()) {
+    let address_cstring = match CString::new(info.client_address.clone()) {
         Ok(s) => s,
         Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
     };
 
-    let netmask_cstring = match CString::new(params.netmask.clone()) {
+    let netmask_cstring = match CString::new(info.netmask.clone()) {
         Ok(s) => s,
         Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
     };
@@ -250,7 +252,7 @@ pub unsafe extern "C" fn core_device_proxy_get_server_address(
     let proxy = unsafe { &(*handle).0 };
 
     unsafe {
-        *address = match CString::new(proxy.handshake.server_address.clone()) {
+        *address = match CString::new(proxy.tunnel_info().server_address.clone()) {
             Ok(s) => s.into_raw(),
             Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
         };
@@ -282,7 +284,7 @@ pub unsafe extern "C" fn core_device_proxy_get_server_rsd_port(
 
     let proxy = unsafe { &(*handle).0 };
     unsafe {
-        *port = proxy.handshake.server_rsd_port;
+        *port = proxy.tunnel_info().server_rsd_port;
     }
 
     null_mut()

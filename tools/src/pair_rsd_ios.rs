@@ -16,8 +16,11 @@ use std::{fs, process::Command as OsCommand};
 use clap::{Arg, Command};
 use idevice::{
     RemoteXpcClient,
-    remote_pairing::{RemotePairingClient, RpPairingFile},
+    core_device::AppServiceClient,
+    remote_pairing::{RemotePairingClient, RpPairingFile, connect_tls_psk_tunnel_native},
     rsd::RsdHandshake,
+    tcp,
+    IdeviceService, RsdService,
 };
 use tokio::net::TcpStream;
 use zeroconf::{
@@ -27,6 +30,8 @@ use zeroconf::{
 
 const SERVICE_NAME: &str = "remoted";
 const SERVICE_PROTOCOL: &str = "tcp";
+
+static TUNNEL_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[tokio::main]
 async fn main() {
@@ -40,6 +45,12 @@ async fn main() {
                 .help("Show about information")
                 .action(clap::ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("tunnel")
+                .long("tunnel")
+                .help("Test tunnel with existing pairing file")
+                .action(clap::ArgAction::SetTrue),
+        )
         .get_matches();
 
     if matches.get_flag("about") {
@@ -47,6 +58,9 @@ async fn main() {
         println!("Copyright (c) 2025 Jackson Coxson");
         return;
     }
+
+    // Store tunnel flag for the callback
+    TUNNEL_MODE.store(matches.get_flag("tunnel"), std::sync::atomic::Ordering::Relaxed);
 
     let mut browser = MdnsBrowser::new(
         ServiceType::new(SERVICE_NAME, SERVICE_PROTOCOL).expect("Unable to start mDNS browse"),
@@ -109,20 +123,154 @@ fn on_service_discovered(
             let msg = conn.recv_root().await.unwrap();
             println!("{msg:#?}");
 
+            let tunnel_mode = TUNNEL_MODE.load(std::sync::atomic::Ordering::Relaxed);
             let host = "idevice-rs-jkcoxson";
-            let mut rpf = RpPairingFile::generate(host);
+
+            let mut rpf = if tunnel_mode {
+                match RpPairingFile::read_from_file("ios_pairing_file.plist").await {
+                    Ok(f) => {
+                        println!("Loaded existing pairing file");
+                        f
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to load pairing file: {e}");
+                        eprintln!("Run without --tunnel first to pair");
+                        return;
+                    }
+                }
+            } else {
+                RpPairingFile::generate(host)
+            };
+
             let mut rpc = RemotePairingClient::new(conn, host, &mut rpf);
             rpc.connect(
                 async |_| "000000".to_string(),
-                0u8, // we need no state, so pass a single byte that will hopefully get optimized out
+                0u8,
             )
             .await
-            .expect("no pair");
+            .expect("pairing/verification failed");
 
-            rpf.write_to_file("ios_pairing_file.plist").await.unwrap();
-            println!(
-                "congrats you're paired now, the rppairing record has been saved. Have a nice day."
-            );
+            if !tunnel_mode {
+                rpf.write_to_file("ios_pairing_file.plist").await.unwrap();
+                println!("Paired! Pairing file saved. Run with --tunnel to test tunnel.");
+                return;
+            }
+
+            // === Tunnel test ===
+            println!("Requesting TCP tunnel listener...");
+            let port = match rpc.create_tcp_listener().await {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("create_tcp_listener failed: {e}");
+                    return;
+                }
+            };
+            println!("Device listening on port {port}");
+
+            // Connect to the tunnel port
+            println!("Connecting to tunnel...");
+            let tunnel_stream =
+                match connect_to_service_port(&host_name, &service_address, scope_id, port).await {
+                    Some(s) => s,
+                    None => {
+                        eprintln!("Failed to connect to tunnel port");
+                        return;
+                    }
+                };
+
+            {
+                println!("Performing TLS-PSK + CDTunnel handshake...");
+                match connect_tls_psk_tunnel_native(tunnel_stream, rpc.encryption_key()).await {
+                    Ok(tunnel) => {
+                        println!("Tunnel established!");
+                        println!("  Client address: {}", tunnel.info.client_address);
+                        println!("  Server address: {}", tunnel.info.server_address);
+                        println!("  MTU: {}", tunnel.info.mtu);
+                        println!("  RSD port: {}", tunnel.info.server_rsd_port);
+
+                        let client_ip: std::net::IpAddr =
+                            tunnel.info.client_address.parse().expect("bad client IP");
+                        let server_ip: std::net::IpAddr =
+                            tunnel.info.server_address.parse().expect("bad server IP");
+                        let rsd_port = tunnel.info.server_rsd_port;
+
+                        // Feed the tunnel into jktcp
+                        println!("Starting userspace TCP stack...");
+                        let raw_stream = tunnel.into_inner();
+                        let adapter =
+                            tcp::adapter::Adapter::new(Box::new(raw_stream), client_ip, server_ip);
+                        let mut handle = adapter.to_async_handle();
+
+                        // Connect to the RSD port through the tunnel
+                        println!("Connecting to RSD through tunnel on port {rsd_port}...");
+                        let rsd_stream = match handle.connect(rsd_port).await {
+                            Ok(s) => s,
+                            Err(e) => {
+                                eprintln!("Failed to connect to RSD through tunnel: {e}");
+                                return;
+                            }
+                        };
+
+                        println!("Performing RSD handshake through tunnel...");
+                        let mut handshake = match RsdHandshake::new(rsd_stream).await {
+                            Ok(hs) => {
+                                println!("RSD: {} services, UUID: {}", hs.services.len(), hs.uuid);
+                                hs
+                            }
+                            Err(e) => {
+                                eprintln!("RSD handshake through tunnel failed: {e:?}");
+                                return;
+                            }
+                        };
+
+                        // Connect to AppService through the tunnel
+                        let app_port = match handshake.services
+                            .get("com.apple.coredevice.appservice")
+                            .map(|s| s.port)
+                        {
+                            Some(p) => p,
+                            None => {
+                                eprintln!("AppService not found in RSD services");
+                                return;
+                            }
+                        };
+                        println!("Connecting to AppService on port {app_port}...");
+                        let app_stream = match handle.connect(app_port).await {
+                            Ok(s) => s,
+                            Err(e) => {
+                                eprintln!("AppService connect failed: {e}");
+                                return;
+                            }
+                        };
+                        let mut asc = match AppServiceClient::from_stream(Box::new(app_stream) as Box<dyn idevice::ReadWrite>).await {
+                            Ok(c) => c,
+                            Err(e) => {
+                                eprintln!("AppService handshake failed: {e:?}");
+                                return;
+                            }
+                        };
+
+                        // List all apps
+                        println!("Listing apps on device...\n");
+                        match asc.list_apps(true, true, true, true, true).await {
+                            Ok(apps) => {
+                                for app in &apps {
+                                    let version = app.version.as_deref().unwrap_or("?");
+                                    println!("  {} ({}) v{version}", app.name, app.bundle_identifier);
+                                }
+                                println!("\nTotal: {} apps", apps.len());
+                            }
+                            Err(e) => {
+                                eprintln!("list_apps failed: {e:?}");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("TLS-PSK tunnel failed: {e:?}");
+                    }
+                }
+            }
+
         });
     }
 }

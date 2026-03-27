@@ -1,6 +1,7 @@
 //! Remote Pairing
 
 use crate::IdeviceError;
+use base64::Engine as _;
 
 use chacha20poly1305::{
     ChaCha20Poly1305, Key, KeyInit, Nonce,
@@ -21,11 +22,16 @@ use x25519_dalek::{EphemeralSecret, PublicKey as X25519PublicKey};
 mod opack;
 mod rp_pairing_file;
 mod socket;
+pub mod tls_psk;
 mod tlv;
+pub mod tunnel;
 
 // export
 pub use rp_pairing_file::RpPairingFile;
 pub use socket::{RpPairingSocket, RpPairingSocketProvider};
+#[cfg(feature = "openssl")]
+pub use tunnel::connect_tls_psk_tunnel;
+pub use tunnel::{CdTunnel, TunnelInfo, connect_tls_psk_tunnel_native};
 
 const RPPAIRING_MAGIC: &[u8] = b"RPPairing";
 const WIRE_PROTOCOL_VERSION: u8 = 19;
@@ -33,8 +39,13 @@ const WIRE_PROTOCOL_VERSION: u8 = 19;
 pub struct RemotePairingClient<'a, R: RpPairingSocketProvider> {
     inner: R,
     sequence_number: usize,
+    encrypted_sequence_number: u64,
     pairing_file: &'a mut RpPairingFile,
     sending_host: String,
+
+    /// The shared secret from X25519 (pair-verify) or SRP (initial pairing).
+    /// Used as PSK for the TLS tunnel and to derive per-message encryption keys.
+    encryption_key: Vec<u8>,
 
     client_cipher: ChaCha20Poly1305,
     server_cipher: ChaCha20Poly1305,
@@ -42,25 +53,41 @@ pub struct RemotePairingClient<'a, R: RpPairingSocketProvider> {
 
 impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
     pub fn new(inner: R, sending_host: &str, pairing_file: &'a mut RpPairingFile) -> Self {
-        let hk = Hkdf::<sha2::Sha512>::new(None, pairing_file.e_private_key.as_bytes());
-        let mut okm = [0u8; 32];
-        hk.expand(b"ClientEncrypt-main", &mut okm).unwrap();
-        let client_cipher = ChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(&okm));
-
-        let hk = Hkdf::<sha2::Sha512>::new(None, pairing_file.e_private_key.as_bytes());
-        let mut okm = [0u8; 32];
-        hk.expand(b"ServerEncrypt-main", &mut okm).unwrap();
-        let server_cipher = ChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(&okm));
+        // Initial ciphers derived from Ed25519 key; will be re-derived from
+        // the actual encryption_key once pair-verify or pairing completes.
+        let initial_key = pairing_file.e_private_key.as_bytes().to_vec();
+        let (client_cipher, server_cipher) = Self::derive_main_ciphers(&initial_key);
 
         Self {
             inner,
             sequence_number: 0,
+            encrypted_sequence_number: 0,
             pairing_file,
             sending_host: sending_host.to_string(),
-
+            encryption_key: initial_key,
             client_cipher,
             server_cipher,
         }
+    }
+
+    fn derive_main_ciphers(key: &[u8]) -> (ChaCha20Poly1305, ChaCha20Poly1305) {
+        let hk = Hkdf::<sha2::Sha512>::new(None, key);
+        let mut okm = [0u8; 32];
+        hk.expand(b"ClientEncrypt-main", &mut okm).unwrap();
+        let client_cipher = ChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(&okm));
+
+        let hk = Hkdf::<sha2::Sha512>::new(None, key);
+        let mut okm = [0u8; 32];
+        hk.expand(b"ServerEncrypt-main", &mut okm).unwrap();
+        let server_cipher = ChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(&okm));
+
+        (client_cipher, server_cipher)
+    }
+
+    /// Returns the encryption key established during pairing.
+    /// This is used as TLS-PSK for tunnel connections.
+    pub fn encryption_key(&self) -> &[u8] {
+        &self.encryption_key
     }
 
     pub async fn connect<Fut, S>(
@@ -144,6 +171,9 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
         let device_public_key = x25519_dalek::PublicKey::from(peer_pub_bytes);
         let shared_secret = x_private_key.diffie_hellman(&device_public_key);
 
+        // Save the raw shared secret as the encryption key for tunnel PSK
+        self.encryption_key = shared_secret.as_bytes().to_vec();
+
         // Derive encryption key with HKDF-SHA512
         let hk =
             Hkdf::<sha2::Sha512>::new(Some(b"Pair-Verify-Encrypt-Salt"), shared_secret.as_bytes());
@@ -224,6 +254,11 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
             // Return a specific error to the caller.
             return Err(IdeviceError::PairVerifyFailed);
         }
+
+        // Re-derive main encryption ciphers from the X25519 shared secret
+        let (cc, sc) = Self::derive_main_ciphers(&self.encryption_key);
+        self.client_cipher = cc;
+        self.server_cipher = sc;
 
         Ok(())
     }
@@ -510,18 +545,15 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
         hk.expand(info, &mut setup_encryption_key)
             .expect("HKDF expand failed");
 
+        // Save the SRP session key as the encryption key
+        self.encryption_key = encryption_key.to_vec();
+
         self.pairing_file.recreate_signing_keys();
         {
-            // new scope, update our signing keys
-            let hk = Hkdf::<sha2::Sha512>::new(None, self.pairing_file.e_private_key.as_bytes());
-            let mut okm = [0u8; 32];
-            hk.expand(b"ClientEncrypt-main", &mut okm).unwrap();
-            self.client_cipher = ChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(&okm));
-
-            let hk = Hkdf::<sha2::Sha512>::new(None, self.pairing_file.e_private_key.as_bytes());
-            let mut okm = [0u8; 32];
-            hk.expand(b"ServerEncrypt-main", &mut okm).unwrap();
-            self.server_cipher = ChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(&okm));
+            // Re-derive main ciphers from the SRP session key
+            let (cc, sc) = Self::derive_main_ciphers(encryption_key);
+            self.client_cipher = cc;
+            self.server_cipher = sc;
         }
 
         let hk = Hkdf::<Sha512>::new(Some(b"Pair-Setup-Controller-Sign-Salt"), encryption_key);
@@ -655,6 +687,102 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
 
         debug!("Decrypted plaintext TLV: {tlv:?}");
         Ok(tlv)
+    }
+
+    /// Send an encrypted request and receive an encrypted response.
+    /// Used for post-pairing RPCs like creating tunnel listeners.
+    pub async fn send_receive_encrypted_request(
+        &mut self,
+        request: plist::Value,
+    ) -> Result<plist::Value, IdeviceError> {
+        let plaintext = serde_json::to_vec(
+            &plist::to_value(&request).map_err(|e| IdeviceError::InternalError(e.to_string()))?,
+        )
+        .map_err(|e| IdeviceError::InternalError(e.to_string()))?;
+
+        // Build nonce: 8-byte LE sequence number + 4 zero bytes
+        let mut nonce_bytes = [0u8; 12];
+        nonce_bytes[..8].copy_from_slice(&self.encrypted_sequence_number.to_le_bytes());
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        let ciphertext = self
+            .client_cipher
+            .encrypt(
+                nonce,
+                Payload {
+                    msg: &plaintext,
+                    aad: b"",
+                },
+            )
+            .map_err(IdeviceError::ChachaEncryption)?;
+
+        self.inner
+            .send_encrypted(ciphertext, self.sequence_number)
+            .await?;
+        self.sequence_number += 1;
+
+        // Receive encrypted response
+        let response = self.inner.recv_plain().await?;
+        let encrypted_data = response
+            .get_by("message")
+            .and_then(|m| m.get_by("streamEncrypted"))
+            .and_then(|s| s.get_by("_0"))
+            .and_then(|d| {
+                // Could be bytes directly or base64
+                R::deserialize_bytes(d.to_owned())
+            })
+            .ok_or(IdeviceError::UnexpectedResponse)?;
+
+        let decrypted = self
+            .server_cipher
+            .decrypt(
+                nonce,
+                Payload {
+                    msg: &encrypted_data,
+                    aad: b"",
+                },
+            )
+            .map_err(IdeviceError::ChachaEncryption)?;
+
+        self.encrypted_sequence_number += 1;
+
+        let value: plist::Value = serde_json::from_slice(&decrypted)
+            .map_err(|e| IdeviceError::InternalError(e.to_string()))?;
+
+        // Extract response._1
+        let result = value
+            .get_by("response")
+            .and_then(|r| r.get_by("_1"))
+            .cloned()
+            .ok_or(IdeviceError::UnexpectedResponse)?;
+
+        Ok(result)
+    }
+
+    /// Send a request to create a TCP tunnel listener on the device.
+    /// Returns the port the device is listening on.
+    pub async fn create_tcp_listener(&mut self) -> Result<u16, IdeviceError> {
+        let request = plist!({
+            "request": {
+                "_0": {
+                    "createListener": {
+                        "key": base64::engine::general_purpose::STANDARD.encode(&self.encryption_key),
+                        "transportProtocolType": "tcp"
+                    }
+                }
+            }
+        });
+
+        let response = self.send_receive_encrypted_request(request).await?;
+        debug!("createListener response: {response:#?}");
+
+        let port = response
+            .get_by("createListener")
+            .and_then(|c| c.get_by("port"))
+            .and_then(|p| p.as_unsigned_integer())
+            .ok_or(IdeviceError::UnexpectedResponse)?;
+
+        Ok(port as u16)
     }
 
     async fn send_pairing_data(

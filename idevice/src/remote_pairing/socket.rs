@@ -19,6 +19,12 @@ pub trait RpPairingSocketProvider: Debug {
         seq: usize,
     ) -> Pin<Box<dyn Future<Output = Result<(), IdeviceError>> + Send + '_>>;
 
+    fn send_encrypted(
+        &mut self,
+        ciphertext: Vec<u8>,
+        seq: usize,
+    ) -> Pin<Box<dyn Future<Output = Result<(), IdeviceError>> + Send + '_>>;
+
     fn recv_plain<'a>(
         &'a mut self,
     ) -> Pin<Box<dyn Future<Output = Result<plist::Value, IdeviceError>> + Send + 'a>>;
@@ -69,6 +75,23 @@ impl<R: ReadWrite> RpPairingSocketProvider for RpPairingSocket<R> {
         })
     }
 
+    fn send_encrypted(
+        &mut self,
+        ciphertext: Vec<u8>,
+        seq: usize,
+    ) -> Pin<Box<dyn Future<Output = Result<(), IdeviceError>> + Send + '_>> {
+        let v = json!({
+            "message": {"streamEncrypted": {"_0": B64.encode(&ciphertext)}},
+            "originatedBy": "host",
+            "sequenceNumber": seq
+        });
+
+        Box::pin(async move {
+            self.send_rppairing(v).await?;
+            Ok(())
+        })
+    }
+
     fn recv_plain<'a>(
         &'a mut self,
     ) -> Pin<Box<dyn Future<Output = Result<plist::Value, IdeviceError>> + Send + 'a>> {
@@ -85,14 +108,17 @@ impl<R: ReadWrite> RpPairingSocketProvider for RpPairingSocket<R> {
             self.inner.read_exact(&mut value).await?;
 
             let value: serde_json::Value = serde_json::from_slice(&value)?;
-            let value = value
+
+            // Try plain first, then return the whole message dict for encrypted
+            if let Some(v) = value
                 .get("message")
                 .and_then(|x| x.get("plain"))
-                .and_then(|x| x.get("_0"));
-
-            match value {
-                Some(v) => Ok(plist::to_value(v).unwrap()),
-                None => Err(IdeviceError::UnexpectedResponse),
+                .and_then(|x| x.get("_0"))
+            {
+                Ok(plist::to_value(v).unwrap())
+            } else {
+                // Return the full message for encrypted handling
+                Ok(plist::to_value(&value).unwrap())
             }
         })
     }
@@ -135,26 +161,56 @@ impl<R: ReadWrite> RpPairingSocketProvider for RemoteXpcClient<R> {
         })
     }
 
+    fn send_encrypted(
+        &mut self,
+        ciphertext: Vec<u8>,
+        seq: usize,
+    ) -> Pin<Box<dyn Future<Output = Result<(), IdeviceError>> + Send + '_>> {
+        let v = crate::xpc!({
+            "mangledTypeName": "RemotePairing.ControlChannelMessageEnvelope",
+            "value": {
+                "message": {"streamEncrypted": {"_0": ciphertext}},
+                "originatedBy": "host",
+                "sequenceNumber": seq as u64
+            }
+        });
+
+        Box::pin(async move {
+            self.send_object(v, true).await?;
+            Ok(())
+        })
+    }
+
     fn recv_plain<'a>(
         &'a mut self,
     ) -> Pin<Box<dyn Future<Output = Result<plist::Value, IdeviceError>> + Send + 'a>> {
         Box::pin(async move {
             let msg = self.recv_root().await.unwrap();
             debug!("Received RemoteXPC {}", pretty_print_plist(&msg));
-            let value = msg
+            let msg = msg
                 .into_dictionary()
-                .and_then(|mut x| x.remove("value"))
-                .and_then(|x| x.into_dictionary())
-                .and_then(|mut x| x.remove("message"))
-                .and_then(|x| x.into_dictionary())
-                .and_then(|mut x| x.remove("plain"))
-                .and_then(|x| x.into_dictionary())
-                .and_then(|mut x| x.remove("_0"));
+                .and_then(|mut x| x.remove("value"));
 
-            match value {
-                Some(v) => Ok(v),
-                None => Err(IdeviceError::UnexpectedResponse),
+            let msg = match msg {
+                Some(v) => v,
+                None => return Err(IdeviceError::UnexpectedResponse),
+            };
+
+            // Try plain first
+            if let Some(plain) = msg
+                .as_dictionary()
+                .and_then(|x| x.get("message"))
+                .and_then(|x| x.as_dictionary())
+                .and_then(|x| x.get("plain"))
+                .and_then(|x| x.as_dictionary())
+                .and_then(|x| x.get("_0"))
+                .cloned()
+            {
+                return Ok(plain);
             }
+
+            // Return the whole value dict for encrypted handling
+            Ok(msg)
         })
     }
 
