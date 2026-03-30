@@ -4,6 +4,7 @@ use crate::provider::IdeviceProvider;
 use crate::services::lockdown::LockdownClient;
 use crate::{Idevice, IdeviceError, ReadWrite, RsdService, obf};
 
+pub mod errors;
 #[cfg(feature = "location_simulation")]
 pub mod location_simulation;
 pub mod message;

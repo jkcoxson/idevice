@@ -56,7 +56,9 @@ impl DiagnosticsRelayClient {
         match res.get("Status").and_then(|x| x.as_string()) {
             Some("Success") => {}
             _ => {
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing or non-Success Status in IORegistry response".into(),
+                ));
             }
         }
 
@@ -90,7 +92,9 @@ impl DiagnosticsRelayClient {
         match res.get("Status").and_then(|x| x.as_string()) {
             Some("Success") => {}
             _ => {
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing or non-Success Status in MobileGestalt response".into(),
+                ));
             }
         }
 
@@ -113,7 +117,9 @@ impl DiagnosticsRelayClient {
         match res.get("Status").and_then(|x| x.as_string()) {
             Some("Success") => {}
             _ => {
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing or non-Success Status in GasGauge response".into(),
+                ));
             }
         }
 
@@ -137,7 +143,9 @@ impl DiagnosticsRelayClient {
         match res.get("Status").and_then(|x| x.as_string()) {
             Some("Success") => {}
             _ => {
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing or non-Success Status in NAND response".into(),
+                ));
             }
         }
 
@@ -161,7 +169,9 @@ impl DiagnosticsRelayClient {
         match res.get("Status").and_then(|x| x.as_string()) {
             Some("Success") => {}
             _ => {
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing or non-Success Status in All diagnostics response".into(),
+                ));
             }
         }
 
@@ -184,7 +194,9 @@ impl DiagnosticsRelayClient {
 
         match res.get("Status").and_then(|x| x.as_string()) {
             Some("Success") => Ok(()),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing or non-Success Status in Restart response".into(),
+            )),
         }
     }
 
@@ -202,7 +214,9 @@ impl DiagnosticsRelayClient {
 
         match res.get("Status").and_then(|x| x.as_string()) {
             Some("Success") => Ok(()),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing or non-Success Status in Shutdown response".into(),
+            )),
         }
     }
 
@@ -220,7 +234,9 @@ impl DiagnosticsRelayClient {
 
         match res.get("Status").and_then(|x| x.as_string()) {
             Some("Success") => Ok(()),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing or non-Success Status in Sleep response".into(),
+            )),
         }
     }
 
@@ -236,7 +252,9 @@ impl DiagnosticsRelayClient {
         match res.get("Status").and_then(|x| x.as_string()) {
             Some("Success") => {}
             _ => {
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing or non-Success Status in WiFi response".into(),
+                ));
             }
         }
 
@@ -255,8 +273,12 @@ impl DiagnosticsRelayClient {
         let res = self.idevice.read_plist().await?;
         match res.get("Status").and_then(|x| x.as_string()) {
             Some("Success") => Ok(()),
-            Some("UnknownRequest") => Err(IdeviceError::UnexpectedResponse),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            Some("UnknownRequest") => Err(IdeviceError::UnexpectedResponse(
+                "Goodbye request returned UnknownRequest".into(),
+            )),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing or non-Success Status in Goodbye response".into(),
+            )),
         }
     }
 }

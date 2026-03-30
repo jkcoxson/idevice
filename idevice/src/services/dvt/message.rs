@@ -61,6 +61,7 @@
 use plist::Value;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
+use super::errors::DvtError;
 use crate::{IdeviceError, pretty_print_plist};
 
 /// Message header containing metadata about the message
@@ -226,7 +227,7 @@ impl Aux {
                     ])));
                     bytes = &bytes[8..];
                 }
-                _ => return Err(IdeviceError::UnknownAuxValueType(aux_type)),
+                _ => return Err(DvtError::UnknownAuxValueType(aux_type).into()),
             }
         }
 
@@ -444,7 +445,10 @@ impl Message {
         let data = if buf.is_empty() {
             None
         } else {
-            Some(ns_keyed_archive::decode::from_bytes(&buf)?)
+            Some(
+                ns_keyed_archive::decode::from_bytes(&buf)
+                    .map_err(super::errors::DvtError::from)?,
+            )
         };
 
         Ok(Message {

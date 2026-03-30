@@ -62,7 +62,9 @@ impl<R: ReadWrite> CdTunnel<R> {
         let mut magic_buf = vec![0u8; CDTUNNEL_MAGIC.len()];
         stream.read_exact(&mut magic_buf).await?;
         if magic_buf != CDTUNNEL_MAGIC {
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "invalid CDTunnel magic in handshake response".into(),
+            ));
         }
 
         let mut len_buf = [0u8; 2];
@@ -77,14 +79,19 @@ impl<R: ReadWrite> CdTunnel<R> {
 
         debug!("CDTunnel handshake response: {response:#?}");
 
-        let client_params = response
-            .get("clientParameters")
-            .ok_or(IdeviceError::UnexpectedResponse)?;
+        let client_params =
+            response
+                .get("clientParameters")
+                .ok_or(IdeviceError::UnexpectedResponse(
+                    "missing clientParameters in CDTunnel handshake response".into(),
+                ))?;
 
         let client_address = client_params
             .get("address")
             .and_then(|a| a.as_str())
-            .ok_or(IdeviceError::UnexpectedResponse)?
+            .ok_or(IdeviceError::UnexpectedResponse(
+                "missing client address in CDTunnel handshake response".into(),
+            ))?
             .to_string();
 
         let mtu = client_params
@@ -95,7 +102,9 @@ impl<R: ReadWrite> CdTunnel<R> {
         let server_address = response
             .get("serverAddress")
             .and_then(|a| a.as_str())
-            .ok_or(IdeviceError::UnexpectedResponse)?
+            .ok_or(IdeviceError::UnexpectedResponse(
+                "missing serverAddress in CDTunnel handshake response".into(),
+            ))?
             .to_string();
 
         let server_rsd_port = response

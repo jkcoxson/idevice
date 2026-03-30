@@ -37,6 +37,7 @@
 use plist::{Dictionary, Value};
 use tracing::warn;
 
+use super::errors::DvtError;
 use crate::{IdeviceError, ReadWrite, dvt::message::AuxValue, obf};
 
 use super::remote_server::{Channel, RemoteServerClient};
@@ -134,12 +135,16 @@ impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
                 Some(p) => Ok(p),
                 None => {
                     warn!("PID wasn't unsigned");
-                    Err(IdeviceError::UnexpectedResponse)
+                    Err(IdeviceError::UnexpectedResponse(
+                        "launch response PID was not an unsigned integer".into(),
+                    ))
                 }
             },
             _ => {
                 warn!("Did not get integer response");
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::UnexpectedResponse(
+                    "expected integer PID in launch app response".into(),
+                ))
             }
         }
     }
@@ -196,12 +201,14 @@ impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
                     Ok(())
                 } else {
                     warn!("Failed to disable memory limit");
-                    Err(IdeviceError::DisableMemoryLimitFailed)
+                    Err(DvtError::DisableMemoryLimitFailed.into())
                 }
             }
             _ => {
                 warn!("Did not receive bool response");
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::UnexpectedResponse(
+                    "expected boolean in disable memory limit response".into(),
+                ))
             }
         }
     }

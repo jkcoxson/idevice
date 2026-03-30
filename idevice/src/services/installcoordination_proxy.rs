@@ -77,7 +77,9 @@ impl<R: ReadWrite> InstallcoordinationProxy<R> {
             .and_then(|x| x.as_boolean())
         {
             Some(true) => Ok(()),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing Success boolean in uninstall response".into(),
+            )),
         }
     }
 
@@ -100,7 +102,9 @@ impl<R: ReadWrite> InstallcoordinationProxy<R> {
             .and_then(|x| x.as_string())
         {
             Some(s) => Ok(s.to_string()),
-            None => Err(IdeviceError::UnexpectedResponse),
+            None => Err(IdeviceError::UnexpectedResponse(
+                "missing InstallPath in query_app_path response".into(),
+            )),
         }
     }
 }

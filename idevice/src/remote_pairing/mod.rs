@@ -2,6 +2,7 @@
 
 use crate::IdeviceError;
 use base64::Engine as _;
+use errors::RemotePairingError;
 
 use chacha20poly1305::{
     ChaCha20Poly1305, Key, KeyInit, Nonce,
@@ -19,6 +20,7 @@ use sha2::Sha512;
 use tracing::{debug, warn};
 use x25519_dalek::{EphemeralSecret, PublicKey as X25519PublicKey};
 
+pub mod errors;
 mod opack;
 mod rp_pairing_file;
 mod socket;
@@ -134,7 +136,9 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
         let data = match R::deserialize_bytes(pairing_data) {
             Some(d) => d,
             None => {
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "failed to deserialize pair-verify response bytes".into(),
+                ));
             }
         };
 
@@ -145,7 +149,7 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
             .any(|x| x.tlv_type == tlv::PairingDataComponentType::ErrorResponse)
         {
             self.send_pair_verified_failed().await?;
-            return Err(IdeviceError::PairVerifyFailed);
+            return Err(RemotePairingError::PairVerifyFailed.into());
         }
 
         let device_public_key = match data
@@ -155,7 +159,9 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
             Some(d) => d,
             None => {
                 warn!("No public key in TLV data");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing public key in pair-verify TLV data".into(),
+                ));
             }
         };
         let peer_pub_bytes: [u8; 32] = match device_public_key.data.as_slice().try_into() {
@@ -237,7 +243,11 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
 
         let data = match R::deserialize_bytes(res) {
             Some(d) => d,
-            None => return Err(IdeviceError::UnexpectedResponse),
+            None => {
+                return Err(IdeviceError::UnexpectedResponse(
+                    "failed to deserialize pair-verify signature response bytes".into(),
+                ));
+            }
         };
         let data = tlv::deserialize_tlv8(&data)?;
         debug!("Verify TLV: {data:#?}");
@@ -252,7 +262,7 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
             );
             self.send_pair_verified_failed().await?;
             // Return a specific error to the caller.
-            return Err(IdeviceError::PairVerifyFailed);
+            return Err(RemotePairingError::PairVerifyFailed.into());
         }
 
         // Re-derive main encryption ciphers from the X25519 shared secret
@@ -318,7 +328,9 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
 
         match response {
             Some(v) => Ok(v.to_owned()),
-            None => Err(IdeviceError::UnexpectedResponse),
+            None => Err(IdeviceError::UnexpectedResponse(
+                "missing handshake response in attemptPairVerify".into(),
+            )),
         }
     }
 
@@ -373,7 +385,9 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
         {
             Some(r) => r,
             None => {
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing event._0 in pair consent response".into(),
+                ));
             }
         };
 
@@ -386,7 +400,7 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
                 .and_then(|x| x.get_by("NSLocalizedDescription"))
                 .and_then(|x| x.as_string())
                 .map(|x| x.to_string());
-            return Err(IdeviceError::PairingRejected(context.unwrap_or_default()));
+            return Err(RemotePairingError::PairingRejected(context.unwrap_or_default()).into());
         } else if response.get("awaitingUserConsent").is_some() {
             pin = Some("000000".to_string());
             Some(self.receive_pairing_data().await?)
@@ -400,13 +414,19 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
         } {
             Some(p) => p,
             None => {
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing pairing data in pair consent response".into(),
+                ));
             }
         };
 
         let tlv = tlv::deserialize_tlv8(&match R::deserialize_bytes(pairing_data) {
             Some(t) => t,
-            None => return Err(IdeviceError::UnexpectedResponse),
+            None => {
+                return Err(IdeviceError::UnexpectedResponse(
+                    "failed to deserialize pairing data bytes in pair consent".into(),
+                ));
+            }
         })?;
         debug!("Received pairingData response: {tlv:#?}");
 
@@ -422,7 +442,9 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
                 }
                 tlv::PairingDataComponentType::ErrorResponse => {
                     warn!("Pairing data contained error response");
-                    return Err(IdeviceError::UnexpectedResponse);
+                    return Err(IdeviceError::UnexpectedResponse(
+                        "pairing data contained error response during pair consent".into(),
+                    ));
                 }
                 _ => {
                     continue;
@@ -437,7 +459,9 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
 
         if salt.is_empty() || public_key.is_empty() {
             warn!("Pairing data did not contain salt or public key");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "pairing data missing salt or public key".into(),
+            ));
         }
 
         Ok((salt, public_key, pin))
@@ -470,7 +494,7 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
             Ok(v) => v,
             Err(e) => {
                 warn!("SRP verifier creation failed: {e:?}");
-                return Err(IdeviceError::SrpAuthFailed);
+                return Err(RemotePairingError::SrpAuthFailed.into());
             }
         };
 
@@ -508,7 +532,11 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
         let response = self.receive_pairing_data().await?;
         let response = tlv::deserialize_tlv8(&match R::deserialize_bytes(response.to_owned()) {
             Some(r) => r,
-            None => return Err(IdeviceError::UnexpectedResponse),
+            None => {
+                return Err(IdeviceError::UnexpectedResponse(
+                    "failed to deserialize SRP proof response bytes".into(),
+                ));
+            }
         })?;
 
         debug!("Proof response: {response:#?}");
@@ -520,7 +548,9 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
             Some(p) => &p.data,
             None => {
                 warn!("Proof response did not contain server proof");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing server proof in SRP response".into(),
+                ));
             }
         };
 
@@ -528,7 +558,7 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
             Ok(_) => Ok(verifier.key().to_vec()),
             Err(e) => {
                 warn!("Server auth failed: {e:?}");
-                Err(IdeviceError::SrpAuthFailed)
+                Err(RemotePairingError::SrpAuthFailed.into())
             }
         }
     }
@@ -618,7 +648,7 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
             Ok(c) => c,
             Err(e) => {
                 warn!("Chacha encryption failed: {e:?}");
-                return Err(IdeviceError::ChachaEncryption(e));
+                return Err(RemotePairingError::ChachaEncryption(e).into());
             }
         };
         debug!("ciphertext len: {}", ciphertext.len());
@@ -653,7 +683,9 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
             Some(r) => r,
             None => {
                 warn!("Pairing data response was not deserializable");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "failed to deserialize pair record response bytes".into(),
+                ));
             }
         };
 
@@ -665,7 +697,9 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
                 tlv::PairingDataComponentType::EncryptedData => encrypted_data.extend(t.data),
                 tlv::PairingDataComponentType::ErrorResponse => {
                     warn!("TLV contained error response");
-                    return Err(IdeviceError::UnexpectedResponse);
+                    return Err(IdeviceError::UnexpectedResponse(
+                        "TLV error response in pair record save".into(),
+                    ));
                 }
                 _ => {}
             }
@@ -714,7 +748,7 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
                     aad: b"",
                 },
             )
-            .map_err(IdeviceError::ChachaEncryption)?;
+            .map_err(|e| IdeviceError::RemotePairing(RemotePairingError::ChachaEncryption(e)))?;
 
         self.inner
             .send_encrypted(ciphertext, self.sequence_number)
@@ -731,7 +765,9 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
                 // Could be bytes directly or base64
                 R::deserialize_bytes(d.to_owned())
             })
-            .ok_or(IdeviceError::UnexpectedResponse)?;
+            .ok_or(IdeviceError::UnexpectedResponse(
+                "missing encrypted data in streamEncrypted response".into(),
+            ))?;
 
         let decrypted = self
             .server_cipher
@@ -742,7 +778,7 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
                     aad: b"",
                 },
             )
-            .map_err(IdeviceError::ChachaEncryption)?;
+            .map_err(|e| IdeviceError::RemotePairing(RemotePairingError::ChachaEncryption(e)))?;
 
         self.encrypted_sequence_number += 1;
 
@@ -754,7 +790,9 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
             .get_by("response")
             .and_then(|r| r.get_by("_1"))
             .cloned()
-            .ok_or(IdeviceError::UnexpectedResponse)?;
+            .ok_or(IdeviceError::UnexpectedResponse(
+                "missing response._1 in encrypted response".into(),
+            ))?;
 
         Ok(result)
     }
@@ -780,7 +818,9 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
             .get_by("createListener")
             .and_then(|c| c.get_by("port"))
             .and_then(|p| p.as_unsigned_integer())
-            .ok_or(IdeviceError::UnexpectedResponse)?;
+            .ok_or(IdeviceError::UnexpectedResponse(
+                "missing port in createListener response".into(),
+            ))?;
 
         Ok(port as u16)
     }
@@ -813,7 +853,11 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
 
         let response = match response.get_by("event").and_then(|x| x.get_by("_0")) {
             Some(r) => r,
-            None => return Err(IdeviceError::UnexpectedResponse),
+            None => {
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing event._0 in pairing data response".into(),
+                ));
+            }
         };
 
         if let Some(data) = response
@@ -829,9 +873,11 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
                 .and_then(|x| x.get_by("NSLocalizedDescription"))
                 .and_then(|x| x.as_string())
                 .map(|x| x.to_string());
-            Err(IdeviceError::PairingRejected(context.unwrap_or_default()))
+            Err(RemotePairingError::PairingRejected(context.unwrap_or_default()).into())
         } else {
-            Err(IdeviceError::UnexpectedResponse)
+            Err(IdeviceError::UnexpectedResponse(
+                "pairing data response contained neither data nor rejection".into(),
+            ))
         }
     }
 }

@@ -10,6 +10,7 @@ namespace IdeviceFFI {
 class FfiError {
   public:
     int32_t     code = 0;
+    int32_t     sub_code = 0;
     std::string message;
 
     FfiError(const IdeviceFfiError* err);

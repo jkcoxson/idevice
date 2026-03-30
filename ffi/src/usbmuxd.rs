@@ -483,7 +483,9 @@ pub unsafe extern "C" fn idevice_usbmuxd_get_buid(
             }
             Err(e) => {
                 error!("Unable to convert BUID string to CString: {e:?}. Null interior byte.");
-                ffi_err!(IdeviceError::UnexpectedResponse)
+                ffi_err!(IdeviceError::UnexpectedResponse(
+                    "BUID string contains null interior byte".to_string()
+                ))
             }
         },
         Err(e) => ffi_err!(e),

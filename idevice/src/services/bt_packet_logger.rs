@@ -97,7 +97,9 @@ impl BtPacketLoggerClient {
         let frame_len = u16::from_le_bytes([len[0], len[1]]) as usize;
 
         if !(13..=64 * 1024).contains(&frame_len) {
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "BT frame length out of valid range (13..=65536)".into(),
+            ));
         }
 
         let frame = self.idevice.read_raw(frame_len).await?;
@@ -106,7 +108,9 @@ impl BtPacketLoggerClient {
         }
 
         // Parse header at fixed offsets (BE u32s)
-        let (hdr, off) = BtHeader::parse(&frame).ok_or(IdeviceError::UnexpectedResponse)?;
+        let (hdr, off) = BtHeader::parse(&frame).ok_or(IdeviceError::UnexpectedResponse(
+            "failed to parse BT packet header".into(),
+        ))?;
         // packet_type at byte 12, payload starts at 13
         let kind = BtPacketKind::from_byte(frame[off]);
         let payload = &frame[off + 1..]; // whatever remains
@@ -145,7 +149,7 @@ impl BtPacketLoggerClient {
                 }
 
                 // header + kind + payload
-                let (hdr, off) = BtHeader::parse(&frame).ok_or(IdeviceError::UnexpectedResponse)?;
+                let (hdr, off) = BtHeader::parse(&frame).ok_or(IdeviceError::UnexpectedResponse("failed to parse BT packet header in stream".into()))?;
                 let kind = BtPacketKind::from_byte(frame[off]);
                 let payload = &frame[off + 1..];
 

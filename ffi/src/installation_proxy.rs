@@ -155,7 +155,7 @@ pub unsafe extern "C" fn installation_proxy_get_apps(
             match unsafe { std::ffi::CStr::from_ptr(application_type) }.to_str() {
                 Ok(a) => a,
                 Err(_) => {
-                    return ffi_err!(IdeviceError::InvalidCString);
+                    return ffi_err!(IdeviceError::FfiInvalidString);
                 }
             },
         )

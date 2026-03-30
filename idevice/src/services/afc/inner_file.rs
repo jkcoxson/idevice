@@ -99,10 +99,10 @@ crate::impl_to_structs!(InnerFileDescriptor<'_>, OwnedInnerFileDescriptor; {
         let cur_pos = res
             .header_payload
             .get(..8)
-            .ok_or(IdeviceError::UnexpectedResponse)?
+            .ok_or(IdeviceError::UnexpectedResponse("AFC FileTell response missing position bytes".into()))?
             .try_into()
             .map(u64::from_le_bytes)
-            .map_err(|_| IdeviceError::UnexpectedResponse)?;
+            .map_err(|_| IdeviceError::UnexpectedResponse("AFC FileTell position bytes invalid length".into()))?;
 
         Ok(cur_pos)
     }

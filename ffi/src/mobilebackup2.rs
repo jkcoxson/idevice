@@ -135,7 +135,7 @@ fn path_to_cstring(path: &Path) -> std::ffi::CString {
 
 fn ffi_err_to_idevice(err: *mut IdeviceFfiError) -> IdeviceError {
     if err.is_null() {
-        return IdeviceError::UnexpectedResponse;
+        return IdeviceError::UnexpectedResponse("null FFI error pointer".to_string());
     }
     let msg = unsafe {
         if (*err).message.is_null() {

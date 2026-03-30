@@ -46,10 +46,14 @@ pub async fn connect_tls_psk_tunnel_native(
 
     let response_data = tls_stream.read_app_data().await?;
     if response_data.len() < CDTUNNEL_MAGIC.len() + 2 {
-        return Err(IdeviceError::UnexpectedResponse);
+        return Err(IdeviceError::UnexpectedResponse(
+            "CDTunnel handshake response too short".into(),
+        ));
     }
     if &response_data[..CDTUNNEL_MAGIC.len()] != CDTUNNEL_MAGIC {
-        return Err(IdeviceError::UnexpectedResponse);
+        return Err(IdeviceError::UnexpectedResponse(
+            "CDTunnel handshake response missing magic header".into(),
+        ));
     }
     let body_len = u16::from_be_bytes([
         response_data[CDTUNNEL_MAGIC.len()],
@@ -63,14 +67,19 @@ pub async fn connect_tls_psk_tunnel_native(
 
     debug!("CDTunnel handshake response: {response:#?}");
 
-    let client_params = response
-        .get("clientParameters")
-        .ok_or(IdeviceError::UnexpectedResponse)?;
+    let client_params =
+        response
+            .get("clientParameters")
+            .ok_or(IdeviceError::UnexpectedResponse(
+                "missing clientParameters in CDTunnel response".into(),
+            ))?;
 
     let client_address = client_params
         .get("address")
         .and_then(|a| a.as_str())
-        .ok_or(IdeviceError::UnexpectedResponse)?
+        .ok_or(IdeviceError::UnexpectedResponse(
+            "missing client address in CDTunnel response".into(),
+        ))?
         .to_string();
 
     let mtu = client_params
@@ -81,7 +90,9 @@ pub async fn connect_tls_psk_tunnel_native(
     let server_address = response
         .get("serverAddress")
         .and_then(|a| a.as_str())
-        .ok_or(IdeviceError::UnexpectedResponse)?
+        .ok_or(IdeviceError::UnexpectedResponse(
+            "missing server address in CDTunnel response".into(),
+        ))?
         .to_string();
 
     let server_rsd_port = response

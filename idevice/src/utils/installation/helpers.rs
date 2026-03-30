@@ -7,6 +7,7 @@ use tokio::io::{AsyncBufRead, AsyncSeek, BufReader};
 use crate::{
     IdeviceError, IdeviceService,
     afc::{AfcClient, opcode::AfcFopenMode},
+    installation_proxy::InstallationProxyError,
     provider::IdeviceProvider,
 };
 
@@ -38,9 +39,9 @@ impl PackageType {
         match self {
             Self::Ipcc => Ok(IPCC_REMOTE_FILE),
             Self::Ipa(_) => Ok(IPA_REMOTE_FILE),
-            Self::Unknown => Err(IdeviceError::InstallationProxyOperationFailed(
-                "invalid package".into(),
-            )),
+            Self::Unknown => {
+                Err(InstallationProxyError::OperationFailed("invalid package".into()).into())
+            }
         }
     }
 }
@@ -60,10 +61,15 @@ pub async fn get_bundle_id<T>(file: &mut T) -> Result<String, IdeviceError>
 where
     T: AsyncBufRead + AsyncSeek + Unpin,
 {
-    let mut zip_file = ZipFileReader::with_tokio(file).await?;
+    let mut zip_file = ZipFileReader::with_tokio(file)
+        .await
+        .map_err(InstallationProxyError::from)?;
 
     for i in 0..zip_file.file().entries().len() {
-        let mut entry_reader = zip_file.reader_with_entry(i).await?;
+        let mut entry_reader = zip_file
+            .reader_with_entry(i)
+            .await
+            .map_err(InstallationProxyError::from)?;
         let entry = entry_reader.entry();
 
         let inner_file_path = entry
@@ -104,13 +110,18 @@ pub async fn determine_package_type<P: AsRef<[u8]>>(
 ) -> Result<PackageType, IdeviceError> {
     let mut package_cursor = BufReader::new(Cursor::new(package.as_ref()));
 
-    let mut archive = ZipFileReader::with_tokio(&mut package_cursor).await?;
+    let mut archive = ZipFileReader::with_tokio(&mut package_cursor)
+        .await
+        .map_err(InstallationProxyError::from)?;
 
     // the first index is the first folder name, which is probably `Payload`
     //
     // we need the folder inside of that `Payload`, which has an extension that we can
     // determine the type of the package from it, hence the second index
-    let inside_folder = archive.reader_with_entry(1).await?;
+    let inside_folder = archive
+        .reader_with_entry(1)
+        .await
+        .map_err(InstallationProxyError::from)?;
 
     let folder_name = inside_folder
         .entry()
@@ -120,7 +131,9 @@ pub async fn determine_package_type<P: AsRef<[u8]>>(
         .split('/')
         .nth(1)
         // only if the package does not have anything inside of the `Payload` folder
-        .ok_or(async_zip::error::ZipError::EntryIndexOutOfBounds)?
+        .ok_or(InstallationProxyError::from(
+            async_zip::error::ZipError::EntryIndexOutOfBounds,
+        ))?
         .to_string();
 
     let bundle_id = get_bundle_id(&mut package_cursor).await?;

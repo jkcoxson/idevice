@@ -6,6 +6,7 @@ use std::ffi::{CString, c_char};
 #[derive(Debug)]
 pub struct IdeviceFfiError {
     pub code: i32,
+    pub sub_code: i32,
     pub message: *const c_char,
 }
 
@@ -35,12 +36,14 @@ macro_rules! ffi_err {
 
         let err: IdeviceError = $err.into();
         let code = err.code();
+        let sub_code = err.sub_code();
         let msg = CString::new(format!("{:?}", err))
             .unwrap_or_else(|_| CString::new("invalid error").unwrap());
         let raw_msg = msg.into_raw();
 
         Box::into_raw(Box::new(IdeviceFfiError {
             code,
+            sub_code,
             message: raw_msg,
         }))
     }};

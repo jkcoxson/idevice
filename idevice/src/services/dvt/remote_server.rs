@@ -54,6 +54,7 @@ use std::collections::{HashMap, VecDeque};
 use tokio::io::AsyncWriteExt;
 use tracing::{debug, warn};
 
+use super::errors::DvtError;
 use crate::{
     IdeviceError, ReadWrite,
     dvt::message::{Aux, AuxValue, Message, MessageHeader, PayloadHeader},
@@ -158,7 +159,9 @@ impl<R: ReadWrite> RemoteServerClient<R> {
 
         let res = root.read_message().await?;
         if res.data.is_some() {
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "expected empty response when creating channel, got data".into(),
+            ));
         }
 
         self.channels.insert(code, VecDeque::new());
@@ -228,7 +231,7 @@ impl<R: ReadWrite> RemoteServerClient<R> {
         // Determine if we already have a message cached
         let cache = match self.channels.get_mut(&channel) {
             Some(c) => c,
-            None => return Err(IdeviceError::UnknownChannel(channel)),
+            None => return Err(DvtError::UnknownChannel(channel).into()),
         };
 
         if let Some(msg) = cache.pop_front() {

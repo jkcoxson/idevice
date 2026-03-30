@@ -1,6 +1,6 @@
 // Jackson Coxson
 
-use crate::IdeviceError;
+use super::errors::RemotePairingError;
 
 // from pym3
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,7 +55,7 @@ pub fn serialize_tlv8(entries: &[TLV8Entry]) -> Vec<u8> {
     out
 }
 
-pub fn deserialize_tlv8(input: &[u8]) -> Result<Vec<TLV8Entry>, IdeviceError> {
+pub fn deserialize_tlv8(input: &[u8]) -> Result<Vec<TLV8Entry>, RemotePairingError> {
     let mut index = 0;
     let mut result = Vec::new();
 
@@ -65,14 +65,14 @@ pub fn deserialize_tlv8(input: &[u8]) -> Result<Vec<TLV8Entry>, IdeviceError> {
         index += 2;
 
         if index + length > input.len() {
-            return Err(IdeviceError::MalformedTlv);
+            return Err(RemotePairingError::MalformedTlv);
         }
 
         let data = input[index..index + length].to_vec();
         index += length;
 
         let tlv_type = PairingDataComponentType::try_from(type_byte)
-            .map_err(|_| IdeviceError::UnknownTlv(type_byte))?;
+            .map_err(|_| RemotePairingError::UnknownTlv(type_byte))?;
 
         result.push(TLV8Entry { tlv_type, data });
     }

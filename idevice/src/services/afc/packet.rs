@@ -2,6 +2,7 @@
 
 use tracing::debug;
 
+use super::errors::AfcError;
 use crate::{Idevice, IdeviceError};
 
 use super::opcode::AfcOpcode;
@@ -50,12 +51,12 @@ impl AfcPacketHeader {
             )) {
                 Ok(o) => o,
                 Err(_) => {
-                    return Err(IdeviceError::UnknownAfcOpcode);
+                    return Err(AfcError::UnknownOpcode.into());
                 }
             },
         };
         if res.magic != super::MAGIC {
-            return Err(IdeviceError::InvalidAfcMagic);
+            return Err(AfcError::InvalidMagic.into());
         }
         Ok(res)
     }

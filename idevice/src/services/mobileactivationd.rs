@@ -53,7 +53,9 @@ impl<'a> MobileActivationdClient<'a> {
             if let Some(v) = res.as_string() {
                 Ok(v.to_string())
             } else {
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::UnexpectedResponse(
+                    "ActivationState is not a string".into(),
+                ))
             }
         }
     }

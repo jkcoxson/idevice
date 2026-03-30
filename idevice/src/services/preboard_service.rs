@@ -46,11 +46,15 @@ impl PreboardServiceClient {
         if let Some(res) = res.get("ShowDialog").and_then(|x| x.as_boolean()) {
             if !res {
                 tracing::warn!("ShowDialog is not true");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "ShowDialog is false in CreateStashbag response".into(),
+                ));
             }
         } else {
             tracing::warn!("No ShowDialog in response from service");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "missing ShowDialog in CreateStashbag response".into(),
+            ));
         }
 
         self.idevice.read_plist().await?;

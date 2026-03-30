@@ -1,5 +1,6 @@
 // Jackson Coxson
 
+use crate::xpc::errors::XpcError;
 use crate::{IdeviceError, ReadWrite};
 use tokio::io::AsyncReadExt;
 
@@ -43,7 +44,7 @@ impl Frame {
                 // headers
                 Self::Headers(HeadersFrame { stream_id })
             }
-            0x03 => return Err(IdeviceError::HttpStreamReset),
+            0x03 => return Err(XpcError::HttpStreamReset.into()),
             0x04 => {
                 // settings
                 let mut body = std::io::Cursor::new(body);
@@ -60,7 +61,7 @@ impl Frame {
                             Setting::InitialWindowSize(window_size)
                         }
                         _ => {
-                            return Err(IdeviceError::UnknownHttpSetting(setting_type));
+                            return Err(XpcError::UnknownHttpSetting(setting_type).into());
                         }
                     });
                 }
@@ -76,12 +77,14 @@ impl Frame {
                 } else {
                     String::from_utf8_lossy(&body[8..]).to_string()
                 };
-                return Err(IdeviceError::HttpGoAway(msg));
+                return Err(XpcError::HttpGoAway(msg).into());
             }
             0x08 => {
                 // window update
                 if body.len() != 4 {
-                    return Err(IdeviceError::UnexpectedResponse);
+                    return Err(IdeviceError::UnexpectedResponse(
+                        "HTTP/2 window update frame body was not 4 bytes".into(),
+                    ));
                 }
 
                 let window = u32::from_be_bytes([body[0], body[1], body[2], body[3]]);
@@ -91,7 +94,7 @@ impl Frame {
                 })
             }
             _ => {
-                return Err(IdeviceError::UnknownFrame(frame_type));
+                return Err(XpcError::UnknownFrame(frame_type).into());
             }
         })
     }

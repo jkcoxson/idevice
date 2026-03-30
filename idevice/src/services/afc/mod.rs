@@ -246,30 +246,26 @@ impl AfcClient {
         let size = kvs
             .remove("st_size")
             .and_then(|x| x.parse::<usize>().ok())
-            .ok_or(IdeviceError::AfcMissingAttribute)?;
+            .ok_or(AfcError::MissingAttribute)?;
         let blocks = kvs
             .remove("st_blocks")
             .and_then(|x| x.parse::<usize>().ok())
-            .ok_or(IdeviceError::AfcMissingAttribute)?;
+            .ok_or(AfcError::MissingAttribute)?;
 
         let creation = kvs
             .remove("st_birthtime")
             .and_then(|x| x.parse::<i64>().ok())
-            .ok_or(IdeviceError::AfcMissingAttribute)?;
+            .ok_or(AfcError::MissingAttribute)?;
         let creation = chrono::DateTime::from_timestamp_nanos(creation).naive_local();
 
         let modified = kvs
             .remove("st_mtime")
             .and_then(|x| x.parse::<i64>().ok())
-            .ok_or(IdeviceError::AfcMissingAttribute)?;
+            .ok_or(AfcError::MissingAttribute)?;
         let modified = chrono::DateTime::from_timestamp_nanos(modified).naive_local();
 
-        let st_nlink = kvs
-            .remove("st_nlink")
-            .ok_or(IdeviceError::AfcMissingAttribute)?;
-        let st_ifmt = kvs
-            .remove("st_ifmt")
-            .ok_or(IdeviceError::AfcMissingAttribute)?;
+        let st_nlink = kvs.remove("st_nlink").ok_or(AfcError::MissingAttribute)?;
+        let st_ifmt = kvs.remove("st_ifmt").ok_or(AfcError::MissingAttribute)?;
         let st_link_target = kvs.remove("st_link_target");
 
         if !kvs.is_empty() {
@@ -324,21 +320,19 @@ impl AfcClient {
             .map(|chunk| (chunk[0].clone(), chunk[1].clone()))
             .collect();
 
-        let model = kvs
-            .remove("Model")
-            .ok_or(IdeviceError::AfcMissingAttribute)?;
+        let model = kvs.remove("Model").ok_or(AfcError::MissingAttribute)?;
         let total_bytes = kvs
             .remove("FSTotalBytes")
             .and_then(|x| x.parse::<usize>().ok())
-            .ok_or(IdeviceError::AfcMissingAttribute)?;
+            .ok_or(AfcError::MissingAttribute)?;
         let free_bytes = kvs
             .remove("FSFreeBytes")
             .and_then(|x| x.parse::<usize>().ok())
-            .ok_or(IdeviceError::AfcMissingAttribute)?;
+            .ok_or(AfcError::MissingAttribute)?;
         let block_size = kvs
             .remove("FSBlockSize")
             .and_then(|x| x.parse::<usize>().ok())
-            .ok_or(IdeviceError::AfcMissingAttribute)?;
+            .ok_or(AfcError::MissingAttribute)?;
 
         if !kvs.is_empty() {
             warn!("Device info kvs not empty: {kvs:?}");
@@ -449,7 +443,9 @@ impl AfcClient {
         let res = self.read().await?;
         if res.header_payload.len() < 8 {
             warn!("Header payload fd is less than 8 bytes");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "AFC FileOpen response header payload too short for fd".into(),
+            ));
         }
         let fd = u64::from_le_bytes(res.header_payload[..8].try_into().unwrap());
 
@@ -494,7 +490,9 @@ impl AfcClient {
         let res = self.read().await?;
         if res.header_payload.len() < 8 {
             warn!("Header payload fd is less than 8 bytes");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "AFC FileOpen response header payload too short for fd".into(),
+            ));
         }
         let fd = u64::from_le_bytes(res.header_payload[..8].try_into().unwrap());
 
@@ -596,7 +594,9 @@ impl AfcClient {
         if res.header.operation == AfcOpcode::Status {
             if res.header_payload.len() < 8 {
                 tracing::error!("AFC returned error opcode, but not a code");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "AFC error status response too short for error code".into(),
+                ));
             }
             let code = u64::from_le_bytes(res.header_payload[..8].try_into().unwrap());
             let e = AfcError::from(code);

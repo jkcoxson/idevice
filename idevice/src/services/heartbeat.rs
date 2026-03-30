@@ -3,7 +3,7 @@
 //! iOS automatically closes service connections if there is no heartbeat client connected and
 //! responding.
 
-use crate::{Idevice, IdeviceError, IdeviceService, obf};
+use crate::{HeartbeatError, Idevice, IdeviceError, IdeviceService, obf};
 
 /// Client for interacting with the iOS device heartbeat service
 ///
@@ -59,7 +59,7 @@ impl HeartbeatClient {
         let rec = tokio::select! {
             rec = self.idevice.read_plist() => rec?,
             _ = tokio::time::sleep(tokio::time::Duration::from_secs(interval)) => {
-                return Err(IdeviceError::HeartbeatTimeout)
+                return Err(HeartbeatError::Timeout.into())
             }
         };
         match rec.get("Interval") {
@@ -67,18 +67,24 @@ impl HeartbeatClient {
                 if let Some(interval) = interval.as_unsigned() {
                     Ok(interval)
                 } else {
-                    Err(IdeviceError::UnexpectedResponse)
+                    Err(IdeviceError::UnexpectedResponse(
+                        "heartbeat Interval is not a valid unsigned integer".into(),
+                    ))
                 }
             }
             _ => match rec.get("Command") {
                 Some(plist::Value::String(command)) => {
                     if command.as_str() == "SleepyTime" {
-                        Err(IdeviceError::HeartbeatSleepyTime)
+                        Err(HeartbeatError::SleepyTime.into())
                     } else {
-                        Err(IdeviceError::UnexpectedResponse)
+                        Err(IdeviceError::UnexpectedResponse(format!(
+                            "unexpected heartbeat Command: {command}"
+                        )))
                     }
                 }
-                _ => Err(IdeviceError::UnexpectedResponse),
+                _ => Err(IdeviceError::UnexpectedResponse(
+                    "heartbeat response missing both Interval and Command".into(),
+                )),
             },
         }
     }

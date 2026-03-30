@@ -83,7 +83,9 @@ impl SpringBoardServicesClient {
         let mut res = self.idevice.read_plist().await?;
         match res.remove("pngData") {
             Some(plist::Value::Data(res)) => Ok(res),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing pngData in icon response".into(),
+            )),
         }
     }
 
@@ -131,7 +133,9 @@ impl SpringBoardServicesClient {
         if let plist::Value::Dictionary(ref dict) = res
             && (dict.contains_key("error") || dict.contains_key("Error"))
         {
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "device returned error in icon state response".into(),
+            ));
         }
 
         truncate_dates_to_seconds(&mut res);
@@ -245,7 +249,9 @@ impl SpringBoardServicesClient {
         let mut res = self.idevice.read_plist().await?;
         match res.remove("pngData") {
             Some(plist::Value::Data(res)) => Ok(res),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing pngData in home screen wallpaper response".into(),
+            )),
         }
     }
 
@@ -279,7 +285,9 @@ impl SpringBoardServicesClient {
         let mut res = self.idevice.read_plist().await?;
         match res.remove("pngData") {
             Some(plist::Value::Data(res)) => Ok(res),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing pngData in lock screen wallpaper response".into(),
+            )),
         }
     }
 
@@ -313,7 +321,9 @@ impl SpringBoardServicesClient {
         let orientation_value = res
             .get("interfaceOrientation")
             .and_then(|v| v.as_unsigned_integer())
-            .ok_or(IdeviceError::UnexpectedResponse)?;
+            .ok_or(IdeviceError::UnexpectedResponse(
+                "missing interfaceOrientation in response".into(),
+            ))?;
 
         let orientation = match orientation_value {
             1 => InterfaceOrientation::Portrait,

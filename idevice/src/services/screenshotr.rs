@@ -38,7 +38,9 @@ impl ScreenshotService {
         let (msg, _arr) = self.receive_dl_message().await?;
         if msg != "DLMessageVersionExchange" {
             warn!("Expected DLMessageVersionExchange, got {msg}");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                format!("expected DLMessageVersionExchange, got {msg}").into(),
+            ));
         }
 
         // 2) Send DLVersionsOk with version 400
@@ -53,7 +55,9 @@ impl ScreenshotService {
         let (msg2, _arr2) = self.receive_dl_message().await?;
         if msg2 != "DLMessageDeviceReady" {
             warn!("Expected DLMessageDeviceReady, got {msg2}");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                format!("expected DLMessageDeviceReady, got {msg2}").into(),
+            ));
         }
         Ok(())
     }
@@ -78,7 +82,9 @@ impl ScreenshotService {
                 return Ok((tag.clone(), value));
             }
             warn!("Invalid DL message format");
-            Err(IdeviceError::UnexpectedResponse)
+            Err(IdeviceError::UnexpectedResponse(
+                "invalid DL message format, expected array with string tag".into(),
+            ))
         } else {
             Err(IdeviceError::NoEstablishedConnection)
         }
@@ -101,7 +107,9 @@ impl ScreenshotService {
         let (msg, value) = self.receive_dl_message().await?;
         if msg != "DLMessageProcessMessage" {
             warn!("Expected DLMessageProcessMessage, got {msg}");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                format!("expected DLMessageProcessMessage, got {msg}").into(),
+            ));
         }
 
         if let plist::Value::Array(arr) = &value
@@ -112,15 +120,21 @@ impl ScreenshotService {
                     Ok(data.clone())
                 } else {
                     warn!("Invalid ScreenShotData format");
-                    Err(IdeviceError::UnexpectedResponse)
+                    Err(IdeviceError::UnexpectedResponse(
+                        "missing ScreenShotData in response dictionary".into(),
+                    ))
                 }
             } else {
                 warn!("Invalid DLMessageScreenshotData format");
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::UnexpectedResponse(
+                    "expected dictionary in DL screenshot response".into(),
+                ))
             }
         } else {
             warn!("Invalid DLMessageScreenshotData format");
-            Err(IdeviceError::UnexpectedResponse)
+            Err(IdeviceError::UnexpectedResponse(
+                "expected array with 2 elements in DL screenshot response".into(),
+            ))
         }
     }
 }

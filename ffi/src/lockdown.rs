@@ -246,7 +246,7 @@ pub unsafe extern "C" fn lockdownd_pair(
             match unsafe { std::ffi::CStr::from_ptr(host_name) }.to_str() {
                 Ok(v) => v,
                 Err(_) => {
-                    return ffi_err!(IdeviceError::InvalidCString);
+                    return ffi_err!(IdeviceError::FfiInvalidString);
                 }
             },
         )
@@ -300,7 +300,7 @@ pub unsafe extern "C" fn lockdownd_get_value(
         Some(match unsafe { std::ffi::CStr::from_ptr(key) }.to_str() {
             Ok(v) => v,
             Err(_) => {
-                return ffi_err!(IdeviceError::InvalidCString);
+                return ffi_err!(IdeviceError::FfiInvalidString);
             }
         })
     };
@@ -311,7 +311,7 @@ pub unsafe extern "C" fn lockdownd_get_value(
         Some(match unsafe { std::ffi::CStr::from_ptr(domain) }.to_str() {
             Ok(v) => v,
             Err(_) => {
-                return ffi_err!(IdeviceError::InvalidCString);
+                return ffi_err!(IdeviceError::FfiInvalidString);
             }
         })
     };
@@ -390,7 +390,7 @@ pub unsafe extern "C" fn lockdownd_set_value(
 
     let key = match unsafe { std::ffi::CStr::from_ptr(key) }.to_str() {
         Ok(k) => k,
-        Err(_) => return ffi_err!(IdeviceError::InvalidCString),
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
     };
 
     let domain = if domain.is_null() {
@@ -398,7 +398,7 @@ pub unsafe extern "C" fn lockdownd_set_value(
     } else {
         Some(match unsafe { std::ffi::CStr::from_ptr(domain) }.to_str() {
             Ok(d) => d,
-            Err(_) => return ffi_err!(IdeviceError::InvalidCString),
+            Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
         })
     };
 

@@ -253,4 +253,58 @@ MobileImageMounter::mount_personalized_with_callback(Provider&      provider,
     return e ? Result<void, FfiError>(Err(e)) : Result<void, FfiError>(Ok());
 }
 
+Result<void, FfiError> MobileImageMounter::mount_personalized_rsd(AdapterHandle*      adapter,
+                                                                  RsdHandshakeHandle* handshake,
+                                                                  const uint8_t*      image_data,
+                                                                  size_t              image_size,
+                                                                  const uint8_t*      trust_cache_data,
+                                                                  size_t              trust_cache_size,
+                                                                  const uint8_t* build_manifest_data,
+                                                                  size_t         build_manifest_size,
+                                                                  plist_t        info_plist,
+                                                                  uint64_t       unique_chip_id) {
+    FfiError e(::image_mounter_mount_personalized_rsd(this->raw(),
+                                                      adapter,
+                                                      handshake,
+                                                      image_data,
+                                                      image_size,
+                                                      trust_cache_data,
+                                                      trust_cache_size,
+                                                      build_manifest_data,
+                                                      build_manifest_size,
+                                                      info_plist,
+                                                      unique_chip_id));
+    return e ? Result<void, FfiError>(Err(e)) : Result<void, FfiError>(Ok());
+}
+
+Result<void, FfiError> MobileImageMounter::mount_personalized_with_callback_rsd(
+    AdapterHandle*                       adapter,
+    RsdHandshakeHandle*                  handshake,
+    const uint8_t*                       image_data,
+    size_t                               image_size,
+    const uint8_t*                       trust_cache_data,
+    size_t                               trust_cache_size,
+    const uint8_t*                       build_manifest_data,
+    size_t                               build_manifest_size,
+    plist_t                              info_plist,
+    uint64_t                             unique_chip_id,
+    std::function<void(size_t, size_t)>& lambda) {
+
+    FfiError e(::image_mounter_mount_personalized_with_callback_rsd(this->raw(),
+                                                                    adapter,
+                                                                    handshake,
+                                                                    image_data,
+                                                                    image_size,
+                                                                    trust_cache_data,
+                                                                    trust_cache_size,
+                                                                    build_manifest_data,
+                                                                    build_manifest_size,
+                                                                    info_plist,
+                                                                    unique_chip_id,
+                                                                    progress_trampoline,
+                                                                    &lambda /* context */));
+
+    return e ? Result<void, FfiError>(Err(e)) : Result<void, FfiError>(Ok());
+}
+
 } // namespace IdeviceFFI

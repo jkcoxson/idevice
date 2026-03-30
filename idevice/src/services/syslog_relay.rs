@@ -40,7 +40,9 @@ impl SyslogRelayClient {
         let res = self.idevice.read_until_delim(b"\n\x00").await?;
         match res {
             Some(res) => Ok(String::from_utf8_lossy(&res).to_string()),
-            None => Err(IdeviceError::UnexpectedResponse),
+            None => Err(IdeviceError::UnexpectedResponse(
+                "syslog relay returned EOF".into(),
+            )),
         }
     }
 }

@@ -59,7 +59,9 @@ impl<'a, R: ReadWrite> ScreenshotClient<'a, R> {
         let msg = self.channel.read_message().await?;
         match msg.data {
             Some(Value::Data(data)) => Ok(data),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing screenshot data in DVT response".into(),
+            )),
         }
     }
 }

@@ -34,7 +34,7 @@ use std::pin::Pin;
 use futures::Stream;
 use tracing::warn;
 
-use crate::{Idevice, IdeviceError, IdeviceService, obf};
+use crate::{HeartbeatError, Idevice, IdeviceError, IdeviceService, obf};
 
 /// Client for interacting with the iOS notification proxy service
 ///
@@ -137,13 +137,17 @@ impl NotificationProxyClient {
         match response.get("Command").and_then(|c| c.as_string()) {
             Some("RelayNotification") => match response.get("Name").and_then(|n| n.as_string()) {
                 Some(name) => Ok(name.to_string()),
-                None => Err(IdeviceError::UnexpectedResponse),
+                None => Err(IdeviceError::UnexpectedResponse(
+                    "missing Name in RelayNotification".into(),
+                )),
             },
             Some("ProxyDeath") => {
                 warn!("NotificationProxy died!");
                 Err(IdeviceError::NotificationProxyDeath)
             }
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "unexpected Command in notification response".into(),
+            )),
         }
     }
 
@@ -166,7 +170,7 @@ impl NotificationProxyClient {
         tokio::select! {
             result = self.receive_notification() => result,
             _ = tokio::time::sleep(tokio::time::Duration::from_secs(interval)) => {
-                Err(IdeviceError::HeartbeatTimeout)
+                Err(HeartbeatError::Timeout.into())
             }
         }
     }
@@ -183,14 +187,14 @@ impl NotificationProxyClient {
                     Some("RelayNotification") => {
                         match response.get("Name").and_then(|n| n.as_string()) {
                             Some(name) => yield name.to_string(),
-                            None => Err(IdeviceError::UnexpectedResponse)?,
+                            None => Err(IdeviceError::UnexpectedResponse("missing Name in RelayNotification stream".into()))?,
                         }
                     }
                     Some("ProxyDeath") => {
                         warn!("NotificationProxy died!");
                         Err(IdeviceError::NotificationProxyDeath)?;
                     }
-                    _ => Err(IdeviceError::UnexpectedResponse)?,
+                    _ => Err(IdeviceError::UnexpectedResponse("unexpected Command in notification stream".into()))?,
                 }
             }
         })

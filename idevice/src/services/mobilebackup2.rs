@@ -442,7 +442,9 @@ impl MobileBackup2Client {
         let (msg, _arr) = self.receive_dl_message().await?;
         if msg != "DLMessageVersionExchange" {
             warn!("Expected DLMessageVersionExchange, got {msg}");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "expected DLMessageVersionExchange during handshake".into(),
+            ));
         }
 
         // 2) Send DLVersionsOk with version 400
@@ -457,7 +459,9 @@ impl MobileBackup2Client {
         let (msg2, _arr2) = self.receive_dl_message().await?;
         if msg2 != "DLMessageDeviceReady" {
             warn!("Expected DLMessageDeviceReady, got {msg2}");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "expected DLMessageDeviceReady after version exchange".into(),
+            ));
         }
         Ok(())
     }
@@ -487,7 +491,9 @@ impl MobileBackup2Client {
                 return Ok((tag.clone(), value));
             }
             warn!("Invalid DL message format");
-            Err(IdeviceError::UnexpectedResponse)
+            Err(IdeviceError::UnexpectedResponse(
+                "invalid DL message format: expected array with string tag".into(),
+            ))
         } else {
             Err(IdeviceError::NoEstablishedConnection)
         }
@@ -525,7 +531,9 @@ impl MobileBackup2Client {
             && code != 0
         {
             warn!("Version exchange failed with error code: {code}");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "version exchange failed with non-zero ErrorCode".into(),
+            ));
         }
 
         // Get negotiated protocol version
@@ -534,7 +542,9 @@ impl MobileBackup2Client {
             debug!("Negotiated protocol version: {version}");
         } else {
             warn!("No protocol version in response");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "missing ProtocolVersion in version exchange response".into(),
+            ));
         }
 
         Ok(())
@@ -607,18 +617,24 @@ impl MobileBackup2Client {
                     {
                         if message_name != expected_message {
                             warn!("Expected message '{expected_message}', got '{message_name}'");
-                            return Err(IdeviceError::UnexpectedResponse);
+                            return Err(IdeviceError::UnexpectedResponse(
+                                "device link MessageName does not match expected".into(),
+                            ));
                         }
                     } else {
                         warn!("No MessageName in response");
-                        return Err(IdeviceError::UnexpectedResponse);
+                        return Err(IdeviceError::UnexpectedResponse(
+                            "missing MessageName in DLMessageProcessMessage".into(),
+                        ));
                     }
                 }
                 return Ok(dict.clone());
             }
 
             warn!("Invalid device link message format");
-            Err(IdeviceError::UnexpectedResponse)
+            Err(IdeviceError::UnexpectedResponse(
+                "invalid device link message format".into(),
+            ))
         } else {
             Err(IdeviceError::NoEstablishedConnection)
         }
@@ -705,7 +721,9 @@ impl MobileBackup2Client {
         // Check for error in response
         if let Some(error) = response.get("ErrorCode") {
             warn!("Backup info request failed with error: {error:?}");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "backup info request returned ErrorCode".into(),
+            ));
         }
 
         Ok(response)
@@ -727,7 +745,9 @@ impl MobileBackup2Client {
         // Check for error in response
         if let Some(error) = response.get("ErrorCode") {
             warn!("List backups request failed with error: {error:?}");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "list backups request returned ErrorCode".into(),
+            ));
         }
 
         let mut backups = Vec::new();
@@ -815,7 +835,9 @@ impl MobileBackup2Client {
         // Check for error in response
         if let Some(error) = response.get("ErrorCode") {
             warn!("Backup start failed with error: {error:?}");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "backup start returned ErrorCode".into(),
+            ));
         }
 
         debug!("Backup started successfully");
@@ -883,7 +905,9 @@ impl MobileBackup2Client {
         // Check for error in response
         if let Some(error) = response.get("ErrorCode") {
             warn!("Restore start failed with error: {error:?}");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "restore start returned ErrorCode".into(),
+            ));
         }
 
         debug!("Restore started successfully");
@@ -1376,7 +1400,9 @@ impl MobileBackup2Client {
         let response = self.receive_backup_response().await?;
         if let Some(error) = response.get("ErrorCode") {
             warn!("Restore start failed with error: {error:?}");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "restore start returned ErrorCode".into(),
+            ));
         }
         debug!("Restore started successfully");
         Ok(())
@@ -1434,7 +1460,9 @@ impl MobileBackup2Client {
 
         match self.process_dl_loop(backup_root, delegate).await? {
             Some(res) => Ok(res),
-            None => Err(IdeviceError::UnexpectedResponse),
+            None => Err(IdeviceError::UnexpectedResponse(
+                "info_from_path DL loop returned no response".into(),
+            )),
         }
     }
 
@@ -1460,7 +1488,9 @@ impl MobileBackup2Client {
 
         match self.process_dl_loop(backup_root, delegate).await? {
             Some(res) => Ok(res),
-            None => Err(IdeviceError::UnexpectedResponse),
+            None => Err(IdeviceError::UnexpectedResponse(
+                "list_from_path DL loop returned no response".into(),
+            )),
         }
     }
 
@@ -1569,7 +1599,9 @@ impl MobileBackup2Client {
     /// Returns `IdeviceError` if the request fails
     pub async fn get_freespace(&mut self) -> Result<u64, IdeviceError> {
         // Not a valid host-initiated request in protocol; device asks via DLMessageGetFreeDiskSpace
-        Err(IdeviceError::UnexpectedResponse)
+        Err(IdeviceError::UnexpectedResponse(
+            "get_freespace is not a valid host-initiated request".into(),
+        ))
     }
 
     /// Checks if backup encryption is enabled
@@ -1581,7 +1613,9 @@ impl MobileBackup2Client {
     /// Returns `IdeviceError` if the request fails
     pub async fn check_backup_encryption(&mut self) -> Result<bool, IdeviceError> {
         // Not part of host-initiated MB2 protocol; caller should inspect Manifest/lockdown
-        Err(IdeviceError::UnexpectedResponse)
+        Err(IdeviceError::UnexpectedResponse(
+            "check_backup_encryption is not a valid host-initiated request".into(),
+        ))
     }
 
     /// Lists the contents of a directory referenced in a `DLContentsOfDirectory` message.

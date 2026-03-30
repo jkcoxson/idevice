@@ -191,7 +191,11 @@ impl<R: ReadWrite> RpPairingSocketProvider for RemoteXpcClient<R> {
 
             let msg = match msg {
                 Some(v) => v,
-                None => return Err(IdeviceError::UnexpectedResponse),
+                None => {
+                    return Err(IdeviceError::UnexpectedResponse(
+                        "missing value field in RemoteXPC message".into(),
+                    ));
+                }
             };
 
             // Try plain first

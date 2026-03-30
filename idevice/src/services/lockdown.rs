@@ -106,7 +106,9 @@ impl LockdownClient {
         let message: plist::Dictionary = self.idevice.read_plist().await?;
         match message.get("Value") {
             Some(m) => Ok(m.to_owned()),
-            None => Err(IdeviceError::UnexpectedResponse),
+            None => Err(IdeviceError::UnexpectedResponse(
+                "missing Value in GetValue response".into(),
+            )),
         }
     }
 
@@ -193,11 +195,15 @@ impl LockdownClient {
         match response.get("EnableSessionSSL") {
             Some(plist::Value::Boolean(enable)) => {
                 if !enable {
-                    return Err(IdeviceError::UnexpectedResponse);
+                    return Err(IdeviceError::UnexpectedResponse(
+                        "EnableSessionSSL is false in StartSession response".into(),
+                    ));
                 }
             }
             _ => {
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing EnableSessionSSL in StartSession response".into(),
+                ));
             }
         }
 
@@ -243,12 +249,16 @@ impl LockdownClient {
                     Ok((port as u16, ssl))
                 } else {
                     error!("Port isn't an unsigned integer!");
-                    Err(IdeviceError::UnexpectedResponse)
+                    Err(IdeviceError::UnexpectedResponse(
+                        "Port is not an unsigned integer in StartService response".into(),
+                    ))
                 }
             }
             _ => {
                 error!("Response didn't contain an integer port");
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::UnexpectedResponse(
+                    "missing Port in StartService response".into(),
+                ))
             }
         }
     }
@@ -282,7 +292,9 @@ impl LockdownClient {
             Some(p) => p,
             None => {
                 tracing::warn!("Did not get public key data response");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing DevicePublicKey data in pair response".into(),
+                ));
             }
         };
 
@@ -291,7 +303,9 @@ impl LockdownClient {
             Some(w) => w,
             None => {
                 tracing::warn!("Did not get WiFiAddress string");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing WiFiAddress string in pair response".into(),
+                ));
             }
         };
 
@@ -354,7 +368,9 @@ impl LockdownClient {
         if res.get("Request").and_then(|x| x.as_string()) == Some("EnterRecovery") {
             Ok(())
         } else {
-            Err(IdeviceError::UnexpectedResponse)
+            Err(IdeviceError::UnexpectedResponse(
+                "EnterRecovery request not acknowledged".into(),
+            ))
         }
     }
 }

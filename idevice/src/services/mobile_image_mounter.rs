@@ -9,6 +9,8 @@
 
 use tracing::debug;
 
+#[cfg(feature = "rsd")]
+use crate::RsdService;
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 use sha2::{Digest, Sha384};
 
@@ -64,7 +66,9 @@ impl ImageMounter {
 
         match res.remove("EntryList") {
             Some(plist::Value::Array(i)) => Ok(i),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing EntryList array in CopyDevices response".into(),
+            )),
         }
     }
 
@@ -151,7 +155,9 @@ impl ImageMounter {
             Ok(i) => i,
             Err(e) => {
                 tracing::error!("Could not parse image size as u64: {e:?}");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "image size exceeds u64 range".into(),
+                ));
             }
         };
 
@@ -168,10 +174,16 @@ impl ImageMounter {
             Some(plist::Value::String(s)) => {
                 if s.as_str() != "ReceiveBytesAck" {
                     tracing::error!("Received bad response to SendBytes: {s:?}");
-                    return Err(IdeviceError::UnexpectedResponse);
+                    return Err(IdeviceError::UnexpectedResponse(
+                        "expected ReceiveBytesAck Status in upload response".into(),
+                    ));
                 }
             }
-            _ => return Err(IdeviceError::UnexpectedResponse),
+            _ => {
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing Status in ReceiveBytes response".into(),
+                ));
+            }
         }
 
         debug!("Sending image bytes");
@@ -184,10 +196,16 @@ impl ImageMounter {
             Some(plist::Value::String(s)) => {
                 if s.as_str() != "Complete" {
                     tracing::error!("Image send failure: {s:?}");
-                    return Err(IdeviceError::UnexpectedResponse);
+                    return Err(IdeviceError::UnexpectedResponse(
+                        "expected Complete Status after image upload".into(),
+                    ));
                 }
             }
-            _ => return Err(IdeviceError::UnexpectedResponse),
+            _ => {
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing Status after image upload".into(),
+                ));
+            }
         }
 
         Ok(())
@@ -227,10 +245,16 @@ impl ImageMounter {
             Some(plist::Value::String(s)) => {
                 if s.as_str() != "Complete" {
                     tracing::error!("Image send failure: {s:?}");
-                    return Err(IdeviceError::UnexpectedResponse);
+                    return Err(IdeviceError::UnexpectedResponse(
+                        "expected Complete Status in MountImage response".into(),
+                    ));
                 }
             }
-            _ => return Err(IdeviceError::UnexpectedResponse),
+            _ => {
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing Status in MountImage response".into(),
+                ));
+            }
         }
 
         Ok(())
@@ -259,7 +283,9 @@ impl ImageMounter {
         let res = self.idevice.read_plist().await?;
         match res.get("Status") {
             Some(plist::Value::String(s)) if s.as_str() == "Complete" => Ok(()),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "expected Complete Status in UnmountImage response".into(),
+            )),
         }
     }
 
@@ -315,7 +341,9 @@ impl ImageMounter {
         let res = self.idevice.read_plist().await?;
         match res.get("DeveloperModeStatus") {
             Some(plist::Value::Boolean(status)) => Ok(*status),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing DeveloperModeStatus boolean in response".into(),
+            )),
         }
     }
 
@@ -342,7 +370,9 @@ impl ImageMounter {
         let res = self.idevice.read_plist().await?;
         match res.get("PersonalizationNonce") {
             Some(plist::Value::Data(nonce)) => Ok(nonce.clone()),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing PersonalizationNonce data in response".into(),
+            )),
         }
     }
 
@@ -369,7 +399,9 @@ impl ImageMounter {
         let res = self.idevice.read_plist().await?;
         match res.get("PersonalizationIdentifiers") {
             Some(plist::Value::Dictionary(identifiers)) => Ok(identifiers.clone()),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing PersonalizationIdentifiers dictionary in response".into(),
+            )),
         }
     }
 
@@ -525,6 +557,116 @@ impl ImageMounter {
         Ok(())
     }
 
+    /// Mounts a personalized image with automatic manifest handling
+    ///
+    /// # Arguments
+    /// * `provider` - Device connection provider (used for reconnection if needed)
+    /// * `image` - The image data
+    /// * `trust_cache` - Trust cache data
+    /// * `build_manifest` - Build manifest data
+    /// * `info_plist` - Optional info plist for the image
+    /// * `unique_chip_id` - Device's unique chip ID
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if mounting fails
+    #[cfg(all(feature = "tss", feature = "rsd"))]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn mount_personalized_rsd(
+        &mut self,
+        provider: &mut impl crate::provider::RsdProvider,
+        handshake: &mut crate::rsd::RsdHandshake,
+        image: Vec<u8>,
+        trust_cache: Vec<u8>,
+        build_manifest: &[u8],
+        info_plist: Option<plist::Value>,
+        unique_chip_id: u64,
+    ) -> Result<(), IdeviceError> {
+        self.mount_personalized_with_callback_rsd(
+            provider,
+            handshake,
+            image,
+            trust_cache,
+            build_manifest,
+            info_plist,
+            unique_chip_id,
+            |_| async {},
+            (),
+        )
+        .await
+    }
+
+    /// Mounts a personalized image with progress callbacks
+    ///
+    /// # Important
+    /// This may close the socket on failure, requiring reconnection.
+    ///
+    /// # Arguments
+    /// * `provider` - Device connection provider
+    /// * `image` - The image data
+    /// * `trust_cache` - Trust cache data
+    /// * `build_manifest` - Build manifest data
+    /// * `info_plist` - Optional info plist for the image
+    /// * `unique_chip_id` - Device's unique chip ID
+    /// * `callback` - Progress callback
+    /// * `state` - State to pass to callback
+    ///
+    /// # Type Parameters
+    /// * `Fut` - Future type returned by callback
+    /// * `S` - Type of state passed to callback
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if mounting fails
+    #[cfg(all(feature = "tss", feature = "rsd"))]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn mount_personalized_with_callback_rsd<Fut, S>(
+        &mut self,
+        provider: &mut impl crate::provider::RsdProvider,
+        handshake: &mut crate::rsd::RsdHandshake,
+        image: Vec<u8>,
+        trust_cache: Vec<u8>,
+        build_manifest: &[u8],
+        info_plist: Option<plist::Value>,
+        unique_chip_id: u64,
+        callback: impl Fn(((usize, usize), S)) -> Fut,
+        state: S,
+    ) -> Result<(), IdeviceError>
+    where
+        Fut: std::future::Future<Output = ()>,
+        S: Clone,
+    {
+        // Try to fetch personalization manifest
+        let mut hasher = Sha384::new();
+        hasher.update(&image);
+        let image_hash = hasher.finalize();
+        let manifest = match self
+            .query_personalization_manifest("DeveloperDiskImage", image_hash.to_vec())
+            .await
+        {
+            Ok(manifest) => manifest,
+            Err(e) => {
+                debug!("Device didn't contain a manifest: {e:?}, fetching from TSS");
+
+                // On failure, the socket closes. Open a new one.
+                self.idevice = Self::connect_rsd(provider, handshake).await?.idevice;
+
+                // Get manifest from TSS
+                let manifest_dict: plist::Dictionary = plist::from_bytes(build_manifest)?;
+                self.get_manifest_from_tss(&manifest_dict, unique_chip_id)
+                    .await?
+            }
+        };
+
+        debug!("Uploading image");
+        self.upload_image_with_progress("Personalized", &image, manifest.clone(), callback, state)
+            .await?;
+
+        debug!("Mounting image");
+        self.mount_image("Personalized", manifest, Some(trust_cache), info_plist)
+            .await?;
+
+        Ok(())
+    }
+
     #[cfg(feature = "tss")]
     /// Retrieves a personalization manifest from Apple's TSS server
     ///
@@ -556,19 +698,31 @@ impl ImageMounter {
         let board_id = match personalization_identifiers.get("BoardId") {
             Some(plist::Value::Integer(b)) => match b.as_unsigned() {
                 Some(b) => b,
-                None => return Err(IdeviceError::UnexpectedResponse),
+                None => {
+                    return Err(IdeviceError::UnexpectedResponse(
+                        "BoardId is not an unsigned integer".into(),
+                    ));
+                }
             },
             _ => {
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing BoardId in personalization identifiers".into(),
+                ));
             }
         };
         let chip_id = match personalization_identifiers.get("ChipID") {
             Some(plist::Value::Integer(b)) => match b.as_unsigned() {
                 Some(b) => b,
-                None => return Err(IdeviceError::UnexpectedResponse),
+                None => {
+                    return Err(IdeviceError::UnexpectedResponse(
+                        "ChipID is not an unsigned integer".into(),
+                    ));
+                }
             },
             _ => {
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing ChipID in personalization identifiers".into(),
+                ));
             }
         };
 
@@ -713,7 +867,9 @@ impl ImageMounter {
             plist::Value::Dictionary(r) => r,
             _ => {
                 warn!("Apple returned a non-dictionary plist");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "TSS response is not a dictionary".into(),
+                ));
             }
         };
 
@@ -721,7 +877,9 @@ impl ImageMounter {
             Some(plist::Value::Data(d)) => Ok(d),
             _ => {
                 warn!("TSS response didn't contain ApImg4Ticket data");
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::UnexpectedResponse(
+                    "missing ApImg4Ticket data in TSS response".into(),
+                ))
             }
         }
     }

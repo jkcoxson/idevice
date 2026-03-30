@@ -21,9 +21,10 @@ extern "C" uint64_t get_free_disk_space_trampoline(const char* path, void* ctx) 
 }
 
 static IdeviceFfiError* make_ffi_error(int32_t code, const char* msg) {
-    auto* err    = static_cast<IdeviceFfiError*>(malloc(sizeof(IdeviceFfiError)));
-    err->code    = code;
-    err->message = strdup(msg);
+    auto* err      = static_cast<IdeviceFfiError*>(malloc(sizeof(IdeviceFfiError)));
+    err->code      = code;
+    err->sub_code  = 0;
+    err->message   = strdup(msg);
     return err;
 }
 

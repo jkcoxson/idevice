@@ -10,6 +10,25 @@ use tracing::warn;
 
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
+/// Errors specific to installation proxy operations
+#[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
+pub enum InstallationProxyError {
+    #[error("installation proxy operation failed: {0}")]
+    OperationFailed(String),
+    #[error("malformed package archive: {0}")]
+    MalformedPackageArchive(#[from] async_zip::error::ZipError),
+}
+
+impl InstallationProxyError {
+    pub fn sub_code(&self) -> i32 {
+        match self {
+            Self::OperationFailed(_) => 1,
+            Self::MalformedPackageArchive(_) => 2,
+        }
+    }
+}
+
 /// Client for interacting with the iOS installation proxy service
 ///
 /// This service provides access to information about installed applications
@@ -86,7 +105,9 @@ impl InstallationProxyClient {
             Some(plist::Value::Dictionary(res)) => {
                 Ok(res.into_iter().collect::<HashMap<String, plist::Value>>())
             }
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing LookupResult dictionary in response".into(),
+            )),
         }
     }
 
@@ -320,7 +341,9 @@ impl InstallationProxyClient {
         if let Some(caps) = res.remove("LookupResult").and_then(|x| x.as_boolean()) {
             Ok(caps)
         } else {
-            Err(IdeviceError::UnexpectedResponse)
+            Err(IdeviceError::UnexpectedResponse(
+                "missing LookupResult boolean in CheckCapabilitiesMatch response".into(),
+            ))
         }
     }
 
@@ -401,9 +424,7 @@ impl InstallationProxyClient {
             let mut res = self.idevice.read_plist().await?;
 
             if let Some(e) = res.remove("ErrorDescription").and_then(|x| x.into_string()) {
-                return Err(IdeviceError::InstallationProxyOperationFailed(
-                    e.to_string(),
-                ));
+                return Err(InstallationProxyError::OperationFailed(e.to_string()).into());
             }
 
             if let Some(c) = res
