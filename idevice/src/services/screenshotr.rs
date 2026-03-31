@@ -38,9 +38,9 @@ impl ScreenshotService {
         let (msg, _arr) = self.receive_dl_message().await?;
         if msg != "DLMessageVersionExchange" {
             warn!("Expected DLMessageVersionExchange, got {msg}");
-            return Err(IdeviceError::UnexpectedResponse(
-                format!("expected DLMessageVersionExchange, got {msg}").into(),
-            ));
+            return Err(IdeviceError::UnexpectedResponse(format!(
+                "expected DLMessageVersionExchange, got {msg}"
+            )));
         }
 
         // 2) Send DLVersionsOk with version 400
@@ -55,9 +55,9 @@ impl ScreenshotService {
         let (msg2, _arr2) = self.receive_dl_message().await?;
         if msg2 != "DLMessageDeviceReady" {
             warn!("Expected DLMessageDeviceReady, got {msg2}");
-            return Err(IdeviceError::UnexpectedResponse(
-                format!("expected DLMessageDeviceReady, got {msg2}").into(),
-            ));
+            return Err(IdeviceError::UnexpectedResponse(format!(
+                "expected DLMessageDeviceReady, got {msg2}"
+            )));
         }
         Ok(())
     }
@@ -107,9 +107,9 @@ impl ScreenshotService {
         let (msg, value) = self.receive_dl_message().await?;
         if msg != "DLMessageProcessMessage" {
             warn!("Expected DLMessageProcessMessage, got {msg}");
-            return Err(IdeviceError::UnexpectedResponse(
-                format!("expected DLMessageProcessMessage, got {msg}").into(),
-            ));
+            return Err(IdeviceError::UnexpectedResponse(format!(
+                "expected DLMessageProcessMessage, got {msg}"
+            )));
         }
 
         if let plist::Value::Array(arr) = &value
