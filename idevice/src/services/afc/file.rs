@@ -36,6 +36,7 @@ impl<'a> FileDescriptor<'a> {
                 path,
                 pending_fut: None,
                 _m: PhantomPinned,
+                dropped: false,
             }),
         }
     }
@@ -60,6 +61,7 @@ impl OwnedFileDescriptor {
                 path,
                 pending_fut: None,
                 _m: PhantomPinned,
+                dropped: false,
             }),
         }
     }

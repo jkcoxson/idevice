@@ -15,7 +15,7 @@ use crate::{
 };
 
 /// Maximum transfer size for file operations (1MB)
-const MAX_TRANSFER: u64 = 1024 * 1024; // this is what libimobiledevice uses in it's afcclient
+const MAX_TRANSFER: u64 = 1024 * 1024; // this is what libimobiledevice uses in afcclient
 
 fn chunk_number(n: usize, chunk_size: usize) -> impl Iterator<Item = usize> {
     (0..n)
@@ -45,6 +45,8 @@ pub(crate) struct InnerFileDescriptor<'a> {
 
     pub(crate) pending_fut: Option<BoxFuture<'a, Result<PendingResult, IdeviceError>>>,
     pub(crate) _m: std::marker::PhantomPinned,
+
+    pub(crate) dropped: bool,
 }
 
 /// Handle for an owned open file on the device.
@@ -56,6 +58,8 @@ pub(crate) struct OwnedInnerFileDescriptor {
 
     pub(crate) pending_fut: Option<OwnedBoxFuture>,
     pub(crate) _m: std::marker::PhantomPinned,
+
+    pub(crate) dropped: bool,
 }
 
 crate::impl_to_structs!(InnerFileDescriptor<'_>, OwnedInnerFileDescriptor; {
@@ -276,11 +280,17 @@ impl<'a> InnerFileDescriptor<'a> {
 
     /// Closes the file descriptor
     pub async fn close(mut self: Pin<Box<Self>>) -> Result<(), IdeviceError> {
+        self.as_mut().close_inner().await
+    }
+
+    async fn close_inner(mut self: Pin<&mut Self>) -> Result<(), IdeviceError> {
         let header_payload = self.fd.to_le_bytes().to_vec();
 
         self.as_mut()
             .send_packet(AfcOpcode::FileClose, header_payload, Vec::new())
             .await?;
+
+        unsafe { Pin::into_inner_unchecked(self).dropped = true }
         Ok(())
     }
 }
@@ -314,18 +324,36 @@ impl OwnedInnerFileDescriptor {
 
     /// Closes the file descriptor
     pub async fn close(mut self: Pin<Box<Self>>) -> Result<AfcClient, IdeviceError> {
+        self.as_mut().close_inner().await
+    }
+
+    async fn close_inner(mut self: Pin<&mut Self>) -> Result<AfcClient, IdeviceError> {
         let header_payload = self.fd.to_le_bytes().to_vec();
 
         self.as_mut()
             .send_packet(AfcOpcode::FileClose, header_payload, Vec::new())
             .await?;
 
-        // we don't need it to be pinned anymore
-        Ok(unsafe { Pin::into_inner_unchecked(self) }.client)
+        Ok(self.into_inner_afc())
     }
 
-    pub fn get_inner_afc(self: Pin<Box<Self>>) -> AfcClient {
-        unsafe { Pin::into_inner_unchecked(self).client }
+    fn into_inner_afc(mut self: Pin<&mut Self>) -> AfcClient {
+        let this = unsafe { Pin::into_inner_unchecked(self.as_mut()) };
+
+        this.dropped = true;
+
+        let dummy_afc = AfcClient::new(crate::Idevice::new(
+            Box::new(std::io::Cursor::new(vec![])),
+            "67",
+        ));
+
+        // the `.drop()` won't use the `self.client` if we already dropped it (or don't want to
+        // drop it)
+        std::mem::replace(&mut this.client, dummy_afc)
+    }
+
+    pub fn get_inner_afc(mut self: Pin<Box<Self>>) -> AfcClient {
+        self.as_mut().into_inner_afc()
     }
 }
 
@@ -414,6 +442,30 @@ crate::impl_trait_to_structs!(AsyncSeek for InnerFileDescriptor<'_>, OwnedInnerF
             }
             Err(e) => std::task::Poll::Ready(Err(std::io::Error::other(e.to_string()))),
             _ => unreachable!("a non seek future was stored, this shouldn't happen"),
+        }
+    }
+});
+
+crate::impl_trait_to_structs!(Drop for InnerFileDescriptor<'_>, OwnedInnerFileDescriptor; {
+    fn drop(&mut self) {
+        if !self.dropped {
+            let handle = tokio::runtime::Handle::current();
+
+            if matches!(
+                handle.runtime_flavor(),
+                tokio::runtime::RuntimeFlavor::CurrentThread
+            ) {
+                return;
+            }
+
+            tokio::task::block_in_place(move || {
+                handle.block_on(async move {
+                    unsafe { Pin::new_unchecked(self) }
+                        .close_inner()
+                        .await
+                        .ok();
+                })
+            });
         }
     }
 });
