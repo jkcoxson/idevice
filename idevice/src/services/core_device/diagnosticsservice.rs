@@ -67,7 +67,10 @@ impl<R: ReadWrite> DiagnostisServiceClient<R> {
             })
         } else {
             warn!("Did not get expected responses from RemoteXPC");
-            Err(IdeviceError::UnexpectedResponse)
+            Err(IdeviceError::UnexpectedResponse(
+                "missing fileTransfer/expectedLength or preferredFilename in sysdiagnose response"
+                    .into(),
+            ))
         }
     }
 }

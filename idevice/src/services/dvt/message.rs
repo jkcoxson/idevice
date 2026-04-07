@@ -62,6 +62,7 @@ use plist::Value;
 use std::io::{Cursor, Read};
 use tokio::io::{AsyncRead, AsyncReadExt};
 
+use super::errors::DvtError;
 use crate::{IdeviceError, pretty_print_plist};
 
 /// Message header containing metadata about the message
@@ -139,6 +140,8 @@ pub struct Aux {
 /// Typed auxiliary value that can be included in messages
 #[derive(Clone, PartialEq)]
 pub enum AuxValue {
+    /// NULL value (type 0x0a) - no payload bytes
+    Null,
     /// UTF-8 string value (type 0x01)
     String(String),
     /// Raw byte array (type 0x02)
@@ -147,10 +150,10 @@ pub enum AuxValue {
     U32(u32),
     /// 64-bit signed integer (type 0x06)
     I64(i64),
-    /// 64-bit unsigned integer (type 0x06 in pymobiledevice3)
-    U64(u64),
-    /// IEEE-754 double (type 0x09)
-    F64(f64),
+    /// 64-bit floating point (double) (type 0x09)
+    Double(f64),
+    /// Primitive dictionary (type 0xF0) - value is a list of primitives to match pymobiledevice3 format
+    PrimitiveDictionary(Vec<(AuxValue, Vec<AuxValue>)>),
 }
 
 /// Complete protocol message
@@ -164,6 +167,8 @@ pub struct Message {
     pub aux: Option<Aux>,
     /// Optional payload data (typically NSKeyedArchive)
     pub data: Option<Value>,
+    /// Raw bytes of the data section before NSKeyedArchive decoding
+    pub raw_data: Option<Vec<u8>>,
 }
 
 impl Aux {
@@ -188,7 +193,10 @@ impl Aux {
             let aux_type = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
             bytes = &bytes[4..];
             match aux_type {
-                0x0a => {}
+                0x0a => {
+                    // null / PNULL - no payload bytes
+                    // used as dictionary keys and separators
+                }
                 0x01 => {
                     let len = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
                     bytes = &bytes[4..];
@@ -223,7 +231,33 @@ impl Aux {
                     ])));
                     bytes = &bytes[8..];
                 }
-                _ => return Err(IdeviceError::UnknownAuxValueType(aux_type)),
+                0x09 => {
+                    // Double (f64)
+                    if bytes.len() < 8 {
+                        return Err(IdeviceError::NotEnoughBytes(8, bytes.len()));
+                    }
+                    let bits = u64::from_le_bytes([
+                        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
+                        bytes[7],
+                    ]);
+                    values.push(AuxValue::Double(f64::from_bits(bits)));
+                    bytes = &bytes[8..];
+                }
+                0xf0 => {
+                    // PrimitiveDictionary
+                    // Layout: u32 magic, u32 unknown, u64 body_length, then [key,value] pairs
+                    if bytes.len() < 16 {
+                        return Err(IdeviceError::NotEnoughBytes(16, bytes.len()));
+                    }
+                    // Skip magic (4), unknown (4), body_length (8)
+                    let body_length = u64::from_le_bytes([
+                        bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10],
+                        bytes[11],
+                    ]) as usize;
+                    // Skip the dictionary body content
+                    bytes = &bytes[16 + body_length..];
+                }
+                _ => return Err(DvtError::UnknownAuxValueType(aux_type).into()),
             }
         }
 
@@ -269,10 +303,10 @@ impl Aux {
                 Ok(AuxValue::Array(Self::read_exact_vec(cursor, len)?))
             }
             0x03 => Ok(AuxValue::U32(Self::read_u32(cursor)?)),
-            0x06 => Ok(AuxValue::U64(Self::read_u64(cursor)?)),
-            0x09 => Ok(AuxValue::F64(Self::read_f64(cursor)?)),
-            0x0A => Ok(AuxValue::Array(Vec::new())),
-            _ => Err(IdeviceError::UnknownAuxValueType(raw_type)),
+            0x06 => Ok(AuxValue::I64(Self::read_u64(cursor)? as i64)),
+            0x09 => Ok(AuxValue::Double(Self::read_f64(cursor)?)),
+            0x0A => Ok(AuxValue::Null),
+            _ => Err(DvtError::UnknownAuxValueType(raw_type).into()),
         }
     }
 
@@ -330,37 +364,6 @@ impl Aux {
         })
     }
 
-    fn write_primitive(buf: &mut Vec<u8>, value: &AuxValue) {
-        match value {
-            AuxValue::String(s) => {
-                buf.extend_from_slice(&0x01_u32.to_le_bytes());
-                buf.extend_from_slice(&(s.len() as u32).to_le_bytes());
-                buf.extend_from_slice(s.as_bytes());
-            }
-            AuxValue::Array(v) => {
-                buf.extend_from_slice(&0x02_u32.to_le_bytes());
-                buf.extend_from_slice(&(v.len() as u32).to_le_bytes());
-                buf.extend_from_slice(v);
-            }
-            AuxValue::U32(u) => {
-                buf.extend_from_slice(&0x03_u32.to_le_bytes());
-                buf.extend_from_slice(&u.to_le_bytes());
-            }
-            AuxValue::I64(i) => {
-                buf.extend_from_slice(&0x06_u32.to_le_bytes());
-                buf.extend_from_slice(&(*i as u64).to_le_bytes());
-            }
-            AuxValue::U64(u) => {
-                buf.extend_from_slice(&0x06_u32.to_le_bytes());
-                buf.extend_from_slice(&u.to_le_bytes());
-            }
-            AuxValue::F64(f) => {
-                buf.extend_from_slice(&0x09_u32.to_le_bytes());
-                buf.extend_from_slice(&f.to_le_bytes());
-            }
-        }
-    }
-
     /// Creates new auxiliary data from values
     ///
     /// Note: Header fields are populated during serialization
@@ -378,22 +381,104 @@ impl Aux {
     ///
     /// Includes properly formatted header with updated size fields
     pub fn serialize(&self) -> Vec<u8> {
-        if self.values.is_empty() {
-            return Vec::new();
+        let mut values_payload = Vec::new();
+        for v in self.values.iter() {
+            values_payload.extend_from_slice(&0x0a_u32.to_le_bytes());
+            match v {
+                AuxValue::Null => {
+                    // PNULL - type 0x0a with no payload bytes
+                }
+                AuxValue::String(s) => {
+                    values_payload.extend_from_slice(&0x01_u32.to_le_bytes());
+                    values_payload.extend_from_slice(&(s.len() as u32).to_le_bytes());
+                    values_payload.extend_from_slice(s.as_bytes());
+                }
+                AuxValue::Array(v) => {
+                    values_payload.extend_from_slice(&0x02_u32.to_le_bytes());
+                    values_payload.extend_from_slice(&(v.len() as u32).to_le_bytes());
+                    values_payload.extend_from_slice(v);
+                }
+                AuxValue::U32(u) => {
+                    values_payload.extend_from_slice(&0x03_u32.to_le_bytes());
+                    values_payload.extend_from_slice(&u.to_le_bytes());
+                }
+                AuxValue::I64(i) => {
+                    values_payload.extend_from_slice(&0x06_u32.to_le_bytes());
+                    values_payload.extend_from_slice(&i.to_le_bytes());
+                }
+                AuxValue::Double(d) => {
+                    values_payload.extend_from_slice(&0x09_u32.to_le_bytes());
+                    values_payload.extend_from_slice(&d.to_le_bytes());
+                }
+                AuxValue::PrimitiveDictionary(entries) => {
+                    // PrimitiveDictionary: type=0xF0, entries are (key, [values]) pairs
+                    // Header: u32 magic (0x1F0), u32 unknown (0), u64 body_length
+                    // pymobiledevice3 format: {PNULL: [arg1, arg2, ...]}
+                    let mut body_payload = Vec::new();
+                    for (key, values) in entries {
+                        // Write the key primitive once (typically NULL 0x0a)
+                        body_payload.extend_from_slice(&0x0a_u32.to_le_bytes());
+                        write_primitive_value(key, &mut body_payload);
+                        // Write each value in the list
+                        for value in values {
+                            write_primitive_value(value, &mut body_payload);
+                        }
+                    }
+                    let body_len = body_payload.len() as u64;
+                    values_payload.extend_from_slice(&0xf0_u32.to_le_bytes());
+                    values_payload.extend_from_slice(&0_u32.to_le_bytes()); // unknown flags
+                    values_payload.extend_from_slice(&body_len.to_le_bytes());
+                    values_payload.extend_from_slice(&body_payload);
+                }
+            }
         }
 
-        let mut body = Vec::new();
-        for value in &self.values {
-            body.extend_from_slice(&0x0A_u32.to_le_bytes());
-            Self::write_primitive(&mut body, value);
-        }
-
-        let mut res = Vec::with_capacity(16 + body.len());
-        res.extend_from_slice(&0x1F0_u32.to_le_bytes());
+        let mut res = Vec::new();
+        let buffer_size = 496_u32;
+        res.extend_from_slice(&buffer_size.to_le_bytes());
         res.extend_from_slice(&0_u32.to_le_bytes());
-        res.extend_from_slice(&(body.len() as u64).to_le_bytes());
-        res.extend_from_slice(&body);
+        res.extend_from_slice(&(values_payload.len() as u32).to_le_bytes());
+        res.extend_from_slice(&0_u32.to_le_bytes());
+        res.extend_from_slice(&values_payload);
         res
+    }
+}
+
+/// Helper to write a primitive value to the payload
+fn write_primitive_value(v: &AuxValue, payload: &mut Vec<u8>) {
+    match v {
+        AuxValue::Null => {
+            // PNULL - type 0x0a with no payload bytes
+        }
+        AuxValue::String(s) => {
+            payload.extend_from_slice(&0x01_u32.to_le_bytes());
+            payload.extend_from_slice(&(s.len() as u32).to_le_bytes());
+            payload.extend_from_slice(s.as_bytes());
+        }
+        AuxValue::Array(bytes) => {
+            payload.extend_from_slice(&0x02_u32.to_le_bytes());
+            payload.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+            payload.extend_from_slice(bytes);
+        }
+        AuxValue::U32(val) => {
+            payload.extend_from_slice(&0x03_u32.to_le_bytes());
+            payload.extend_from_slice(&val.to_le_bytes());
+        }
+        AuxValue::I64(val) => {
+            payload.extend_from_slice(&0x06_u32.to_le_bytes());
+            payload.extend_from_slice(&val.to_le_bytes());
+        }
+        AuxValue::Double(val) => {
+            payload.extend_from_slice(&0x09_u32.to_le_bytes());
+            payload.extend_from_slice(&val.to_le_bytes());
+        }
+        AuxValue::PrimitiveDictionary(_) => {
+            // Nested dictionaries not typically used as primitive values
+            // Write as empty dict
+            payload.extend_from_slice(&0xf0_u32.to_le_bytes());
+            payload.extend_from_slice(&0_u32.to_le_bytes());
+            payload.extend_from_slice(&0u64.to_le_bytes());
+        }
     }
 }
 
@@ -404,6 +489,37 @@ impl AuxValue {
     /// * `v` - Plist value to archive
     pub fn archived_value(v: impl Into<plist::Value>) -> Self {
         Self::Array(ns_keyed_archive::encode::encode_to_bytes(v.into()).expect("Failed to encode"))
+    }
+
+    /// Creates a primitive buffer (immutable buffer) containing raw bytes
+    /// This is used for passing primitive arrays as DTX arguments (wire type 0x02)
+    ///
+    /// # Arguments
+    /// * `bytes` - Raw bytes to include in the buffer
+    pub fn primitive_buffer(bytes: Vec<u8>) -> Self {
+        Self::Array(bytes)
+    }
+
+    /// Creates a PrimitiveDictionary auxiliary value (wire type 0xF0)
+    ///
+    /// # Arguments
+    /// * `entries` - List of (key, [values]) pairs
+    pub fn primitive_dictionary(entries: Vec<(AuxValue, Vec<AuxValue>)>) -> Self {
+        Self::PrimitiveDictionary(entries)
+    }
+
+    /// Creates a DTX method call auxiliary argument format matching pymobiledevice3
+    ///
+    /// This wraps all arguments in a single PrimitiveDictionary with a NULL key,
+    /// producing the structure `{PNULL: [arg1, arg2, ...]}`.
+    ///
+    /// This matches pymobiledevice3's `MessageAux.build()` which creates `PDict({PNULL: converted_list})`.
+    ///
+    /// # Arguments
+    /// * `args` - List of arguments to wrap
+    pub fn dtx_method_args(args: Vec<Self>) -> Self {
+        // Create a PrimitiveDictionary with a single entry: (PNULL, [arg1, arg2, ...])
+        Self::PrimitiveDictionary(vec![(Self::Null, args)])
     }
 }
 
@@ -568,10 +684,18 @@ impl Message {
         let buf = packet_data
             [(pheader.aux_length + 16) as usize..pheader.aux_length as usize + 16 + need_len]
             .to_vec();
+        let raw_data = if buf.is_empty() {
+            None
+        } else {
+            Some(buf.clone())
+        };
         let data = if buf.is_empty() {
             None
         } else {
-            Some(ns_keyed_archive::decode::from_bytes(&buf)?)
+            Some(
+                ns_keyed_archive::decode::from_bytes(&buf)
+                    .map_err(super::errors::DvtError::from)?,
+            )
         };
 
         Ok(Message {
@@ -579,6 +703,7 @@ impl Message {
             payload_header: pheader,
             aux,
             data,
+            raw_data,
         })
     }
 
@@ -600,6 +725,7 @@ impl Message {
             payload_header,
             aux,
             data,
+            raw_data: None,
         }
     }
 
@@ -699,17 +825,18 @@ impl Message {
 impl std::fmt::Debug for AuxValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            AuxValue::Null => write!(f, "Null"),
             AuxValue::String(s) => write!(f, "String({s:?})"),
             AuxValue::Array(arr) => write!(
                 f,
                 "Array(len={}, first_bytes={:?})",
                 arr.len(),
                 &arr[..arr.len().min(10)]
-            ), // Show only first 10 bytes
+            ),
             AuxValue::U32(n) => write!(f, "U32({n})"),
             AuxValue::I64(n) => write!(f, "I64({n})"),
-            AuxValue::U64(n) => write!(f, "U64({n})"),
-            AuxValue::F64(n) => write!(f, "F64({n})"),
+            AuxValue::Double(d) => write!(f, "Double({d})"),
+            AuxValue::PrimitiveDictionary(_) => write!(f, "PrimitiveDictionary"),
         }
     }
 }

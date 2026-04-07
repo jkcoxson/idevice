@@ -5,8 +5,9 @@ use futures::Stream;
 use http2::Setting;
 use tracing::debug;
 
-use crate::{IdeviceError, ReadWrite};
+use crate::{CdTunnelError, IdeviceError, ReadWrite};
 
+pub mod errors;
 mod format;
 mod http2;
 pub mod xpc_macro;
@@ -53,10 +54,6 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
         ))
         .await?;
 
-        debug!("Sending weird flags");
-        self.send_root(XPCMessage::new(Some(XPCFlag::Custom(0x201)), None, None))
-            .await?;
-
         debug!("Opening reply stream");
         self.h2_client.open_stream(REPLY_CHANNEL).await?;
         self.send_reply(XPCMessage::new(
@@ -65,6 +62,10 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
             None,
         ))
         .await?;
+
+        debug!("Sending weird flags");
+        self.send_root(XPCMessage::new(Some(XPCFlag::Custom(0x201)), None, None))
+            .await?;
 
         Ok(())
     }
@@ -83,7 +84,7 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
             msg_buffer.extend(self.h2_client.read(channel).await?);
             let msg = match XPCMessage::decode(&msg_buffer) {
                 Ok(m) => m,
-                Err(IdeviceError::PacketSizeMismatch) => continue,
+                Err(IdeviceError::CdTunnel(CdTunnelError::SizeMismatch)) => continue,
                 Err(e) => break Err(e),
             };
 

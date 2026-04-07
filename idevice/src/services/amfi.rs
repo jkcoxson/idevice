@@ -41,7 +41,9 @@ impl AmfiClient {
         if res.get("success").is_some() {
             Ok(())
         } else {
-            Err(IdeviceError::UnexpectedResponse)
+            Err(IdeviceError::UnexpectedResponse(
+                "missing success key in reveal developer mode response".into(),
+            ))
         }
     }
 
@@ -56,7 +58,9 @@ impl AmfiClient {
         if res.get("success").is_some() {
             Ok(())
         } else {
-            Err(IdeviceError::UnexpectedResponse)
+            Err(IdeviceError::UnexpectedResponse(
+                "missing success key in enable developer mode response".into(),
+            ))
         }
     }
 
@@ -71,7 +75,9 @@ impl AmfiClient {
         if res.get("success").is_some() {
             Ok(())
         } else {
-            Err(IdeviceError::UnexpectedResponse)
+            Err(IdeviceError::UnexpectedResponse(
+                "missing success key in accept developer mode response".into(),
+            ))
         }
     }
 
@@ -85,12 +91,18 @@ impl AmfiClient {
         let res = self.idevice.read_plist().await?;
         match res.get("success").and_then(|x| x.as_boolean()) {
             Some(true) => (),
-            _ => return Err(IdeviceError::UnexpectedResponse),
+            _ => {
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing or false success key in developer mode status response".into(),
+                ));
+            }
         }
 
         match res.get("status").and_then(|x| x.as_boolean()) {
             Some(b) => Ok(b),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing status boolean in developer mode status response".into(),
+            )),
         }
     }
 
@@ -109,12 +121,30 @@ impl AmfiClient {
         let res = self.idevice.read_plist().await?;
         match res.get("success").and_then(|x| x.as_boolean()) {
             Some(true) => (),
-            _ => return Err(IdeviceError::UnexpectedResponse),
+            _ => {
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing or false success key in trust app signer response".into(),
+                ));
+            }
         }
 
         match res.get("status").and_then(|x| x.as_boolean()) {
             Some(b) => Ok(b),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing status boolean in trust app signer response".into(),
+            )),
         }
+    }
+}
+
+#[cfg(feature = "rsd")]
+impl crate::RsdService for AmfiClient {
+    fn rsd_service_name() -> std::borrow::Cow<'static, str> {
+        crate::obf!("com.apple.amfi.lockdown.shim.remote")
+    }
+    async fn from_stream(stream: Box<dyn crate::ReadWrite>) -> Result<Self, crate::IdeviceError> {
+        let mut idevice = crate::Idevice::new(stream, "");
+        idevice.rsd_checkin().await?;
+        Ok(Self::new(idevice))
     }
 }

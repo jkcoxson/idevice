@@ -30,7 +30,7 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
     let mut sub_args = sub_args.clone();
 
     if let Ok(proxy) = CoreDeviceProxy::connect(&*provider).await {
-        let rsd_port = proxy.handshake.server_rsd_port;
+        let rsd_port = proxy.tunnel_info().server_rsd_port;
 
         let adapter = proxy.create_software_tunnel().expect("no software tunnel");
         let mut adapter = adapter.to_async_handle();

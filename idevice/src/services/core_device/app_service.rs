@@ -161,7 +161,9 @@ impl<R: ReadWrite> AppServiceClient<R> {
             Some(a) => a,
             None => {
                 warn!("CoreDevice result was not an array");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "list apps result was not an array".into(),
+                ));
             }
         };
 
@@ -171,7 +173,9 @@ impl<R: ReadWrite> AppServiceClient<R> {
                 Ok(r) => r,
                 Err(e) => {
                     warn!("Failed to parse app entry: {e:?}");
-                    return Err(IdeviceError::UnexpectedResponse);
+                    return Err(IdeviceError::UnexpectedResponse(
+                        "failed to parse app list entry".into(),
+                    ));
                 }
             };
             desd.push(r);
@@ -251,7 +255,9 @@ impl<R: ReadWrite> AppServiceClient<R> {
             Some(r) => r,
             None => {
                 warn!("CoreDevice res did not contain parsable processToken");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing or unparsable processToken in launch response".into(),
+                ));
             }
         };
 
@@ -272,7 +278,9 @@ impl<R: ReadWrite> AppServiceClient<R> {
             Some(r) => r,
             None => {
                 warn!("CoreDevice res did not contain parsable processToken");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing or unparsable processTokens in list processes response".into(),
+                ));
             }
         };
 
@@ -319,7 +327,9 @@ impl<R: ReadWrite> AppServiceClient<R> {
             Ok(r) => r,
             Err(e) => {
                 warn!("Could not parse signal response: {e:?}");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "failed to parse signal response".into(),
+                ));
             }
         };
 
@@ -361,16 +371,21 @@ impl<R: ReadWrite> AppServiceClient<R> {
             Some(r) => r.to_vec(),
             None => {
                 warn!("Did not receive appIconContainer/iconImage data");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing appIconContainer/iconImage data in fetch icon response".into(),
+                ));
             }
         };
 
-        let res = ns_keyed_archive::decode::from_bytes(&res)?;
+        let res = ns_keyed_archive::decode::from_bytes(&res)
+            .map_err(crate::services::dvt::errors::DvtError::from)?;
         match plist::from_value(&res) {
             Ok(r) => Ok(r),
             Err(e) => {
                 warn!("Failed to deserialize ns keyed archive: {e:?}");
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::UnexpectedResponse(
+                    "failed to deserialize icon NSKeyedArchive".into(),
+                ))
             }
         }
     }

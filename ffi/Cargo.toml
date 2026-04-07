@@ -27,22 +27,36 @@ ring = ["idevice/ring"]
 
 afc = ["idevice/afc"]
 amfi = ["idevice/amfi"]
+bt_packet_logger = ["idevice/bt_packet_logger"]
+companion_proxy = ["idevice/companion_proxy"]
 core_device = ["idevice/core_device", "dep:futures", "dep:uuid"]
 core_device_proxy = ["idevice/core_device_proxy"]
 crashreportcopymobile = ["idevice/crashreportcopymobile"]
 debug_proxy = ["idevice/debug_proxy"]
 diagnostics_relay = ["idevice/diagnostics_relay"]
 dvt = ["idevice/dvt"]
+device_info = ["idevice/device_info"]
+application_listing = ["idevice/application_listing"]
+condition_inducer = ["idevice/condition_inducer"]
+network_monitor = ["idevice/network_monitor"]
+sysmontap = ["idevice/sysmontap"]
 heartbeat = ["idevice/heartbeat"]
 notification_proxy = ["idevice/notification_proxy"]
 house_arrest = ["idevice/house_arrest"]
+installcoordination_proxy = ["idevice/installcoordination_proxy"]
 installation_proxy = ["idevice/installation_proxy"]
 springboardservices = ["idevice/springboardservices"]
 misagent = ["idevice/misagent"]
+mobileactivationd = ["idevice/mobileactivationd"]
+mobilebackup2 = ["idevice/mobilebackup2"]
 mobile_image_mounter = ["idevice/mobile_image_mounter"]
 location_simulation = ["idevice/location_simulation"]
 pair = ["idevice/pair"]
+pcapd = ["idevice/pcapd"]
+preboard_service = ["idevice/preboard_service"]
 obfuscate = ["idevice/obfuscate"]
+restore_service = ["idevice/restore_service"]
+remote_pairing = ["idevice/remote_pairing"]
 rsd = ["idevice/rsd"]
 syslog_relay = ["idevice/syslog_relay"]
 tcp = ["idevice/tcp"]
@@ -55,30 +69,44 @@ screenshotr = ["idevice/screenshotr"]
 full = [
   "afc",
   "amfi",
+  "bt_packet_logger",
+  "companion_proxy",
   "core_device",
   "core_device_proxy",
   "crashreportcopymobile",
   "debug_proxy",
   "diagnostics_relay",
   "dvt",
+  "device_info",
+  "application_listing",
+  "condition_inducer",
+  "network_monitor",
+  "sysmontap",
   "heartbeat",
-  "notification_proxy",
   "house_arrest",
+  "installcoordination_proxy",
   "installation_proxy",
-  "misagent",
-  "mobile_image_mounter",
-  "pair",
-  "usbmuxd",
-  "xpc",
   "location_simulation",
+  "misagent",
+  "mobileactivationd",
+  "mobile_image_mounter",
+  "mobilebackup2",
+  "notification_proxy",
+  "pair",
+  "pcapd",
+  "preboard_service",
+  "restore_service",
+  "remote_pairing",
   "rsd",
+  "screenshotr",
+  "springboardservices",
+  "syslog_relay",
   "tcp",
   "tunnel_tcp_stack",
   "tss",
   "tunneld",
-  "springboardservices",
-  "syslog_relay",
-  "screenshotr",
+  "usbmuxd",
+  "xpc",
 ]
 default = ["full", "aws-lc"]
 

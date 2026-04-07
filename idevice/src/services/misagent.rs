@@ -91,12 +91,16 @@ impl MisagentClient {
                     }
                 } else {
                     warn!("Misagent return status wasn't unsigned");
-                    Err(IdeviceError::UnexpectedResponse)
+                    Err(IdeviceError::UnexpectedResponse(
+                        "install Status is not an unsigned integer".into(),
+                    ))
                 }
             }
             _ => {
                 warn!("Did not get integer status response");
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::UnexpectedResponse(
+                    "missing integer Status in install response".into(),
+                ))
             }
         }
     }
@@ -140,12 +144,16 @@ impl MisagentClient {
                     }
                 } else {
                     warn!("Misagent return status wasn't unsigned");
-                    Err(IdeviceError::UnexpectedResponse)
+                    Err(IdeviceError::UnexpectedResponse(
+                        "remove Status is not an unsigned integer".into(),
+                    ))
                 }
             }
             _ => {
                 warn!("Did not get integer status response");
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::UnexpectedResponse(
+                    "missing integer Status in remove response".into(),
+                ))
             }
         }
     }
@@ -184,14 +192,18 @@ impl MisagentClient {
                         res.push(profile.to_vec());
                     } else {
                         warn!("Misagent CopyAll did not return data plists");
-                        return Err(IdeviceError::UnexpectedResponse);
+                        return Err(IdeviceError::UnexpectedResponse(
+                            "CopyAll Payload array contains non-data entry".into(),
+                        ));
                     }
                 }
                 Ok(res)
             }
             _ => {
                 warn!("Did not get a payload of provisioning profiles as an array");
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::UnexpectedResponse(
+                    "missing Payload array in CopyAll response".into(),
+                ))
             }
         }
     }

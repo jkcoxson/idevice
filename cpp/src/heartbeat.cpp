@@ -17,6 +17,15 @@ Result<Heartbeat, FfiError> Heartbeat::connect(Provider& provider) {
     return Ok(Heartbeat::adopt(out));
 }
 
+Result<Heartbeat, FfiError> Heartbeat::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    HeartbeatClientHandle* out = nullptr;
+    FfiError               e(::heartbeat_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(Heartbeat::adopt(out));
+}
+
 Result<Heartbeat, FfiError> Heartbeat::from_socket(Idevice&& socket) {
     HeartbeatClientHandle* out = nullptr;
     FfiError               e(::heartbeat_new(socket.raw(), &out));

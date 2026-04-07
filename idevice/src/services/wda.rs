@@ -172,7 +172,7 @@ impl<'a> WdaClient<'a> {
             .await?;
         let values = Self::value_field(&response)?
             .as_array()
-            .ok_or(IdeviceError::UnexpectedResponse)?;
+            .ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))?;
         values.iter().map(Self::extract_element_id).collect()
     }
 
@@ -220,7 +220,7 @@ impl<'a> WdaClient<'a> {
             .await?
             .as_str()
             .map(ToOwned::to_owned)
-            .ok_or(IdeviceError::UnexpectedResponse)
+            .ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))
     }
 
     /// Returns the element bounds rectangle.
@@ -341,7 +341,7 @@ impl<'a> WdaClient<'a> {
         Self::value_field(&response)?
             .as_str()
             .map(ToOwned::to_owned)
-            .ok_or(IdeviceError::UnexpectedResponse)
+            .ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))
     }
 
     /// Returns a PNG screenshot as raw bytes.
@@ -353,10 +353,10 @@ impl<'a> WdaClient<'a> {
         let response = self.request_json("GET", &path, None).await?;
         let value = Self::value_field(&response)?
             .as_str()
-            .ok_or(IdeviceError::UnexpectedResponse)?;
+            .ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))?;
         STANDARD
             .decode(value)
-            .map_err(|_| IdeviceError::UnexpectedResponse)
+            .map_err(|_| IdeviceError::UnexpectedResponse("unexpected response".into()))
     }
 
     /// Returns the current window size payload from WDA.
@@ -569,7 +569,7 @@ impl<'a> WdaClient<'a> {
         Self::value_field(&response)?
             .as_str()
             .map(ToOwned::to_owned)
-            .ok_or(IdeviceError::UnexpectedResponse)
+            .ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))
     }
 
     /// Launches or activates an application via WDA.
@@ -623,7 +623,7 @@ impl<'a> WdaClient<'a> {
             .await?;
         Self::value_field(&response)?
             .as_bool()
-            .ok_or(IdeviceError::UnexpectedResponse)
+            .ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))
     }
 
     /// Queries the XCTest application state for the given bundle id.
@@ -642,7 +642,7 @@ impl<'a> WdaClient<'a> {
             .await?;
         Self::value_field(&response)?
             .as_i64()
-            .ok_or(IdeviceError::UnexpectedResponse)
+            .ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))
     }
 
     /// Backgrounds the current app for the given number of seconds.
@@ -672,7 +672,7 @@ impl<'a> WdaClient<'a> {
             .await?;
         Self::value_field(&response)?
             .as_bool()
-            .ok_or(IdeviceError::UnexpectedResponse)
+            .ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))
     }
 
     /// Sends a single HTTP request over a direct device connection and parses
@@ -688,7 +688,7 @@ impl<'a> WdaClient<'a> {
     ) -> Result<Value, IdeviceError> {
         let body = match payload {
             Some(payload) => {
-                serde_json::to_vec(payload).map_err(|_| IdeviceError::UnexpectedResponse)?
+                serde_json::to_vec(payload).map_err(|_| IdeviceError::UnexpectedResponse("unexpected response".into()))?
             }
             None => Vec::new(),
         };
@@ -748,19 +748,19 @@ impl<'a> WdaClient<'a> {
             }
         }
 
-        let header_end = header_end.ok_or(IdeviceError::UnexpectedResponse)?;
+        let header_end = header_end.ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))?;
         let header_text = String::from_utf8_lossy(&response[..header_end - 4]);
         let mut lines = header_text.lines();
-        let status_line = lines.next().ok_or(IdeviceError::UnexpectedResponse)?;
+        let status_line = lines.next().ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))?;
         let status_code = status_line
             .split_whitespace()
             .nth(1)
             .and_then(|value| value.parse::<u16>().ok())
-            .ok_or(IdeviceError::UnexpectedResponse)?;
+            .ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))?;
 
         let body = &response[header_end..];
         let json: Value =
-            serde_json::from_slice(body).map_err(|_| IdeviceError::UnexpectedResponse)?;
+            serde_json::from_slice(body).map_err(|_| IdeviceError::UnexpectedResponse("unexpected response".into()))?;
 
         if !(200..300).contains(&status_code) {
             return Err(IdeviceError::UnknownErrorType(Self::format_error(
@@ -796,7 +796,7 @@ impl<'a> WdaClient<'a> {
     fn value_field(response: &Value) -> Result<&Value, IdeviceError> {
         response
             .get("value")
-            .ok_or(IdeviceError::UnexpectedResponse)
+            .ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))
     }
 
     fn extract_session_id(response: &Value) -> Result<String, IdeviceError> {
@@ -811,18 +811,18 @@ impl<'a> WdaClient<'a> {
                     .and_then(Value::as_str)
             })
             .map(ToOwned::to_owned)
-            .ok_or(IdeviceError::UnexpectedResponse)
+            .ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))
     }
 
     fn extract_element_id(value: &Value) -> Result<String, IdeviceError> {
-        let element = value.as_object().ok_or(IdeviceError::UnexpectedResponse)?;
+        let element = value.as_object().ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))?;
         element
             .get("ELEMENT")
             .or_else(|| element.get("element-6066-11e4-a52e-4f735466cecf"))
             .or_else(|| element.get("element"))
             .and_then(Value::as_str)
             .map(ToOwned::to_owned)
-            .ok_or(IdeviceError::UnexpectedResponse)
+            .ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))
     }
 
     fn format_error(data: &Value, status_code: u16) -> String {
@@ -1030,7 +1030,7 @@ impl<'a> WdaClient<'a> {
             .await?;
         Self::value_field(&response)?
             .as_bool()
-            .ok_or(IdeviceError::UnexpectedResponse)
+            .ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))
     }
 }
 
@@ -1088,7 +1088,7 @@ fn json_number_field(value: &Value, field: &str) -> Result<f64, IdeviceError> {
     value
         .get(field)
         .and_then(Value::as_f64)
-        .ok_or(IdeviceError::UnexpectedResponse)
+        .ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))
 }
 
 fn pointer_move_action(duration_ms: u64, x: f64, y: f64) -> Value {

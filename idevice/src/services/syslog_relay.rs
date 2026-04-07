@@ -40,7 +40,21 @@ impl SyslogRelayClient {
         let res = self.idevice.read_until_delim(b"\n\x00").await?;
         match res {
             Some(res) => Ok(String::from_utf8_lossy(&res).to_string()),
-            None => Err(IdeviceError::UnexpectedResponse),
+            None => Err(IdeviceError::UnexpectedResponse(
+                "syslog relay returned EOF".into(),
+            )),
         }
+    }
+}
+
+#[cfg(feature = "rsd")]
+impl crate::RsdService for SyslogRelayClient {
+    fn rsd_service_name() -> std::borrow::Cow<'static, str> {
+        crate::obf!("com.apple.syslog_relay.shim.remote")
+    }
+    async fn from_stream(stream: Box<dyn crate::ReadWrite>) -> Result<Self, crate::IdeviceError> {
+        let mut idevice = crate::Idevice::new(stream, "");
+        idevice.rsd_checkin().await?;
+        Ok(Self::new(idevice))
     }
 }

@@ -37,6 +37,7 @@
 use plist::{Dictionary, Value};
 use tracing::warn;
 
+use super::errors::DvtError;
 use crate::{IdeviceError, ReadWrite, dvt::message::AuxValue, obf};
 
 use super::remote_server::{Channel, RemoteServerClient};
@@ -148,7 +149,7 @@ impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
     /// * `Err(IdeviceError)` - If launch fails
     ///
     /// # Errors
-    /// * `IdeviceError::UnexpectedResponse` if server response is invalid
+    /// * `IdeviceError::UnexpectedResponse("unexpected response".into())` if server response is invalid
     /// * Other communication or serialization errors
     pub async fn launch_app(
         &mut self,
@@ -196,17 +197,20 @@ impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
             .await?;
 
         match res.data {
-            Some(v) => parse_u64_value(&v).ok_or_else(|| {
-                if let Some(message) = extract_ns_error_message(&v) {
-                    warn!("Launch failed: {message}");
-                    return IdeviceError::InternalError(message);
+            Some(Value::Integer(p)) => match p.as_unsigned() {
+                Some(p) => Ok(p),
+                None => {
+                    warn!("PID wasn't unsigned");
+                    Err(IdeviceError::UnexpectedResponse(
+                        "launch response PID was not an unsigned integer".into(),
+                    ))
                 }
-                warn!("PID wasn't parseable: {v:?}");
-                IdeviceError::UnexpectedResponse
-            }),
+            },
             _ => {
                 warn!("Did not get integer response");
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::UnexpectedResponse(
+                    "expected integer PID in launch app response".into(),
+                ))
             }
         }
     }
@@ -255,11 +259,11 @@ impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
                     return IdeviceError::InternalError(message);
                 }
                 warn!("PID wasn't parseable: {v:?}");
-                IdeviceError::UnexpectedResponse
+                IdeviceError::UnexpectedResponse("unexpected response".into())
             }),
             _ => {
                 warn!("Did not get integer response from launchSuspendedProcess");
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::UnexpectedResponse("unexpected response".into()))
             }
         }
     }
@@ -298,7 +302,7 @@ impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
     ///
     /// # Errors
     /// * `IdeviceError::DisableMemoryLimitFailed` if device reports failure
-    /// * `IdeviceError::UnexpectedResponse` for invalid responses
+    /// * `IdeviceError::UnexpectedResponse("unexpected response".into())` for invalid responses
     /// * Other communication errors
     pub async fn disable_memory_limit(&mut self, pid: u64) -> Result<(), IdeviceError> {
         let res = self
@@ -314,12 +318,14 @@ impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
                     Ok(())
                 } else {
                     warn!("Failed to disable memory limit");
-                    Err(IdeviceError::DisableMemoryLimitFailed)
+                    Err(DvtError::DisableMemoryLimitFailed.into())
                 }
             }
             _ => {
                 warn!("Did not receive bool response");
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::UnexpectedResponse(
+                    "expected boolean in disable memory limit response".into(),
+                ))
             }
         }
     }

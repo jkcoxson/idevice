@@ -136,7 +136,9 @@ impl<'a, R: ReadWrite> NotificationsClient<'a, R> {
             notification.notification_type = data;
             Ok(notification)
         } else {
-            Err(IdeviceError::UnexpectedResponse)
+            Err(IdeviceError::UnexpectedResponse(
+                "missing notification type string in message data".into(),
+            ))
         }
     }
 

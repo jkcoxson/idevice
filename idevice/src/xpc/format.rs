@@ -9,7 +9,8 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
-use crate::IdeviceError;
+use super::errors::XpcError;
+use crate::{CdTunnelError, IdeviceError};
 
 #[derive(Clone, Copy, Debug)]
 #[repr(u32)]
@@ -97,7 +98,7 @@ impl TryFrom<u32> for XPCType {
             0x00008000 => Ok(Self::Data),
             0x0000a000 => Ok(Self::Uuid),
             0x0001a000 => Ok(Self::FileTransfer),
-            _ => Err(IdeviceError::UnknownXpcType(value))?,
+            _ => Err(XpcError::UnknownXpcType(value))?,
         }
     }
 }
@@ -278,13 +279,13 @@ impl XPCObject {
         let magic = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
         if magic != 0x42133742 {
             warn!("Invalid magic for XPCObject");
-            return Err(IdeviceError::InvalidXpcMagic);
+            return Err(XpcError::InvalidXpcMagic.into());
         }
 
         let version = u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]);
         if version != 0x00000005 {
             warn!("Unexpected version for XPCObject");
-            return Err(IdeviceError::UnexpectedXpcVersion);
+            return Err(XpcError::UnexpectedXpcVersion.into());
         }
 
         Self::decode_object(&mut Cursor::new(&buf[8..]))
@@ -313,7 +314,7 @@ impl XPCObject {
                     {
                         Some(k) => k,
                         None => {
-                            return Err(IdeviceError::InvalidCString);
+                            return Err(XpcError::InvalidCString.into());
                         }
                     };
                     let padding = Self::calculate_padding(key.len() + 1);
@@ -373,7 +374,7 @@ impl XPCObject {
                     .and_then(|x| x.to_str().ok().map(|x| x.to_string()))
                 {
                     Some(k) => k,
-                    None => return Err(IdeviceError::InvalidCString),
+                    None => return Err(XpcError::InvalidCString.into()),
                 };
                 BufRead::consume(&mut cursor, padding);
                 Ok(XPCObject::String(key))
@@ -503,7 +504,7 @@ impl XPCMessage {
         let magic = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
         if magic != 0x29b00b92_u32 {
             warn!("XPCMessage magic is invalid.");
-            Err(IdeviceError::MalformedXpc)?
+            Err(XpcError::MalformedXpc)?
         }
 
         let flags = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
@@ -519,7 +520,7 @@ impl XPCMessage {
                 "Body length is {body_len}, but received bytes is {}",
                 data.len()
             );
-            Err(IdeviceError::PacketSizeMismatch)?
+            Err(CdTunnelError::SizeMismatch)?
         }
 
         let res = XPCMessage {

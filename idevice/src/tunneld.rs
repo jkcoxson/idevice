@@ -64,7 +64,9 @@ pub async fn get_tunneld_devices(
         Some(r) => r,
         None => {
             warn!("tunneld return type wasn't a dictionary");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "tunneld response was not a JSON object".into(),
+            ));
         }
     };
 

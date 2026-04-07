@@ -117,7 +117,9 @@ impl PairingFile {
             Ok(r) => r,
             Err(e) => {
                 warn!("Unable to convert bytes to raw pairing file: {e:?}");
-                return Err(crate::IdeviceError::UnexpectedResponse);
+                return Err(crate::IdeviceError::UnexpectedResponse(
+                    "failed to parse raw pairing file from bytes".into(),
+                ));
             }
         };
 
@@ -125,7 +127,9 @@ impl PairingFile {
             Ok(r) => Ok(r),
             Err(e) => {
                 warn!("Unable to convert raw pairing file into pairing file: {e:?}");
-                Err(crate::IdeviceError::UnexpectedResponse)
+                Err(crate::IdeviceError::UnexpectedResponse(
+                    "failed to convert raw pairing file into pairing file".into(),
+                ))
             }
         }
     }

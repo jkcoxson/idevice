@@ -21,7 +21,10 @@ use crate::{
     usbmuxd::des::DeviceListResponse,
 };
 
+use errors::UsbmuxdError;
+
 mod des;
+pub mod errors;
 mod raw_packet;
 
 /// Represents the connection type of a device
@@ -241,7 +244,9 @@ impl UsbmuxdConnection {
 
         match res.get("PairRecordData") {
             Some(plist::Value::Data(d)) => PairingFile::from_bytes(d),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing PairRecordData in pair record response".into(),
+            )),
         }
     }
 
@@ -257,7 +262,9 @@ impl UsbmuxdConnection {
 
         match res.remove("BUID") {
             Some(plist::Value::String(s)) => Ok(s),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing BUID string in ReadBUID response".into(),
+            )),
         }
     }
 
@@ -287,13 +294,17 @@ impl UsbmuxdConnection {
         match self.read_plist().await?.get("Number") {
             Some(plist::Value::Integer(i)) => match i.as_unsigned() {
                 Some(0) => Ok(Idevice::new(self.socket, label)),
-                Some(1) => Err(IdeviceError::UsbBadCommand),
-                Some(2) => Err(IdeviceError::UsbBadDevice),
-                Some(3) => Err(IdeviceError::UsbConnectionRefused),
-                Some(6) => Err(IdeviceError::UsbBadVersion),
-                _ => Err(IdeviceError::UnexpectedResponse),
+                Some(1) => Err(UsbmuxdError::BadCommand.into()),
+                Some(2) => Err(UsbmuxdError::BadDevice.into()),
+                Some(3) => Err(UsbmuxdError::ConnectionRefused.into()),
+                Some(6) => Err(UsbmuxdError::BadVersion.into()),
+                _ => Err(IdeviceError::UnexpectedResponse(
+                    "unknown usbmuxd connect error code".into(),
+                )),
             },
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "missing Number field in usbmuxd connect response".into(),
+            )),
         }
     }
 
@@ -317,7 +328,9 @@ impl UsbmuxdConnection {
         let res = self.read_plist().await?;
         match res.get("Number").and_then(|x| x.as_unsigned_integer()) {
             Some(0) => Ok(()),
-            _ => Err(IdeviceError::UnexpectedResponse),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "SavePairRecord did not return success".into(),
+            )),
         }
     }
 
@@ -400,7 +413,9 @@ impl UsbmuxdConnection {
             }
             _ => {
                 // "Listen" request failed
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::UnexpectedResponse(
+                    "usbmuxd Listen request did not return success".into(),
+                ))
             }
         }
     }

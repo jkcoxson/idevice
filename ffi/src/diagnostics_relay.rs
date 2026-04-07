@@ -6,13 +6,14 @@ use std::{
 };
 
 use idevice::{
-    IdeviceError, IdeviceService, diagnostics_relay::DiagnosticsRelayClient,
+    IdeviceError, IdeviceService, RsdService, diagnostics_relay::DiagnosticsRelayClient,
     provider::IdeviceProvider,
 };
 use plist_ffi::plist_t;
 
 use crate::{
-    IdeviceFfiError, IdeviceHandle, ffi_err, provider::IdeviceProviderHandle, run_sync_local,
+    IdeviceFfiError, IdeviceHandle, core_device_proxy::AdapterHandle, ffi_err,
+    provider::IdeviceProviderHandle, rsd::RsdHandshakeHandle, run_sync_local,
 };
 
 pub struct DiagnosticsRelayClientHandle(pub DiagnosticsRelayClient);
@@ -54,6 +55,45 @@ pub unsafe extern "C" fn diagnostics_relay_client_connect(
         Err(e) => {
             ffi_err!(e)
         }
+    }
+}
+
+/// Creates a new DiagnosticsRelayClient via RSD
+///
+/// # Arguments
+/// * [`provider`] - An adapter created by this library
+/// * [`handshake`] - An RSD handshake from the same provider
+/// * [`client`] - On success, will be set to point to a newly allocated DiagnosticsRelayClient handle
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `provider` must be a valid pointer to a handle allocated by this library
+/// `handshake` must be a valid pointer to a handle allocated by this library
+/// `client` must be a valid, non-null pointer to a location where the handle will be stored
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn diagnostics_relay_client_connect_rsd(
+    provider: *mut AdapterHandle,
+    handshake: *mut RsdHandshakeHandle,
+    client: *mut *mut DiagnosticsRelayClientHandle,
+) -> *mut IdeviceFfiError {
+    if provider.is_null() || handshake.is_null() || client.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let res: Result<DiagnosticsRelayClient, IdeviceError> = run_sync_local(async move {
+        let provider_ref = unsafe { &mut (*provider).0 };
+        let handshake_ref = unsafe { &mut (*handshake).0 };
+        DiagnosticsRelayClient::connect_rsd(provider_ref, handshake_ref).await
+    });
+
+    match res {
+        Ok(r) => {
+            let boxed = Box::new(DiagnosticsRelayClientHandle(r));
+            unsafe { *client = Box::into_raw(boxed) };
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
     }
 }
 

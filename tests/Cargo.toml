@@ -1,0 +1,9 @@
+[package]
+name = "idevice-test-harness"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tracing-subscriber = "0.3.23"
+idevice = { path = "../idevice", features = ["full"] }
+tokio = { version = "1", features = ["full"] }

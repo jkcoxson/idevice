@@ -92,10 +92,14 @@ impl OsTraceRelayClient {
                 if r == "RequestSuccessful" {
                     Ok(OsTraceRelayReceiver { inner: self })
                 } else {
-                    Err(IdeviceError::UnexpectedResponse)
+                    Err(IdeviceError::UnexpectedResponse(
+                        "Status was not RequestSuccessful in StartActivity response".into(),
+                    ))
                 }
             }
-            None => Err(IdeviceError::UnexpectedResponse),
+            None => Err(IdeviceError::UnexpectedResponse(
+                "missing Status in StartActivity response".into(),
+            )),
         }
     }
 
@@ -113,15 +117,23 @@ impl OsTraceRelayClient {
         // Result
         let res = self.idevice.read_plist().await?;
 
-        if let Some(pids) = res.get("Pids").and_then(|x| x.as_array()) {
-            pids.iter()
-                .map(|x| {
-                    x.as_unsigned_integer()
-                        .ok_or(IdeviceError::UnexpectedResponse)
+        // Device returns { "Payload": { "<pid>": { "ProcessName": "..." }, ... } }
+        // where the PIDs are the string keys of the Payload dictionary.
+        if let Some(payload) = res.get("Payload").and_then(|x| x.as_dictionary()) {
+            payload
+                .keys()
+                .map(|k| {
+                    k.parse::<u64>().map_err(|_| {
+                        IdeviceError::UnexpectedResponse(format!(
+                            "PidList Payload key is not a valid PID: {k}"
+                        ))
+                    })
                 })
                 .collect()
         } else {
-            Err(IdeviceError::UnexpectedResponse)
+            Err(IdeviceError::UnexpectedResponse(
+                "missing Payload dictionary in PidList response".into(),
+            ))
         }
     }
 
@@ -144,14 +156,20 @@ impl OsTraceRelayClient {
 
         // Read a single byte
         if self.idevice.read_raw(1).await?[0] != 1 {
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "expected leading byte 0x01 in CreateArchive response".into(),
+            ));
         }
 
         // Check status
         let res = self.idevice.read_plist().await?;
         match res.get("Status").and_then(|x| x.as_string()) {
             Some("RequestSuccessful") => {}
-            _ => return Err(IdeviceError::UnexpectedResponse),
+            _ => {
+                return Err(IdeviceError::UnexpectedResponse(
+                    "Status was not RequestSuccessful in CreateArchive response".into(),
+                ));
+            }
         }
 
         // Read archive data
@@ -169,7 +187,11 @@ impl OsTraceRelayClient {
                     out.write_all(&data).await?;
                 }
                 Err(IdeviceError::Socket(_)) => break,
-                _ => return Err(IdeviceError::UnexpectedResponse),
+                _ => {
+                    return Err(IdeviceError::UnexpectedResponse(
+                        "unexpected data format in archive stream".into(),
+                    ));
+                }
             }
         }
 
@@ -188,7 +210,9 @@ impl OsTraceRelayReceiver {
     pub async fn next(&mut self) -> Result<OsTraceLog, IdeviceError> {
         // Read 0x02, at the beginning of each packet
         if self.inner.idevice.read_raw(1).await?[0] != 0x02 {
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "expected leading byte 0x02 at start of log packet".into(),
+            ));
         }
 
         // Read the len of the packet
@@ -245,10 +269,13 @@ impl OsTraceRelayReceiver {
         let packet = &packet[4..];
 
         // Parse filename (null-terminated string)
-        let filename_end = packet
-            .iter()
-            .position(|&b| b == 0)
-            .ok_or(IdeviceError::UnexpectedResponse)?;
+        let filename_end =
+            packet
+                .iter()
+                .position(|&b| b == 0)
+                .ok_or(IdeviceError::UnexpectedResponse(
+                    "filename not null-terminated in log packet".into(),
+                ))?;
         let filename = String::from_utf8_lossy(&packet[..filename_end]).into_owned();
         let packet = &packet[filename_end + 1..];
 
@@ -285,7 +312,11 @@ impl OsTraceRelayReceiver {
 
         let timestamp = match DateTime::from_timestamp(seconds as i64, microseconds) {
             Some(t) => t.naive_local(),
-            None => return Err(IdeviceError::UnexpectedResponse),
+            None => {
+                return Err(IdeviceError::UnexpectedResponse(
+                    "invalid timestamp in log packet".into(),
+                ));
+            }
         };
 
         Ok(OsTraceLog {
@@ -310,7 +341,23 @@ impl TryFrom<u8> for LogLevel {
             2 => Self::Debug,
             0x10 => Self::Error,
             0x11 => Self::Fault,
-            _ => return Err(IdeviceError::UnexpectedResponse),
+            _ => {
+                return Err(IdeviceError::UnexpectedResponse(
+                    "unknown log level byte value".into(),
+                ));
+            }
         })
+    }
+}
+
+#[cfg(feature = "rsd")]
+impl crate::RsdService for OsTraceRelayClient {
+    fn rsd_service_name() -> std::borrow::Cow<'static, str> {
+        crate::obf!("com.apple.os_trace_relay.shim.remote")
+    }
+    async fn from_stream(stream: Box<dyn crate::ReadWrite>) -> Result<Self, crate::IdeviceError> {
+        let mut idevice = crate::Idevice::new(stream, "");
+        idevice.rsd_checkin().await?;
+        Ok(Self { idevice })
     }
 }

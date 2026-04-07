@@ -17,6 +17,9 @@ class MobileImageMounter {
     // Factory: connect via Provider
     static Result<MobileImageMounter, FfiError> connect(Provider& provider);
 
+    // Factory: connect via RSD tunnel
+    static Result<MobileImageMounter, FfiError> connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake);
+
     // Factory: wrap an existing Idevice socket (consumes it on success)
     static Result<MobileImageMounter, FfiError> from_socket(Idevice&& socket);
 
@@ -66,6 +69,28 @@ class MobileImageMounter {
                                      plist_t                              info_plist,
                                      uint64_t                             unique_chip_id,
                                      std::function<void(size_t, size_t)>& lambda);
+    Result<void, FfiError>    mount_personalized_rsd(AdapterHandle*      adapter,
+                                                     RsdHandshakeHandle* handshake,
+                                                     const uint8_t*      image_data,
+                                                     size_t              image_size,
+                                                     const uint8_t*      trust_cache_data,
+                                                     size_t              trust_cache_size,
+                                                     const uint8_t*      build_manifest_data,
+                                                     size_t              build_manifest_size,
+                                                     plist_t             info_plist,
+                                                     uint64_t            unique_chip_id);
+    Result<void, FfiError>
+    mount_personalized_with_callback_rsd(AdapterHandle*                       adapter,
+                                         RsdHandshakeHandle*                  handshake,
+                                         const uint8_t*                       image_data,
+                                         size_t                               image_size,
+                                         const uint8_t*                       trust_cache_data,
+                                         size_t                               trust_cache_size,
+                                         const uint8_t*                       build_manifest_data,
+                                         size_t                               build_manifest_size,
+                                         plist_t                              info_plist,
+                                         uint64_t                             unique_chip_id,
+                                         std::function<void(size_t, size_t)>& lambda);
 
     // RAII / moves
     ~MobileImageMounter() noexcept                                 = default;

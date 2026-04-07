@@ -2,11 +2,15 @@ use std::os::raw::c_char;
 use std::{ffi::CString, ptr::null_mut};
 
 use idevice::{
-    IdeviceError, IdeviceService, os_trace_relay::OsTraceRelayClient, provider::IdeviceProvider,
+    IdeviceError, IdeviceService, RsdService, os_trace_relay::OsTraceRelayClient,
+    provider::IdeviceProvider,
 };
 
 use crate::run_sync_local;
-use crate::{IdeviceFfiError, ffi_err, provider::IdeviceProviderHandle};
+use crate::{
+    IdeviceFfiError, core_device_proxy::AdapterHandle, ffi_err, provider::IdeviceProviderHandle,
+    rsd::RsdHandshakeHandle,
+};
 
 pub struct OsTraceRelayClientHandle(pub OsTraceRelayClient);
 pub struct OsTraceRelayReceiverHandle(pub idevice::os_trace_relay::OsTraceRelayReceiver);
@@ -66,6 +70,45 @@ pub unsafe extern "C" fn os_trace_relay_connect(
             let _ = unsafe { Box::from_raw(provider) };
             ffi_err!(e)
         }
+    }
+}
+
+/// Creates a new OsTraceRelayClient via RSD
+///
+/// # Arguments
+/// * [`provider`] - An adapter created by this library
+/// * [`handshake`] - An RSD handshake from the same provider
+/// * [`client`] - On success, will be set to point to a newly allocated OsTraceRelayClient handle
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `provider` must be a valid pointer to a handle allocated by this library
+/// `handshake` must be a valid pointer to a handle allocated by this library
+/// `client` must be a valid, non-null pointer to a location where the handle will be stored
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn os_trace_relay_connect_rsd(
+    provider: *mut AdapterHandle,
+    handshake: *mut RsdHandshakeHandle,
+    client: *mut *mut OsTraceRelayClientHandle,
+) -> *mut IdeviceFfiError {
+    if provider.is_null() || handshake.is_null() || client.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let res: Result<OsTraceRelayClient, IdeviceError> = run_sync_local(async move {
+        let provider_ref = unsafe { &mut (*provider).0 };
+        let handshake_ref = unsafe { &mut (*handshake).0 };
+        OsTraceRelayClient::connect_rsd(provider_ref, handshake_ref).await
+    });
+
+    match res {
+        Ok(r) => {
+            let boxed = Box::new(OsTraceRelayClientHandle(r));
+            unsafe { *client = Box::into_raw(boxed) };
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
     }
 }
 

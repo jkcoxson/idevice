@@ -6,6 +6,10 @@ pub mod adapter;
 pub mod afc;
 #[cfg(feature = "amfi")]
 pub mod amfi;
+#[cfg(feature = "bt_packet_logger")]
+pub mod bt_packet_logger;
+#[cfg(feature = "companion_proxy")]
+pub mod companion_proxy;
 #[cfg(feature = "core_device")]
 pub mod core_device;
 #[cfg(feature = "core_device_proxy")]
@@ -25,6 +29,8 @@ pub mod heartbeat;
 pub mod house_arrest;
 #[cfg(feature = "installation_proxy")]
 pub mod installation_proxy;
+#[cfg(feature = "installcoordination_proxy")]
+pub mod installcoordination_proxy;
 #[cfg(feature = "location_simulation")]
 pub mod location_simulation;
 pub mod lockdown;
@@ -33,12 +39,24 @@ pub mod logging;
 pub mod misagent;
 #[cfg(feature = "mobile_image_mounter")]
 pub mod mobile_image_mounter;
+#[cfg(feature = "mobileactivationd")]
+pub mod mobileactivationd;
+#[cfg(feature = "mobilebackup2")]
+pub mod mobilebackup2;
 #[cfg(feature = "notification_proxy")]
 pub mod notification_proxy;
 #[cfg(feature = "syslog_relay")]
 pub mod os_trace_relay;
 mod pairing_file;
+#[cfg(feature = "pcapd")]
+pub mod pcapd;
+#[cfg(feature = "preboard_service")]
+pub mod preboard_service;
 pub mod provider;
+#[cfg(feature = "restore_service")]
+pub mod restore_service;
+#[cfg(feature = "remote_pairing")]
+pub mod rp_pairing_file;
 #[cfg(feature = "xpc")]
 pub mod rsd;
 #[cfg(feature = "screenshotr")]
@@ -49,6 +67,8 @@ pub mod springboardservices;
 pub mod syslog_relay;
 #[cfg(feature = "tunnel_tcp_stack")]
 pub mod tcp_object_stack;
+#[cfg(feature = "tunnel_tcp_stack")]
+pub mod tunnel_provider;
 #[cfg(feature = "usbmuxd")]
 pub mod usbmuxd;
 pub mod util;

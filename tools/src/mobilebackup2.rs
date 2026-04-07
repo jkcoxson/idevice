@@ -2,15 +2,201 @@
 // Mobile Backup 2 tool for iOS devices
 
 use idevice::{
-    IdeviceService,
-    mobilebackup2::{MobileBackup2Client, RestoreOptions},
+    IdeviceError, IdeviceService,
+    mobilebackup2::{
+        BackupDelegate, DirEntryInfo, FsBackupDelegate, MobileBackup2Client, RestoreOptions,
+    },
     provider::IdeviceProvider,
 };
 use jkcli::{CollectedArguments, JkArgument, JkCommand, JkFlag};
-use plist::Dictionary;
-use std::fs;
+use std::future::Future;
 use std::io::{Read, Write};
 use std::path::Path;
+use std::pin::Pin;
+use std::sync::Mutex;
+use std::time::Instant;
+
+/// CLI backup delegate: delegates filesystem ops to [`FsBackupDelegate`],
+/// adds real disk-space reporting, progress bar, and ETA.
+struct CliBackupDelegate {
+    fs: FsBackupDelegate,
+    start_time: Mutex<Option<Instant>>,
+}
+
+impl CliBackupDelegate {
+    fn new() -> Self {
+        Self {
+            fs: FsBackupDelegate,
+            start_time: Mutex::new(None),
+        }
+    }
+
+    fn format_size(bytes: u64) -> String {
+        const KB: u64 = 1024;
+        const MB: u64 = 1024 * KB;
+        const GB: u64 = 1024 * MB;
+        if bytes >= GB {
+            format!("{:.2} GB", bytes as f64 / GB as f64)
+        } else if bytes >= MB {
+            format!("{:.1} MB", bytes as f64 / MB as f64)
+        } else if bytes >= KB {
+            format!("{:.0} KB", bytes as f64 / KB as f64)
+        } else {
+            format!("{bytes} B")
+        }
+    }
+
+    fn format_duration(secs: u64) -> String {
+        if secs >= 3600 {
+            format!(
+                "{}h {:02}m {:02}s",
+                secs / 3600,
+                (secs % 3600) / 60,
+                secs % 60
+            )
+        } else if secs >= 60 {
+            format!("{}m {:02}s", secs / 60, secs % 60)
+        } else {
+            format!("{secs}s")
+        }
+    }
+}
+
+impl BackupDelegate for CliBackupDelegate {
+    #[allow(clippy::unnecessary_cast)]
+    fn get_free_disk_space(&self, path: &Path) -> u64 {
+        #[cfg(unix)]
+        {
+            use std::ffi::CString;
+            use std::mem::MaybeUninit;
+            let c_path = match CString::new(path.to_string_lossy().as_bytes()) {
+                Ok(p) => p,
+                Err(_) => return 0,
+            };
+            unsafe {
+                let mut stat = MaybeUninit::<libc::statvfs>::uninit();
+                if libc::statvfs(c_path.as_ptr(), stat.as_mut_ptr()) == 0 {
+                    let stat = stat.assume_init();
+                    (stat.f_bavail as u64) * (stat.f_frsize as u64)
+                } else {
+                    0
+                }
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = path;
+            0
+        }
+    }
+
+    fn on_file_received(&self, _path: &str, _file_count: u32) {}
+
+    fn on_progress(&self, bytes_done: u64, bytes_total: u64, overall_progress: f64) {
+        // Initialize start time on first call
+        {
+            let mut start = self.start_time.lock().unwrap();
+            if start.is_none() {
+                *start = Some(Instant::now());
+            }
+        }
+
+        let elapsed = self.start_time.lock().unwrap().unwrap().elapsed().as_secs();
+
+        // Use byte-level progress if we have a total, otherwise fall back to overall %
+        let (progress_str, eta_str) = if bytes_total > 0 {
+            let pct = (bytes_done as f64 / bytes_total as f64) * 100.0;
+            let eta = if pct > 0.0 && elapsed > 0 {
+                let total_secs = (elapsed as f64 / (pct / 100.0)) as u64;
+                let remaining = total_secs.saturating_sub(elapsed);
+                format!(" ETA: {}", Self::format_duration(remaining))
+            } else {
+                String::new()
+            };
+            (
+                format!(
+                    "{:.1}%  {}/{}",
+                    pct,
+                    Self::format_size(bytes_done),
+                    Self::format_size(bytes_total),
+                ),
+                eta,
+            )
+        } else if overall_progress > 0.0 {
+            let eta = if overall_progress > 0.0 && elapsed > 0 {
+                let total_secs = (elapsed as f64 / (overall_progress / 100.0)) as u64;
+                let remaining = total_secs.saturating_sub(elapsed);
+                format!(" ETA: {}", Self::format_duration(remaining))
+            } else {
+                String::new()
+            };
+            (
+                format!(
+                    "{:.1}%  {}",
+                    overall_progress,
+                    Self::format_size(bytes_done),
+                ),
+                eta,
+            )
+        } else {
+            (Self::format_size(bytes_done), String::new())
+        };
+
+        eprint!("\r\x1b[2K  {progress_str}{eta_str}");
+    }
+
+    fn open_file_read<'a>(
+        &'a self,
+        path: &'a Path,
+    ) -> Pin<Box<dyn Future<Output = Result<Box<dyn Read + Send>, IdeviceError>> + Send + 'a>> {
+        self.fs.open_file_read(path)
+    }
+    fn create_file_write<'a>(
+        &'a self,
+        path: &'a Path,
+    ) -> Pin<Box<dyn Future<Output = Result<Box<dyn Write + Send>, IdeviceError>> + Send + 'a>>
+    {
+        self.fs.create_file_write(path)
+    }
+    fn create_dir_all<'a>(
+        &'a self,
+        path: &'a Path,
+    ) -> Pin<Box<dyn Future<Output = Result<(), IdeviceError>> + Send + 'a>> {
+        self.fs.create_dir_all(path)
+    }
+    fn remove<'a>(
+        &'a self,
+        path: &'a Path,
+    ) -> Pin<Box<dyn Future<Output = Result<(), IdeviceError>> + Send + 'a>> {
+        self.fs.remove(path)
+    }
+    fn rename<'a>(
+        &'a self,
+        from: &'a Path,
+        to: &'a Path,
+    ) -> Pin<Box<dyn Future<Output = Result<(), IdeviceError>> + Send + 'a>> {
+        self.fs.rename(from, to)
+    }
+    fn copy<'a>(
+        &'a self,
+        src: &'a Path,
+        dst: &'a Path,
+    ) -> Pin<Box<dyn Future<Output = Result<(), IdeviceError>> + Send + 'a>> {
+        self.fs.copy(src, dst)
+    }
+    fn exists<'a>(&'a self, path: &'a Path) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>> {
+        self.fs.exists(path)
+    }
+    fn is_dir<'a>(&'a self, path: &'a Path) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>> {
+        self.fs.is_dir(path)
+    }
+    fn list_dir<'a>(
+        &'a self,
+        path: &'a Path,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<DirEntryInfo>, IdeviceError>> + Send + 'a>> {
+        self.fs.list_dir(path)
+    }
+}
 
 pub fn register() -> JkCommand {
     JkCommand::new()
@@ -89,7 +275,7 @@ pub fn register() -> JkCommand {
         .with_subcommand(
             "unback",
             JkCommand::new()
-                .help("Unpack a complete backup to device hierarchy")
+                .help("Unpack a complete backup to device hierarchy (broken on iOS 10+)")
                 .with_argument(JkArgument::new().with_help("DIR").required(true))
                 .with_argument(JkArgument::new().with_help("Source"))
                 .with_argument(JkArgument::new().with_help("Password")),
@@ -138,6 +324,7 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
         }
     };
 
+    let delegate = CliBackupDelegate::new();
     let (sub_name, sub_args) = arguments.first_subcommand().unwrap();
     let mut sub_args = sub_args.clone();
 
@@ -147,7 +334,10 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
             let source = sub_args.next_argument::<String>();
             let source = source.as_deref();
 
-            match backup_client.info_from_path(Path::new(&dir), source).await {
+            match backup_client
+                .info_from_path(Path::new(&dir), source, &delegate)
+                .await
+            {
                 Ok(dict) => {
                     println!("Backup Information:");
                     for (k, v) in dict {
@@ -162,7 +352,10 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
             let source = sub_args.next_argument::<String>();
             let source = source.as_deref();
 
-            match backup_client.list_from_path(Path::new(&dir), source).await {
+            match backup_client
+                .list_from_path(Path::new(&dir), source, &delegate)
+                .await
+            {
                 Ok(dict) => {
                     println!("List Response:");
                     for (k, v) in dict {
@@ -173,22 +366,43 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
             }
         }
         "backup" => {
-            let target = sub_args.next_argument::<String>();
-            let target = target.as_deref();
+            let dir = sub_args.next_argument::<String>().expect("dir is required");
+            let _target = sub_args.next_argument::<String>();
             let source = sub_args.next_argument::<String>();
             let source = source.as_deref();
-            let dir = sub_args.next_argument::<String>().expect("dir is required");
 
-            println!("Starting backup operation...");
-            let res = backup_client
-                .send_request("Backup", target, source, None::<Dictionary>)
-                .await;
-            if let Err(e) = res {
-                eprintln!("Failed to send backup request: {e}");
-            } else if let Err(e) = process_dl_loop(&mut backup_client, Path::new(&dir)).await {
-                eprintln!("Backup failed during DL loop: {e}");
-            } else {
-                println!("Backup flow finished");
+            println!("Starting backup...");
+            match backup_client
+                .backup_from_path(Path::new(&dir), source, None, &delegate)
+                .await
+            {
+                Ok(Some(response)) => {
+                    eprintln!(); // end progress line
+                    if let Some(code) = response
+                        .get("ErrorCode")
+                        .and_then(|v| v.as_unsigned_integer())
+                    {
+                        if code != 0 {
+                            let desc = response
+                                .get("ErrorDescription")
+                                .and_then(|v| v.as_string())
+                                .unwrap_or("Unknown error");
+                            eprintln!("Backup failed: ErrorCode {code}: {desc}");
+                        } else {
+                            println!("Backup Successful.");
+                        }
+                    } else {
+                        println!("Backup Successful.");
+                    }
+                }
+                Ok(None) => {
+                    eprintln!(); // end progress line
+                    println!("Backup finished.");
+                }
+                Err(e) => {
+                    eprintln!(); // end progress line
+                    eprintln!("Backup failed: {e}");
+                }
             }
         }
         "restore" => {
@@ -216,10 +430,30 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
                 ropts = ropts.with_password(pw);
             }
             match backup_client
-                .restore_from_path(Path::new(&dir), source, Some(ropts))
+                .restore_from_path(Path::new(&dir), source, Some(ropts), &delegate)
                 .await
             {
-                Ok(_) => println!("Restore flow finished"),
+                Ok(Some(response)) => {
+                    if let Some(code) = response
+                        .get("ErrorCode")
+                        .and_then(|v| v.as_unsigned_integer())
+                    {
+                        if code != 0 {
+                            let desc = response
+                                .get("ErrorDescription")
+                                .and_then(|v| v.as_string())
+                                .unwrap_or("Unknown error");
+                            eprintln!("Restore failed: ErrorCode {code}: {desc}");
+                        } else {
+                            println!("Restore Successful.");
+                        }
+                    } else {
+                        println!("Restore Successful.");
+                    }
+                }
+                Ok(None) => {
+                    println!("Restore finished.");
+                }
                 Err(e) => eprintln!("Restore failed: {e}"),
             }
         }
@@ -231,7 +465,7 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
             let password = password.as_deref();
 
             match backup_client
-                .unback_from_path(Path::new(&dir), password, source)
+                .unback_from_path(Path::new(&dir), password, source, &delegate)
                 .await
             {
                 Ok(_) => println!("Unback finished"),
@@ -254,6 +488,7 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
                     Path::new(&dir),
                     password,
                     source,
+                    &delegate,
                 )
                 .await
             {
@@ -269,7 +504,7 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
             let newv = newv.as_deref();
 
             match backup_client
-                .change_password_from_path(Path::new(&dir), old, newv)
+                .change_password_from_path(Path::new(&dir), old, newv, &delegate)
                 .await
             {
                 Ok(_) => println!("Change password finished"),
@@ -278,7 +513,10 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
         }
         "erase-device" => {
             let dir = sub_args.next_argument::<String>().unwrap();
-            match backup_client.erase_device_from_path(Path::new(&dir)).await {
+            match backup_client
+                .erase_device_from_path(Path::new(&dir), &delegate)
+                .await
+            {
                 Ok(_) => println!("Erase device command sent"),
                 Err(e) => eprintln!("Erase device failed: {e}"),
             }
@@ -308,329 +546,4 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
     if let Err(e) = backup_client.disconnect().await {
         eprintln!("Warning: Failed to disconnect cleanly: {e}");
     }
-}
-
-use idevice::services::mobilebackup2::{
-    DL_CODE_ERROR_LOCAL as CODE_ERROR_LOCAL, DL_CODE_FILE_DATA as CODE_FILE_DATA,
-    DL_CODE_SUCCESS as CODE_SUCCESS,
-};
-
-async fn process_dl_loop(
-    client: &mut MobileBackup2Client,
-    host_dir: &Path,
-) -> Result<Option<Dictionary>, idevice::IdeviceError> {
-    loop {
-        let (tag, value) = client.receive_dl_message().await?;
-        match tag.as_str() {
-            "DLMessageDownloadFiles" => {
-                handle_download_files(client, &value, host_dir).await?;
-            }
-            "DLMessageUploadFiles" => {
-                handle_upload_files(client, &value, host_dir).await?;
-            }
-            "DLMessageGetFreeDiskSpace" => {
-                // Minimal implementation: report unknown/zero with success
-                client
-                    .send_status_response(0, None, Some(plist::Value::Integer(0u64.into())))
-                    .await?;
-            }
-            "DLContentsOfDirectory" => {
-                // Minimal: return empty listing
-                let empty = plist::Value::Dictionary(Dictionary::new());
-                client.send_status_response(0, None, Some(empty)).await?;
-            }
-            "DLMessageCreateDirectory" => {
-                let status = create_directory_from_message(&value, host_dir);
-                client.send_status_response(status, None, None).await?;
-            }
-            "DLMessageMoveFiles" | "DLMessageMoveItems" => {
-                let status = move_files_from_message(&value, host_dir);
-                client
-                    .send_status_response(
-                        status,
-                        None,
-                        Some(plist::Value::Dictionary(Dictionary::new())),
-                    )
-                    .await?;
-            }
-            "DLMessageRemoveFiles" | "DLMessageRemoveItems" => {
-                let status = remove_files_from_message(&value, host_dir);
-                client
-                    .send_status_response(
-                        status,
-                        None,
-                        Some(plist::Value::Dictionary(Dictionary::new())),
-                    )
-                    .await?;
-            }
-            "DLMessageCopyItem" => {
-                let status = copy_item_from_message(&value, host_dir);
-                client
-                    .send_status_response(
-                        status,
-                        None,
-                        Some(plist::Value::Dictionary(Dictionary::new())),
-                    )
-                    .await?;
-            }
-            "DLMessageProcessMessage" => {
-                // Final status/content: return inner dict
-                if let plist::Value::Array(arr) = value
-                    && let Some(plist::Value::Dictionary(dict)) = arr.get(1)
-                {
-                    return Ok(Some(dict.clone()));
-                }
-                return Ok(None);
-            }
-            "DLMessageDisconnect" => {
-                return Ok(None);
-            }
-            other => {
-                eprintln!("Unsupported DL message: {other}");
-                client
-                    .send_status_response(-1, Some("Operation not supported"), None)
-                    .await?;
-            }
-        }
-    }
-}
-
-async fn handle_download_files(
-    client: &mut MobileBackup2Client,
-    dl_value: &plist::Value,
-    host_dir: &Path,
-) -> Result<(), idevice::IdeviceError> {
-    // dl_value is an array: ["DLMessageDownloadFiles", [paths...], progress?]
-    let mut err_any = false;
-    if let plist::Value::Array(arr) = dl_value
-        && arr.len() >= 2
-        && let Some(plist::Value::Array(files)) = arr.get(1)
-    {
-        for pv in files {
-            if let Some(path) = pv.as_string()
-                && let Err(e) = send_single_file(client, host_dir, path).await
-            {
-                eprintln!("Failed to send file {path}: {e}");
-                err_any = true;
-            }
-        }
-    }
-    // terminating zero dword
-    client.idevice.send_raw(&0u32.to_be_bytes()).await?;
-    // status response
-    if err_any {
-        client
-            .send_status_response(
-                -13,
-                Some("Multi status"),
-                Some(plist::Value::Dictionary(Dictionary::new())),
-            )
-            .await
-    } else {
-        client
-            .send_status_response(0, None, Some(plist::Value::Dictionary(Dictionary::new())))
-            .await
-    }
-}
-
-async fn send_single_file(
-    client: &mut MobileBackup2Client,
-    host_dir: &Path,
-    rel_path: &str,
-) -> Result<(), idevice::IdeviceError> {
-    let full = host_dir.join(rel_path);
-    let path_bytes = rel_path.as_bytes().to_vec();
-    let nlen = (path_bytes.len() as u32).to_be_bytes();
-    client.idevice.send_raw(&nlen).await?;
-    client.idevice.send_raw(&path_bytes).await?;
-
-    let mut f = match std::fs::File::open(&full) {
-        Ok(f) => f,
-        Err(e) => {
-            // send error
-            let desc = e.to_string();
-            let size = (desc.len() as u32 + 1).to_be_bytes();
-            let mut hdr = Vec::with_capacity(5);
-            hdr.extend_from_slice(&size);
-            hdr.push(CODE_ERROR_LOCAL);
-            client.idevice.send_raw(&hdr).await?;
-            client.idevice.send_raw(desc.as_bytes()).await?;
-            return Ok(());
-        }
-    };
-    let mut buf = [0u8; 32768];
-    loop {
-        let read = f.read(&mut buf).unwrap_or(0);
-        if read == 0 {
-            break;
-        }
-        let size = ((read as u32) + 1).to_be_bytes();
-        let mut hdr = Vec::with_capacity(5);
-        hdr.extend_from_slice(&size);
-        hdr.push(CODE_FILE_DATA);
-        client.idevice.send_raw(&hdr).await?;
-        client.idevice.send_raw(&buf[..read]).await?;
-    }
-    // success trailer
-    let mut ok = [0u8; 5];
-    ok[..4].copy_from_slice(&1u32.to_be_bytes());
-    ok[4] = CODE_SUCCESS;
-    client.idevice.send_raw(&ok).await?;
-    Ok(())
-}
-
-async fn handle_upload_files(
-    client: &mut MobileBackup2Client,
-    _dl_value: &plist::Value,
-    host_dir: &Path,
-) -> Result<(), idevice::IdeviceError> {
-    // Minimal receiver: read pairs of (dir, filename) and block stream
-    // Receive dir name
-    loop {
-        let dlen = read_be_u32(client).await?;
-        if dlen == 0 {
-            break;
-        }
-        let dname = read_exact_string(client, dlen as usize).await?;
-        let flen = read_be_u32(client).await?;
-        if flen == 0 {
-            break;
-        }
-        let fname = read_exact_string(client, flen as usize).await?;
-        let dst = host_dir.join(&fname);
-        if let Some(parent) = dst.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        let mut file = std::fs::File::create(&dst)
-            .map_err(|e| idevice::IdeviceError::InternalError(e.to_string()))?;
-        loop {
-            let nlen = read_be_u32(client).await?;
-            if nlen == 0 {
-                break;
-            }
-            let code = read_one(client).await?;
-            if code == CODE_FILE_DATA {
-                let size = (nlen - 1) as usize;
-                let data = read_exact(client, size).await?;
-                file.write_all(&data)
-                    .map_err(|e| idevice::IdeviceError::InternalError(e.to_string()))?;
-            } else {
-                let _ = read_exact(client, (nlen - 1) as usize).await?;
-            }
-        }
-        let _ = dname; // not used
-    }
-    client
-        .send_status_response(0, None, Some(plist::Value::Dictionary(Dictionary::new())))
-        .await
-}
-
-async fn read_be_u32(client: &mut MobileBackup2Client) -> Result<u32, idevice::IdeviceError> {
-    let buf = client.idevice.read_raw(4).await?;
-    Ok(u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]))
-}
-
-async fn read_one(client: &mut MobileBackup2Client) -> Result<u8, idevice::IdeviceError> {
-    let buf = client.idevice.read_raw(1).await?;
-    Ok(buf[0])
-}
-
-async fn read_exact(
-    client: &mut MobileBackup2Client,
-    size: usize,
-) -> Result<Vec<u8>, idevice::IdeviceError> {
-    client.idevice.read_raw(size).await
-}
-
-async fn read_exact_string(
-    client: &mut MobileBackup2Client,
-    size: usize,
-) -> Result<String, idevice::IdeviceError> {
-    let buf = client.idevice.read_raw(size).await?;
-    Ok(String::from_utf8_lossy(&buf).to_string())
-}
-
-fn create_directory_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
-    if let plist::Value::Array(arr) = dl_value
-        && arr.len() >= 2
-        && let Some(plist::Value::String(dir)) = arr.get(1)
-    {
-        let path = host_dir.join(dir);
-        return match fs::create_dir_all(&path) {
-            Ok(_) => 0,
-            Err(_) => -1,
-        };
-    }
-    -1
-}
-
-fn move_files_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
-    if let plist::Value::Array(arr) = dl_value
-        && arr.len() >= 2
-        && let Some(plist::Value::Dictionary(map)) = arr.get(1)
-    {
-        for (from, to_v) in map.iter() {
-            if let Some(to) = to_v.as_string() {
-                let old = host_dir.join(from);
-                let newp = host_dir.join(to);
-                if let Some(parent) = newp.parent() {
-                    let _ = fs::create_dir_all(parent);
-                }
-                if fs::rename(&old, &newp).is_err() {
-                    return -1;
-                }
-            }
-        }
-        return 0;
-    }
-    -1
-}
-
-fn remove_files_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
-    if let plist::Value::Array(arr) = dl_value
-        && arr.len() >= 2
-        && let Some(plist::Value::Array(items)) = arr.get(1)
-    {
-        for it in items {
-            if let Some(p) = it.as_string() {
-                let path = host_dir.join(p);
-                if path.is_dir() {
-                    if fs::remove_dir_all(&path).is_err() {
-                        return -1;
-                    }
-                } else if path.exists() && fs::remove_file(&path).is_err() {
-                    return -1;
-                }
-            }
-        }
-        return 0;
-    }
-    -1
-}
-
-fn copy_item_from_message(dl_value: &plist::Value, host_dir: &Path) -> i64 {
-    if let plist::Value::Array(arr) = dl_value
-        && arr.len() >= 3
-        && let (Some(plist::Value::String(src)), Some(plist::Value::String(dst))) =
-            (arr.get(1), arr.get(2))
-    {
-        let from = host_dir.join(src);
-        let to = host_dir.join(dst);
-        if let Some(parent) = to.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        if from.is_dir() {
-            // shallow copy: create dir
-            return match fs::create_dir_all(&to) {
-                Ok(_) => 0,
-                Err(_) => -1,
-            };
-        } else {
-            return match fs::copy(&from, &to) {
-                Ok(_) => 0,
-                Err(_) => -1,
-            };
-        }
-    }
-    -1
 }

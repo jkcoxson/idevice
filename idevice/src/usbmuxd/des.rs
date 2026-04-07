@@ -50,7 +50,9 @@ impl TryFrom<DeviceListResponse> for UsbmuxdDevice {
                     let addr = &Into::<Vec<u8>>::into(addr);
                     if addr.len() < 8 {
                         warn!("Device address bytes len < 8");
-                        return Err(IdeviceError::UnexpectedResponse);
+                        return Err(IdeviceError::UnexpectedResponse(
+                            "network address too short, expected at least 8 bytes".into(),
+                        ));
                     }
 
                     match addr[0] {
@@ -64,7 +66,10 @@ impl TryFrom<DeviceListResponse> for UsbmuxdDevice {
                             // IPv6
                             if addr.len() < 24 {
                                 warn!("IPv6 address is less than 24 bytes");
-                                return Err(IdeviceError::UnexpectedResponse);
+                                return Err(IdeviceError::UnexpectedResponse(
+                                    "IPv6 network address too short, expected at least 24 bytes"
+                                        .into(),
+                                ));
                             }
 
                             Connection::Network(IpAddr::V6(Ipv6Addr::new(
@@ -81,7 +86,10 @@ impl TryFrom<DeviceListResponse> for UsbmuxdDevice {
                         0x1C => {
                             if addr.len() < 28 {
                                 warn!("IPv6 sockaddr_in6 data too short (len {})", addr.len());
-                                return Err(IdeviceError::UnexpectedResponse);
+                                return Err(IdeviceError::UnexpectedResponse(
+                                    "IPv6 sockaddr_in6 data too short, expected at least 28 bytes"
+                                        .into(),
+                                ));
                             }
                             if addr[1] == 0x1E {
                                 // IPv6 address starts at offset 8 in sockaddr_in6
@@ -110,7 +118,9 @@ impl TryFrom<DeviceListResponse> for UsbmuxdDevice {
                     }
                 } else {
                     warn!("Device is network attached, but has no network info");
-                    return Err(IdeviceError::UnexpectedResponse);
+                    return Err(IdeviceError::UnexpectedResponse(
+                        "network device missing NetworkAddress field".into(),
+                    ));
                 }
             }
             "USB" => Connection::Usb,

@@ -52,7 +52,9 @@ impl CompanionProxy {
             Some(l) => l,
             None => {
                 warn!("Didn't get PairedDevicesArray array");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing PairedDevicesArray in device registry response".into(),
+                ));
             }
         };
 
@@ -122,7 +124,9 @@ impl CompanionProxy {
         {
             Ok(p as u16)
         } else {
-            Err(IdeviceError::UnexpectedResponse)
+            Err(IdeviceError::UnexpectedResponse(
+                "missing CompanionProxyServicePort in forwarding response".into(),
+            ))
         }
     }
 
@@ -140,7 +144,9 @@ impl CompanionProxy {
         {
             Ok(())
         } else {
-            Err(IdeviceError::UnexpectedResponse)
+            Err(IdeviceError::UnexpectedResponse(
+                "missing or invalid Command in stop forwarding response".into(),
+            ))
         }
     }
 }

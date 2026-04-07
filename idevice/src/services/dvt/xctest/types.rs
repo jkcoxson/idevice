@@ -198,7 +198,7 @@ fn archive_to_bytes(archive: Value) -> Result<Vec<u8>, IdeviceError> {
     let mut writer = std::io::BufWriter::new(buf);
     plist::to_writer_binary(&mut writer, &archive).map_err(|e| {
         tracing::warn!("Failed to serialise NSKeyedArchive: {e}");
-        IdeviceError::UnexpectedResponse
+        IdeviceError::UnexpectedResponse("failed to serialize NSKeyedArchive".into())
     })?;
     Ok(writer.into_inner().unwrap())
 }

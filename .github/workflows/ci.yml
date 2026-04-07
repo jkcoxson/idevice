@@ -4,6 +4,7 @@ on:
   push:
     branches: [master]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   macos:
@@ -116,7 +117,12 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y build-essential cmake
+          sudo apt-get update && sudo apt-get install -y \
+            build-essential \
+            cmake \
+            libavahi-client-dev \
+            libavahi-common-dev \
+            pkg-config
 
       - name: Install just
         run: |

@@ -91,12 +91,16 @@ impl TSSRequest {
         let res = res.trim_start_matches("MESSAGE=");
         if !res.starts_with("SUCCESS") {
             warn!("TSS responded with non-success value");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "TSS server responded with non-success status".into(),
+            ));
         }
         let res = res.split("REQUEST_STRING=").collect::<Vec<&str>>();
         if res.len() < 2 {
             warn!("Response didn't contain a request string");
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse(
+                "TSS response missing REQUEST_STRING".into(),
+            ));
         }
         Ok(plist::from_bytes(res[1].as_bytes())?)
     }

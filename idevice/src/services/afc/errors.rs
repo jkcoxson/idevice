@@ -32,6 +32,9 @@ pub enum AfcError {
     NoMem = 31,
     NotEnoughData = 32,
     DirNotEmpty = 33,
+    UnknownOpcode = 34,
+    InvalidMagic = 35,
+    MissingAttribute = 36,
 }
 
 impl std::fmt::Display for AfcError {
@@ -65,6 +68,9 @@ impl std::fmt::Display for AfcError {
             AfcError::NoMem => "Out of memory",
             AfcError::NotEnoughData => "Not enough data",
             AfcError::DirNotEmpty => "Directory not empty",
+            AfcError::UnknownOpcode => "Unknown AFC opcode",
+            AfcError::InvalidMagic => "Invalid AFC magic",
+            AfcError::MissingAttribute => "Missing file attribute",
         };
         write!(f, "{description}")
     }
@@ -101,7 +107,48 @@ impl From<u64> for AfcError {
             31 => Self::NoMem,
             32 => Self::NotEnoughData,
             33 => Self::DirNotEmpty,
+            34 => Self::UnknownOpcode,
+            35 => Self::InvalidMagic,
+            36 => Self::MissingAttribute,
             _ => Self::UnknownError, // fallback for unknown codes
+        }
+    }
+}
+
+impl AfcError {
+    pub fn sub_code(&self) -> i32 {
+        match self {
+            Self::Success => 0,
+            Self::UnknownError => 1,
+            Self::OpHeaderInvalid => 2,
+            Self::NoResources => 3,
+            Self::ReadError => 4,
+            Self::WriteError => 5,
+            Self::UnknownPacketType => 6,
+            Self::InvalidArg => 7,
+            Self::ObjectNotFound => 8,
+            Self::ObjectIsDir => 9,
+            Self::PermDenied => 10,
+            Self::ServiceNotConnected => 11,
+            Self::OpTimeout => 12,
+            Self::TooMuchData => 13,
+            Self::EndOfData => 14,
+            Self::OpNotSupported => 15,
+            Self::ObjectExists => 16,
+            Self::ObjectBusy => 17,
+            Self::NoSpaceLeft => 18,
+            Self::OpWouldBlock => 19,
+            Self::IoError => 20,
+            Self::OpInterrupted => 21,
+            Self::OpInProgress => 22,
+            Self::InternalError => 23,
+            Self::MuxError => 24,
+            Self::NoMem => 25,
+            Self::NotEnoughData => 26,
+            Self::DirNotEmpty => 27,
+            Self::UnknownOpcode => 28,
+            Self::InvalidMagic => 29,
+            Self::MissingAttribute => 30,
         }
     }
 }

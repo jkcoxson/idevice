@@ -3,13 +3,15 @@
 use std::{ffi::c_void, ptr::null_mut};
 
 use idevice::{
-    IdeviceError, IdeviceService, mobile_image_mounter::ImageMounter, provider::IdeviceProvider,
+    IdeviceError, IdeviceService, RsdService, mobile_image_mounter::ImageMounter,
+    provider::IdeviceProvider,
 };
 use plist::Value;
 use plist_ffi::{PlistWrapper, plist_t};
 
 use crate::{
-    IdeviceFfiError, IdeviceHandle, ffi_err, provider::IdeviceProviderHandle, run_sync_local,
+    IdeviceFfiError, IdeviceHandle, core_device_proxy::AdapterHandle, ffi_err,
+    provider::IdeviceProviderHandle, rsd::RsdHandshakeHandle, run_sync_local,
 };
 
 pub struct ImageMounterHandle(pub ImageMounter);
@@ -51,6 +53,45 @@ pub unsafe extern "C" fn image_mounter_connect(
             let _ = unsafe { Box::from_raw(provider) };
             ffi_err!(e)
         }
+    }
+}
+
+/// Creates a new ImageMounter via RSD
+///
+/// # Arguments
+/// * [`provider`] - An adapter created by this library
+/// * [`handshake`] - An RSD handshake from the same provider
+/// * [`client`] - On success, will be set to point to a newly allocated ImageMounter handle
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `provider` must be a valid pointer to a handle allocated by this library
+/// `handshake` must be a valid pointer to a handle allocated by this library
+/// `client` must be a valid, non-null pointer to a location where the handle will be stored
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn image_mounter_connect_rsd(
+    provider: *mut AdapterHandle,
+    handshake: *mut RsdHandshakeHandle,
+    client: *mut *mut ImageMounterHandle,
+) -> *mut IdeviceFfiError {
+    if provider.is_null() || handshake.is_null() || client.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    let res: Result<ImageMounter, IdeviceError> = run_sync_local(async move {
+        let provider_ref = unsafe { &mut (*provider).0 };
+        let handshake_ref = unsafe { &mut (*handshake).0 };
+        ImageMounter::connect_rsd(provider_ref, handshake_ref).await
+    });
+
+    match res {
+        Ok(r) => {
+            let boxed = Box::new(ImageMounterHandle(r));
+            unsafe { *client = Box::into_raw(boxed) };
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
     }
 }
 
@@ -705,6 +746,181 @@ pub unsafe extern "C" fn image_mounter_mount_personalized(
                 build_manifest_slice,
                 info_plist,
                 unique_chip_id,
+            )
+            .await
+    });
+
+    match res {
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Mounts a personalized developer image via RSD
+///
+/// # Arguments
+/// * [`client`] - A valid ImageMounter handle
+/// * [`provider`] - An adapter handle
+/// * [`handshake`] - An RSD handshake handle
+/// * [`image`] - Pointer to the image data
+/// * [`image_len`] - Length of the image data
+/// * [`trust_cache`] - Pointer to the trust cache data
+/// * [`trust_cache_len`] - Length of the trust cache data
+/// * [`build_manifest`] - Pointer to the build manifest data
+/// * [`build_manifest_len`] - Length of the build manifest data
+/// * [`info_plist`] - Pointer to info plist (optional)
+/// * [`unique_chip_id`] - The device's unique chip ID
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// All pointers must be valid (except optional ones which can be null)
+#[cfg(feature = "tss")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn image_mounter_mount_personalized_rsd(
+    client: *mut ImageMounterHandle,
+    provider: *mut AdapterHandle,
+    handshake: *mut RsdHandshakeHandle,
+    image: *const u8,
+    image_len: libc::size_t,
+    trust_cache: *const u8,
+    trust_cache_len: libc::size_t,
+    build_manifest: *const u8,
+    build_manifest_len: libc::size_t,
+    info_plist: *const c_void,
+    unique_chip_id: u64,
+) -> *mut IdeviceFfiError {
+    if provider.is_null()
+        || handshake.is_null()
+        || image.is_null()
+        || trust_cache.is_null()
+        || build_manifest.is_null()
+    {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let image_slice = unsafe { std::slice::from_raw_parts(image, image_len) };
+    let trust_cache_slice = unsafe { std::slice::from_raw_parts(trust_cache, trust_cache_len) };
+    let build_manifest_slice =
+        unsafe { std::slice::from_raw_parts(build_manifest, build_manifest_len) };
+
+    let info_plist = if !info_plist.is_null() {
+        Some(
+            unsafe { Box::from_raw(info_plist as *mut Value) }
+                .as_ref()
+                .clone(),
+        )
+    } else {
+        None
+    };
+
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
+        let client_ref = unsafe { &mut (*client).0 };
+        let provider_ref = unsafe { &mut (*provider).0 };
+        let handshake_ref = unsafe { &mut (*handshake).0 };
+        client_ref
+            .mount_personalized_rsd(
+                provider_ref,
+                handshake_ref,
+                image_slice.to_vec(),
+                trust_cache_slice.to_vec(),
+                build_manifest_slice,
+                info_plist,
+                unique_chip_id,
+            )
+            .await
+    });
+
+    match res {
+        Ok(_) => null_mut(),
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Mounts a personalized developer image via RSD with progress callback
+///
+/// # Arguments
+/// * [`client`] - A valid ImageMounter handle
+/// * [`provider`] - An adapter handle
+/// * [`handshake`] - An RSD handshake handle
+/// * [`image`] - Pointer to the image data
+/// * [`image_len`] - Length of the image data
+/// * [`trust_cache`] - Pointer to the trust cache data
+/// * [`trust_cache_len`] - Length of the trust cache data
+/// * [`build_manifest`] - Pointer to the build manifest data
+/// * [`build_manifest_len`] - Length of the build manifest data
+/// * [`info_plist`] - Pointer to info plist (optional)
+/// * [`unique_chip_id`] - The device's unique chip ID
+/// * [`callback`] - Progress callback function
+/// * [`context`] - User context to pass to callback
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// All pointers must be valid (except optional ones which can be null)
+#[cfg(feature = "tss")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn image_mounter_mount_personalized_with_callback_rsd(
+    client: *mut ImageMounterHandle,
+    provider: *mut AdapterHandle,
+    handshake: *mut RsdHandshakeHandle,
+    image: *const u8,
+    image_len: libc::size_t,
+    trust_cache: *const u8,
+    trust_cache_len: libc::size_t,
+    build_manifest: *const u8,
+    build_manifest_len: libc::size_t,
+    info_plist: *const c_void,
+    unique_chip_id: u64,
+    callback: extern "C" fn(progress: libc::size_t, total: libc::size_t, context: *mut c_void),
+    context: *mut c_void,
+) -> *mut IdeviceFfiError {
+    if provider.is_null()
+        || handshake.is_null()
+        || image.is_null()
+        || trust_cache.is_null()
+        || build_manifest.is_null()
+    {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let image_slice = unsafe { std::slice::from_raw_parts(image, image_len) };
+    let trust_cache_slice = unsafe { std::slice::from_raw_parts(trust_cache, trust_cache_len) };
+    let build_manifest_slice =
+        unsafe { std::slice::from_raw_parts(build_manifest, build_manifest_len) };
+
+    let info_plist = if !info_plist.is_null() {
+        Some(
+            unsafe { Box::from_raw(info_plist as *mut Value) }
+                .as_ref()
+                .clone(),
+        )
+    } else {
+        None
+    };
+
+    let res: Result<(), IdeviceError> = run_sync_local(async move {
+        let client_ref = unsafe { &mut (*client).0 };
+        let provider_ref = unsafe { &mut (*provider).0 };
+        let handshake_ref = unsafe { &mut (*handshake).0 };
+
+        let callback_wrapper = |((progress, total), context)| async move {
+            callback(progress, total, context);
+        };
+
+        client_ref
+            .mount_personalized_with_callback_rsd(
+                provider_ref,
+                handshake_ref,
+                image_slice.to_vec(),
+                trust_cache_slice.to_vec(),
+                build_manifest_slice,
+                info_plist,
+                unique_chip_id,
+                callback_wrapper,
+                context,
             )
             .await
     });

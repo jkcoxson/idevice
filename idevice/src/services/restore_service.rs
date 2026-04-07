@@ -47,7 +47,9 @@ impl RestoreServiceClient {
             plist::Value::Dictionary(d) => d,
             _ => {
                 warn!("Did not receive dictionary response from XPC");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "enter_recovery XPC response is not a dictionary".into(),
+                ));
             }
         };
 
@@ -57,12 +59,16 @@ impl RestoreServiceClient {
                     Ok(())
                 } else {
                     warn!("Failed to enter recovery");
-                    Err(IdeviceError::UnexpectedResponse)
+                    Err(IdeviceError::UnexpectedResponse(
+                        "enter_recovery result was not success".into(),
+                    ))
                 }
             }
             _ => {
                 warn!("XPC dictionary did not contain result");
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::UnexpectedResponse(
+                    "missing result in enter_recovery response".into(),
+                ))
             }
         }
     }
@@ -79,7 +85,9 @@ impl RestoreServiceClient {
             plist::Value::Dictionary(d) => d,
             _ => {
                 warn!("Did not receive dictionary response from XPC");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "reboot XPC response is not a dictionary".into(),
+                ));
             }
         };
 
@@ -89,12 +97,16 @@ impl RestoreServiceClient {
                     Ok(())
                 } else {
                     warn!("Failed to enter recovery");
-                    Err(IdeviceError::UnexpectedResponse)
+                    Err(IdeviceError::UnexpectedResponse(
+                        "reboot result was not success".into(),
+                    ))
                 }
             }
             _ => {
                 warn!("XPC dictionary did not contain result");
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::UnexpectedResponse(
+                    "missing result in reboot response".into(),
+                ))
             }
         }
     }
@@ -111,7 +123,9 @@ impl RestoreServiceClient {
             plist::Value::Dictionary(d) => d,
             _ => {
                 warn!("Did not receive dictionary response from XPC");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "getpreflightinfo XPC response is not a dictionary".into(),
+                ));
             }
         };
 
@@ -119,7 +133,9 @@ impl RestoreServiceClient {
             Some(plist::Value::Dictionary(i)) => i,
             _ => {
                 warn!("XPC dictionary did not contain preflight info");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing preflightinfo in response".into(),
+                ));
             }
         };
 
@@ -139,7 +155,9 @@ impl RestoreServiceClient {
             plist::Value::Dictionary(d) => d,
             _ => {
                 warn!("Did not receive dictionary response from XPC");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "getnonces XPC response is not a dictionary".into(),
+                ));
             }
         };
 
@@ -147,7 +165,9 @@ impl RestoreServiceClient {
             Some(plist::Value::Dictionary(i)) => i,
             _ => {
                 warn!("XPC dictionary did not contain nonces");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing nonces in response".into(),
+                ));
             }
         };
 
@@ -167,7 +187,9 @@ impl RestoreServiceClient {
             plist::Value::Dictionary(d) => d,
             _ => {
                 warn!("Did not receive dictionary response from XPC");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "getappparameters XPC response is not a dictionary".into(),
+                ));
             }
         };
 
@@ -175,7 +197,9 @@ impl RestoreServiceClient {
             Some(plist::Value::Dictionary(i)) => i,
             _ => {
                 warn!("XPC dictionary did not contain parameters");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing appparameters in response".into(),
+                ));
             }
         };
 
@@ -198,7 +222,9 @@ impl RestoreServiceClient {
             plist::Value::Dictionary(d) => d,
             _ => {
                 warn!("Did not receive dictionary response from XPC");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "restorelang XPC response is not a dictionary".into(),
+                ));
             }
         };
 
@@ -208,12 +234,16 @@ impl RestoreServiceClient {
                     Ok(())
                 } else {
                     warn!("Failed to restore language");
-                    Err(IdeviceError::UnexpectedResponse)
+                    Err(IdeviceError::UnexpectedResponse(
+                        "restorelang result was not success".into(),
+                    ))
                 }
             }
             _ => {
                 warn!("XPC dictionary did not contain result");
-                Err(IdeviceError::UnexpectedResponse)
+                Err(IdeviceError::UnexpectedResponse(
+                    "missing result in restorelang response".into(),
+                ))
             }
         }
     }

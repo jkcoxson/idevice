@@ -74,17 +74,17 @@ async fn main() {
         32,
     )
     .unwrap();
-    dev.set_mtu(tun_proxy.handshake.client_parameters.mtu)
+    dev.set_mtu(tun_proxy.tunnel_info().mtu)
         .unwrap();
     dev.set_network_address(
-        tun_proxy.handshake.client_parameters.address.clone(),
+        tun_proxy.tunnel_info().client_address.clone(),
         tun_proxy
             .handshake
             .client_parameters
             .netmask
             .parse()
             .unwrap(),
-        Some(tun_proxy.handshake.server_address.parse().unwrap()),
+        Some(tun_proxy.tunnel_info().server_address.parse().unwrap()),
     )
     .unwrap();
 
@@ -92,8 +92,8 @@ async fn main() {
     async_dev.enabled(true).unwrap();
     println!("-----------------------------");
     println!("tun device created: {:?}", async_dev.name());
-    println!("server address: {}", tun_proxy.handshake.server_address);
-    println!("rsd port: {}", tun_proxy.handshake.server_rsd_port);
+    println!("server address: {}", tun_proxy.tunnel_info().server_address);
+    println!("rsd port: {}", tun_proxy.tunnel_info().server_rsd_port);
     println!("-----------------------------");
 
     let mut buf = vec![0; 20_000]; // XPC is big lol

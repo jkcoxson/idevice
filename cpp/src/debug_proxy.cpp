@@ -65,7 +65,7 @@ DebugProxy::send_command(const std::string &name,
   if (cmdRes.is_none()) {
     // treat as invalid arg
     FfiError err;
-    err.code = -1;
+    err.code = 33; // FfiInvalidArg
     err.message = "debugserver_command_new failed";
     return Err(err);
   }

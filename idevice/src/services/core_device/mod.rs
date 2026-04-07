@@ -80,7 +80,9 @@ impl<R: ReadWrite> CoreDeviceServiceClient<R> {
             plist::Value::Dictionary(d) => d,
             _ => {
                 warn!("XPC response was not a dictionary");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "XPC response was not a dictionary".into(),
+                ));
             }
         };
 
@@ -88,7 +90,9 @@ impl<R: ReadWrite> CoreDeviceServiceClient<R> {
             Some(r) => r,
             None => {
                 warn!("XPC response did not have an output");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "XPC response missing CoreDevice.output".into(),
+                ));
             }
         };
 

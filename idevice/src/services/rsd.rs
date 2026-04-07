@@ -43,7 +43,11 @@ impl RsdHandshake {
             .and_then(|x| x.as_dictionary())
         {
             Some(d) => d,
-            None => return Err(IdeviceError::UnexpectedResponse),
+            None => {
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing Services dictionary in RSD handshake".into(),
+                ));
+            }
         };
 
         // Parse available services
@@ -122,7 +126,9 @@ impl RsdHandshake {
         }) {
             Some(p) => p as usize,
             None => {
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing MessagingProtocolVersion in RSD handshake".into(),
+                ));
             }
         };
 
@@ -132,7 +138,9 @@ impl RsdHandshake {
         {
             Some(u) => u.to_string(),
             None => {
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing UUID in RSD handshake".into(),
+                ));
             }
         };
 
@@ -145,7 +153,9 @@ impl RsdHandshake {
                 .map(|(name, prop)| (name.to_owned(), prop.to_owned()))
                 .collect::<HashMap<String, plist::Value>>(),
             None => {
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "missing Properties dictionary in RSD handshake".into(),
+                ));
             }
         };
 

@@ -144,7 +144,7 @@ impl TestConfig {
     ///
     /// # Errors
     /// * `IdeviceError::AppNotInstalled` if runner or target is not found
-    /// * `IdeviceError::UnexpectedResponse` if `CFBundleExecutable` does not
+    /// * `IdeviceError::UnexpectedResponse("unexpected response".into())` if `CFBundleExecutable` does not
     ///   end with `"-Runner"` or required keys are missing
     pub async fn from_installation_proxy(
         install_proxy: &mut InstallationProxyClient,
@@ -157,7 +157,7 @@ impl TestConfig {
                 .map(ToOwned::to_owned)
                 .ok_or_else(|| {
                     warn!("Missing or non-string key '{}' in app info dict", key);
-                    IdeviceError::UnexpectedResponse
+                    IdeviceError::UnexpectedResponse("unexpected response".into())
                 })
         };
 
@@ -177,7 +177,7 @@ impl TestConfig {
 
         let runner_dict = runner_info.as_dictionary().ok_or_else(|| {
             warn!("Runner info is not a dictionary");
-            IdeviceError::UnexpectedResponse
+            IdeviceError::UnexpectedResponse("unexpected response".into())
         })?;
 
         let runner_app_path = app_string(runner_dict, "Path")?;
@@ -189,7 +189,7 @@ impl TestConfig {
                 "CFBundleExecutable '{}' does not end with '-Runner'; this is not a valid xctest runner bundle",
                 runner_bundle_executable
             );
-            return Err(IdeviceError::UnexpectedResponse);
+            return Err(IdeviceError::UnexpectedResponse("unexpected response".into()));
         }
 
         // --- Target (optional) ---
@@ -200,7 +200,7 @@ impl TestConfig {
             })?;
             let target_dict = target_info.as_dictionary().ok_or_else(|| {
                 warn!("Target info is not a dictionary");
-                IdeviceError::UnexpectedResponse
+                IdeviceError::UnexpectedResponse("unexpected response".into())
             })?;
             let path = app_string(target_dict, "Path")?;
             (Some(t.to_owned()), Some(path))
@@ -566,14 +566,14 @@ async fn connect_testmanagerd_rsd(
             }
         }
 
-        Err(last_err.unwrap_or(IdeviceError::UnexpectedResponse))
+        Err(last_err.unwrap_or(IdeviceError::UnexpectedResponse("unexpected response".into())))
     }
 
     async fn connect_rsd_stack_once(
         provider: &dyn IdeviceProvider,
     ) -> Result<TestManagerConnections, IdeviceError> {
         let proxy = CoreDeviceProxy::connect(provider).await?;
-        let rsd_port = proxy.handshake.server_rsd_port;
+        let rsd_port = proxy.tunnel_info().server_rsd_port;
         let adapter = proxy.create_software_tunnel()?;
         let mut handle = adapter.to_async_handle();
 
@@ -650,7 +650,7 @@ async fn connect_testmanagerd_rsd(
         }
     }
 
-    Err(last_err.unwrap_or(IdeviceError::UnexpectedResponse))
+    Err(last_err.unwrap_or(IdeviceError::UnexpectedResponse("unexpected response".into())))
 }
 
 /// Establishes the three DTX connections required for an XCTest run.
@@ -808,7 +808,7 @@ pub(super) async fn authorize_test<R: ReadWrite + 'static>(
             }
             Some(Value::Boolean(false)) => {
                 warn!("authorize_test returned false");
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse("unexpected response".into()));
             }
             other => {
                 debug!("authorize_test reply: {:?}", other);
@@ -1097,8 +1097,8 @@ pub(super) async fn start_executing_test_plan<R: ReadWrite + 'static>(
 fn decode_aux_archive(aux: &AuxValue) -> Result<Value, IdeviceError> {
     match aux {
         AuxValue::Array(bytes) => ns_keyed_archive::decode::from_bytes(bytes)
-            .map_err(|_| IdeviceError::UnexpectedResponse),
-        _ => Err(IdeviceError::UnexpectedResponse),
+            .map_err(|_| IdeviceError::UnexpectedResponse("unexpected response".into())),
+        _ => Err(IdeviceError::UnexpectedResponse("unexpected response".into())),
     }
 }
 
@@ -1108,7 +1108,7 @@ fn aux_as_string(aux: &AuxValue) -> Result<String, IdeviceError> {
     }
     match decode_aux_archive(aux)? {
         Value::String(s) => Ok(s),
-        _ => Err(IdeviceError::UnexpectedResponse),
+        _ => Err(IdeviceError::UnexpectedResponse("unexpected response".into())),
     }
 }
 
@@ -1116,12 +1116,11 @@ fn aux_as_u64(aux: &AuxValue) -> Result<u64, IdeviceError> {
     match aux {
         AuxValue::U32(v) => return Ok(*v as u64),
         AuxValue::I64(v) => return Ok(*v as u64),
-        AuxValue::U64(v) => return Ok(*v),
         _ => {}
     }
     match decode_aux_archive(aux)? {
-        Value::Integer(i) => i.as_unsigned().ok_or(IdeviceError::UnexpectedResponse),
-        _ => Err(IdeviceError::UnexpectedResponse),
+        Value::Integer(i) => i.as_unsigned().ok_or(IdeviceError::UnexpectedResponse("unexpected response".into())),
+        _ => Err(IdeviceError::UnexpectedResponse("unexpected response".into())),
     }
 }
 
@@ -1134,9 +1133,8 @@ fn aux_as_f64(aux: &AuxValue) -> Result<f64, IdeviceError> {
     match aux {
         AuxValue::U32(v) => Ok(*v as f64),
         AuxValue::I64(v) => Ok(*v as f64),
-        AuxValue::U64(v) => Ok(*v as f64),
-        AuxValue::F64(v) => Ok(*v),
-        _ => Err(IdeviceError::UnexpectedResponse),
+        AuxValue::Double(v) => Ok(*v),
+        _ => Err(IdeviceError::UnexpectedResponse("unexpected response".into())),
     }
 }
 
@@ -2017,7 +2015,7 @@ impl XCUITestService {
                     }
                 };
                 result?;
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse("unexpected response".into()));
             }
 
             match wda.status().await {

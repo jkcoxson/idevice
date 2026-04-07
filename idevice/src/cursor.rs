@@ -55,6 +55,9 @@ impl<'a> Cursor<'a> {
     pub fn read_assert_zero(&mut self, to_read: usize) -> Option<()> {
         let bytes = self.read(to_read)?;
 
+        #[cfg(not(debug_assertions))]
+        let _ = bytes;
+
         #[cfg(debug_assertions)]
         for b in bytes.iter() {
             if *b > 0 {

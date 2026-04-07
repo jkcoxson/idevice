@@ -2,17 +2,40 @@
 
 use crate::provider::IdeviceProvider;
 use crate::services::lockdown::LockdownClient;
-use crate::{Idevice, IdeviceError, ReadWrite, RsdService, obf};
+use crate::{Idevice, IdeviceError, ReadWrite, obf};
 
+#[cfg(feature = "rsd")]
+use crate::RsdService;
+
+#[cfg(feature = "application_listing")]
+pub mod application_listing;
+#[cfg(feature = "condition_inducer")]
+pub mod condition_inducer;
+#[cfg(feature = "device_info")]
+pub mod device_info;
+#[cfg(any(
+    feature = "energy_monitor",
+    feature = "graphics",
+    feature = "rsd",
+    feature = "sysmontap"
+))]
+pub mod energy_monitor;
+pub mod errors;
+#[cfg(feature = "graphics")]
+pub mod graphics;
 #[cfg(feature = "location_simulation")]
 pub mod location_simulation;
 pub mod message;
+#[cfg(feature = "network_monitor")]
+pub mod network_monitor;
 pub mod notifications;
 pub mod process_control;
 pub mod remote_server;
 pub mod screenshot;
 #[cfg(feature = "xctest")]
 pub mod xctest;
+#[cfg(feature = "sysmontap")]
+pub mod sysmontap;
 
 impl RsdService for remote_server::RemoteServerClient<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {

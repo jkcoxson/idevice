@@ -74,7 +74,9 @@ impl PcapdClient {
         let packet = match packet {
             Value::Data(p) => p,
             _ => {
-                return Err(IdeviceError::UnexpectedResponse);
+                return Err(IdeviceError::UnexpectedResponse(
+                    "expected Data plist value for packet".into(),
+                ));
             }
         };
         let mut packet = DevicePacket::from_vec(&packet)?;

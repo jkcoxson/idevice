@@ -204,7 +204,7 @@ of how this library and their associated protocols work. But a general overview 
 1. That HTTP/2 is accessed through an NCM USB interface or CoreDeviceProxy
 1. CoreDeviceProxy is a lockdown service, see above
 
-This doesn't even touch RPPairing, which is still a mystery as of writing.
+For more information about rppairing, I've written out the [spec here](https://jkcoxson.com/blog/rppairing-spec)
 
 ## License
 

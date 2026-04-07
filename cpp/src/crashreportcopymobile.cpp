@@ -19,6 +19,15 @@ Result<CrashReportCopyMobile, FfiError> CrashReportCopyMobile::connect(Provider&
     return Ok(CrashReportCopyMobile::adopt(out));
 }
 
+Result<CrashReportCopyMobile, FfiError> CrashReportCopyMobile::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    CrashReportCopyMobileHandle* out = nullptr;
+    FfiError                     e(::crash_report_client_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(CrashReportCopyMobile::adopt(out));
+}
+
 Result<CrashReportCopyMobile, FfiError> CrashReportCopyMobile::from_socket(Idevice&& socket) {
     CrashReportCopyMobileHandle* out = nullptr;
     FfiError                     e(::crash_report_client_new(socket.raw(), &out));

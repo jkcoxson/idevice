@@ -16,13 +16,18 @@ mod activation;
 mod afc;
 mod amfi;
 mod app_service;
+mod application_listing;
 mod bt_packet_logger;
 mod companion_proxy;
+mod condition_inducer;
 mod crash_logs;
 mod debug_proxy;
+mod device_info;
 mod diagnostics;
 mod diagnosticsservice;
 mod dvt_packet_parser;
+mod energy_monitor;
+mod graphics;
 mod heartbeat_client;
 mod ideviceinfo;
 mod ideviceinstaller;
@@ -33,6 +38,7 @@ mod lockdown;
 mod misagent;
 mod mobilebackup2;
 mod mounter;
+mod network_monitor;
 mod notification_proxy_client;
 mod notifications;
 mod os_trace_relay;
@@ -42,9 +48,11 @@ mod preboard;
 mod process_control;
 mod remotexpc;
 mod restore_service;
+mod rppairing;
 mod screenshot;
 mod springboardservices;
 mod syslog_relay;
+mod sysmontap;
 mod xctest;
 
 mod pcap;
@@ -58,7 +66,7 @@ async fn main() {
         .with_flag(
             JkFlag::new("about")
                 .with_help("Prints the about message")
-                .with_short_curcuit(|| {
+                .with_short_circuit(|| {
                     eprintln!("idevice-rs-tools - Jackson Coxson\n");
                     eprintln!("Tools to manage and manipulate iOS devices");
                     eprintln!("Version {}", env!("CARGO_PKG_VERSION"));
@@ -70,7 +78,7 @@ async fn main() {
         .with_flag(
             JkFlag::new("version")
                 .with_help("Prints the version")
-                .with_short_curcuit(|| {
+                .with_short_circuit(|| {
                     println!("{}", env!("CARGO_PKG_VERSION"));
                     std::process::exit(0);
                 }),
@@ -122,10 +130,18 @@ async fn main() {
         .with_subcommand("preboard", preboard::register())
         .with_subcommand("process_control", process_control::register())
         .with_subcommand("remotexpc", remotexpc::register())
+        .with_subcommand("rppairing", rppairing::register())
         .with_subcommand("restore_service", restore_service::register())
         .with_subcommand("screenshot", screenshot::register())
         .with_subcommand("springboard", springboardservices::register())
         .with_subcommand("syslog_relay", syslog_relay::register())
+        .with_subcommand("energy_monitor", energy_monitor::register())
+        .with_subcommand("graphics", graphics::register())
+        .with_subcommand("device_info", device_info::register())
+        .with_subcommand("application_listing", application_listing::register())
+        .with_subcommand("condition_inducer", condition_inducer::register())
+        .with_subcommand("network_monitor", network_monitor::register())
+        .with_subcommand("sysmontap", sysmontap::register())
         .with_subcommand("xctest", xctest::register())
         .subcommand_required(true)
         .collect();
@@ -242,6 +258,9 @@ async fn main() {
         "remotexpc" => {
             remotexpc::main(sub_args, provider).await;
         }
+        "rppairing" => {
+            rppairing::main(sub_args, provider).await;
+        }
         "restore_service" => {
             restore_service::main(sub_args, provider).await;
         }
@@ -253,6 +272,27 @@ async fn main() {
         }
         "syslog_relay" => {
             syslog_relay::main(sub_args, provider).await;
+        }
+        "energy_monitor" => {
+            energy_monitor::main(sub_args, provider).await;
+        }
+        "graphics" => {
+            graphics::main(sub_args, provider).await;
+        }
+        "device_info" => {
+            device_info::main(sub_args, provider).await;
+        }
+        "application_listing" => {
+            application_listing::main(sub_args, provider).await;
+        }
+        "condition_inducer" => {
+            condition_inducer::main(sub_args, provider).await;
+        }
+        "network_monitor" => {
+            network_monitor::main(sub_args, provider).await;
+        }
+        "sysmontap" => {
+            sysmontap::main(sub_args, provider).await;
         }
         "xctest" => {
             xctest::main(sub_args, provider).await;

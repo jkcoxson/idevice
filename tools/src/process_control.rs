@@ -19,14 +19,13 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
     let mut arguments = arguments.clone();
 
     let bundle_id: String = arguments.next_argument().expect("No bundle ID specified");
-    let mut root_hello_read = false;
 
     let mut rs_client_opt: Option<
         idevice::dvt::remote_server::RemoteServerClient<Box<dyn idevice::ReadWrite>>,
     > = None;
 
     if let Ok(proxy) = CoreDeviceProxy::connect(&*provider).await {
-        let rsd_port = proxy.handshake.server_rsd_port;
+        let rsd_port = proxy.tunnel_info().server_rsd_port;
         let adapter = proxy.create_software_tunnel().expect("no software tunnel");
         let mut adapter = adapter.to_async_handle();
         let stream = adapter.connect(rsd_port).await.expect("no RSD connect");
@@ -40,7 +39,6 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
         .await
         .expect("no connect");
         rs_client.read_message(0).await.expect("no read??");
-        root_hello_read = true;
         rs_client_opt = Some(rs_client);
     }
 
@@ -78,11 +76,6 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
             .expect("failed to connect to Instruments Remote Server over Lockdown (iOS16-). Ensure Developer Disk Image is mounted.")
     };
 
-    if !root_hello_read {
-        // Legacy remoteserver transport still expects the initial hello to be
-        // consumed explicitly on the root channel.
-        rs_client.read_message(0).await.expect("no read??");
-    }
     let mut pc_client = idevice::dvt::process_control::ProcessControlClient::new(&mut rs_client)
         .await
         .unwrap();

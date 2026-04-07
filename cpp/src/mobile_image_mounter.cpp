@@ -33,6 +33,15 @@ Result<MobileImageMounter, FfiError> MobileImageMounter::connect(Provider& provi
     return Ok(MobileImageMounter::adopt(handle));
 }
 
+Result<MobileImageMounter, FfiError> MobileImageMounter::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    ImageMounterHandle* handle = nullptr;
+    FfiError            e(::image_mounter_connect_rsd(adapter, handshake, &handle));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(MobileImageMounter::adopt(handle));
+}
+
 Result<MobileImageMounter, FfiError> MobileImageMounter::from_socket(Idevice&& socket) {
     ImageMounterHandle* handle = nullptr;
     // The Rust FFI function consumes the socket, so we must release it from the
@@ -240,6 +249,60 @@ MobileImageMounter::mount_personalized_with_callback(Provider&      provider,
                                                                 unique_chip_id,
                                                                 progress_trampoline,
                                                                 &lambda /* context */));
+
+    return e ? Result<void, FfiError>(Err(e)) : Result<void, FfiError>(Ok());
+}
+
+Result<void, FfiError> MobileImageMounter::mount_personalized_rsd(AdapterHandle*      adapter,
+                                                                  RsdHandshakeHandle* handshake,
+                                                                  const uint8_t*      image_data,
+                                                                  size_t              image_size,
+                                                                  const uint8_t*      trust_cache_data,
+                                                                  size_t              trust_cache_size,
+                                                                  const uint8_t* build_manifest_data,
+                                                                  size_t         build_manifest_size,
+                                                                  plist_t        info_plist,
+                                                                  uint64_t       unique_chip_id) {
+    FfiError e(::image_mounter_mount_personalized_rsd(this->raw(),
+                                                      adapter,
+                                                      handshake,
+                                                      image_data,
+                                                      image_size,
+                                                      trust_cache_data,
+                                                      trust_cache_size,
+                                                      build_manifest_data,
+                                                      build_manifest_size,
+                                                      info_plist,
+                                                      unique_chip_id));
+    return e ? Result<void, FfiError>(Err(e)) : Result<void, FfiError>(Ok());
+}
+
+Result<void, FfiError> MobileImageMounter::mount_personalized_with_callback_rsd(
+    AdapterHandle*                       adapter,
+    RsdHandshakeHandle*                  handshake,
+    const uint8_t*                       image_data,
+    size_t                               image_size,
+    const uint8_t*                       trust_cache_data,
+    size_t                               trust_cache_size,
+    const uint8_t*                       build_manifest_data,
+    size_t                               build_manifest_size,
+    plist_t                              info_plist,
+    uint64_t                             unique_chip_id,
+    std::function<void(size_t, size_t)>& lambda) {
+
+    FfiError e(::image_mounter_mount_personalized_with_callback_rsd(this->raw(),
+                                                                    adapter,
+                                                                    handshake,
+                                                                    image_data,
+                                                                    image_size,
+                                                                    trust_cache_data,
+                                                                    trust_cache_size,
+                                                                    build_manifest_data,
+                                                                    build_manifest_size,
+                                                                    info_plist,
+                                                                    unique_chip_id,
+                                                                    progress_trampoline,
+                                                                    &lambda /* context */));
 
     return e ? Result<void, FfiError>(Err(e)) : Result<void, FfiError>(Ok());
 }
