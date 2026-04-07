@@ -7,3 +7,4 @@ edition = "2024"
 tracing-subscriber = "0.3.23"
 idevice = { path = "../idevice", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
+jkcli = { version = "0.1.1" }

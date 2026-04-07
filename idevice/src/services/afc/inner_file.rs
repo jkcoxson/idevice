@@ -449,6 +449,14 @@ crate::impl_trait_to_structs!(AsyncSeek for InnerFileDescriptor<'_>, OwnedInnerF
 crate::impl_trait_to_structs!(Drop for InnerFileDescriptor<'_>, OwnedInnerFileDescriptor; {
     fn drop(&mut self) {
         if !self.dropped {
+            // The pending_fut (if Some) holds a Pin<&mut Self> derived from a
+            // raw pointer to this struct. Dropping it here ensures that
+            // mutable reference is released before we create a second one via
+            // Pin::new_unchecked(self) below. Two live &mut Self to the same
+            // struct is UB under Stacked Borrows even if neither is actively
+            // dereferenced.
+            self.pending_fut = None;
+
             let handle = tokio::runtime::Handle::current();
 
             if matches!(

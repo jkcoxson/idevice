@@ -10,6 +10,7 @@ use idevice::{
     lockdown::LockdownClient,
     usbmuxd::{Connection, UsbmuxdAddr, UsbmuxdConnection},
 };
+use jkcli::JkFlag;
 
 mod afc;
 mod amfi;
@@ -62,6 +63,11 @@ macro_rules! run_test {
 async fn main() -> ExitCode {
     tracing_subscriber::fmt::init();
 
+    let args = jkcli::JkCommand::new()
+        .with_flag(JkFlag::new("no-warn"))
+        .collect()
+        .unwrap();
+
     println!("idevice test harness");
 
     if std::env::var("RUST_LOG").is_err() {
@@ -105,19 +111,24 @@ async fn main() -> ExitCode {
     );
     println!("This test suite can have unintended consequnces on misbehaving code.");
     println!("Make sure this is a device you are willing to destroy.");
-    println!("This is your last warning. Continuing in 5...");
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    println!("4...");
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    println!("3...");
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    println!("2...");
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    println!("1...");
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    println!("0...");
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    println!("Starting test suite on {}", usbmuxd_device.udid);
+
+    if args.has_flag("no-warn") {
+        println!("Skipping the warn countdown, good luck");
+    } else {
+        println!("This is your last warning. Continuing in 5...");
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        println!("4...");
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        println!("3...");
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        println!("2...");
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        println!("1...");
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        println!("0...");
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        println!("Starting test suite on {}", usbmuxd_device.udid);
+    }
 
     let mut success = 0u32;
     let mut failure = 0u32;

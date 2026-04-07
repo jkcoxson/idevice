@@ -783,6 +783,123 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
         }
     );
 
+    // Drop-and-reopen fd-pool exhaustion test: open + drop 200 times relying
+    // entirely on the implicit Drop to send FileClose.  If the unsafe
+    // Pin::new_unchecked Drop path is broken and FileClose is never sent, the
+    // device will exhaust its per-connection fd pool and begin returning errors
+    // before we reach iteration 200.  Each iteration also does a partial read
+    // to ensure pending_fut is populated when Drop fires.
+    run_test!(
+        "afc: drop recycles device fds - 200 open/drop cycles",
+        success,
+        failure,
+        async {
+            let path = p("drop_reopen.bin");
+            roundtrip(&mut client, &path, b"drop reopen test data").await?;
+
+            for i in 0..200u32 {
+                let mut f = client
+                    .open(&path, AfcFopenMode::RdOnly)
+                    .await
+                    .map_err(|e| {
+                        idevice::IdeviceError::UnexpectedResponse(format!(
+                            "open failed at iteration {i} (fd pool exhausted?): {e}"
+                        ))
+                    })?;
+                // Read a byte to exercise the pending_fut state machine before drop
+                let mut buf = [0u8; 1];
+                f.read_exact(&mut buf).await?;
+                // FileDescriptor drops here - Drop impl fires
+                // unsafe { Pin::new_unchecked(self) }.close_inner().await
+                // on a multi-thread tokio runtime, recycling the device fd
+            }
+
+            println!("(200 open/drop cycles succeeded)");
+            client.remove(&path).await
+        }
+    );
+
+    // Stale-fd test: verify that the Drop destructor actually sent FileClose.
+    // Strategy: open a file, record the raw device fd, let it drop, then
+    // reconstruct a FileDescriptor pointing at the *same* raw fd via the
+    // unsafe constructor. Because Drop already sent FileClose the device has
+    // freed that fd; any I/O on the stale descriptor must return an error.
+    // If Drop had NOT fired, the fd would still be open and the read would
+    // succeed - making the test fail.
+    run_test!(
+        "afc: stale fd after drop returns error (proves Drop sent FileClose)",
+        success,
+        failure,
+        async {
+            let path = p("stale_fd.bin");
+            roundtrip(&mut client, &path, b"stale fd sentinel").await?;
+
+            // Open and immediately drop - Drop fires, sending FileClose.
+            let raw_fd = {
+                let f = client.open(&path, AfcFopenMode::RdOnly).await?;
+                #[allow(clippy::let_and_return)]
+                let fd = f.as_raw_fd();
+                // f drops here, destructor runs, device frees the fd
+                fd
+            };
+
+            // Reconstruct a FileDescriptor using the now-closed device fd.
+            // SAFETY (intentionally violated for testing): raw_fd is stale;
+            // we expect every subsequent I/O to return an error.
+            let mut stale = unsafe {
+                idevice::services::afc::file::FileDescriptor::new(&mut client, raw_fd, path.clone())
+            };
+
+            let result = stale.read_entire().await;
+            if result.is_ok() {
+                return Err(idevice::IdeviceError::UnexpectedResponse(
+                    "stale fd read succeeded - Drop may not have sent FileClose".into(),
+                ));
+            }
+            println!("(stale fd correctly returned: {})", result.unwrap_err());
+
+            // Drop stale - it will attempt a second FileClose on an already-closed
+            // fd.  The device will error; Drop discards that error with .ok().
+            // The client must remain usable afterwards.
+            drop(stale);
+
+            client.remove(&path).await
+        }
+    );
+
+    // mem::forget variant: skips the Drop impl entirely (no FileClose sent,
+    // no unsafe Pin path runs).  The device fd leaks but AfcClient must
+    // survive and be fully operational.
+    run_test!(
+        "afc: mem::forget (skip Drop) - client survives, fd leaks",
+        success,
+        failure,
+        async {
+            let path = p("forget_fd.bin");
+            roundtrip(&mut client, &path, b"forget test").await?;
+
+            let leaked_fd = {
+                let mut f = client.open(&path, AfcFopenMode::RdOnly).await?;
+                let raw = f.as_raw_fd();
+                let mut buf = [0u8; 4];
+                f.read_exact(&mut buf).await?;
+                std::mem::forget(f); // destructor never runs - device fd stays open
+                raw
+            };
+            println!("(intentionally leaked device fd={leaked_fd})");
+
+            // Client must still work despite the leaked fd
+            let info = client.get_device_info().await?;
+            if info.model.is_empty() {
+                return Err(idevice::IdeviceError::UnexpectedResponse(
+                    "get_device_info failed after mem::forget".into(),
+                ));
+            }
+            let _ = client.remove(&path).await;
+            Ok(())
+        }
+    );
+
     // ─────────────────────────────────────────────────────────────────────────
     // MULTI-THREADED CONCURRENT TESTS
     // Each test spins up multiple tokio tasks sharing one AfcClient behind an

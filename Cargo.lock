@@ -1350,6 +1350,7 @@ name = "idevice-test-harness"
 version = "0.1.0"
 dependencies = [
  "idevice",
+ "jkcli",
  "tokio",
  "tracing-subscriber",
 ]
