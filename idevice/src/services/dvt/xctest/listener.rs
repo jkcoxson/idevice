@@ -226,7 +226,9 @@ pub trait XCUITestListener: Send {
     }
 
     /// Invoked when the test runner fails to bootstrap.
-    async fn did_fail_to_bootstrap(&mut self, _description: &str) -> Result<(), IdeviceError> {
-        Ok(())
+    async fn did_fail_to_bootstrap(&mut self, description: &str) -> Result<(), IdeviceError> {
+        Err(IdeviceError::UnexpectedResponse(format!(
+            "test runner failed to bootstrap: {description}"
+        )))
     }
 }

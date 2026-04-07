@@ -34,6 +34,7 @@ mod rsd_services;
 mod screenshotr;
 mod springboard;
 mod syslog_relay;
+mod xctest;
 
 /// Runs an async test case, printing PASS/FAIL and updating the counters.
 ///
@@ -256,6 +257,16 @@ async fn main() -> ExitCode {
     // ── DVT / Instruments ─────────────────────────────────────────────────────
     println!("\n── DVT / Instruments ────────────────────────────────────────────");
     dvt::run_tests(&usbmuxd_device, &mut success, &mut failure).await;
+
+    // ── XCTest / WDA (requires WDA_BUNDLE_ID env var) ─────────────────────────
+    println!("\n── XCTest / WDA ─────────────────────────────────────────────────");
+    xctest::run_tests(
+        std::sync::Arc::new(usbmuxd_device.clone())
+            as std::sync::Arc<dyn idevice::provider::IdeviceProvider>,
+        &mut success,
+        &mut failure,
+    )
+    .await;
 
     println!("\n═══════════════════════════════════════════════════════════════");
     println!("All tests finished!");

@@ -321,7 +321,9 @@ impl<R: ReadWrite> RemoteServerClient<R> {
                 match &*self.shared.supported_identifiers.lock().await {
                     CapabilityHandshakeState::Received(dict) => return Ok(dict.clone()),
                     CapabilityHandshakeState::Skipped => {
-                        return Err(IdeviceError::UnexpectedResponse("unexpected response".into()));
+                        return Err(IdeviceError::UnexpectedResponse(
+                            "unexpected response".into(),
+                        ));
                     }
                     CapabilityHandshakeState::Pending => {}
                 }
@@ -438,7 +440,9 @@ impl<R: ReadWrite> RemoteServerClient<R> {
 
         if reply.data.is_some() {
             warn!("make_channel: unexpected reply payload: {:?}", reply.data);
-            return Err(IdeviceError::UnexpectedResponse("unexpected response".into()));
+            return Err(IdeviceError::UnexpectedResponse(
+                "unexpected response".into(),
+            ));
         }
 
         self.build_channel(code)
@@ -746,7 +750,9 @@ impl<R: ReadWrite> RemoteServerClient<R> {
                 if self.shared.closed.load(Ordering::Relaxed) {
                     Err(Self::closed_error())
                 } else {
-                    Err(IdeviceError::UnexpectedResponse("unexpected response".into()))
+                    Err(IdeviceError::UnexpectedResponse(
+                        "unexpected response".into(),
+                    ))
                 }
             }
         }
@@ -790,7 +796,9 @@ impl<R: ReadWrite> RemoteServerClient<R> {
         let receiver = self
             .send_method(channel, identifier, data, args, true, true)
             .await?
-            .ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))?;
+            .ok_or(IdeviceError::UnexpectedResponse(
+                "unexpected response".into(),
+            ))?;
         self.wait_for_reply(identifier, receiver).await
     }
 
@@ -968,8 +976,7 @@ impl<R: ReadWrite> RemoteServerClient<R> {
 
         debug!(
             "Remote requested channel {} with identifier '{}'",
-            code,
-            identifier
+            code, identifier
         );
 
         shared.channel_metadata.lock().await.insert(
@@ -1164,33 +1171,45 @@ impl<R: ReadWrite> RemoteServerClient<R> {
     fn decode_identifier(aux: &AuxValue) -> Result<String, IdeviceError> {
         match aux {
             AuxValue::String(s) => Ok(s.clone()),
-            AuxValue::Array(bytes) => match ns_keyed_archive::decode::from_bytes(bytes).map_err(DvtError::from)? {
-                plist::Value::String(s) => Ok(s),
-                _ => Err(IdeviceError::UnexpectedResponse("unexpected response".into())),
-            },
-            _ => Err(IdeviceError::UnexpectedResponse("unexpected response".into())),
+            AuxValue::Array(bytes) => {
+                match ns_keyed_archive::decode::from_bytes(bytes).map_err(DvtError::from)? {
+                    plist::Value::String(s) => Ok(s),
+                    _ => Err(IdeviceError::UnexpectedResponse(
+                        "unexpected response".into(),
+                    )),
+                }
+            }
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "unexpected response".into(),
+            )),
         }
     }
 
     fn decode_capabilities(aux: &AuxValue) -> Result<Dictionary, IdeviceError> {
         match aux {
-            AuxValue::Array(bytes) => match ns_keyed_archive::decode::from_bytes(bytes).map_err(DvtError::from)? {
-                plist::Value::Dictionary(dict) => Ok(dict),
-                _ => Err(IdeviceError::UnexpectedResponse("unexpected response".into())),
-            },
-            _ => Err(IdeviceError::UnexpectedResponse("unexpected response".into())),
+            AuxValue::Array(bytes) => {
+                match ns_keyed_archive::decode::from_bytes(bytes).map_err(DvtError::from)? {
+                    plist::Value::Dictionary(dict) => Ok(dict),
+                    _ => Err(IdeviceError::UnexpectedResponse(
+                        "unexpected response".into(),
+                    )),
+                }
+            }
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "unexpected response".into(),
+            )),
         }
     }
 
     fn decode_channel_code(aux: &AuxValue) -> Result<i32, IdeviceError> {
         match aux {
-            AuxValue::U32(code) => {
-                i32::try_from(*code).map_err(|_| IdeviceError::UnexpectedResponse("unexpected response".into()))
-            }
-            AuxValue::I64(code) => {
-                i32::try_from(*code).map_err(|_| IdeviceError::UnexpectedResponse("unexpected response".into()))
-            }
-            _ => Err(IdeviceError::UnexpectedResponse("unexpected response".into())),
+            AuxValue::U32(code) => i32::try_from(*code)
+                .map_err(|_| IdeviceError::UnexpectedResponse("unexpected response".into())),
+            AuxValue::I64(code) => i32::try_from(*code)
+                .map_err(|_| IdeviceError::UnexpectedResponse("unexpected response".into())),
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "unexpected response".into(),
+            )),
         }
     }
 
@@ -1408,7 +1427,9 @@ impl<R: ReadWrite + 'static> OwnedChannel<R> {
                 if self.shared.closed.load(Ordering::Relaxed) {
                     Err(RemoteServerClient::<R>::closed_error())
                 } else {
-                    Err(IdeviceError::UnexpectedResponse("unexpected response".into()))
+                    Err(IdeviceError::UnexpectedResponse(
+                        "unexpected response".into(),
+                    ))
                 }
             }
         }

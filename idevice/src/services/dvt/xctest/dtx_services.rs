@@ -137,10 +137,10 @@ pub const XCT_DID_FORM_PLAN: &str = "_XCT_didFormPlanWithData:";
 pub const XCT_GET_PROGRESS_FOR_LAUNCH: &str = "_XCT_getProgressForLaunch:";
 
 /// UI testing initialization failed.
-pub const XCT_UI_INIT_DID_FAIL: &str = "_XCT_initializationForUITestingDidFailWithError_";
+pub const XCT_UI_INIT_DID_FAIL: &str = "_XCT_initializationForUITestingDidFailWithError:";
 
 /// Test runner failed to bootstrap.
-pub const XCT_DID_FAIL_BOOTSTRAP: &str = "_XCT_didFailToBootstrapWithError_";
+pub const XCT_DID_FAIL_BOOTSTRAP: &str = "_XCT_didFailToBootstrapWithError:";
 
 // --- suite lifecycle (legacy string-based, pre-iOS 14) --------------------
 

@@ -189,7 +189,9 @@ impl TestConfig {
                 "CFBundleExecutable '{}' does not end with '-Runner'; this is not a valid xctest runner bundle",
                 runner_bundle_executable
             );
-            return Err(IdeviceError::UnexpectedResponse("unexpected response".into()));
+            return Err(IdeviceError::UnexpectedResponse(
+                "unexpected response".into(),
+            ));
         }
 
         // --- Target (optional) ---
@@ -529,11 +531,7 @@ async fn connect_testmanagerd_rsd(
         for attempt in 1..=MAX_ATTEMPTS {
             debug!(
                 "[{}] opening service '{}' on remote port {} (attempt {}/{})",
-                label,
-                service_name,
-                port,
-                attempt,
-                MAX_ATTEMPTS
+                label, service_name, port, attempt, MAX_ATTEMPTS
             );
             let stream = handle.connect_to_service_port(port).await?;
             debug!("[{}] service port {} connected", label, port);
@@ -548,8 +546,7 @@ async fn connect_testmanagerd_rsd(
                 Ok(remote_capabilities) => {
                     debug!(
                         "[{}] RSD DTX capabilities exchange complete: {:?}",
-                        label,
-                        remote_capabilities
+                        label, remote_capabilities
                     );
                     return Ok(client);
                 }
@@ -566,7 +563,9 @@ async fn connect_testmanagerd_rsd(
             }
         }
 
-        Err(last_err.unwrap_or(IdeviceError::UnexpectedResponse("unexpected response".into())))
+        Err(last_err.unwrap_or(IdeviceError::UnexpectedResponse(
+            "unexpected response".into(),
+        )))
     }
 
     async fn connect_rsd_stack_once(
@@ -632,8 +631,7 @@ async fn connect_testmanagerd_rsd(
     for attempt in 1..=RSD_STACK_ATTEMPTS {
         debug!(
             "[rsd] establishing CoreDeviceProxy/software tunnel stack (attempt {}/{})",
-            attempt,
-            RSD_STACK_ATTEMPTS
+            attempt, RSD_STACK_ATTEMPTS
         );
         match connect_rsd_stack_once(provider).await {
             Ok(connections) => return Ok(connections),
@@ -650,7 +648,9 @@ async fn connect_testmanagerd_rsd(
         }
     }
 
-    Err(last_err.unwrap_or(IdeviceError::UnexpectedResponse("unexpected response".into())))
+    Err(last_err.unwrap_or(IdeviceError::UnexpectedResponse(
+        "unexpected response".into(),
+    )))
 }
 
 /// Establishes the three DTX connections required for an XCTest run.
@@ -808,7 +808,9 @@ pub(super) async fn authorize_test<R: ReadWrite + 'static>(
             }
             Some(Value::Boolean(false)) => {
                 warn!("authorize_test returned false");
-                return Err(IdeviceError::UnexpectedResponse("unexpected response".into()));
+                return Err(IdeviceError::UnexpectedResponse(
+                    "unexpected response".into(),
+                ));
             }
             other => {
                 debug!("authorize_test reply: {:?}", other);
@@ -1098,7 +1100,9 @@ fn decode_aux_archive(aux: &AuxValue) -> Result<Value, IdeviceError> {
     match aux {
         AuxValue::Array(bytes) => ns_keyed_archive::decode::from_bytes(bytes)
             .map_err(|_| IdeviceError::UnexpectedResponse("unexpected response".into())),
-        _ => Err(IdeviceError::UnexpectedResponse("unexpected response".into())),
+        _ => Err(IdeviceError::UnexpectedResponse(
+            "unexpected response".into(),
+        )),
     }
 }
 
@@ -1108,7 +1112,9 @@ fn aux_as_string(aux: &AuxValue) -> Result<String, IdeviceError> {
     }
     match decode_aux_archive(aux)? {
         Value::String(s) => Ok(s),
-        _ => Err(IdeviceError::UnexpectedResponse("unexpected response".into())),
+        _ => Err(IdeviceError::UnexpectedResponse(
+            "unexpected response".into(),
+        )),
     }
 }
 
@@ -1119,8 +1125,12 @@ fn aux_as_u64(aux: &AuxValue) -> Result<u64, IdeviceError> {
         _ => {}
     }
     match decode_aux_archive(aux)? {
-        Value::Integer(i) => i.as_unsigned().ok_or(IdeviceError::UnexpectedResponse("unexpected response".into())),
-        _ => Err(IdeviceError::UnexpectedResponse("unexpected response".into())),
+        Value::Integer(i) => i.as_unsigned().ok_or(IdeviceError::UnexpectedResponse(
+            "unexpected response".into(),
+        )),
+        _ => Err(IdeviceError::UnexpectedResponse(
+            "unexpected response".into(),
+        )),
     }
 }
 
@@ -1134,7 +1144,9 @@ fn aux_as_f64(aux: &AuxValue) -> Result<f64, IdeviceError> {
         AuxValue::U32(v) => Ok(*v as f64),
         AuxValue::I64(v) => Ok(*v as f64),
         AuxValue::Double(v) => Ok(*v),
-        _ => Err(IdeviceError::UnexpectedResponse("unexpected response".into())),
+        _ => Err(IdeviceError::UnexpectedResponse(
+            "unexpected response".into(),
+        )),
     }
 }
 
@@ -1608,11 +1620,44 @@ pub(super) async fn dispatch_xct_message<L: XCUITestListener>(
                 .await?;
         }
         m if m == XCT_DID_FAIL_BOOTSTRAP => {
+            // The aux is an NSKeyedArchived NSError. Try plain string first,
+            // then decode the archive and pull NSLocalizedDescription out of
+            // the error dictionary, falling back to a generic message.
             let desc = aux
                 .first()
-                .map(aux_as_string)
-                .transpose()?
-                .unwrap_or_default();
+                .and_then(|v| {
+                    // plain string (unlikely but handle it)
+                    if let AuxValue::String(s) = v {
+                        return Some(s.clone());
+                    }
+                    // NSKeyedArchive -> plist Value
+                    let decoded = decode_aux_archive(v).ok()?;
+                    // NSError serialises as a Dictionary. String fields come
+                    // through as plain values; other fields (domain, userInfo)
+                    // are Uid references into the archive's $objects table
+                    // which the decoder doesn't follow.
+                    if let Value::Dictionary(d) = &decoded {
+                        // Try inline string fields first
+                        if let Some(s) = d
+                            .get("NSLocalizedDescription")
+                            .or_else(|| d.get("NSLocalizedFailureReason"))
+                            .and_then(|v| v.as_string())
+                        {
+                            return Some(s.to_owned());
+                        }
+                        // Fall back to the numeric code with a hint for
+                        // the most common values seen from testmanagerd
+                        if let Some(code) = d.get("NSCode").and_then(|v| v.as_signed_integer()) {
+                            let hint = match code {
+                                103 => " (untrusted developer certificate — go to Settings → General → VPN & Device Management and trust your developer app)",
+                                _ => "",
+                            };
+                            return Some(format!("NSError code {code}{hint}"));
+                        }
+                    }
+                    None
+                })
+                .unwrap_or_else(|| "unknown error".to_owned());
             listener.did_fail_to_bootstrap(&desc).await?;
         }
 
@@ -2015,7 +2060,9 @@ impl XCUITestService {
                     }
                 };
                 result?;
-                return Err(IdeviceError::UnexpectedResponse("unexpected response".into()));
+                return Err(IdeviceError::UnexpectedResponse(
+                    "unexpected response".into(),
+                ));
             }
 
             match wda.status().await {

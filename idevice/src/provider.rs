@@ -99,7 +99,7 @@ impl IdeviceProvider for TcpProvider {
 
 /// USB-based device connection provider using usbmuxd
 #[cfg(feature = "usbmuxd")]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UsbmuxdProvider {
     /// USB connection address
     pub addr: UsbmuxdAddr,

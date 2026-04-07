@@ -675,6 +675,16 @@ impl<'a> WdaClient<'a> {
             .ok_or(IdeviceError::UnexpectedResponse("unexpected response".into()))
     }
 
+    /// Deletes a session, terminating the app under test.
+    ///
+    /// This is the standard W3C WebDriver `DELETE /session/{id}` endpoint and
+    /// is supported by all WDA builds, unlike the Appium `mobile:` execute routes.
+    pub async fn delete_session(&self, session_id: &str) -> Result<(), IdeviceError> {
+        self.request_json("DELETE", &format!("/session/{session_id}"), None)
+            .await
+            .map(|_| ())
+    }
+
     /// Sends a single HTTP request over a direct device connection and parses
     /// the JSON response body.
     ///
