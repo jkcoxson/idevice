@@ -68,10 +68,12 @@ fn extract_ns_error_message(value: &Value) -> Option<String> {
 
     let user_info = match dict.get("NSUserInfo") {
         Some(Value::Array(items)) => items,
-        _ => return dict
-            .get("NSLocalizedDescription")
-            .and_then(Value::as_string)
-            .map(ToOwned::to_owned),
+        _ => {
+            return dict
+                .get("NSLocalizedDescription")
+                .and_then(Value::as_string)
+                .map(ToOwned::to_owned);
+        }
     };
 
     let mut description = dict
@@ -263,7 +265,9 @@ impl<'a, R: ReadWrite> ProcessControlClient<'a, R> {
             }),
             _ => {
                 warn!("Did not get integer response from launchSuspendedProcess");
-                Err(IdeviceError::UnexpectedResponse("unexpected response".into()))
+                Err(IdeviceError::UnexpectedResponse(
+                    "unexpected response".into(),
+                ))
             }
         }
     }

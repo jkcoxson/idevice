@@ -155,7 +155,9 @@ async fn run(
     let use_bridge = arguments.has_flag("bridge");
     let show_wda_debug_logs = arguments.has_flag("wda-debug-log");
     let wda_timeout = arguments.get_flag::<f64>("wda-timeout").unwrap_or(30.0);
-    let runner_bundle_id: String = arguments.next_argument().expect("runner bundle ID is required");
+    let runner_bundle_id: String = arguments
+        .next_argument()
+        .expect("runner bundle ID is required");
     let target_bundle_id: Option<String> = arguments.next_argument();
 
     println!("[XCTest] Runner:  {}", runner_bundle_id);
