@@ -172,92 +172,55 @@ pub struct Message {
 }
 
 impl Aux {
+    /// Parses the legacy aux wire format used on iOS 16 and earlier
+    ///
+    /// Layout: `[AuxHeader (16 B)][type (4 B)][data...][type (4 B)][data...]...`
+    ///
+    /// Type 0xF0 entries are `PrimitiveDictionary` blocks embedded inside
+    /// the legacy envelope; their bodies are skipped since the useful values
+    /// are the surrounding flat entries.
     fn parse_legacy_bytes(bytes: Vec<u8>) -> Result<Self, IdeviceError> {
         if bytes.len() < 16 {
-            return Err(IdeviceError::NotEnoughBytes(bytes.len(), 24));
+            return Err(IdeviceError::NotEnoughBytes(bytes.len(), 16));
         }
 
+        let mut cursor = Cursor::new(bytes.as_slice());
         let header = AuxHeader {
-            buffer_size: u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
-            unknown: u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
-            aux_size: u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]),
-            unknown2: u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]),
+            buffer_size: Self::read_u32(&mut cursor)?,
+            unknown: Self::read_u32(&mut cursor)?,
+            aux_size: Self::read_u32(&mut cursor)?,
+            unknown2: Self::read_u32(&mut cursor)?,
         };
 
-        let mut bytes = &bytes[16..];
         let mut values = Vec::new();
-        loop {
-            if bytes.len() < 8 {
-                break;
-            }
-            let aux_type = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-            bytes = &bytes[4..];
+        while cursor.position() + 4 <= bytes.len() as u64 {
+            let aux_type = Self::read_u32(&mut cursor)?;
             match aux_type {
                 0x0a => {
-                    // null / PNULL - no payload bytes
-                    // used as dictionary keys and separators
+                    // PNULL separator — used as dictionary keys; not a user value.
                 }
-                0x01 => {
-                    let len = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
-                    bytes = &bytes[4..];
-                    if bytes.len() < len {
-                        return Err(IdeviceError::NotEnoughBytes(bytes.len(), len));
+                0x0f0 => {
+                    // PrimitiveDictionary block embedded in a legacy envelope.
+                    // Layout after the type: u32 flags, u64 body_length, [body].
+                    // Skip the entire block; positional args appear as flat entries.
+                    let _flags = Self::read_u32(&mut cursor)?;
+                    let body_len = Self::read_u64(&mut cursor)?;
+                    let pos = cursor.position() as usize;
+                    let end = pos + body_len as usize;
+                    if end > bytes.len() {
+                        return Err(IdeviceError::NotEnoughBytes(bytes.len(), end));
                     }
-                    values.push(AuxValue::String(String::from_utf8(bytes[..len].to_vec())?));
-                    bytes = &bytes[len..];
+                    cursor.set_position(end as u64);
                 }
-                0x02 => {
-                    let len = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
-                    bytes = &bytes[4..];
-                    if bytes.len() < len {
-                        return Err(IdeviceError::NotEnoughBytes(bytes.len(), len));
-                    }
-                    values.push(AuxValue::Array(bytes[..len].to_vec()));
-                    bytes = &bytes[len..];
+                _ => {
+                    // All other types share the same encoding as parse_primitive,
+                    // but the type word is already consumed above so we reconstruct
+                    // a cursor over [type || remaining] to reuse parse_primitive.
+                    let pos = cursor.position() as usize - 4;
+                    let mut sub = Cursor::new(&bytes[pos..]);
+                    values.push(Self::parse_primitive(&mut sub)?);
+                    cursor.set_position(pos as u64 + sub.position());
                 }
-                0x03 => {
-                    values.push(AuxValue::U32(u32::from_le_bytes([
-                        bytes[0], bytes[1], bytes[2], bytes[3],
-                    ])));
-                    bytes = &bytes[4..];
-                }
-                0x06 => {
-                    if bytes.len() < 8 {
-                        return Err(IdeviceError::NotEnoughBytes(8, bytes.len()));
-                    }
-                    values.push(AuxValue::I64(i64::from_le_bytes([
-                        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
-                        bytes[7],
-                    ])));
-                    bytes = &bytes[8..];
-                }
-                0x09 => {
-                    // Double (f64)
-                    if bytes.len() < 8 {
-                        return Err(IdeviceError::NotEnoughBytes(8, bytes.len()));
-                    }
-                    let bits = u64::from_le_bytes([
-                        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
-                        bytes[7],
-                    ]);
-                    values.push(AuxValue::Double(f64::from_bits(bits)));
-                    bytes = &bytes[8..];
-                }
-                0xf0 => {
-                    // PrimitiveDictionary
-                    // Layout: u32 magic, u32 unknown, u64 body_length, then [key,value] pairs
-                    if bytes.len() < 16 {
-                        return Err(IdeviceError::NotEnoughBytes(16, bytes.len()));
-                    }
-                    // Skip magic (4), unknown (4), body_length (8)
-                    let body_length = u64::from_le_bytes([
-                        bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10],
-                        bytes[11],
-                    ]) as usize;
-                    // Skip the dictionary body content
-                    bytes = &bytes[16 + body_length..];
-                }
-                _ => return Err(DvtError::UnknownAuxValueType(aux_type).into()),
             }
         }
 
@@ -310,26 +273,25 @@ impl Aux {
         }
     }
 
-    /// Parses auxiliary data from bytes
+    /// Parses auxiliary data from bytes, selecting the correct wire format
+    /// based on the leading magic byte.
     ///
-    /// # Arguments
-    /// * `bytes` - Raw byte slice containing auxiliary data
+    /// # Wire formats
     ///
-    /// # Returns
-    /// * `Ok(Aux)` - Parsed auxiliary data
-    /// * `Err(IdeviceError)` - If parsing fails
+    /// **Legacy**: the first byte is NOT `0xF0`.
+    /// The buffer begins with a 16-byte `AuxHeader` followed by flat
+    /// type-tagged value entries.
     ///
-    /// # Errors
-    /// * `IdeviceError::NotEnoughBytes` if input is too short
-    /// * `IdeviceError::UnknownAuxValueType` for unsupported types
-    /// * `IdeviceError` for other parsing failures
+    /// **Modern** (iOS 17+, RSD/testmanagerd path): the first byte IS `0xF0`,
+    /// indicating the entire buffer is a single `PrimitiveDictionary` block
+    /// (`[flags(4B)][unknown(4B)][body_len(8B)][key-value pairs...]`).
+    /// Keys are positional-null sentinels; only the values are collected.
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, IdeviceError> {
         if bytes.is_empty() {
             return Ok(Self::from_values(Vec::new()));
         }
 
-        let magic = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-        if (magic & 0xFF) != 0xF0 {
+        if (bytes[0] as u32) != 0xF0 {
             return Self::parse_legacy_bytes(bytes);
         }
 
@@ -348,13 +310,8 @@ impl Aux {
 
         let mut values = Vec::new();
         while cursor.position() < body_end {
-            let key = Self::parse_primitive(&mut cursor)?;
+            let _key = Self::parse_primitive(&mut cursor)?;
             let value = Self::parse_primitive(&mut cursor)?;
-            if !matches!(key, AuxValue::Array(ref b) if b.is_empty()) {
-                // Python expects a primitive-null key for positional args.
-                // We tolerate unexpected keys by ignoring them rather than
-                // failing the entire message.
-            }
             values.push(value);
         }
 
