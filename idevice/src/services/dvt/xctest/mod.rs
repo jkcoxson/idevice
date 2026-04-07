@@ -20,7 +20,6 @@
 //! }
 //! # }
 //! ```
-// Jackson Coxson
 
 pub mod dtx_services;
 pub mod listener;
@@ -77,7 +76,7 @@ use types::{
     archive_nsuuid_to_bytes, archive_xct_capabilities_to_bytes,
 };
 
-#[cfg(all(feature = "xctest", feature = "wda"))]
+#[cfg(feature = "wda")]
 use tokio::task::JoinHandle;
 
 // ---------------------------------------------------------------------------
@@ -415,7 +414,7 @@ pub(crate) fn build_launch_env(
 }
 
 // ---------------------------------------------------------------------------
-// TASK 03 — testmanagerd connections
+// testmanagerd connections
 // ---------------------------------------------------------------------------
 
 /// Active DTX connections for running XCTest.
@@ -477,6 +476,147 @@ async fn connect_dtx_service(
     Err(last_err.unwrap_or(IdeviceError::ServiceNotFound))
 }
 
+const RSD_GREETING_TIMEOUT_SECS: u64 = 30;
+
+/// DTX capabilities dict announced to the daemon on each connection.
+///
+/// Mirrors `DTXConnection.DEFAULT_CAPABILITIES` from the Instruments protocol.
+fn dtx_capabilities_dict(include_process_control_callback: bool) -> plist::Dictionary {
+    let mut caps = crate::plist!(dict {
+        "com.apple.private.DTXBlockCompression": 0i64,
+        "com.apple.private.DTXConnection": 1i64,
+    });
+    if include_process_control_callback {
+        caps.insert(
+            "com.apple.instruments.client.processcontrol.capability.terminationCallback".into(),
+            plist::Value::Integer(1i64.into()),
+        );
+    }
+    caps
+}
+
+/// Opens a single RSD service port and performs the DTX capability handshake,
+/// retrying up to `MAX_ATTEMPTS` times.
+async fn rsd_connect(
+    handle: &mut crate::tcp::handle::AdapterHandle,
+    handshake: &RsdHandshake,
+    service_name: &str,
+    label: &str,
+    include_process_control_callback: bool,
+) -> Result<RemoteServerClient<Box<dyn ReadWrite>>, IdeviceError> {
+    const MAX_ATTEMPTS: usize = 5;
+    let service = handshake
+        .services
+        .get(service_name)
+        .ok_or_else(|| {
+            warn!("RSD service not found: {}", service_name);
+            IdeviceError::ServiceNotFound
+        })?
+        .clone();
+    let port = service.port;
+
+    let mut last_err = None;
+    for attempt in 1..=MAX_ATTEMPTS {
+        debug!(
+            "[{}] opening service '{}' on remote port {} (attempt {}/{})",
+            label, service_name, port, attempt, MAX_ATTEMPTS
+        );
+        let stream = handle.connect_to_service_port(port).await?;
+        debug!("[{}] service port {} connected", label, port);
+        let mut client = RemoteServerClient::with_label(stream, label);
+        match client
+            .perform_handshake(
+                Some(dtx_capabilities_dict(include_process_control_callback)),
+                std::time::Duration::from_secs(RSD_GREETING_TIMEOUT_SECS),
+            )
+            .await
+        {
+            Ok(remote_capabilities) => {
+                debug!(
+                    "[{}] RSD DTX capabilities exchange complete: {:?}",
+                    label, remote_capabilities
+                );
+                return Ok(client);
+            }
+            Err(error) => {
+                warn!(
+                    "[{}] RSD DTX handshake failed on attempt {}/{}: {}",
+                    label, attempt, MAX_ATTEMPTS, error
+                );
+                last_err = Some(error);
+                if attempt < MAX_ATTEMPTS {
+                    tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+                }
+            }
+        }
+    }
+
+    Err(last_err.unwrap_or(IdeviceError::UnexpectedResponse(
+        "unexpected response".into(),
+    )))
+}
+
+/// Attempts a single CoreDeviceProxy + RSD stack setup, returning all three
+/// DTX connections on success.
+async fn connect_rsd_stack_once(
+    provider: &dyn IdeviceProvider,
+) -> Result<TestManagerConnections, IdeviceError> {
+    let proxy = CoreDeviceProxy::connect(provider).await?;
+    let rsd_port = proxy.tunnel_info().server_rsd_port;
+    let adapter = proxy.create_software_tunnel()?;
+    let mut handle = adapter.to_async_handle();
+
+    debug!("[rsd] connecting to shared RSD port {}", rsd_port);
+    let rsd_stream = handle.connect_to_service_port(rsd_port).await?;
+    let handshake = RsdHandshake::new(rsd_stream).await?;
+    debug!(
+        "[rsd] shared RSD handshake OK — {} services advertised",
+        handshake.services.len()
+    );
+
+    let dvt = match rsd_connect(
+        &mut handle,
+        &handshake,
+        "com.apple.instruments.dtservicehub",
+        "dtservicehub",
+        true,
+    )
+    .await
+    {
+        Ok(client) => client,
+        Err(e) => {
+            warn!(
+                "RSD dtservicehub connect failed ({}), falling back to lockdown DVT",
+                e
+            );
+            connect_dtx_service(provider, &[DVT_SERVICE, DVT_LEGACY_SERVICE], false).await?
+        }
+    };
+    let ctrl = rsd_connect(
+        &mut handle,
+        &handshake,
+        TESTMANAGERD_RSD_SERVICE,
+        "testmanagerd-ctrl",
+        false,
+    )
+    .await?;
+    let main = rsd_connect(
+        &mut handle,
+        &handshake,
+        TESTMANAGERD_RSD_SERVICE,
+        "testmanagerd-main",
+        false,
+    )
+    .await?;
+
+    Ok(TestManagerConnections {
+        ctrl,
+        main,
+        dvt,
+        rsd_handles: vec![handle],
+    })
+}
+
 /// Establishes the three DTX connections for iOS 17+ via CoreDeviceProxy + RSD.
 ///
 /// Opens a software TCP tunnel through CoreDeviceProxy, does the RSD handshake
@@ -485,147 +625,7 @@ async fn connect_dtx_service(
 async fn connect_testmanagerd_rsd(
     provider: &dyn IdeviceProvider,
 ) -> Result<TestManagerConnections, IdeviceError> {
-    const RSD_GREETING_TIMEOUT_SECS: u64 = 30;
     const RSD_STACK_ATTEMPTS: usize = 3;
-
-    // DTX capabilities dict that we announce to the daemon.
-    // Mirrors pymobiledevice3's DTXConnection.DEFAULT_CAPABILITIES.
-    fn dtx_capabilities_dict(include_process_control_callback: bool) -> plist::Dictionary {
-        let mut caps = plist::Dictionary::new();
-        caps.insert(
-            "com.apple.private.DTXBlockCompression".into(),
-            plist::Value::Integer(0i64.into()),
-        );
-        caps.insert(
-            "com.apple.private.DTXConnection".into(),
-            plist::Value::Integer(1i64.into()),
-        );
-        if include_process_control_callback {
-            caps.insert(
-                "com.apple.instruments.client.processcontrol.capability.terminationCallback".into(),
-                plist::Value::Integer(1i64.into()),
-            );
-        }
-        caps
-    }
-
-    async fn rsd_connect(
-        handle: &mut crate::tcp::handle::AdapterHandle,
-        handshake: &RsdHandshake,
-        service_name: &str,
-        label: &str,
-        include_process_control_callback: bool,
-    ) -> Result<RemoteServerClient<Box<dyn ReadWrite>>, IdeviceError> {
-        const MAX_ATTEMPTS: usize = 5;
-        let service = handshake
-            .services
-            .get(service_name)
-            .ok_or_else(|| {
-                warn!("RSD service not found: {}", service_name);
-                IdeviceError::ServiceNotFound
-            })?
-            .clone();
-        let port = service.port;
-
-        let mut last_err = None;
-        for attempt in 1..=MAX_ATTEMPTS {
-            debug!(
-                "[{}] opening service '{}' on remote port {} (attempt {}/{})",
-                label, service_name, port, attempt, MAX_ATTEMPTS
-            );
-            let stream = handle.connect_to_service_port(port).await?;
-            debug!("[{}] service port {} connected", label, port);
-            let mut client = RemoteServerClient::with_label(stream, label);
-            match client
-                .perform_handshake(
-                    Some(dtx_capabilities_dict(include_process_control_callback)),
-                    std::time::Duration::from_secs(RSD_GREETING_TIMEOUT_SECS),
-                )
-                .await
-            {
-                Ok(remote_capabilities) => {
-                    debug!(
-                        "[{}] RSD DTX capabilities exchange complete: {:?}",
-                        label, remote_capabilities
-                    );
-                    return Ok(client);
-                }
-                Err(error) => {
-                    warn!(
-                        "[{}] RSD DTX handshake failed on attempt {}/{}: {}",
-                        label, attempt, MAX_ATTEMPTS, error
-                    );
-                    last_err = Some(error);
-                    if attempt < MAX_ATTEMPTS {
-                        tokio::time::sleep(std::time::Duration::from_millis(750)).await;
-                    }
-                }
-            }
-        }
-
-        Err(last_err.unwrap_or(IdeviceError::UnexpectedResponse(
-            "unexpected response".into(),
-        )))
-    }
-
-    async fn connect_rsd_stack_once(
-        provider: &dyn IdeviceProvider,
-    ) -> Result<TestManagerConnections, IdeviceError> {
-        let proxy = CoreDeviceProxy::connect(provider).await?;
-        let rsd_port = proxy.tunnel_info().server_rsd_port;
-        let adapter = proxy.create_software_tunnel()?;
-        let mut handle = adapter.to_async_handle();
-
-        debug!("[rsd] connecting to shared RSD port {}", rsd_port);
-        let rsd_stream = handle.connect_to_service_port(rsd_port).await?;
-        let handshake = RsdHandshake::new(rsd_stream).await?;
-        debug!(
-            "[rsd] shared RSD handshake OK — {} services advertised",
-            handshake.services.len()
-        );
-
-        let dvt = match rsd_connect(
-            &mut handle,
-            &handshake,
-            "com.apple.instruments.dtservicehub",
-            "dtservicehub",
-            true,
-        )
-        .await
-        {
-            Ok(client) => client,
-            Err(e) => {
-                warn!(
-                    "RSD dtservicehub connect failed ({}), falling back to lockdown DVT",
-                    e
-                );
-                connect_dtx_service(provider, &[DVT_SERVICE, DVT_LEGACY_SERVICE], false).await?
-            }
-        };
-        let ctrl = rsd_connect(
-            &mut handle,
-            &handshake,
-            TESTMANAGERD_RSD_SERVICE,
-            "testmanagerd-ctrl",
-            false,
-        )
-        .await?;
-        let main = rsd_connect(
-            &mut handle,
-            &handshake,
-            TESTMANAGERD_RSD_SERVICE,
-            "testmanagerd-main",
-            false,
-        )
-        .await?;
-
-        Ok(TestManagerConnections {
-            ctrl,
-            main,
-            dvt,
-            rsd_handles: vec![handle],
-        })
-    }
 
     let mut last_err = None;
     for attempt in 1..=RSD_STACK_ATTEMPTS {
@@ -690,7 +690,7 @@ pub(super) async fn connect_testmanagerd(
 }
 
 // ---------------------------------------------------------------------------
-// TASK 04 — session init + process launch
+// session init + process launch
 // ---------------------------------------------------------------------------
 
 /// Initialises the control session on the ctrl DTX channel.
@@ -787,7 +787,7 @@ pub(super) async fn launch_runner<R: ReadWrite + 'static>(
 }
 
 // ---------------------------------------------------------------------------
-// TASK 05 — authorize + driver channel + start plan
+// authorize + driver channel + start plan
 // ---------------------------------------------------------------------------
 
 /// Authorises the test session for the launched runner process.
@@ -1091,7 +1091,7 @@ pub(super) async fn start_executing_test_plan<R: ReadWrite + 'static>(
 }
 
 // ---------------------------------------------------------------------------
-// TASK 06 — _XCT_* dispatch + run_dispatch_loop + XCUITestService
+// _XCT_* dispatch + run_dispatch_loop + XCUITestService
 // ---------------------------------------------------------------------------
 
 // --- Aux-value helpers ------------------------------------------------------
@@ -1822,7 +1822,7 @@ pub struct XCUITestService {
     provider: Arc<dyn IdeviceProvider>,
 }
 
-#[cfg(all(feature = "xctest", feature = "wda"))]
+#[cfg(feature = "wda")]
 #[derive(Debug)]
 pub struct WdaRunHandle {
     task: JoinHandle<Result<(), IdeviceError>>,
@@ -1830,14 +1830,14 @@ pub struct WdaRunHandle {
     status: JsonValue,
 }
 
-#[cfg(all(feature = "xctest", feature = "wda"))]
+#[cfg(feature = "wda")]
 #[derive(Debug)]
 pub struct WdaBridgedRunHandle {
     runner: WdaRunHandle,
     bridge: WdaBridge,
 }
 
-#[cfg(all(feature = "xctest", feature = "wda"))]
+#[cfg(feature = "wda")]
 impl WdaRunHandle {
     /// Returns the device-side ports used by the running WDA instance.
     pub fn ports(&self) -> WdaPorts {
@@ -1865,7 +1865,7 @@ impl WdaRunHandle {
     }
 }
 
-#[cfg(all(feature = "xctest", feature = "wda"))]
+#[cfg(feature = "wda")]
 impl WdaBridgedRunHandle {
     /// Returns the localhost bridge for this WDA runner.
     pub fn bridge(&self) -> &WdaBridge {
@@ -1903,10 +1903,10 @@ impl WdaBridgedRunHandle {
     }
 }
 
-#[cfg(all(feature = "xctest", feature = "wda"))]
+#[cfg(feature = "wda")]
 struct NoopXCTestListener;
 
-#[cfg(all(feature = "xctest", feature = "wda"))]
+#[cfg(feature = "wda")]
 impl XCUITestListener for NoopXCTestListener {}
 
 impl std::fmt::Debug for XCUITestService {

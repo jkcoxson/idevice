@@ -330,18 +330,18 @@ impl XCTCapabilities {
     /// These match the values sent by a recent Xcode release and must be
     /// present for the modern DDI protocol variant to work correctly.
     pub fn ide_defaults() -> Self {
-        let mut caps = Dictionary::new();
-        let t = Value::Boolean(true);
-        caps.insert("expected failure test capability".into(), t.clone());
-        caps.insert("test case run configurations".into(), t.clone());
-        caps.insert("test timeout capability".into(), t.clone());
-        caps.insert("test iterations".into(), t.clone());
-        caps.insert("request diagnostics for specific devices".into(), t.clone());
-        caps.insert("delayed attachment transfer".into(), t.clone());
-        caps.insert("skipped test capability".into(), t.clone());
-        caps.insert("daemon container sandbox extension".into(), t.clone());
-        caps.insert("ubiquitous test identifiers".into(), t.clone());
-        caps.insert("XCTIssue capability".into(), t);
+        let caps = crate::plist!(dict {
+            "expected failure test capability": true,
+            "test case run configurations": true,
+            "test timeout capability": true,
+            "test iterations": true,
+            "request diagnostics for specific devices": true,
+            "delayed attachment transfer": true,
+            "skipped test capability": true,
+            "daemon container sandbox extension": true,
+            "ubiquitous test identifiers": true,
+            "XCTIssue capability": true,
+        });
         Self { capabilities: caps }
     }
 
