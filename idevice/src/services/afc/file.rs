@@ -12,11 +12,25 @@ use crate::{
     },
 };
 
+/// Handle for an open file on the device.
+///
+/// This handle implements **async `Drop`** to automatically close the file for users who forget,
+/// but only on a **Tokio multi-threaded runtime**
+///
+///
+/// Consider calling `.close()`, it won't drop if expliclity closed
 #[derive(Debug)]
 pub struct FileDescriptor<'a> {
     inner: Pin<Box<InnerFileDescriptor<'a>>>,
 }
 
+/// Owned handle for an open file on the device.
+///
+/// This handle implements **async `Drop`** to automatically close the file for users who forget,
+/// but only on a **Tokio multi-threaded runtime**
+///
+///
+/// Consider calling `.close()`, it won't drop if expliclity closed
 #[derive(Debug)]
 pub struct OwnedFileDescriptor {
     inner: Pin<Box<OwnedInnerFileDescriptor>>,

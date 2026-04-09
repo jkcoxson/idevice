@@ -23,7 +23,7 @@ fn chunk_number(n: usize, chunk_size: usize) -> impl Iterator<Item = usize> {
         .map(move |i| (n - i).min(chunk_size))
 }
 
-// Used to descripe what the future returns
+/// Descripes what the future returns
 #[derive(Debug)]
 pub(crate) enum PendingResult {
     // writing
@@ -36,8 +36,6 @@ pub(crate) enum PendingResult {
 
 type OwnedBoxFuture = Pin<Box<dyn Future<Output = Result<PendingResult, IdeviceError>> + Send>>;
 
-/// Handle for an open file on the device.
-/// Call close before dropping
 pub(crate) struct InnerFileDescriptor<'a> {
     pub(crate) client: &'a mut AfcClient,
     pub(crate) fd: u64,
@@ -49,8 +47,6 @@ pub(crate) struct InnerFileDescriptor<'a> {
     pub(crate) dropped: bool,
 }
 
-/// Handle for an owned open file on the device.
-/// Call close before dropping
 pub(crate) struct OwnedInnerFileDescriptor {
     pub(crate) client: AfcClient,
     pub(crate) fd: u64,

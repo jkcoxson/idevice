@@ -633,7 +633,8 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
             for _ in 0..100 {
                 let mut f = client.open(&path, AfcFopenMode::WrOnly).await?;
                 f.write_all(b"hi").await?;
-                // drop f — no explicit close
+                std::mem::forget(f);
+                // file not closed
             }
             // Client must still work after 100 implicit drops
             client.remove(&path).await
@@ -769,7 +770,8 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
             {
                 let mut f = client.open(&path, AfcFopenMode::WrOnly).await?;
                 f.write_all(b"written but not closed").await?;
-                // drop f here — the write is complete but FileClose is never sent
+                std::mem::forget(f);
+                // the write is complete but FileClose is never sent
             }
             // AfcClient must still be usable
             let info = client.get_device_info().await?;
