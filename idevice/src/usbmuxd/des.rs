@@ -63,23 +63,40 @@ impl TryFrom<DeviceListResponse> for UsbmuxdDevice {
                         ));
                     }
 
-                    match addr[0] as _ {
-                        AF_INET => {
+                    // macOS sets the first byte as the len, which are:
+                    //  0x10 -> IPv4
+                    //  0x1C -> IPv6
+                    //
+                    // either way, IPv4 is always 16 bytes and IPv6 is always 28 bytes
+                    match addr.as_slice() {
+                        // it's an IPv4 address, but the len is short
+                        [family, ..] | [0x10, family, ..]
+                            if *family == AF_INET as u8 && addr.len() < 0x10 =>
+                        {
+                            warn!("IPv4 address is less than 16 bytes");
+                            return Err(IdeviceError::UnexpectedResponse(
+                                "IPv4 network address too short, expected 16 bytes".into(),
+                            ));
+                        }
+
+                        [family, ..] | [0x10, family, ..] if *family == AF_INET as u8 => {
                             // IPv4
                             Connection::Network(IpAddr::V4(Ipv4Addr::new(
                                 addr[4], addr[5], addr[6], addr[7],
                             )))
                         }
-                        AF_INET6 => {
-                            // IPv6
-                            if addr.len() < 24 {
-                                warn!("IPv6 address is less than 24 bytes");
-                                return Err(IdeviceError::UnexpectedResponse(
-                                    "IPv6 network address too short, expected at least 24 bytes"
-                                        .into(),
-                                ));
-                            }
 
+                        [family, ..] | [0x1C, family, ..]
+                            if *family == AF_INET6 as u8 && addr.len() < 28 =>
+                        {
+                            warn!("IPv6 address is less than 28 bytes");
+                            return Err(IdeviceError::UnexpectedResponse(
+                                "IPv6 network address too short, expected 28 bytes".into(),
+                            ));
+                        }
+
+                        [family, ..] | [0x1C, family, ..] if *family == AF_INET6 as u8 => {
+                            // IPv6
                             Connection::Network(IpAddr::V6(Ipv6Addr::new(
                                 u16::from_be_bytes([addr[8], addr[9]]),
                                 u16::from_be_bytes([addr[10], addr[11]]),
@@ -91,34 +108,25 @@ impl TryFrom<DeviceListResponse> for UsbmuxdDevice {
                                 u16::from_be_bytes([addr[22], addr[23]]),
                             )))
                         }
-                        0x1C => {
-                            if addr.len() < 28 {
-                                warn!("IPv6 sockaddr_in6 data too short (len {})", addr.len());
-                                return Err(IdeviceError::UnexpectedResponse(
-                                    "IPv6 sockaddr_in6 data too short, expected at least 28 bytes"
-                                        .into(),
-                                ));
-                            }
-                            if addr[1] == AF_INET6 as u8 {
-                                // IPv6 address starts at offset 8 in sockaddr_in6
-                                Connection::Network(IpAddr::V6(Ipv6Addr::new(
-                                    u16::from_be_bytes([addr[8], addr[9]]),
-                                    u16::from_be_bytes([addr[10], addr[11]]),
-                                    u16::from_be_bytes([addr[12], addr[13]]),
-                                    u16::from_be_bytes([addr[14], addr[15]]),
-                                    u16::from_be_bytes([addr[16], addr[17]]),
-                                    u16::from_be_bytes([addr[18], addr[19]]),
-                                    u16::from_be_bytes([addr[20], addr[21]]),
-                                    u16::from_be_bytes([addr[22], addr[23]]),
-                                )))
-                            } else {
-                                warn!(
-                                    "Expected IPv6 family (0x1E) but got {:02X} for length 0x1C",
-                                    addr[1]
-                                );
-                                Connection::Unknown(format!("Network {:02X}", addr[1]))
-                            }
+
+                        // starts with IPv6 len, but it's not IPv6
+                        [0x1C, addr_family, ..] if *addr_family != AF_INET6 as u8 => {
+                            warn!(
+                                "Expected IPv6 family ({:02X}) but got {:02X} for length 0x1C",
+                                AF_INET6, addr_family
+                            );
+                            Connection::Unknown(format!("Network {:02X}", addr_family))
                         }
+
+                        // starts with IPv4 len, but it's not IPv4
+                        [0x10, addr_family, ..] if *addr_family != AF_INET as u8 => {
+                            warn!(
+                                "Expected IPv4 family ({:02X}) but got {:02X} for length 0x10",
+                                AF_INET, addr_family
+                            );
+                            Connection::Unknown(format!("Network {:02X}", addr_family))
+                        }
+
                         _ => {
                             warn!("Unknown IP address protocol: {:02X}", addr[0]);
                             Connection::Unknown(format!("Network {:02X}", addr[0]))
