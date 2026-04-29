@@ -7,10 +7,18 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		396C57412EA7F5DC00188F4B /* application_listing.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 396C56B12EA7F53000188F4B /* application_listing.cpp */; };
+		396C57422EA7F5DC00188F4B /* condition_inducer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 396C56B22EA7F53000188F4B /* condition_inducer.cpp */; };
+		396C57432EA7F5DC00188F4B /* device_info.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 396C56B32EA7F53000188F4B /* device_info.cpp */; };
+		296C57412EA7F5DC00188F4B /* energy_monitor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 296C56B12EA7F53000188F4B /* energy_monitor.cpp */; };
+		196C57442EA7F5DC00188F4B /* graphics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56B32EA7F53000188F4B /* graphics.cpp */; };
 		196C57452EA7F5DC00188F4B /* location_simulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56B42EA7F53000188F4B /* location_simulation.cpp */; };
+		396C57442EA7F5DC00188F4B /* network_monitor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 396C56B42EA7F53000188F4B /* network_monitor.cpp */; };
+		196C57432EA7F5DC00188F4B /* notifications.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56B22EA7F53000188F4B /* notifications.cpp */; };
 		196C57462EA7F5DC00188F4B /* process_control.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56B52EA7F53000188F4B /* process_control.cpp */; };
 		196C57472EA7F5DC00188F4B /* remote_server.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56B62EA7F53000188F4B /* remote_server.cpp */; };
 		196C57482EA7F5DC00188F4B /* screenshot.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56B72EA7F53000188F4B /* screenshot.cpp */; };
+		396C57452EA7F5DC00188F4B /* sysmontap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 396C56B52EA7F53000188F4B /* sysmontap.cpp */; };
 		196C57492EA7F5DC00188F4B /* adapter_stream.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56B92EA7F53000188F4B /* adapter_stream.cpp */; };
 		196C574A2EA7F5DC00188F4B /* app_service.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56BA2EA7F53000188F4B /* app_service.cpp */; };
 		196C574B2EA7F5DC00188F4B /* core_device.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56BB2EA7F53000188F4B /* core_device.cpp */; };
@@ -27,10 +35,18 @@
 		196C57562EA7F5DC00188F4B /* rsd.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56C62EA7F53000188F4B /* rsd.cpp */; };
 		196C57572EA7F5DC00188F4B /* tcp_callback_feeder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56C72EA7F53000188F4B /* tcp_callback_feeder.cpp */; };
 		196C57582EA7F5DC00188F4B /* usbmuxd.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 196C56C82EA7F53000188F4B /* usbmuxd.cpp */; };
+		396C57512EA7F5F400188F4B /* application_listing.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 396C56D12EA7F54900188F4B /* application_listing.hpp */; };
+		396C57522EA7F5F400188F4B /* condition_inducer.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 396C56D22EA7F54900188F4B /* condition_inducer.hpp */; };
+		396C57532EA7F5F400188F4B /* device_info.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 396C56D32EA7F54900188F4B /* device_info.hpp */; };
+		296C57562EA7F5F400188F4B /* energy_monitor.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 296C56DB2EA7F54900188F4B /* energy_monitor.hpp */; };
+		196C57582EA7F5F400188F4B /* graphics.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56DD2EA7F54900188F4B /* graphics.hpp */; };
 		196C57592EA7F5F400188F4B /* location_simulation.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56DE2EA7F54900188F4B /* location_simulation.hpp */; };
+		396C57542EA7F5F400188F4B /* network_monitor.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 396C56D42EA7F54900188F4B /* network_monitor.hpp */; };
+		196C57572EA7F5F400188F4B /* notifications.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56DC2EA7F54900188F4B /* notifications.hpp */; };
 		196C575A2EA7F5F400188F4B /* process_control.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56DF2EA7F54900188F4B /* process_control.hpp */; };
 		196C575B2EA7F5F400188F4B /* remote_server.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56E02EA7F54900188F4B /* remote_server.hpp */; };
 		196C575C2EA7F5F400188F4B /* screenshot.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56E12EA7F54900188F4B /* screenshot.hpp */; };
+		396C57552EA7F5F400188F4B /* sysmontap.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 396C56D52EA7F54900188F4B /* sysmontap.hpp */; };
 		196C575D2EA7F5F400188F4B /* adapter_stream.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56E32EA7F54900188F4B /* adapter_stream.hpp */; };
 		196C575E2EA7F5F400188F4B /* app_service.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56E42EA7F54900188F4B /* app_service.hpp */; };
 		196C575F2EA7F5F400188F4B /* bindings.hpp in Headers */ = {isa = PBXBuildFile; fileRef = 196C56E52EA7F54900188F4B /* bindings.hpp */; };
@@ -56,10 +72,18 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		396C56B12EA7F53000188F4B /* application_listing.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = application_listing.cpp; sourceTree = "<group>"; };
+		396C56B22EA7F53000188F4B /* condition_inducer.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = condition_inducer.cpp; sourceTree = "<group>"; };
+		396C56B32EA7F53000188F4B /* device_info.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = device_info.cpp; sourceTree = "<group>"; };
+		296C56B12EA7F53000188F4B /* energy_monitor.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = energy_monitor.cpp; sourceTree = "<group>"; };
+		196C56B32EA7F53000188F4B /* graphics.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = graphics.cpp; sourceTree = "<group>"; };
 		196C56B42EA7F53000188F4B /* location_simulation.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = location_simulation.cpp; sourceTree = "<group>"; };
+		396C56B42EA7F53000188F4B /* network_monitor.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = network_monitor.cpp; sourceTree = "<group>"; };
+		196C56B22EA7F53000188F4B /* notifications.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = notifications.cpp; sourceTree = "<group>"; };
 		196C56B52EA7F53000188F4B /* process_control.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = process_control.cpp; sourceTree = "<group>"; };
 		196C56B62EA7F53000188F4B /* remote_server.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = remote_server.cpp; sourceTree = "<group>"; };
 		196C56B72EA7F53000188F4B /* screenshot.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = screenshot.cpp; sourceTree = "<group>"; };
+		396C56B52EA7F53000188F4B /* sysmontap.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = sysmontap.cpp; sourceTree = "<group>"; };
 		196C56B92EA7F53000188F4B /* adapter_stream.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = adapter_stream.cpp; sourceTree = "<group>"; };
 		196C56BA2EA7F53000188F4B /* app_service.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = app_service.cpp; sourceTree = "<group>"; };
 		196C56BB2EA7F53000188F4B /* core_device.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = core_device.cpp; sourceTree = "<group>"; };
@@ -76,10 +100,18 @@
 		196C56C62EA7F53000188F4B /* rsd.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = rsd.cpp; sourceTree = "<group>"; };
 		196C56C72EA7F53000188F4B /* tcp_callback_feeder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = tcp_callback_feeder.cpp; sourceTree = "<group>"; };
 		196C56C82EA7F53000188F4B /* usbmuxd.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = usbmuxd.cpp; sourceTree = "<group>"; };
+		396C56D12EA7F54900188F4B /* application_listing.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = application_listing.hpp; sourceTree = "<group>"; };
+		396C56D22EA7F54900188F4B /* condition_inducer.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = condition_inducer.hpp; sourceTree = "<group>"; };
+		396C56D32EA7F54900188F4B /* device_info.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = device_info.hpp; sourceTree = "<group>"; };
+		296C56DB2EA7F54900188F4B /* energy_monitor.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = energy_monitor.hpp; sourceTree = "<group>"; };
+		196C56DD2EA7F54900188F4B /* graphics.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = graphics.hpp; sourceTree = "<group>"; };
 		196C56DE2EA7F54900188F4B /* location_simulation.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = location_simulation.hpp; sourceTree = "<group>"; };
+		396C56D42EA7F54900188F4B /* network_monitor.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = network_monitor.hpp; sourceTree = "<group>"; };
+		196C56DC2EA7F54900188F4B /* notifications.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = notifications.hpp; sourceTree = "<group>"; };
 		196C56DF2EA7F54900188F4B /* process_control.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = process_control.hpp; sourceTree = "<group>"; };
 		196C56E02EA7F54900188F4B /* remote_server.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = remote_server.hpp; sourceTree = "<group>"; };
 		196C56E12EA7F54900188F4B /* screenshot.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = screenshot.hpp; sourceTree = "<group>"; };
+		396C56D52EA7F54900188F4B /* sysmontap.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = sysmontap.hpp; sourceTree = "<group>"; };
 		196C56E32EA7F54900188F4B /* adapter_stream.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = adapter_stream.hpp; sourceTree = "<group>"; };
 		196C56E42EA7F54900188F4B /* app_service.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = app_service.hpp; sourceTree = "<group>"; };
 		196C56E52EA7F54900188F4B /* bindings.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = bindings.hpp; sourceTree = "<group>"; };
@@ -121,10 +153,18 @@
 		196C56B82EA7F53000188F4B /* dvt */ = {
 			isa = PBXGroup;
 			children = (
+				396C56B12EA7F53000188F4B /* application_listing.cpp */,
+				396C56B22EA7F53000188F4B /* condition_inducer.cpp */,
+				396C56B32EA7F53000188F4B /* device_info.cpp */,
+				296C56B12EA7F53000188F4B /* energy_monitor.cpp */,
+				196C56B32EA7F53000188F4B /* graphics.cpp */,
 				196C56B42EA7F53000188F4B /* location_simulation.cpp */,
+				396C56B42EA7F53000188F4B /* network_monitor.cpp */,
+				196C56B22EA7F53000188F4B /* notifications.cpp */,
 				196C56B52EA7F53000188F4B /* process_control.cpp */,
 				196C56B62EA7F53000188F4B /* remote_server.cpp */,
 				196C56B72EA7F53000188F4B /* screenshot.cpp */,
+				396C56B52EA7F53000188F4B /* sysmontap.cpp */,
 			);
 			path = dvt;
 			sourceTree = "<group>";
@@ -156,10 +196,18 @@
 		196C56E22EA7F54900188F4B /* dvt */ = {
 			isa = PBXGroup;
 			children = (
+				396C56D12EA7F54900188F4B /* application_listing.hpp */,
+				396C56D22EA7F54900188F4B /* condition_inducer.hpp */,
+				396C56D32EA7F54900188F4B /* device_info.hpp */,
+				296C56DB2EA7F54900188F4B /* energy_monitor.hpp */,
+				196C56DD2EA7F54900188F4B /* graphics.hpp */,
 				196C56DE2EA7F54900188F4B /* location_simulation.hpp */,
+				396C56D42EA7F54900188F4B /* network_monitor.hpp */,
+				196C56DC2EA7F54900188F4B /* notifications.hpp */,
 				196C56DF2EA7F54900188F4B /* process_control.hpp */,
 				196C56E02EA7F54900188F4B /* remote_server.hpp */,
 				196C56E12EA7F54900188F4B /* screenshot.hpp */,
+				396C56D52EA7F54900188F4B /* sysmontap.hpp */,
 			);
 			path = dvt;
 			sourceTree = "<group>";
@@ -235,10 +283,18 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				396C57512EA7F5F400188F4B /* application_listing.hpp in Headers */,
+				396C57522EA7F5F400188F4B /* condition_inducer.hpp in Headers */,
+				396C57532EA7F5F400188F4B /* device_info.hpp in Headers */,
+				296C57562EA7F5F400188F4B /* energy_monitor.hpp in Headers */,
+				196C57582EA7F5F400188F4B /* graphics.hpp in Headers */,
 				196C57592EA7F5F400188F4B /* location_simulation.hpp in Headers */,
+				396C57542EA7F5F400188F4B /* network_monitor.hpp in Headers */,
+				196C57572EA7F5F400188F4B /* notifications.hpp in Headers */,
 				196C575A2EA7F5F400188F4B /* process_control.hpp in Headers */,
 				196C575B2EA7F5F400188F4B /* remote_server.hpp in Headers */,
 				196C575C2EA7F5F400188F4B /* screenshot.hpp in Headers */,
+				396C57552EA7F5F400188F4B /* sysmontap.hpp in Headers */,
 				196C575D2EA7F5F400188F4B /* adapter_stream.hpp in Headers */,
 				196C575E2EA7F5F400188F4B /* app_service.hpp in Headers */,
 				196C575F2EA7F5F400188F4B /* bindings.hpp in Headers */,
@@ -346,10 +402,18 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				396C57412EA7F5DC00188F4B /* application_listing.cpp in Sources */,
+				396C57422EA7F5DC00188F4B /* condition_inducer.cpp in Sources */,
+				396C57432EA7F5DC00188F4B /* device_info.cpp in Sources */,
+				296C57412EA7F5DC00188F4B /* energy_monitor.cpp in Sources */,
+				196C57442EA7F5DC00188F4B /* graphics.cpp in Sources */,
 				196C57452EA7F5DC00188F4B /* location_simulation.cpp in Sources */,
+				396C57442EA7F5DC00188F4B /* network_monitor.cpp in Sources */,
+				196C57432EA7F5DC00188F4B /* notifications.cpp in Sources */,
 				196C57462EA7F5DC00188F4B /* process_control.cpp in Sources */,
 				196C57472EA7F5DC00188F4B /* remote_server.cpp in Sources */,
 				196C57482EA7F5DC00188F4B /* screenshot.cpp in Sources */,
+				396C57452EA7F5DC00188F4B /* sysmontap.cpp in Sources */,
 				196C57492EA7F5DC00188F4B /* adapter_stream.cpp in Sources */,
 				196C574A2EA7F5DC00188F4B /* app_service.cpp in Sources */,
 				196C574B2EA7F5DC00188F4B /* core_device.cpp in Sources */,

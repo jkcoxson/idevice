@@ -24,6 +24,27 @@
     <ClInclude Include="..\include\idevice++\dvt\location_simulation.hpp">
       <Filter>Header Files\idevice++</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\idevice++\dvt\application_listing.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\dvt\condition_inducer.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\dvt\device_info.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\dvt\energy_monitor.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\dvt\graphics.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\dvt\network_monitor.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\dvt\notifications.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
     <ClInclude Include="..\include\idevice++\dvt\process_control.hpp">
       <Filter>Header Files\idevice++</Filter>
     </ClInclude>
@@ -31,6 +52,9 @@
       <Filter>Header Files\idevice++</Filter>
     </ClInclude>
     <ClInclude Include="..\include\idevice++\dvt\screenshot.hpp">
+      <Filter>Header Files\idevice++</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\idevice++\dvt\sysmontap.hpp">
       <Filter>Header Files\idevice++</Filter>
     </ClInclude>
     <ClInclude Include="..\include\idevice++\adapter_stream.hpp">
@@ -146,6 +170,27 @@
     <ClCompile Include="..\src\dvt\location_simulation.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\dvt\application_listing.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dvt\condition_inducer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dvt\device_info.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dvt\energy_monitor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dvt\graphics.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dvt\network_monitor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dvt\notifications.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\dvt\process_control.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -153,6 +198,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\src\dvt\screenshot.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dvt\sysmontap.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
