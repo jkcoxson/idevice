@@ -1,4 +1,4 @@
-#![doc = include_str!("../README.md")]
+#![cfg_attr(docsrs, doc = include_str!("../README.md"))]
 #![warn(missing_debug_implementations)]
 #![warn(missing_copy_implementations)]
 // Jackson Coxson
