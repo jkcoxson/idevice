@@ -152,6 +152,7 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
                 .expect("Failed to open");
 
             let res = file.read_entire().await.expect("Failed to read");
+            file.close().await.expect("Failed to close");
             tokio::fs::write(save, res)
                 .await
                 .expect("Failed to write to file");
@@ -169,6 +170,7 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
             file.write_entire(&bytes)
                 .await
                 .expect("Failed to upload bytes");
+            file.close().await.expect("Failed to close");
         }
         "remove" => {
             let path = sub_args.next_argument::<String>().expect("No path passed");
