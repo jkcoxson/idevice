@@ -98,22 +98,7 @@ impl AfcClient {
     ) -> Result<Self, IdeviceError> {
         let mut lockdown = LockdownClient::connect(provider).await?;
 
-        #[cfg(feature = "openssl")]
         let legacy = lockdown
-            .get_value(Some("ProductVersion"), None)
-            .await
-            .ok()
-            .as_ref()
-            .and_then(|x| x.as_string())
-            .and_then(|x| x.split(".").next())
-            .and_then(|x| x.parse::<u8>().ok())
-            .map(|x| x < 5)
-            .unwrap_or(false);
-
-        #[cfg(not(feature = "openssl"))]
-        let legacy = false;
-
-        lockdown
             .start_session(&provider.get_pairing_file().await?)
             .await?;
 
