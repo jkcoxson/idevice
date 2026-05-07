@@ -49,8 +49,7 @@ impl<R: ReadWrite> CdTunnel<R> {
             "type": "clientHandshakeRequest",
             "mtu": DEFAULT_MTU
         });
-        let body =
-            serde_json::to_vec(&request).map_err(|e| IdeviceError::InternalError(e.to_string()))?;
+        let body = serde_json::to_vec(&request)?;
 
         stream.write_all(CDTUNNEL_MAGIC).await?;
         stream.write_all(&(body.len() as u16).to_be_bytes()).await?;
@@ -74,8 +73,7 @@ impl<R: ReadWrite> CdTunnel<R> {
         let mut response_buf = vec![0u8; response_len];
         stream.read_exact(&mut response_buf).await?;
 
-        let response: serde_json::Value = serde_json::from_slice(&response_buf)
-            .map_err(|e| IdeviceError::InternalError(e.to_string()))?;
+        let response: serde_json::Value = serde_json::from_slice(&response_buf)?;
 
         debug!("CDTunnel handshake response: {response:#?}");
 
