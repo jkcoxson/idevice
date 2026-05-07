@@ -156,7 +156,8 @@ impl LockdownClient {
     /// * `pairing_file` - Contains the device's identity and certificates
     ///
     /// # Returns
-    /// `Ok(())` on successful session establishment
+    /// `Ok(legacy)` on successful session establishment, where `legacy` indicates
+    /// whether the device is running iOS < 5 and requires legacy TLS settings
     ///
     /// # Errors
     /// Returns `IdeviceError` if:
@@ -166,7 +167,7 @@ impl LockdownClient {
     pub async fn start_session(
         &mut self,
         pairing_file: &pairing_file::PairingFile,
-    ) -> Result<(), IdeviceError> {
+    ) -> Result<bool, IdeviceError> {
         if self.idevice.socket.is_none() {
             return Err(IdeviceError::NoEstablishedConnection);
         }
@@ -208,7 +209,7 @@ impl LockdownClient {
         }
 
         self.idevice.start_session(pairing_file, legacy).await?;
-        Ok(())
+        Ok(legacy)
     }
 
     /// Requests to start a service on the device

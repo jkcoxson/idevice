@@ -139,7 +139,7 @@ pub unsafe extern "C" fn lockdownd_start_session(
     client: *mut LockdowndClientHandle,
     pairing_file: *mut IdevicePairingFile,
 ) -> *mut IdeviceFfiError {
-    let res: Result<(), IdeviceError> = run_sync_local(async move {
+    let res: Result<_, IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
         let pairing_file_ref = unsafe { &(*pairing_file).0 };
 
