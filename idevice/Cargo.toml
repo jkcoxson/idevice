@@ -209,6 +209,8 @@ remote_pairing = [
   "dep:cbc",
   "dep:hmac",
   "dep:sha1",
+  "dep:sha2",
+  "dep:rsa",
 ]
 restore_service = []
 rsd = ["xpc"]
