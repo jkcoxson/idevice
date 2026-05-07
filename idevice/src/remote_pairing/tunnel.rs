@@ -33,8 +33,7 @@ pub async fn connect_tls_psk_tunnel_native(
         "type": "clientHandshakeRequest",
         "mtu": DEFAULT_MTU
     });
-    let body =
-        serde_json::to_vec(&request).map_err(|e| IdeviceError::InternalError(e.to_string()))?;
+    let body = serde_json::to_vec(&request)?;
 
     let mut pkt = Vec::new();
     pkt.extend_from_slice(CDTUNNEL_MAGIC);
