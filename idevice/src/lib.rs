@@ -791,7 +791,7 @@ pub enum IdeviceError {
     Utf8(#[from] std::string::FromUtf8Error),
     #[error("failed to parse bytes as valid utf8")]
     Utf8Error,
-    #[cfg(feature = "core_device_proxy")]
+    #[cfg(feature = "_serde_json")]
     #[error("JSON serialization failed")]
     Json(#[from] serde_json::Error),
     #[error("cannot parse string as IpAddr")]
@@ -800,7 +800,7 @@ pub enum IdeviceError {
     NotEnoughBytes(usize, usize),
     #[error("integer overflow")]
     IntegerOverflow,
-    #[cfg(any(feature = "tss", feature = "tunneld"))]
+    #[cfg(feature = "_reqwest")]
     #[error("http reqwest error")]
     Reqwest(#[from] reqwest::Error),
 
@@ -995,12 +995,12 @@ impl IdeviceError {
             IdeviceError::Plist(_) => 5,
             IdeviceError::Utf8(_) => 6,
             IdeviceError::Utf8Error => 7,
-            #[cfg(feature = "core_device_proxy")]
+            #[cfg(feature = "_serde_json")]
             IdeviceError::Json(_) => 8,
             IdeviceError::AddrParseError(_) => 9,
             IdeviceError::NotEnoughBytes(_, _) => 10,
             IdeviceError::IntegerOverflow => 11,
-            #[cfg(any(feature = "tss", feature = "tunneld"))]
+            #[cfg(feature = "_reqwest")]
             IdeviceError::Reqwest(_) => 12,
 
             // 13: Protocol/device response

@@ -37,8 +37,6 @@ chrono = { version = "0.4", optional = true, default-features = false, features 
 ] }
 
 serde_json = { version = "1", optional = true }
-json = { version = "0.12", optional = true }
-byteorder = { version = "1.5", optional = true }
 bytes = { version = "1.10", optional = true }
 
 reqwest = { version = "0.13", features = [
@@ -119,17 +117,21 @@ aws-lc = ["rustls", "rustls/aws-lc-rs", "tokio-rustls/aws-lc-rs"]
 ring = ["rustls", "rustls/ring", "tokio-rustls/ring"]
 rustls = ["dep:rustls", "dep:tokio-rustls"]
 openssl = ["dep:openssl", "dep:tokio-openssl"]
+# Internal features: gate error‐conversion impls so every feature that pulls
+# in the dep automatically gets `From<…> for IdeviceError`.
+_serde_json = ["dep:serde_json"]
+_reqwest = ["dep:reqwest"]
 
 afc = ["dep:chrono", "dep:futures"]
 amfi = []
 bt_packet_logger = []
 companion_proxy = []
 core_device = ["xpc", "dep:uuid", "dep:ns-keyed-archive"]
-core_device_proxy = ["dep:serde_json", "dep:json", "dep:byteorder"]
+core_device_proxy = ["_serde_json"]
 crashreportcopymobile = ["afc"]
 debug_proxy = []
 diagnostics_relay = []
-dvt = ["dep:byteorder", "dep:ns-keyed-archive"]
+dvt = ["dep:ns-keyed-archive"]
 energy_monitor = ["dvt"]
 graphics = ["dvt", "rsd"]
 device_info = ["dvt"]
@@ -159,9 +161,9 @@ xctest = [
 springboardservices = []
 misagent = []
 mobile_image_mounter = ["dep:sha2"]
-mobileactivationd = ["dep:reqwest"]
+mobileactivationd = ["_reqwest"]
 mobilebackup2 = []
-wda = ["dep:serde_json", "tokio/time", "tokio/net"]
+wda = ["_serde_json", "tokio/time", "tokio/net"]
 notification_proxy = [
   "tokio/macros",
   "tokio/time",
@@ -196,8 +198,8 @@ wasm = [
   "wasm-crypto",
 ]
 remote_pairing = [
-  "dep:serde_json",
-  "dep:json",
+  "_serde_json",
+  "xpc",
   "dep:x25519-dalek",
   "dep:ed25519-dalek",
   "dep:hkdf",
@@ -222,8 +224,8 @@ tunnel_tcp_stack = ["dep:jktcp"]
 # `tokio/fs`, which doesn't compile on wasm32, so it is opt-in rather than
 # implied by `tunnel_tcp_stack`.
 tunnel_tcp_stack_pcap = ["tunnel_tcp_stack", "jktcp/pcap"]
-tss = ["dep:uuid", "dep:reqwest"]
-tunneld = ["dep:serde_json", "dep:json", "dep:reqwest"]
+tss = ["dep:uuid", "_reqwest"]
+tunneld = ["_serde_json", "_reqwest"]
 usbmuxd = ["tokio/net", "dep:futures"]
 xpc = ["dep:indexmap", "dep:uuid", "dep:async-stream", "dep:futures"]
 full = [
