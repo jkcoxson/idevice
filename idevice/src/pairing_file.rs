@@ -55,7 +55,7 @@ pub struct PairingFile {
     pub root_certificate: X509,
     pub system_buid: String,
     pub host_id: String,
-    pub escrow_bag: Vec<u8>,
+    pub escrow_bag: Option<Vec<u8>>,
     pub wifi_mac_address: String,
     pub udid: Option<String>,
 }
