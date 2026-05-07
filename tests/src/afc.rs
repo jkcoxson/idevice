@@ -42,10 +42,12 @@ async fn roundtrip(
     {
         let mut f = client.open(path, AfcFopenMode::WrOnly).await?;
         f.write_all(data).await?;
+        f.close().await?;
     }
     let mut f = client.open(path, AfcFopenMode::RdOnly).await?;
     let mut buf = Vec::new();
     f.read_to_end(&mut buf).await?;
+    f.close().await?;
     if buf != data {
         return Err(idevice::IdeviceError::UnexpectedResponse(format!(
             "roundtrip mismatch: wrote {} bytes, read {} bytes, content differs",
@@ -147,10 +149,12 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
             {
                 let mut f = client.open(&path, AfcFopenMode::WrOnly).await?;
                 f.write_entire(data).await?;
+                f.close().await?;
             }
             {
                 let mut f = client.open(&path, AfcFopenMode::RdOnly).await?;
                 let got = f.read_entire().await?;
+                f.close().await?;
                 if got != data {
                     return Err(idevice::IdeviceError::UnexpectedResponse(
                         "read_entire content mismatch".into(),
@@ -172,11 +176,13 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
             {
                 let mut f = client.open(&path, AfcFopenMode::WrOnly).await?;
                 f.write_all(data).await?;
+                f.close().await?;
             }
             {
                 let mut f = client.open(&path, AfcFopenMode::RdOnly).await?;
                 let mut buf = Vec::new();
                 f.read_to_end(&mut buf).await?;
+                f.close().await?;
                 if buf != data {
                     return Err(idevice::IdeviceError::UnexpectedResponse(
                         "async read content mismatch".into(),
@@ -191,13 +197,15 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
     run_test!("afc: zero-length file", success, failure, async {
         let path = p("empty.bin");
         {
-            let _ = client.open(&path, AfcFopenMode::WrOnly).await?;
-            // drop without writing — file exists but is empty
+            let f = client.open(&path, AfcFopenMode::WrOnly).await?;
+            // close without writing — file exists but is empty
+            f.close().await?;
         }
         {
             let mut f = client.open(&path, AfcFopenMode::RdOnly).await?;
             let mut buf = Vec::new();
             let n = f.read_to_end(&mut buf).await?;
+            f.close().await?;
             if n != 0 {
                 return Err(idevice::IdeviceError::UnexpectedResponse(
                     "expected 0 bytes from empty file".into(),
@@ -214,16 +222,19 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
             let mut f = client.open(&path, AfcFopenMode::WrOnly).await?;
             f.write_all(b"first\n").await?;
             f.flush().await?;
+            f.close().await?;
         }
         {
             let mut f = client.open(&path, AfcFopenMode::Append).await?;
             f.write_all(b"second\n").await?;
             f.flush().await?;
+            f.close().await?;
         }
         {
             let mut f = client.open(&path, AfcFopenMode::RdOnly).await?;
             let mut buf = Vec::new();
             f.read_to_end(&mut buf).await?;
+            f.close().await?;
             let s = String::from_utf8_lossy(&buf);
             if s != "first\nsecond\n" {
                 return Err(idevice::IdeviceError::UnexpectedResponse(format!(
@@ -277,11 +288,13 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
         {
             let mut f = client.open(&path, AfcFopenMode::WrOnly).await?;
             f.write_all(data).await?;
+            f.close().await?;
         }
         {
             let mut f = client.open(&path, AfcFopenMode::RdOnly).await?;
             f.seek(std::io::SeekFrom::Start(10)).await?;
             let pos = f.seek_tell().await?;
+            f.close().await?;
             if pos != 10 {
                 return Err(idevice::IdeviceError::UnexpectedResponse(format!(
                     "seek_tell returned {pos}, expected 10"
@@ -309,6 +322,7 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
             }
             let mut tail = [0u8; 5];
             f.read_exact(&mut tail).await?; // reads 5..10
+            f.close().await?;
             if &tail != b"56789" {
                 return Err(idevice::IdeviceError::UnexpectedResponse(format!(
                     "seek_current read wrong bytes: {:?}",
@@ -329,6 +343,7 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
             f.seek(std::io::SeekFrom::End(-5)).await?;
             let mut tail = Vec::new();
             f.read_to_end(&mut tail).await?;
+            f.close().await?;
             if &tail != b"BCDEF" {
                 return Err(idevice::IdeviceError::UnexpectedResponse(format!(
                     "seek_end wrong bytes: {:?}",
@@ -347,11 +362,13 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
             f.write_all(b"start").await?;
             f.seek(std::io::SeekFrom::Start(0)).await?;
             f.write_all(b"over").await?;
+            f.close().await?;
         }
         {
             let mut f = client.open(&path, AfcFopenMode::RdOnly).await?;
             let mut buf = Vec::new();
             f.read_to_end(&mut buf).await?;
+            f.close().await?;
             if &buf != b"overt" {
                 return Err(idevice::IdeviceError::UnexpectedResponse(format!(
                     "seek overwrite wrong content: {:?}",
@@ -383,6 +400,7 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
                 }
                 let mut rest = Vec::new();
                 f.read_to_end(&mut rest).await?;
+                f.close().await?;
                 if rest != b"fghijklmnopqrstuvwxyz" {
                     return Err(idevice::IdeviceError::UnexpectedResponse(
                         "partial read tail mismatch".into(),
@@ -413,6 +431,7 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
                     }
                     collected.push(b[0]);
                 }
+                f.close().await?;
                 if collected != data {
                     return Err(idevice::IdeviceError::UnexpectedResponse(
                         "one-byte read mismatch".into(),
@@ -474,11 +493,13 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
                     let chunk = vec![i; 100];
                     f.write_all(&chunk).await?;
                 }
+                f.close().await?;
             }
             {
                 let mut f = client.open(&path, AfcFopenMode::RdOnly).await?;
                 let mut buf = Vec::new();
                 f.read_to_end(&mut buf).await?;
+                f.close().await?;
                 if buf.len() != 1000 {
                     return Err(idevice::IdeviceError::UnexpectedResponse(format!(
                         "expected 1000 bytes, got {}",
@@ -523,6 +544,7 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
             let mut f = client.open(&dst, AfcFopenMode::RdOnly).await?;
             let mut buf = Vec::new();
             f.read_to_end(&mut buf).await?;
+            f.close().await?;
             if buf != data {
                 return Err(idevice::IdeviceError::UnexpectedResponse(
                     "renamed file content mismatch".into(),
@@ -586,10 +608,12 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
             {
                 let mut fa = client.open(&f1, AfcFopenMode::WrOnly).await?;
                 fa.write_all(b"a").await?;
+                fa.close().await?;
             }
             {
                 let mut fb = client.open(&f2, AfcFopenMode::WrOnly).await?;
                 fb.write_all(b"b").await?;
+                fb.close().await?;
             }
             let entries = client.list_dir(&dir).await?;
             if !entries.contains(&"a.txt".to_string()) || !entries.contains(&"b.txt".to_string()) {

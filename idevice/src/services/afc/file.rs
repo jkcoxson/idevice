@@ -14,11 +14,9 @@ use crate::{
 
 /// Handle for an open file on the device.
 ///
-/// This handle implements **async `Drop`** to automatically close the file for users who forget,
-/// but only on a **Tokio multi-threaded runtime**
-///
-///
-/// Consider calling `.close()`, it won't drop if expliclity closed
+/// Does **not** close the file descriptor on drop. Callers must invoke
+/// [`.close()`](Self::close) to release the device-side FD.
+/// The FD is reclaimed automatically when the AFC session ends.
 #[derive(Debug)]
 pub struct FileDescriptor<'a> {
     inner: Pin<Box<InnerFileDescriptor<'a>>>,
@@ -26,11 +24,9 @@ pub struct FileDescriptor<'a> {
 
 /// Owned handle for an open file on the device.
 ///
-/// This handle implements **async `Drop`** to automatically close the file for users who forget,
-/// but only on a **Tokio multi-threaded runtime**
-///
-///
-/// Consider calling `.close()`, it won't drop if expliclity closed
+/// Does **not** close the file descriptor on drop. Callers must invoke
+/// [`.close()`](Self::close) to release the device-side FD.
+/// The FD is reclaimed automatically when the AFC session ends.
 #[derive(Debug)]
 pub struct OwnedFileDescriptor {
     inner: Pin<Box<OwnedInnerFileDescriptor>>,

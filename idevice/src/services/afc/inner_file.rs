@@ -444,39 +444,10 @@ crate::impl_trait_to_structs!(AsyncSeek for InnerFileDescriptor<'_>, OwnedInnerF
 
 crate::impl_trait_to_structs!(Drop for InnerFileDescriptor<'_>, OwnedInnerFileDescriptor; {
     fn drop(&mut self) {
+        self.pending_fut = None;
         if !self.dropped {
-            // The pending_fut (if Some) holds a Pin<&mut Self> derived from a
-            // raw pointer to this struct. Dropping it here ensures that
-            // mutable reference is released before we create a second one via
-            // Pin::new_unchecked(self) below. Two live &mut Self to the same
-            // struct is UB under Stacked Borrows even if neither is actively
-            // dereferenced.
-            self.pending_fut = None;
-
-            // Best-effort close-on-drop only works on a multi-thread tokio
-            // runtime. On wasm32 there's no such runtime; on a current-thread
-            // runtime `block_in_place` would panic. In both cases the caller
-            // must invoke `.close().await` explicitly to release the FD.
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                let handle = tokio::runtime::Handle::current();
-
-                if matches!(
-                    handle.runtime_flavor(),
-                    tokio::runtime::RuntimeFlavor::CurrentThread
-                ) {
-                    return;
-                }
-
-                tokio::task::block_in_place(move || {
-                    handle.block_on(async move {
-                        unsafe { Pin::new_unchecked(self) }
-                            .close_inner()
-                            .await
-                            .ok();
-                    })
-                });
-            }
+            debug_assert!(false, "AFC file descriptor for {:?} dropped without calling .close().await", self.path);
+            println!("error: AFC file descriptor dropped without calling .close().await ({})", self.path);
         }
     }
 });
