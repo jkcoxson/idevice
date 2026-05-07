@@ -140,9 +140,9 @@ async fn pair_via_usb(provider: &dyn IdeviceProvider, hostname: &str, output_pat
     println!("(You may need to tap Trust on the device)");
 
     let mut rpf = RpPairingFile::generate(hostname);
-    let mut rpc = RemotePairingClient::new(conn, hostname, &mut rpf);
+    let mut rpc = RemotePairingClient::new(conn, hostname);
 
-    match rpc.connect(async |_| "000000".to_string(), 0u8).await {
+    match rpc.connect(&mut rpf, async || "000000".to_string()).await {
         Ok(()) => match rpf.write_to_file(output_path).await {
             Ok(()) => println!("Paired! Saved to {output_path}"),
             Err(e) => eprintln!("Failed to save pairing file: {e}"),

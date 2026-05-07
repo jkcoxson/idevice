@@ -40,11 +40,10 @@ pub use tunnel::{CdTunnel, TunnelInfo, connect_tls_psk_tunnel_native};
 const RPPAIRING_MAGIC: &[u8] = b"RPPairing";
 const WIRE_PROTOCOL_VERSION: u8 = 19;
 
-pub struct RemotePairingClient<'a, R: RpPairingSocketProvider> {
+pub struct RemotePairingClient<R: RpPairingSocketProvider> {
     inner: R,
     sequence_number: usize,
     encrypted_sequence_number: u64,
-    pairing_file: &'a mut RpPairingFile,
     sending_host: String,
 
     /// The shared secret from X25519 (pair-verify) or SRP (initial pairing).
@@ -57,18 +56,17 @@ pub struct RemotePairingClient<'a, R: RpPairingSocketProvider> {
     paired_peer_device: Option<PeerDevice>,
 }
 
-impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
-    pub fn new(inner: R, sending_host: &str, pairing_file: &'a mut RpPairingFile) -> Self {
-        // Initial ciphers derived from Ed25519 key; will be re-derived from
+impl<R: RpPairingSocketProvider> RemotePairingClient<R> {
+    pub fn new(inner: R, sending_host: &str) -> Self {
+        // Initial ciphers are placeholders; they will be re-derived from
         // the actual encryption_key once pair-verify or pairing completes.
-        let initial_key = pairing_file.e_private_key.as_bytes().to_vec();
+        let initial_key = vec![0u8; 32];
         let (client_cipher, server_cipher) = Self::derive_main_ciphers(&initial_key);
 
         Self {
             inner,
             sequence_number: 0,
             encrypted_sequence_number: 0,
-            pairing_file,
             sending_host: sending_host.to_string(),
             encryption_key: initial_key,
             client_cipher,
@@ -97,18 +95,18 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
         &self.encryption_key
     }
 
-    pub async fn connect<Fut, S>(
+    pub async fn connect<Fut>(
         &mut self,
-        pin_callback: impl Fn(S) -> Fut,
-        state: S,
+        pairing_file: &mut RpPairingFile,
+        pin_callback: impl Fn() -> Fut,
     ) -> Result<(), IdeviceError>
     where
         Fut: std::future::Future<Output = String>,
     {
         self.attempt_pair_verify().await?;
 
-        if self.validate_pairing().await.is_err() {
-            self.pair(pin_callback, state).await?;
+        if self.validate_pairing(pairing_file).await.is_err() {
+            self.pair(pairing_file, pin_callback).await?;
         }
         Ok(())
     }
@@ -122,7 +120,10 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
             ))
     }
 
-    pub async fn validate_pairing(&mut self) -> Result<(), IdeviceError> {
+    pub async fn validate_pairing(
+        &mut self,
+        pairing_file: &mut RpPairingFile,
+    ) -> Result<(), IdeviceError> {
         let x_private_key = EphemeralSecret::random_from_rng(OsRng);
         let x_public_key = X25519PublicKey::from(&x_private_key);
 
@@ -204,11 +205,11 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
         // ChaCha20Poly1305 AEAD cipher
         let cipher = ChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(&okm));
 
-        let ed25519_signing_key = &mut self.pairing_file.e_private_key;
+        let ed25519_signing_key = &mut pairing_file.e_private_key;
 
-        let mut signbuf = Vec::with_capacity(32 + self.pairing_file.identifier.len() + 32);
+        let mut signbuf = Vec::with_capacity(32 + pairing_file.identifier.len() + 32);
         signbuf.extend_from_slice(x_public_key.as_bytes()); // 32 bytes
-        signbuf.extend_from_slice(self.pairing_file.identifier.as_bytes()); // variable
+        signbuf.extend_from_slice(pairing_file.identifier.as_bytes()); // variable
         signbuf.extend_from_slice(device_public_key.as_bytes()); // 32 bytes
 
         let signature: Signature = ed25519_signing_key.sign(&signbuf);
@@ -216,7 +217,7 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
         let plaintext = vec![
             tlv::TLV8Entry {
                 tlv_type: tlv::PairingDataComponentType::Identifier,
-                data: self.pairing_file.identifier.as_bytes().to_vec(),
+                data: pairing_file.identifier.as_bytes().to_vec(),
             },
             tlv::TLV8Entry {
                 tlv_type: tlv::PairingDataComponentType::Signature,
@@ -348,30 +349,29 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
         }
     }
 
-    pub async fn pair<Fut, S>(
+    pub async fn pair<Fut>(
         &mut self,
-        pin_callback: impl Fn(S) -> Fut,
-        state: S,
+        pairing_file: &mut RpPairingFile,
+        pin_callback: impl Fn() -> Fut,
     ) -> Result<(), IdeviceError>
     where
         Fut: std::future::Future<Output = String>,
     {
-        let (salt, public_key, pin) = self.request_pair_consent(pin_callback, state).await?;
+        let (salt, public_key, pin) = self.request_pair_consent(pin_callback).await?;
         let key = self.init_srp_context(&salt, &public_key, &pin).await?;
-        let tlv = self.save_pair_record_on_peer(&key).await?;
+        let tlv = self.save_pair_record_on_peer(pairing_file, &key).await?;
         let peer_device = peer_device::parse_peer_device_from_tlv(&tlv)?;
 
-        self.pairing_file.alt_irk = Some(peer_device.alt_irk.clone());
+        pairing_file.alt_irk = Some(peer_device.alt_irk.clone());
         self.paired_peer_device = Some(peer_device);
 
         Ok(())
     }
 
     /// Returns salt and public key and pin
-    async fn request_pair_consent<Fut, S>(
+    async fn request_pair_consent<Fut>(
         &mut self,
-        pin_callback: impl Fn(S) -> Fut,
-        state: S,
+        pin_callback: impl Fn() -> Fut,
     ) -> Result<(Vec<u8>, Vec<u8>, String), IdeviceError>
     where
         Fut: std::future::Future<Output = String>,
@@ -472,7 +472,7 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
 
         let pin = match pin {
             Some(p) => p,
-            None => pin_callback(state).await,
+            None => pin_callback().await,
         };
 
         if salt.is_empty() || public_key.is_empty() {
@@ -583,6 +583,7 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
 
     async fn save_pair_record_on_peer(
         &mut self,
+        pairing_file: &mut RpPairingFile,
         encryption_key: &[u8],
     ) -> Result<Vec<tlv::TLV8Entry>, IdeviceError> {
         let salt = b"Pair-Setup-Encrypt-Salt";
@@ -596,7 +597,7 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
         // Save the SRP session key as the encryption key
         self.encryption_key = encryption_key.to_vec();
 
-        self.pairing_file.recreate_signing_keys();
+        pairing_file.recreate_signing_keys();
         {
             // Re-derive main ciphers from the SRP session key
             let (cc, sc) = Self::derive_main_ciphers(encryption_key);
@@ -606,7 +607,7 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
 
         let hk = Hkdf::<Sha512>::new(Some(b"Pair-Setup-Controller-Sign-Salt"), encryption_key);
 
-        let mut signbuf = Vec::with_capacity(32 + self.pairing_file.identifier.len() + 32);
+        let mut signbuf = Vec::with_capacity(32 + pairing_file.identifier.len() + 32);
 
         let mut hkdf_out = [0u8; 32];
         hk.expand(b"Pair-Setup-Controller-Sign-Info", &mut hkdf_out)
@@ -614,17 +615,17 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
 
         signbuf.extend_from_slice(&hkdf_out);
 
-        signbuf.extend_from_slice(self.pairing_file.identifier.as_bytes());
-        signbuf.extend_from_slice(self.pairing_file.e_public_key.as_bytes());
+        signbuf.extend_from_slice(pairing_file.identifier.as_bytes());
+        signbuf.extend_from_slice(pairing_file.e_public_key.as_bytes());
 
-        let signature = self.pairing_file.e_private_key.sign(&signbuf);
+        let signature = pairing_file.e_private_key.sign(&signbuf);
 
         let device_info = crate::plist!({
             "altIRK": b"\xe9\xe8-\xc0jIykVoT\x00\x19\xb1\xc7{".to_vec(),
             "btAddr": "11:22:33:44:55:66",
             "mac": b"\x11\x22\x33\x44\x55\x66".to_vec(),
             "remotepairing_serial_number": "AAAAAAAAAAAA",
-            "accountID": self.pairing_file.identifier.as_str(),
+            "accountID": pairing_file.identifier.as_str(),
             "model": "computer-model",
             "name": self.sending_host.as_str()
         });
@@ -633,11 +634,11 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
         let tlv = tlv::serialize_tlv8(&[
             tlv::TLV8Entry {
                 tlv_type: tlv::PairingDataComponentType::Identifier,
-                data: self.pairing_file.identifier.as_bytes().to_vec(),
+                data: pairing_file.identifier.as_bytes().to_vec(),
             },
             tlv::TLV8Entry {
                 tlv_type: tlv::PairingDataComponentType::PublicKey,
-                data: self.pairing_file.e_public_key.to_bytes().to_vec(),
+                data: pairing_file.e_public_key.to_bytes().to_vec(),
             },
             tlv::TLV8Entry {
                 tlv_type: tlv::PairingDataComponentType::Signature,
@@ -900,12 +901,11 @@ impl<'a, R: RpPairingSocketProvider> RemotePairingClient<'a, R> {
     }
 }
 
-impl<R: RpPairingSocketProvider> std::fmt::Debug for RemotePairingClient<'_, R> {
+impl<R: RpPairingSocketProvider> std::fmt::Debug for RemotePairingClient<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RemotePairingClient")
             .field("inner", &self.inner)
             .field("sequence_number", &self.sequence_number)
-            .field("pairing_file", &self.pairing_file)
             .field("sending_host", &self.sending_host)
             .finish()
     }

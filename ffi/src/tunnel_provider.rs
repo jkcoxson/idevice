@@ -32,7 +32,6 @@ unsafe impl Sync for PinCtx {}
 /// the TLS-PSK tunnel and return adapter + handshake.
 async fn finish_tunnel(
     rpc: &mut idevice::remote_pairing::RemotePairingClient<
-        '_,
         impl idevice::remote_pairing::RpPairingSocketProvider,
     >,
     connect_addr: std::net::SocketAddr,
@@ -184,8 +183,8 @@ pub unsafe extern "C" fn tunnel_pair_usb(
         let _ = conn.recv_root().await?;
 
         let mut rpf = RpPairingFile::generate(&host);
-        let mut rpc = RemotePairingClient::new(conn, &host, &mut rpf);
-        rpc.connect(async |_| get_pin(pin_callback, &ctx), 0u8)
+        let mut rpc = RemotePairingClient::new(conn, &host);
+        rpc.connect(&mut rpf, async || get_pin(pin_callback, &ctx))
             .await?;
 
         Ok::<_, IdeviceError>(rpf)
@@ -261,8 +260,8 @@ pub unsafe extern "C" fn tunnel_create_remotexpc(
         let _ = conn.recv_root().await?;
 
         // RPPairing over RemoteXPC
-        let mut rpc = RemotePairingClient::new(conn, &host, rpf);
-        rpc.connect(async |_| get_pin(pin_callback, &ctx), 0u8)
+        let mut rpc = RemotePairingClient::new(conn, &host);
+        rpc.connect(rpf, async || get_pin(pin_callback, &ctx))
             .await?;
 
         finish_tunnel(&mut rpc, socket_addr).await
@@ -326,8 +325,8 @@ pub unsafe extern "C" fn tunnel_create_rppairing(
             .map_err(|e| IdeviceError::InternalError(format!("connect: {e}")))?;
         let conn = RpPairingSocket::new(stream);
 
-        let mut rpc = RemotePairingClient::new(conn, &host, rpf);
-        rpc.connect(async |_| get_pin(pin_callback, &ctx), 0u8)
+        let mut rpc = RemotePairingClient::new(conn, &host);
+        rpc.connect(rpf, async || get_pin(pin_callback, &ctx))
             .await?;
 
         finish_tunnel(&mut rpc, socket_addr).await

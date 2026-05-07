@@ -53,19 +53,16 @@ async fn main() {
 
     let host = "idevice-rs-jkcoxson";
     let mut rpf = RpPairingFile::generate(host);
-    let mut rpc = RemotePairingClient::new(conn, host, &mut rpf);
-    rpc.connect(
-        async |_| {
-            let mut buf = String::new();
-            print!("Enter the Apple TV pin: ");
-            std::io::stdout().flush().unwrap();
-            std::io::stdin()
-                .read_line(&mut buf)
-                .expect("Failed to read line");
-            buf.trim_end().to_string()
-        },
-        0u8, // we need no state, so pass a single byte that will hopefully get optimized out
-    )
+    let mut rpc = RemotePairingClient::new(conn, host);
+    rpc.connect(&mut rpf, async || {
+        let mut buf = String::new();
+        print!("Enter the Apple TV pin: ");
+        std::io::stdout().flush().unwrap();
+        std::io::stdin()
+            .read_line(&mut buf)
+            .expect("Failed to read line");
+        buf.trim_end().to_string()
+    })
     .await
     .expect("no pair");
 
@@ -77,13 +74,10 @@ async fn main() {
             .expect("Failed to connect");
     let conn = RpPairingSocket::new(conn);
 
-    let mut rpc = RemotePairingClient::new(conn, host, &mut rpf);
-    rpc.connect(
-        async |_| {
-            panic!("we tried to pair again :(");
-        },
-        0u8,
-    )
+    let mut rpc = RemotePairingClient::new(conn, host);
+    rpc.connect(&mut rpf, async || {
+        panic!("we tried to pair again :(");
+    })
     .await
     .expect("no reconnect");
 
