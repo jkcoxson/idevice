@@ -3,7 +3,7 @@
 #![warn(missing_copy_implementations)]
 // Jackson Coxson
 
-#[cfg(all(feature = "pair", feature = "rustls"))]
+#[cfg(feature = "pair")]
 mod ca;
 pub mod cursor;
 mod obfuscation;
@@ -114,22 +114,7 @@ pub trait IdeviceService: Sized {
     async fn connect(provider: &dyn IdeviceProvider) -> Result<Self, IdeviceError> {
         let mut lockdown = LockdownClient::connect(provider).await?;
 
-        #[cfg(feature = "openssl")]
         let legacy = lockdown
-            .get_value(Some("ProductVersion"), None)
-            .await
-            .ok()
-            .as_ref()
-            .and_then(|x| x.as_string())
-            .and_then(|x| x.split(".").next())
-            .and_then(|x| x.parse::<u8>().ok())
-            .map(|x| x < 5)
-            .unwrap_or(false);
-
-        #[cfg(not(feature = "openssl"))]
-        let legacy = false;
-
-        lockdown
             .start_session(&provider.get_pairing_file().await?)
             .await?;
         // Best-effort fetch UDID for downstream defaults (e.g., MobileBackup2 Target/Source identifiers)
@@ -705,7 +690,7 @@ impl Idevice {
                 connector.set_options(openssl::ssl::SslOptions::ALLOW_UNSAFE_LEGACY_RENEGOTIATION);
             }
 
-            let mut connector = connector.build().configure()?.into_ssl("ur mom")?;
+            let mut connector = connector.build().configure()?.into_ssl("Device")?;
 
             connector.set_certificate(&pairing_file.host_certificate)?;
             connector.set_private_key(&pairing_file.host_private_key)?;

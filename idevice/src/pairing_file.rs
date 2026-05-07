@@ -296,6 +296,7 @@ impl TryFrom<PairingFile> for RawPairingFile {
     }
 }
 
+#[cfg(feature = "rustls")]
 /// Helper function to ensure data has proper PEM headers
 /// If the data already has headers, it returns it as is
 /// If not, it adds the appropriate BEGIN and END headers
@@ -339,6 +340,7 @@ fn ensure_pem_headers(data: &[u8], pem_type: &str) -> Vec<u8> {
     result
 }
 
+#[cfg(feature = "rustls")]
 /// Check if data is already in PEM format
 fn is_pem_formatted(data: &[u8]) -> bool {
     if let Ok(data_str) = std::str::from_utf8(data) {
@@ -348,6 +350,7 @@ fn is_pem_formatted(data: &[u8]) -> bool {
     }
 }
 
+#[cfg(feature = "rustls")]
 /// Check if data is already base64 encoded
 fn is_base64(data: &[u8]) -> bool {
     if let Ok(data_str) = std::str::from_utf8(data) {
