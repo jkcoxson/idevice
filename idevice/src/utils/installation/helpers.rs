@@ -113,37 +113,44 @@ pub async fn determine_package_type<P: AsRef<[u8]>>(
 ) -> Result<PackageType, IdeviceError> {
     let mut package_cursor = BufReader::new(Cursor::new(package.as_ref()));
 
-    let mut archive = ZipFileReader::with_tokio(&mut package_cursor)
-        .await
-        .map_err(InstallationProxyError::from)?;
+    // Zip entry order isn't guaranteed and directory entries are optional, so we can't
+    // trust any fixed index to point at `Payload/<name>.{app,bundle}/`. Scan the central
+    // directory for the first entry under `Payload/` whose top segment carries the
+    // expected extension.
+    let folder_name = {
+        let archive = ZipFileReader::with_tokio(&mut package_cursor)
+            .await
+            .map_err(InstallationProxyError::from)?;
 
-    // the first index is the first folder name, which is probably `Payload`
-    //
-    // we need the folder inside of that `Payload`, which has an extension that we can
-    // determine the type of the package from it, hence the second index
-    let inside_folder = archive
-        .reader_with_entry(1)
-        .await
-        .map_err(InstallationProxyError::from)?;
+        let mut found: Option<String> = None;
+        for entry in archive.file().entries() {
+            let path = entry
+                .filename()
+                .as_str()
+                .map_err(|_| IdeviceError::Utf8Error)?;
 
-    let folder_name = inside_folder
-        .entry()
-        .filename()
-        .as_str()
-        .map_err(|_| IdeviceError::Utf8Error)?
-        .split('/')
-        .nth(1)
-        // only if the package does not have anything inside of the `Payload` folder
-        .ok_or(InstallationProxyError::from(
-            async_zip::error::ZipError::EntryIndexOutOfBounds,
-        ))?
-        .to_string();
+            let Some(rest) = path.strip_prefix("Payload/") else {
+                continue;
+            };
+            let Some(segment) = rest.split('/').next().filter(|s| !s.is_empty()) else {
+                continue;
+            };
+            if segment.ends_with(".app") || segment.ends_with(".bundle") {
+                found = Some(segment.to_string());
+                break;
+            }
+        }
+        found
+    };
 
-    let bundle_id = get_bundle_id(&mut package_cursor).await?;
+    let Some(folder_name) = folder_name else {
+        return Ok(PackageType::Unknown);
+    };
 
     if folder_name.ends_with(".bundle") {
         Ok(PackageType::Ipcc)
     } else if folder_name.ends_with(".app") {
+        let bundle_id = get_bundle_id(&mut package_cursor).await?;
         Ok(PackageType::Ipa(bundle_id))
     } else {
         Ok(PackageType::Unknown)
