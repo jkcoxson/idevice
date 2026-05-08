@@ -185,7 +185,7 @@ impl<R: ReadWrite> RpPairingSocketProvider for RemoteXpcClient<R> {
         &'a mut self,
     ) -> Pin<Box<dyn Future<Output = Result<plist::Value, IdeviceError>> + Send + 'a>> {
         Box::pin(async move {
-            let msg = self.recv_root().await.unwrap();
+            let msg = self.recv_root().await?;
             debug!("Received RemoteXPC {}", pretty_print_plist(&msg));
             let msg = msg.into_dictionary().and_then(|mut x| x.remove("value"));
 
