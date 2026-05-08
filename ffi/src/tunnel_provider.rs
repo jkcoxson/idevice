@@ -44,8 +44,7 @@ async fn finish_tunnel(
     let tunnel_stream = tokio::net::TcpStream::connect(tunnel_addr)
         .await
         .map_err(|e| IdeviceError::InternalError(format!("TLS tunnel: {e}")))?;
-    let tunnel =
-        connect_tls_psk_tunnel_native(Box::new(tunnel_stream), rpc.encryption_key()).await?;
+    let tunnel = connect_tls_psk_tunnel_native(tunnel_stream, rpc.encryption_key()).await?;
 
     let client_ip: std::net::IpAddr = tunnel
         .info

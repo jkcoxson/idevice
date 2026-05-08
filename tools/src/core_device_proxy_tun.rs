@@ -2,8 +2,8 @@
 
 use clap::{Arg, Command};
 use idevice::{
-    core_device_proxy::{self},
     IdeviceService,
+    core_device_proxy::{self},
 };
 use tun_rs::AbstractDevice;
 
@@ -74,8 +74,7 @@ async fn main() {
         32,
     )
     .unwrap();
-    dev.set_mtu(tun_proxy.tunnel_info().mtu)
-        .unwrap();
+    dev.set_mtu(tun_proxy.tunnel_info().mtu).unwrap();
     dev.set_network_address(
         tun_proxy.tunnel_info().client_address.clone(),
         tun_proxy
