@@ -169,8 +169,8 @@ fn on_service_discovered(
                 RpPairingFile::generate(host)
             };
 
-            let mut rpc = RemotePairingClient::new(conn, host, &mut rpf);
-            rpc.connect(async |_| "000000".to_string(), 0u8)
+            let mut rpc = RemotePairingClient::new(conn, host);
+            rpc.connect(&mut rpf, async || "000000".to_string())
                 .await
                 .expect("pairing/verification failed");
 
@@ -323,14 +323,15 @@ async fn wifi_pair_flow(host_name: &str, service_address: &str, scope_id: Option
     let host = "idevice-rs-jkcoxson";
     let mut rpf = RpPairingFile::generate(host);
 
-    let mut rpc = RemotePairingClient::new(conn, host, &mut rpf);
+    let mut rpc = RemotePairingClient::new(conn, host);
 
     println!("Attempting pair verify / pair setup...");
     println!("(You may need to tap Trust on the device)");
 
     match rpc
         .connect(
-            async |_| {
+            &mut rpf,
+            async || {
                 println!("Enter the PIN shown on the device (or press enter for 000000):");
                 let mut input = String::new();
                 std::io::stdin().read_line(&mut input).ok();
@@ -341,7 +342,6 @@ async fn wifi_pair_flow(host_name: &str, service_address: &str, scope_id: Option
                     pin
                 }
             },
-            0u8,
         )
         .await
     {
