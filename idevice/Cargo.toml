@@ -216,7 +216,7 @@ remote_pairing = [
 restore_service = []
 rsd = ["xpc"]
 screenshotr = []
-syslog_relay = ["dep:bytes"]
+syslog_relay = ["dep:bytes", "dep:chrono"]
 tcp = ["tokio/net"]
 tunnel_tcp_stack = ["dep:jktcp"]
 # Adds pcap (`tokio::fs`) support to the software TCP tunnel. Pulls in
