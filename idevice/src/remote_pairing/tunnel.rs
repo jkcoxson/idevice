@@ -21,10 +21,10 @@ const DEFAULT_MTU: u16 = 16000;
 ///
 /// This uses a built-in TLS 1.2 PSK-AES256-CBC-SHA384 implementation with no
 /// external TLS library dependency.
-pub async fn connect_tls_psk_tunnel_native(
-    stream: Box<dyn ReadWrite>,
+pub async fn connect_tls_psk_tunnel_native<S: ReadWrite>(
+    stream: S,
     encryption_key: &[u8],
-) -> Result<CdTunnel<super::tls_psk::TlsPskStream<Box<dyn ReadWrite>>>, IdeviceError> {
+) -> Result<CdTunnel<super::tls_psk::TlsPskStream<S>>, IdeviceError> {
     let mut tls_stream = super::tls_psk::tls_psk_handshake(stream, encryption_key).await?;
     debug!("Native TLS-PSK handshake complete");
 
@@ -127,10 +127,10 @@ pub async fn connect_tls_psk_tunnel_native(
 /// Requires the `openssl` feature. Consider using [`connect_tls_psk_tunnel_native`]
 /// instead, which has no external dependency.
 #[cfg(feature = "openssl")]
-pub async fn connect_tls_psk_tunnel(
-    stream: tokio::net::TcpStream,
+pub async fn connect_tls_psk_tunnel<S: ReadWrite>(
+    stream: S,
     encryption_key: &[u8],
-) -> Result<CdTunnel<tokio_openssl::SslStream<tokio::net::TcpStream>>, IdeviceError> {
+) -> Result<CdTunnel<tokio_openssl::SslStream<S>>, IdeviceError> {
     use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 
     let psk = encryption_key.to_vec();
