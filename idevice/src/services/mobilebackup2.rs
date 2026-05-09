@@ -3,6 +3,12 @@
 //! Provides functionality for interacting with the mobilebackup2 service on iOS devices,
 //! which allows creating, restoring, and managing device backups.
 
+mod atomic_fs;
+mod journal;
+mod paths;
+mod store;
+mod transaction;
+
 use plist::Dictionary;
 use std::future::Future;
 use std::io::{Read, Write};
@@ -12,6 +18,8 @@ use std::time::SystemTime;
 use tokio::io::AsyncReadExt;
 use tracing::{debug, warn};
 
+use self::paths::BackupPath;
+use self::store::{BackupStore, DelegateBackupStore};
 use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 /// DeviceLink message codes used in MobileBackup2 binary streams
@@ -955,7 +963,8 @@ impl MobileBackup2Client {
         )
         .await?;
 
-        self.process_dl_loop(backup_root, delegate).await
+        let mut store = DelegateBackupStore::new(backup_root, delegate);
+        self.process_dl_loop(&mut store).await
     }
 
     /// High-level API: Restore from a local backup directory using DeviceLink file exchange
@@ -993,7 +1002,8 @@ impl MobileBackup2Client {
         )
         .await?;
 
-        self.process_dl_loop(backup_root, delegate).await
+        let mut store = DelegateBackupStore::new(backup_root, delegate);
+        self.process_dl_loop(&mut store).await
     }
 
     /// Processes the DeviceLink message loop used by backup, restore, and other operations.
@@ -1002,8 +1012,7 @@ impl MobileBackup2Client {
     /// status) or `DLMessageDisconnect` is received.
     async fn process_dl_loop(
         &mut self,
-        host_dir: &Path,
-        delegate: &dyn BackupDelegate,
+        store: &mut dyn BackupStore,
     ) -> Result<Option<Dictionary>, IdeviceError> {
         let mut overall_progress: f64 = -1.0;
         loop {
@@ -1030,15 +1039,14 @@ impl MobileBackup2Client {
 
             match tag.as_str() {
                 "DLMessageDownloadFiles" => {
-                    self.handle_download_files(&value, host_dir, delegate)
-                        .await?;
+                    self.handle_download_files(&value, store).await?;
                 }
                 "DLMessageUploadFiles" => {
-                    self.handle_upload_files(&value, host_dir, delegate, overall_progress)
+                    self.handle_upload_files(&value, store, overall_progress)
                         .await?;
                 }
                 "DLMessageGetFreeDiskSpace" => {
-                    let freespace = delegate.get_free_disk_space(host_dir);
+                    let freespace = store.get_free_disk_space();
                     self.send_status_response(
                         0,
                         None,
@@ -1047,7 +1055,7 @@ impl MobileBackup2Client {
                     .await?;
                 }
                 "DLContentsOfDirectory" => {
-                    let listing = Self::list_directory_contents(&value, host_dir, delegate).await;
+                    let listing = Self::list_directory_contents(&value, store).await;
                     self.send_status_response(0, None, Some(listing)).await?;
                 }
                 "DLMessageCreateDirectory" => {
@@ -1057,12 +1065,11 @@ impl MobileBackup2Client {
                         debug!("Creating directory: {dir}");
                     }
 
-                    let status =
-                        Self::create_directory_from_message(&value, host_dir, delegate).await;
+                    let status = Self::create_directory_from_message(&value, store).await;
                     self.send_status_response(status, None, None).await?;
                 }
                 "DLMessageMoveFiles" | "DLMessageMoveItems" => {
-                    let status = Self::move_files_from_message(&value, host_dir, delegate).await;
+                    let status = Self::move_files_from_message(&value, store).await;
                     self.send_status_response(
                         status,
                         None,
@@ -1071,7 +1078,7 @@ impl MobileBackup2Client {
                     .await?;
                 }
                 "DLMessageRemoveFiles" | "DLMessageRemoveItems" => {
-                    let status = Self::remove_files_from_message(&value, host_dir, delegate).await;
+                    let status = Self::remove_files_from_message(&value, store).await;
                     self.send_status_response(
                         status,
                         None,
@@ -1080,7 +1087,7 @@ impl MobileBackup2Client {
                     .await?;
                 }
                 "DLMessageCopyItem" => {
-                    let status = Self::copy_item_from_message(&value, host_dir, delegate).await;
+                    let status = Self::copy_item_from_message(&value, store).await;
                     self.send_status_response(
                         status,
                         None,
@@ -1111,8 +1118,7 @@ impl MobileBackup2Client {
     async fn handle_download_files(
         &mut self,
         dl_value: &plist::Value,
-        host_dir: &Path,
-        delegate: &dyn BackupDelegate,
+        store: &mut dyn BackupStore,
     ) -> Result<(), IdeviceError> {
         let mut err_any = false;
         if let plist::Value::Array(arr) = dl_value
@@ -1122,7 +1128,15 @@ impl MobileBackup2Client {
             for pv in files {
                 if let Some(path) = pv.as_string() {
                     debug!("Device requested file: {path}");
-                    if let Err(e) = self.send_single_file(host_dir, path, delegate).await {
+                    let backup_path = match BackupPath::parse_item(path) {
+                        Ok(path) => path,
+                        Err(e) => {
+                            warn!("Invalid requested file path {path}: {e}");
+                            err_any = true;
+                            continue;
+                        }
+                    };
+                    if let Err(e) = self.send_single_file(&backup_path, store).await {
                         warn!("Failed to send file {path}: {e}");
                         err_any = true;
                     }
@@ -1146,17 +1160,16 @@ impl MobileBackup2Client {
 
     async fn send_single_file(
         &mut self,
-        host_dir: &Path,
-        rel_path: &str,
-        delegate: &dyn BackupDelegate,
+        rel_path: &BackupPath,
+        store: &mut dyn BackupStore,
     ) -> Result<(), IdeviceError> {
-        let full = host_dir.join(rel_path);
-        let path_bytes = rel_path.as_bytes().to_vec();
+        let path_string = rel_path.as_relative_path().to_string_lossy().into_owned();
+        let path_bytes = path_string.as_bytes().to_vec();
         let nlen = (path_bytes.len() as u32).to_be_bytes();
         self.idevice.send_raw(&nlen).await?;
         self.idevice.send_raw(&path_bytes).await?;
 
-        let mut f = match delegate.open_file_read(&full).await {
+        let mut f = match store.open_file_read(rel_path).await {
             Ok(f) => f,
             Err(e) => {
                 // send error
@@ -1194,8 +1207,7 @@ impl MobileBackup2Client {
     async fn handle_upload_files(
         &mut self,
         dl_value: &plist::Value,
-        host_dir: &Path,
-        delegate: &dyn BackupDelegate,
+        store: &mut dyn BackupStore,
         overall_progress: f64,
     ) -> Result<(), IdeviceError> {
         let mut file_count: u32 = 0;
@@ -1224,11 +1236,7 @@ impl MobileBackup2Client {
                 break;
             }
             let fname = self.read_exact_string(flen as usize).await?;
-
-            let dst = host_dir.join(&fname);
-            if let Some(parent) = dst.parent() {
-                let _ = delegate.create_dir_all(parent).await;
-            }
+            let backup_path = BackupPath::parse_item(&fname)?;
 
             // Read first code+data block
             let mut nlen = self.read_be_u32().await?;
@@ -1237,15 +1245,19 @@ impl MobileBackup2Client {
             }
             let mut code = self.read_one().await?;
 
-            // Remove existing file and create new one
-            let _ = delegate.remove(&dst).await;
-            let mut file = delegate.create_file_write(&dst).await?;
+            if code != DL_CODE_FILE_DATA && code != DL_CODE_SUCCESS {
+                let _ = self.read_exact((nlen - 1) as usize).await?;
+                continue;
+            }
+
+            let mut replacement = store.begin_replace(&backup_path).await?;
 
             // Receive file data blocks
             while code == DL_CODE_FILE_DATA {
                 let block_size = (nlen - 1) as usize;
                 let data = self.read_exact(block_size).await?;
-                file.write_all(&data)
+                replacement
+                    .write_all(&data)
                     .map_err(|e| IdeviceError::InternalError(e.to_string()))?;
                 bytes_done += block_size as u64;
 
@@ -1258,9 +1270,16 @@ impl MobileBackup2Client {
                 }
             }
 
+            let success = nlen > 0 && code == DL_CODE_SUCCESS;
+            if success {
+                replacement.finish().await?;
+            } else {
+                replacement.abort().await?;
+            }
+
             file_count += 1;
-            delegate.on_file_received(&fname, file_count);
-            delegate.on_progress(bytes_done, bytes_total, overall_progress);
+            store.on_file_received(&backup_path, file_count);
+            store.on_progress(bytes_done, bytes_total, overall_progress);
 
             // Handle trailing error/status message
             if nlen > 0 && code != DL_CODE_FILE_DATA && code != DL_CODE_SUCCESS {
@@ -1295,15 +1314,17 @@ impl MobileBackup2Client {
 
     async fn create_directory_from_message(
         dl_value: &plist::Value,
-        host_dir: &Path,
-        delegate: &dyn BackupDelegate,
+        store: &mut dyn BackupStore,
     ) -> i64 {
         if let plist::Value::Array(arr) = dl_value
             && arr.len() >= 2
             && let Some(plist::Value::String(dir)) = arr.get(1)
         {
-            let path = host_dir.join(dir);
-            return match delegate.create_dir_all(&path).await {
+            let path = match BackupPath::parse_item(dir) {
+                Ok(path) => path,
+                Err(_) => return -1,
+            };
+            return match store.create_dir_all(&path).await {
                 Ok(_) => 0,
                 Err(_) => -1,
             };
@@ -1311,23 +1332,22 @@ impl MobileBackup2Client {
         -1
     }
 
-    async fn move_files_from_message(
-        dl_value: &plist::Value,
-        host_dir: &Path,
-        delegate: &dyn BackupDelegate,
-    ) -> i64 {
+    async fn move_files_from_message(dl_value: &plist::Value, store: &mut dyn BackupStore) -> i64 {
         if let plist::Value::Array(arr) = dl_value
             && arr.len() >= 2
             && let Some(plist::Value::Dictionary(map)) = arr.get(1)
         {
             for (from, to_v) in map.iter() {
                 if let Some(to) = to_v.as_string() {
-                    let old = host_dir.join(from);
-                    let newp = host_dir.join(to);
-                    if let Some(parent) = newp.parent() {
-                        let _ = delegate.create_dir_all(parent).await;
-                    }
-                    if delegate.rename(&old, &newp).await.is_err() {
+                    let old = match BackupPath::parse_item(from) {
+                        Ok(path) => path,
+                        Err(_) => return -1,
+                    };
+                    let newp = match BackupPath::parse_item(to) {
+                        Ok(path) => path,
+                        Err(_) => return -1,
+                    };
+                    if store.rename(&old, &newp).await.is_err() {
                         return -1;
                     }
                 }
@@ -1339,8 +1359,7 @@ impl MobileBackup2Client {
 
     async fn remove_files_from_message(
         dl_value: &plist::Value,
-        host_dir: &Path,
-        delegate: &dyn BackupDelegate,
+        store: &mut dyn BackupStore,
     ) -> i64 {
         if let plist::Value::Array(arr) = dl_value
             && arr.len() >= 2
@@ -1348,8 +1367,11 @@ impl MobileBackup2Client {
         {
             for it in items {
                 if let Some(p) = it.as_string() {
-                    let path = host_dir.join(p);
-                    if delegate.exists(&path).await && delegate.remove(&path).await.is_err() {
+                    let path = match BackupPath::parse_item(p) {
+                        Ok(path) => path,
+                        Err(_) => return -1,
+                    };
+                    if store.exists(&path).await && store.remove(&path).await.is_err() {
                         return -1;
                     }
                 }
@@ -1359,22 +1381,21 @@ impl MobileBackup2Client {
         -1
     }
 
-    async fn copy_item_from_message(
-        dl_value: &plist::Value,
-        host_dir: &Path,
-        delegate: &dyn BackupDelegate,
-    ) -> i64 {
+    async fn copy_item_from_message(dl_value: &plist::Value, store: &mut dyn BackupStore) -> i64 {
         if let plist::Value::Array(arr) = dl_value
             && arr.len() >= 3
             && let (Some(plist::Value::String(src)), Some(plist::Value::String(dst))) =
                 (arr.get(1), arr.get(2))
         {
-            let from = host_dir.join(src);
-            let to = host_dir.join(dst);
-            if let Some(parent) = to.parent() {
-                let _ = delegate.create_dir_all(parent).await;
-            }
-            return match delegate.copy(&from, &to).await {
+            let from = match BackupPath::parse_item(src) {
+                Ok(path) => path,
+                Err(_) => return -1,
+            };
+            let to = match BackupPath::parse_item(dst) {
+                Ok(path) => path,
+                Err(_) => return -1,
+            };
+            return match store.copy(&from, &to).await {
                 Ok(_) => 0,
                 Err(_) => -1,
             };
@@ -1464,7 +1485,8 @@ impl MobileBackup2Client {
         });
         self.send_device_link_message("Info", Some(dict)).await?;
 
-        match self.process_dl_loop(backup_root, delegate).await? {
+        let mut store = DelegateBackupStore::new(backup_root, delegate);
+        match self.process_dl_loop(&mut store).await? {
             Some(res) => Ok(res),
             None => Err(IdeviceError::UnexpectedResponse(
                 "info_from_path DL loop returned no response".into(),
@@ -1492,7 +1514,8 @@ impl MobileBackup2Client {
         });
         self.send_device_link_message("List", Some(dict)).await?;
 
-        match self.process_dl_loop(backup_root, delegate).await? {
+        let mut store = DelegateBackupStore::new(backup_root, delegate);
+        match self.process_dl_loop(&mut store).await? {
             Some(res) => Ok(res),
             None => Err(IdeviceError::UnexpectedResponse(
                 "list_from_path DL loop returned no response".into(),
@@ -1526,7 +1549,8 @@ impl MobileBackup2Client {
         let opts = password.map(|pw| crate::plist!(dict { "Password": pw }));
         self.send_request("Unback", target_udid, Some(source), opts)
             .await?;
-        let _ = self.process_dl_loop(backup_root, delegate).await?;
+        let mut store = DelegateBackupStore::new(backup_root, delegate);
+        let _ = self.process_dl_loop(&mut store).await?;
         Ok(())
     }
 
@@ -1554,7 +1578,8 @@ impl MobileBackup2Client {
             "Password":? password,
         });
         self.send_device_link_message("Extract", Some(dict)).await?;
-        let _ = self.process_dl_loop(backup_root, delegate).await?;
+        let mut store = DelegateBackupStore::new(backup_root, delegate);
+        let _ = self.process_dl_loop(&mut store).await?;
         Ok(())
     }
 
@@ -1575,7 +1600,8 @@ impl MobileBackup2Client {
         });
         self.send_device_link_message("ChangePassword", Some(dict))
             .await?;
-        let _ = self.process_dl_loop(backup_root, delegate).await?;
+        let mut store = DelegateBackupStore::new(backup_root, delegate);
+        let _ = self.process_dl_loop(&mut store).await?;
         Ok(())
     }
 
@@ -1592,7 +1618,8 @@ impl MobileBackup2Client {
         });
         self.send_device_link_message("EraseDevice", Some(dict))
             .await?;
-        let _ = self.process_dl_loop(backup_root, delegate).await?;
+        let mut store = DelegateBackupStore::new(backup_root, delegate);
+        let _ = self.process_dl_loop(&mut store).await?;
         Ok(())
     }
 
@@ -1627,8 +1654,7 @@ impl MobileBackup2Client {
     /// Lists the contents of a directory referenced in a `DLContentsOfDirectory` message.
     async fn list_directory_contents(
         dl_value: &plist::Value,
-        host_dir: &Path,
-        delegate: &dyn BackupDelegate,
+        store: &mut dyn BackupStore,
     ) -> plist::Value {
         let mut dirlist = Dictionary::new();
 
@@ -1641,8 +1667,11 @@ impl MobileBackup2Client {
             return plist::Value::Dictionary(dirlist);
         };
 
-        let full_path = host_dir.join(&rel_path);
-        if let Ok(entries) = delegate.list_dir(&full_path).await {
+        let path = match BackupPath::parse(&rel_path) {
+            Ok(path) => path,
+            Err(_) => return plist::Value::Dictionary(dirlist),
+        };
+        if let Ok(entries) = store.list_dir(&path).await {
             for entry in entries {
                 let mut fdict = Dictionary::new();
                 let ftype = if entry.is_dir {

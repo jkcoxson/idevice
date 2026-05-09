@@ -44,6 +44,7 @@ reqwest = { version = "0.13", features = [
 ], optional = true, default-features = false }
 futures = { version = "0.3", optional = true }
 async-stream = { version = "0.3.6", optional = true }
+async-trait = { version = "0.1", optional = true }
 
 sha2 = { version = "0.10", optional = true, features = ["oid"] }
 
@@ -161,7 +162,7 @@ springboardservices = []
 misagent = []
 mobile_image_mounter = ["dep:sha2"]
 mobileactivationd = ["_reqwest"]
-mobilebackup2 = []
+mobilebackup2 = ["_serde_json", "dep:async-trait"]
 wda = ["_serde_json", "tokio/time", "tokio/net"]
 notification_proxy = [
   "tokio/macros",
