@@ -200,6 +200,7 @@ pub(crate) struct TransactionState {
     pub(crate) tx_id: Option<TxId>,
     pub(crate) status: TransactionStatus,
     operations: BTreeMap<OpId, OperationState>,
+    install_order: Vec<OpId>,
 }
 
 impl TransactionState {
@@ -210,9 +211,24 @@ impl TransactionState {
     /// - uses `BTreeMap` for deterministic operation ordering
     /// - does not touch the filesystem
     pub(crate) fn from_records(
-        _records: Vec<SequencedRecord<BackupRecord>>,
+        records: Vec<SequencedRecord<BackupRecord>>,
     ) -> Result<Self, BackupTransactionError> {
-        todo!("derive backup transaction state from replayed records")
+        let mut state = Self {
+            tx_id: None,
+            status: TransactionStatus::Active,
+            operations: BTreeMap::new(),
+            install_order: Vec::new(),
+        };
+
+        for entry in records {
+            let is_begin = matches!(entry.record, BackupRecord::Begin { .. });
+            if state.tx_id.is_none() && !is_begin {
+                return Err(corrupt("journal record before begin"));
+            }
+            state.apply_record(entry.record)?;
+        }
+
+        Ok(state)
     }
 
     /// Return installed operations that still need rollback.
@@ -221,7 +237,334 @@ impl TransactionState {
     /// so dependent operations are undone before the earlier mutations they may
     /// rely on.
     pub(crate) fn installed_operations(&self) -> Vec<OperationState> {
-        todo!("return installed operations that are not undone")
+        if matches!(
+            self.status,
+            TransactionStatus::Committed | TransactionStatus::RolledBack
+        ) {
+            return Vec::new();
+        }
+        self.installed_operation_projection()
+    }
+
+    fn installed_operation_projection(&self) -> Vec<OperationState> {
+        self.install_order
+            .iter()
+            .rev()
+            .filter_map(|op| self.operations.get(op))
+            .filter(|op| op.phase == OperationPhase::Installed)
+            .cloned()
+            .collect()
+    }
+
+    fn apply_record(&mut self, record: BackupRecord) -> Result<(), BackupTransactionError> {
+        match record {
+            BackupRecord::Begin { tx_id } => {
+                if self.tx_id.is_some() || self.status != TransactionStatus::Active {
+                    return Err(corrupt("duplicate or late begin record"));
+                }
+                self.tx_id = Some(tx_id);
+            }
+            BackupRecord::ReplacePrepared {
+                op,
+                path,
+                old,
+                tmp,
+                old_existed,
+            } => self.prepare(
+                op,
+                PreparedOperation::Replace {
+                    path,
+                    old,
+                    tmp,
+                    old_existed,
+                },
+            )?,
+            BackupRecord::RemovePrepared {
+                op,
+                path,
+                old,
+                old_existed,
+            } => self.prepare(
+                op,
+                PreparedOperation::Remove {
+                    path,
+                    old,
+                    old_existed,
+                },
+            )?,
+            BackupRecord::MovePrepared {
+                op,
+                from,
+                to,
+                replaced,
+                replaced_existed,
+            } => self.prepare(
+                op,
+                PreparedOperation::Move {
+                    from,
+                    to,
+                    replaced,
+                    replaced_existed,
+                },
+            )?,
+            BackupRecord::CopyPrepared {
+                op,
+                from,
+                to,
+                replaced,
+                replaced_existed,
+            } => self.prepare(
+                op,
+                PreparedOperation::Copy {
+                    from,
+                    to,
+                    replaced,
+                    replaced_existed,
+                },
+            )?,
+            BackupRecord::MkdirPrepared { op, path, existed } => {
+                self.prepare(op, PreparedOperation::Mkdir { path, existed })?
+            }
+            BackupRecord::OldSaved { op } => {
+                self.require_active()?;
+                self.advance(op, OperationPhase::OldSaved, |operation, phase| {
+                    old_state_needed(operation)
+                        && match operation {
+                            PreparedOperation::Replace { .. } => {
+                                phase == OperationPhase::TempWritten
+                            }
+                            PreparedOperation::Remove { .. }
+                            | PreparedOperation::Move { .. }
+                            | PreparedOperation::Copy { .. } => phase == OperationPhase::Prepared,
+                            PreparedOperation::Mkdir { .. } => false,
+                        }
+                })?;
+            }
+            BackupRecord::TempWritten { op, .. } => {
+                self.require_active()?;
+                self.advance(op, OperationPhase::TempWritten, |operation, phase| {
+                    matches!(operation, PreparedOperation::Replace { .. })
+                        && phase == OperationPhase::Prepared
+                })?;
+            }
+            BackupRecord::Installed { op } => {
+                self.require_active()?;
+                self.advance(op, OperationPhase::Installed, |operation, phase| {
+                    matches!(operation, PreparedOperation::Replace { .. })
+                        && replace_ready(operation, phase)
+                })?;
+            }
+            BackupRecord::Removed { op } => {
+                self.require_active()?;
+                self.advance(op, OperationPhase::Installed, |operation, phase| {
+                    matches!(operation, PreparedOperation::Remove { .. })
+                        && old_state_ready(operation, phase)
+                })?;
+            }
+            BackupRecord::Moved { op } => {
+                self.require_active()?;
+                self.advance(op, OperationPhase::Installed, |operation, phase| {
+                    matches!(operation, PreparedOperation::Move { .. })
+                        && old_state_ready(operation, phase)
+                })?;
+            }
+            BackupRecord::Copied { op } => {
+                self.require_active()?;
+                self.advance(op, OperationPhase::Installed, |operation, phase| {
+                    matches!(operation, PreparedOperation::Copy { .. })
+                        && old_state_ready(operation, phase)
+                })?;
+            }
+            BackupRecord::MkdirDone { op } => {
+                self.require_active()?;
+                self.advance(op, OperationPhase::Installed, |operation, phase| {
+                    matches!(
+                        (operation, phase),
+                        (PreparedOperation::Mkdir { .. }, OperationPhase::Prepared)
+                    )
+                })?;
+            }
+            BackupRecord::CommitReady => {
+                if self.status != TransactionStatus::Active {
+                    return Err(corrupt("commit_ready outside active transaction"));
+                }
+                self.status = TransactionStatus::CommitReady;
+            }
+            BackupRecord::Committed => {
+                if self.status != TransactionStatus::CommitReady {
+                    return Err(corrupt("committed without commit_ready"));
+                }
+                self.status = TransactionStatus::Committed;
+            }
+            BackupRecord::RollbackStarted => {
+                if matches!(
+                    self.status,
+                    TransactionStatus::Committed | TransactionStatus::RolledBack
+                ) {
+                    return Err(corrupt("rollback_started after terminal transaction state"));
+                }
+                self.status = TransactionStatus::RollbackStarted;
+            }
+            BackupRecord::Undone { op } => {
+                if self.status != TransactionStatus::RollbackStarted {
+                    return Err(corrupt("undone outside rollback"));
+                }
+                if self
+                    .installed_operation_projection()
+                    .first()
+                    .is_none_or(|operation| operation.op != op)
+                {
+                    return Err(corrupt("undone operation is not next in rollback order"));
+                }
+                self.advance(op, OperationPhase::Undone, |_operation, phase| {
+                    phase == OperationPhase::Installed
+                })?;
+            }
+            BackupRecord::RolledBack => {
+                if self.status != TransactionStatus::RollbackStarted {
+                    return Err(corrupt("rolled_back without rollback_started"));
+                }
+                if !self.installed_operation_projection().is_empty() {
+                    return Err(corrupt("rolled_back with installed operations remaining"));
+                }
+                self.status = TransactionStatus::RolledBack;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn prepare(
+        &mut self,
+        op: OpId,
+        operation: PreparedOperation,
+    ) -> Result<(), BackupTransactionError> {
+        if self.tx_id.is_none() {
+            return Err(corrupt("operation prepared before begin"));
+        }
+        if self.operations.contains_key(&op) {
+            return Err(corrupt("duplicate operation id"));
+        }
+        if self.status != TransactionStatus::Active {
+            return Err(corrupt("operation prepared outside active transaction"));
+        }
+        validate_prepared_operation(&operation)?;
+
+        self.operations.insert(
+            op,
+            OperationState {
+                op,
+                operation,
+                phase: OperationPhase::Prepared,
+            },
+        );
+        Ok(())
+    }
+
+    fn advance(
+        &mut self,
+        op: OpId,
+        next: OperationPhase,
+        allowed: impl FnOnce(&PreparedOperation, OperationPhase) -> bool,
+    ) -> Result<(), BackupTransactionError> {
+        let operation = self
+            .operations
+            .get_mut(&op)
+            .ok_or_else(|| corrupt("operation phase references unknown operation"))?;
+        if !allowed(&operation.operation, operation.phase) {
+            return Err(corrupt("invalid operation phase transition"));
+        }
+        operation.phase = next;
+        if next == OperationPhase::Installed {
+            self.install_order.push(op);
+        }
+        Ok(())
+    }
+
+    fn require_active(&self) -> Result<(), BackupTransactionError> {
+        if self.status == TransactionStatus::Active {
+            Ok(())
+        } else {
+            Err(corrupt("operation phase outside active transaction"))
+        }
+    }
+}
+
+fn corrupt(message: impl Into<String>) -> BackupTransactionError {
+    BackupTransactionError::CorruptJournal(message.into())
+}
+
+fn old_state_needed(operation: &PreparedOperation) -> bool {
+    match operation {
+        PreparedOperation::Replace { old_existed, .. }
+        | PreparedOperation::Remove { old_existed, .. } => *old_existed,
+        PreparedOperation::Move {
+            replaced_existed, ..
+        }
+        | PreparedOperation::Copy {
+            replaced_existed, ..
+        } => *replaced_existed,
+        PreparedOperation::Mkdir { .. } => false,
+    }
+}
+
+fn old_state_ready(operation: &PreparedOperation, phase: OperationPhase) -> bool {
+    match operation {
+        PreparedOperation::Replace { old_existed, .. }
+        | PreparedOperation::Remove { old_existed, .. } => {
+            (*old_existed && phase == OperationPhase::OldSaved)
+                || (!*old_existed && phase == OperationPhase::Prepared)
+        }
+        PreparedOperation::Move {
+            replaced_existed, ..
+        }
+        | PreparedOperation::Copy {
+            replaced_existed, ..
+        } => {
+            (*replaced_existed && phase == OperationPhase::OldSaved)
+                || (!*replaced_existed && phase == OperationPhase::Prepared)
+        }
+        PreparedOperation::Mkdir { .. } => phase == OperationPhase::Prepared,
+    }
+}
+
+fn replace_ready(operation: &PreparedOperation, phase: OperationPhase) -> bool {
+    match operation {
+        PreparedOperation::Replace { old_existed, .. } => {
+            (*old_existed && phase == OperationPhase::OldSaved)
+                || (!*old_existed && phase == OperationPhase::TempWritten)
+        }
+        _ => false,
+    }
+}
+
+fn validate_prepared_operation(
+    operation: &PreparedOperation,
+) -> Result<(), BackupTransactionError> {
+    let valid = match operation {
+        PreparedOperation::Replace {
+            old, old_existed, ..
+        }
+        | PreparedOperation::Remove {
+            old, old_existed, ..
+        } => old.is_some() == *old_existed,
+        PreparedOperation::Move {
+            replaced,
+            replaced_existed,
+            ..
+        }
+        | PreparedOperation::Copy {
+            replaced,
+            replaced_existed,
+            ..
+        } => replaced.is_some() == *replaced_existed,
+        PreparedOperation::Mkdir { .. } => true,
+    };
+
+    if valid {
+        Ok(())
+    } else {
+        Err(corrupt("prepared operation old-state flag/path mismatch"))
     }
 }
 
@@ -395,5 +738,493 @@ impl FileReplacement<'_> {
     /// - never appends `installed`
     pub(crate) fn abort(self) -> Result<(), BackupTransactionError> {
         todo!("abort journal-backed file replacement")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rec(seq: u64, record: BackupRecord) -> SequencedRecord<BackupRecord> {
+        SequencedRecord { seq, record }
+    }
+
+    fn tx_id() -> TxId {
+        TxId("tx-1".into())
+    }
+
+    fn backup_path(path: &str) -> BackupPath {
+        BackupPath::parse_item(path).unwrap()
+    }
+
+    fn tmp(op: u64) -> JournalPath {
+        JournalPath::tmp(OpId(op))
+    }
+
+    fn old(op: u64) -> JournalPath {
+        JournalPath::old(OpId(op))
+    }
+
+    #[test]
+    fn replay_derives_committed_replace_state() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(
+                2,
+                BackupRecord::ReplacePrepared {
+                    op: OpId(1),
+                    path: backup_path("aa/bb"),
+                    old: Some(old(1)),
+                    tmp: tmp(1),
+                    old_existed: true,
+                },
+            ),
+            rec(
+                3,
+                BackupRecord::TempWritten {
+                    op: OpId(1),
+                    size: 12,
+                },
+            ),
+            rec(4, BackupRecord::OldSaved { op: OpId(1) }),
+            rec(5, BackupRecord::Installed { op: OpId(1) }),
+            rec(6, BackupRecord::CommitReady),
+            rec(7, BackupRecord::Committed),
+        ];
+
+        let state = TransactionState::from_records(records).unwrap();
+
+        assert_eq!(state.tx_id, Some(tx_id()));
+        assert_eq!(state.status, TransactionStatus::Committed);
+        assert!(state.installed_operations().is_empty());
+    }
+
+    #[test]
+    fn installed_operations_are_returned_in_reverse_install_order_for_rollback() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(
+                2,
+                BackupRecord::MkdirPrepared {
+                    op: OpId(1),
+                    path: backup_path("aa"),
+                    existed: false,
+                },
+            ),
+            rec(3, BackupRecord::MkdirDone { op: OpId(1) }),
+            rec(
+                4,
+                BackupRecord::RemovePrepared {
+                    op: OpId(2),
+                    path: backup_path("aa/file"),
+                    old: Some(old(2)),
+                    old_existed: true,
+                },
+            ),
+            rec(5, BackupRecord::OldSaved { op: OpId(2) }),
+            rec(6, BackupRecord::Removed { op: OpId(2) }),
+        ];
+
+        let state = TransactionState::from_records(records).unwrap();
+
+        let ops: Vec<OpId> = state
+            .installed_operations()
+            .into_iter()
+            .map(|op| op.op)
+            .collect();
+        assert_eq!(ops, vec![OpId(2), OpId(1)]);
+    }
+
+    #[test]
+    fn installed_operations_follow_reverse_replay_order_not_operation_id_order() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(
+                2,
+                BackupRecord::MkdirPrepared {
+                    op: OpId(2),
+                    path: backup_path("later-id"),
+                    existed: false,
+                },
+            ),
+            rec(
+                3,
+                BackupRecord::MkdirPrepared {
+                    op: OpId(1),
+                    path: backup_path("earlier-id"),
+                    existed: false,
+                },
+            ),
+            rec(4, BackupRecord::MkdirDone { op: OpId(2) }),
+            rec(5, BackupRecord::MkdirDone { op: OpId(1) }),
+        ];
+
+        let state = TransactionState::from_records(records).unwrap();
+        let ops: Vec<OpId> = state
+            .installed_operations()
+            .into_iter()
+            .map(|op| op.op)
+            .collect();
+
+        assert_eq!(ops, vec![OpId(1), OpId(2)]);
+    }
+
+    #[test]
+    fn replay_rejects_installed_before_required_replace_phases() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(
+                2,
+                BackupRecord::ReplacePrepared {
+                    op: OpId(1),
+                    path: backup_path("aa/bb"),
+                    old: Some(old(1)),
+                    tmp: tmp(1),
+                    old_existed: true,
+                },
+            ),
+            rec(3, BackupRecord::Installed { op: OpId(1) }),
+        ];
+
+        assert!(matches!(
+            TransactionState::from_records(records),
+            Err(BackupTransactionError::CorruptJournal(_))
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_new_replace_install_before_temp_written() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(
+                2,
+                BackupRecord::ReplacePrepared {
+                    op: OpId(1),
+                    path: backup_path("aa/new"),
+                    old: None,
+                    tmp: tmp(1),
+                    old_existed: false,
+                },
+            ),
+            rec(3, BackupRecord::Installed { op: OpId(1) }),
+        ];
+
+        assert!(matches!(
+            TransactionState::from_records(records),
+            Err(BackupTransactionError::CorruptJournal(_))
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_replace_old_saved_before_temp_written() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(
+                2,
+                BackupRecord::ReplacePrepared {
+                    op: OpId(1),
+                    path: backup_path("aa/bb"),
+                    old: Some(old(1)),
+                    tmp: tmp(1),
+                    old_existed: true,
+                },
+            ),
+            rec(3, BackupRecord::OldSaved { op: OpId(1) }),
+        ];
+
+        assert!(matches!(
+            TransactionState::from_records(records),
+            Err(BackupTransactionError::CorruptJournal(_))
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_remove_install_when_existing_old_state_was_not_saved() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(
+                2,
+                BackupRecord::RemovePrepared {
+                    op: OpId(1),
+                    path: backup_path("aa/file"),
+                    old: Some(old(1)),
+                    old_existed: true,
+                },
+            ),
+            rec(3, BackupRecord::Removed { op: OpId(1) }),
+        ];
+
+        assert!(matches!(
+            TransactionState::from_records(records),
+            Err(BackupTransactionError::CorruptJournal(_))
+        ));
+    }
+
+    #[test]
+    fn replay_allows_remove_install_without_old_state_when_path_did_not_exist() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(
+                2,
+                BackupRecord::RemovePrepared {
+                    op: OpId(1),
+                    path: backup_path("aa/file"),
+                    old: None,
+                    old_existed: false,
+                },
+            ),
+            rec(3, BackupRecord::Removed { op: OpId(1) }),
+        ];
+
+        let state = TransactionState::from_records(records).unwrap();
+
+        assert_eq!(
+            state.installed_operations(),
+            vec![OperationState {
+                op: OpId(1),
+                operation: PreparedOperation::Remove {
+                    path: backup_path("aa/file"),
+                    old: None,
+                    old_existed: false,
+                },
+                phase: OperationPhase::Installed,
+            }]
+        );
+    }
+
+    #[test]
+    fn replay_rejects_old_state_flag_path_mismatch() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(
+                2,
+                BackupRecord::RemovePrepared {
+                    op: OpId(1),
+                    path: backup_path("aa/file"),
+                    old: None,
+                    old_existed: true,
+                },
+            ),
+        ];
+
+        assert!(matches!(
+            TransactionState::from_records(records),
+            Err(BackupTransactionError::CorruptJournal(_))
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_old_saved_when_old_state_was_not_needed() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(
+                2,
+                BackupRecord::RemovePrepared {
+                    op: OpId(1),
+                    path: backup_path("aa/file"),
+                    old: None,
+                    old_existed: false,
+                },
+            ),
+            rec(3, BackupRecord::OldSaved { op: OpId(1) }),
+        ];
+
+        assert!(matches!(
+            TransactionState::from_records(records),
+            Err(BackupTransactionError::CorruptJournal(_))
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_duplicate_begin() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(
+                2,
+                BackupRecord::Begin {
+                    tx_id: TxId("tx-2".into()),
+                },
+            ),
+        ];
+
+        assert!(matches!(
+            TransactionState::from_records(records),
+            Err(BackupTransactionError::CorruptJournal(_))
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_transaction_record_before_begin() {
+        let records = vec![rec(1, BackupRecord::CommitReady)];
+
+        assert!(matches!(
+            TransactionState::from_records(records),
+            Err(BackupTransactionError::CorruptJournal(_))
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_committed_without_commit_ready() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(2, BackupRecord::Committed),
+        ];
+
+        assert!(matches!(
+            TransactionState::from_records(records),
+            Err(BackupTransactionError::CorruptJournal(_))
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_transition_for_unknown_operation() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(2, BackupRecord::Installed { op: OpId(99) }),
+        ];
+
+        assert!(matches!(
+            TransactionState::from_records(records),
+            Err(BackupTransactionError::CorruptJournal(_))
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_operation_progress_after_commit_ready() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(
+                2,
+                BackupRecord::MkdirPrepared {
+                    op: OpId(1),
+                    path: backup_path("aa"),
+                    existed: false,
+                },
+            ),
+            rec(3, BackupRecord::CommitReady),
+            rec(4, BackupRecord::MkdirDone { op: OpId(1) }),
+        ];
+
+        assert!(matches!(
+            TransactionState::from_records(records),
+            Err(BackupTransactionError::CorruptJournal(_))
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_operation_before_begin() {
+        let records = vec![rec(
+            1,
+            BackupRecord::MkdirPrepared {
+                op: OpId(1),
+                path: backup_path("aa"),
+                existed: false,
+            },
+        )];
+
+        assert!(matches!(
+            TransactionState::from_records(records),
+            Err(BackupTransactionError::CorruptJournal(_))
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_undone_before_rollback_started() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(
+                2,
+                BackupRecord::MkdirPrepared {
+                    op: OpId(1),
+                    path: backup_path("aa"),
+                    existed: false,
+                },
+            ),
+            rec(3, BackupRecord::MkdirDone { op: OpId(1) }),
+            rec(4, BackupRecord::Undone { op: OpId(1) }),
+        ];
+
+        assert!(matches!(
+            TransactionState::from_records(records),
+            Err(BackupTransactionError::CorruptJournal(_))
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_undone_outside_reverse_install_order() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(
+                2,
+                BackupRecord::MkdirPrepared {
+                    op: OpId(1),
+                    path: backup_path("aa"),
+                    existed: false,
+                },
+            ),
+            rec(3, BackupRecord::MkdirDone { op: OpId(1) }),
+            rec(
+                4,
+                BackupRecord::MkdirPrepared {
+                    op: OpId(2),
+                    path: backup_path("aa/bb"),
+                    existed: false,
+                },
+            ),
+            rec(5, BackupRecord::MkdirDone { op: OpId(2) }),
+            rec(6, BackupRecord::RollbackStarted),
+            rec(7, BackupRecord::Undone { op: OpId(1) }),
+        ];
+
+        assert!(matches!(
+            TransactionState::from_records(records),
+            Err(BackupTransactionError::CorruptJournal(_))
+        ));
+    }
+
+    #[test]
+    fn replay_rejects_rolled_back_with_installed_operations_remaining() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(
+                2,
+                BackupRecord::MkdirPrepared {
+                    op: OpId(1),
+                    path: backup_path("aa"),
+                    existed: false,
+                },
+            ),
+            rec(3, BackupRecord::MkdirDone { op: OpId(1) }),
+            rec(4, BackupRecord::RollbackStarted),
+            rec(5, BackupRecord::RolledBack),
+        ];
+
+        assert!(matches!(
+            TransactionState::from_records(records),
+            Err(BackupTransactionError::CorruptJournal(_))
+        ));
+    }
+
+    #[test]
+    fn installed_operations_excludes_undone_operations() {
+        let records = vec![
+            rec(1, BackupRecord::Begin { tx_id: tx_id() }),
+            rec(
+                2,
+                BackupRecord::MkdirPrepared {
+                    op: OpId(1),
+                    path: backup_path("aa"),
+                    existed: false,
+                },
+            ),
+            rec(3, BackupRecord::MkdirDone { op: OpId(1) }),
+            rec(4, BackupRecord::RollbackStarted),
+            rec(5, BackupRecord::Undone { op: OpId(1) }),
+        ];
+
+        let state = TransactionState::from_records(records).unwrap();
+
+        assert_eq!(state.status, TransactionStatus::RollbackStarted);
+        assert!(state.installed_operations().is_empty());
     }
 }
