@@ -5,7 +5,7 @@ use futures::Stream;
 use http2::Setting;
 use tracing::debug;
 
-use crate::{CdTunnelError, IdeviceError, ReadWrite};
+use crate::{CdTunnelError, IdeviceError, ReadWrite, xpc};
 
 pub mod errors;
 mod format;
@@ -68,6 +68,27 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
             .await?;
 
         Ok(())
+    }
+
+    /// Announce ourselves to the device's `remoted` as a modern (non-legacy)
+    /// RemoteXPC peer.
+    ///
+    /// Send this only on the RSD/remoted control connection
+    pub async fn send_device_handshake(&mut self) -> Result<(), IdeviceError> {
+        const REMOTE_XPC_VERSION_FLAGS: u64 = 0x0100_0000_0000_0006;
+
+        let msg = xpc!({
+            "MessageType": "Handshake",
+            "MessagingProtocolVersion": 7u64,
+            "UUID": uuid::Uuid::new_v4(),
+            "Properties": {
+                "RemoteXPCVersionFlags": REMOTE_XPC_VERSION_FLAGS,
+                "SensitivePropertiesVisible": true,
+            },
+            "Services": XPCObject::Dictionary(Dictionary::new())
+        });
+
+        self.send_object(msg, false).await
     }
 
     pub async fn recv(&mut self) -> Result<plist::Value, IdeviceError> {

@@ -70,8 +70,25 @@ impl<R: ReadWrite> Http2Client<R> {
     }
 
     pub async fn send(&mut self, payload: Vec<u8>, stream_id: u32) -> Result<(), IdeviceError> {
-        let frame = frame::DataFrame { stream_id, payload }.serialize();
-        self.inner.write_all(&frame).await?;
+        const MAX_FRAME_SIZE: usize = 16384;
+        let mut chunks = payload.chunks(MAX_FRAME_SIZE).peekable();
+        // Always send at least one frame, even for an empty payload.
+        if chunks.peek().is_none() {
+            let frame = frame::DataFrame {
+                stream_id,
+                payload: Vec::new(),
+            }
+            .serialize();
+            self.inner.write_all(&frame).await?;
+        }
+        for chunk in chunks {
+            let frame = frame::DataFrame {
+                stream_id,
+                payload: chunk.to_vec(),
+            }
+            .serialize();
+            self.inner.write_all(&frame).await?;
+        }
         self.inner.flush().await?;
         Ok(())
     }
@@ -112,11 +129,10 @@ impl<R: ReadWrite> Http2Client<R> {
                         data_frame.payload.len()
                     );
 
-                    if data_frame.stream_id % 2 == 0 {
-                        self.window_update(data_frame.payload.len() as u32, 0)
-                            .await?;
-                        self.window_update(data_frame.payload.len() as u32, data_frame.stream_id)
-                            .await?;
+                    let len = data_frame.payload.len() as u32;
+                    if len > 0 {
+                        self.window_update(len, 0).await?;
+                        self.window_update(len, data_frame.stream_id).await?;
                     }
                     if data_frame.stream_id == stream_id {
                         return Ok(data_frame.payload);

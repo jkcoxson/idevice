@@ -35,6 +35,7 @@ impl RsdHandshake {
     pub async fn new(socket: impl ReadWrite) -> Result<Self, IdeviceError> {
         let mut xpc_client = RemoteXpcClient::new(socket).await?;
         xpc_client.do_handshake().await?;
+        xpc_client.send_device_handshake().await?;
         let data = xpc_client.recv_root().await?;
 
         let services_dict = match data
