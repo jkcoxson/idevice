@@ -1,8 +1,11 @@
 // Jackson Coxson
 
+use crate::IdeviceError;
 use crate::xpc::errors::XpcError;
-use crate::{IdeviceError, ReadWrite};
-use tokio::io::AsyncReadExt;
+
+/// Fixed HTTP/2 frame header size: 3-byte length, 1-byte type, 1-byte flags,
+/// 4-byte stream id.
+const FRAME_HEADER_LEN: usize = 9;
 
 pub trait HttpFrame {
     fn serialize(&self) -> Vec<u8>;
@@ -18,52 +21,50 @@ pub enum Frame {
 }
 
 impl Frame {
-    pub async fn next(mut socket: &mut impl ReadWrite) -> Result<Self, IdeviceError> {
-        // Read the len of the frame
-        let mut buf = [0u8; 3];
-        tokio::io::AsyncReadExt::read_exact(&mut socket, &mut buf).await?;
-        let frame_len = u32::from_be_bytes([0x00, buf[0], buf[1], buf[2]]);
+    /// Parse a single frame from the front of `buf`.
+    ///
+    /// Returns `Ok(None)` when `buf` does not yet hold a complete frame (the
+    /// caller should read more bytes and retry). On success returns the frame
+    /// and how many bytes it consumed, so the caller can drain exactly that much
+    /// — this keeps frame reassembly cancellation-safe: a partially-received
+    /// frame stays buffered until it is whole. RST_STREAM and GOAWAY surface as
+    /// errors (they consume no bytes; the connection is finished either way).
+    pub fn parse(buf: &[u8]) -> Result<Option<(Self, usize)>, IdeviceError> {
+        if buf.len() < FRAME_HEADER_LEN {
+            return Ok(None);
+        }
+        let frame_len = u32::from_be_bytes([0x00, buf[0], buf[1], buf[2]]) as usize;
+        let frame_type = buf[3];
+        let flags = buf[4];
+        let stream_id = u32::from_be_bytes([buf[5], buf[6], buf[7], buf[8]]);
 
-        // Read the fields
-        let frame_type = socket.read_u8().await?;
-        let flags = socket.read_u8().await?;
-        let stream_id = socket.read_u32().await?;
+        let total = FRAME_HEADER_LEN + frame_len;
+        if buf.len() < total {
+            return Ok(None);
+        }
+        let body = &buf[FRAME_HEADER_LEN..total];
 
-        let mut body = vec![0; frame_len as usize];
-        socket.read_exact(&mut body).await?;
-
-        Ok(match frame_type {
-            0x00 => {
-                // data
-                Self::Data(DataFrame {
-                    stream_id,
-                    payload: body,
-                })
-            }
-            0x01 => {
-                // headers
-                Self::Headers(HeadersFrame { stream_id })
-            }
+        let frame = match frame_type {
+            0x00 => Self::Data(DataFrame {
+                stream_id,
+                payload: body.to_vec(),
+            }),
+            0x01 => Self::Headers(HeadersFrame { stream_id }),
             0x03 => return Err(XpcError::HttpStreamReset.into()),
             0x04 => {
-                // settings
-                let mut body = std::io::Cursor::new(body);
+                // settings: a sequence of (u16 identifier, u32 value) entries
                 let mut settings = Vec::new();
-
-                while let Ok(setting_type) = body.read_u16().await {
+                let mut i = 0;
+                while i + 6 <= body.len() {
+                    let setting_type = u16::from_be_bytes([body[i], body[i + 1]]);
+                    let value =
+                        u32::from_be_bytes([body[i + 2], body[i + 3], body[i + 4], body[i + 5]]);
                     settings.push(match setting_type {
-                        0x03 => {
-                            let max_streams = body.read_u32().await?;
-                            Setting::MaxConcurrentStreams(max_streams)
-                        }
-                        0x04 => {
-                            let window_size = body.read_u32().await?;
-                            Setting::InitialWindowSize(window_size)
-                        }
-                        _ => {
-                            return Err(XpcError::UnknownHttpSetting(setting_type).into());
-                        }
+                        0x03 => Setting::MaxConcurrentStreams(value),
+                        0x04 => Setting::InitialWindowSize(value),
+                        _ => return Err(XpcError::UnknownHttpSetting(setting_type).into()),
                     });
+                    i += 6;
                 }
                 Self::Settings(SettingsFrame {
                     settings,
@@ -80,23 +81,21 @@ impl Frame {
                 return Err(XpcError::HttpGoAway(msg).into());
             }
             0x08 => {
-                // window update
                 if body.len() != 4 {
                     return Err(IdeviceError::UnexpectedResponse(
                         "HTTP/2 window update frame body was not 4 bytes".into(),
                     ));
                 }
-
                 let window = u32::from_be_bytes([body[0], body[1], body[2], body[3]]);
                 Self::WindowUpdate(WindowUpdateFrame {
                     increment_size: window,
                     stream_id,
                 })
             }
-            _ => {
-                return Err(XpcError::UnknownFrame(frame_type).into());
-            }
-        })
+            _ => return Err(XpcError::UnknownFrame(frame_type).into()),
+        };
+
+        Ok(Some((frame, total)))
     }
 }
 

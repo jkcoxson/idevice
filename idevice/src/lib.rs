@@ -296,6 +296,7 @@ impl Idevice {
     ///
     /// # Errors
     /// Returns `IdeviceError` if serialization or transmission fails
+    #[allow(dead_code)]
     async fn send_bplist(&mut self, message: plist::Value) -> Result<(), IdeviceError> {
         if let Some(socket) = &mut self.socket {
             debug!("Sending plist: {}", pretty_print_plist(&message));
@@ -859,6 +860,9 @@ pub enum IdeviceError {
     #[cfg(feature = "installation_proxy")]
     #[error(transparent)]
     InstallationProxy(#[from] services::installation_proxy::InstallationProxyError),
+    #[cfg(feature = "core_device")]
+    #[error(transparent)]
+    CoreDevice(#[from] services::core_device::CoreDeviceError),
 
     // Feature-gated service errors (single-variant, not worth a sub-enum)
     #[cfg(feature = "misagent")]
@@ -1025,6 +1029,8 @@ impl IdeviceError {
             IdeviceError::Afc(_) => 106,
             #[cfg(feature = "installation_proxy")]
             IdeviceError::InstallationProxy(_) => 107,
+            #[cfg(feature = "core_device")]
+            IdeviceError::CoreDevice(_) => 108,
 
             // 200+: Feature-gated single-variant service errors
             #[cfg(feature = "misagent")]
@@ -1063,6 +1069,8 @@ impl IdeviceError {
             IdeviceError::Afc(e) => e.sub_code(),
             #[cfg(feature = "installation_proxy")]
             IdeviceError::InstallationProxy(e) => e.sub_code(),
+            #[cfg(feature = "core_device")]
+            IdeviceError::CoreDevice(e) => e.sub_code(),
             _ => 0,
         }
     }

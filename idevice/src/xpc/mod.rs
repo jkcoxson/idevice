@@ -18,11 +18,18 @@ pub use format::{Dictionary, XPCMessage, XPCObject};
 const ROOT_CHANNEL: u32 = 1;
 const REPLY_CHANNEL: u32 = 3;
 
+/// Fixed XPC message-wrapper header: magic + flags + body length + message id.
+const XPC_WRAPPER_LEN: usize = 24;
+
 #[derive(Debug)]
 pub struct RemoteXpcClient<R: ReadWrite> {
     h2_client: http2::Http2Client<R>,
     root_id: u64,
     // reply_id: u64 // maybe not used?
+    /// Per-channel bytes accumulated toward the next whole XPC message. Persisted
+    /// across `recv_from_channel` calls so a partially-received message survives a
+    /// cancelled read — required for `recv_push` to be safe in a `select!`.
+    partial: std::collections::HashMap<u32, Vec<u8>>,
 }
 
 impl<R: ReadWrite> RemoteXpcClient<R> {
@@ -30,6 +37,7 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
         Ok(Self {
             h2_client: http2::Http2Client::new(socket).await?,
             root_id: 1,
+            partial: std::collections::HashMap::new(),
         })
     }
 
@@ -100,29 +108,43 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
     }
 
     async fn recv_from_channel(&mut self, channel: u32) -> Result<plist::Value, IdeviceError> {
-        let mut msg_buffer = Vec::new();
         loop {
-            msg_buffer.extend(self.h2_client.read(channel).await?);
-            let msg = match XPCMessage::decode(&msg_buffer) {
-                Ok(m) => m,
-                Err(IdeviceError::CdTunnel(CdTunnelError::SizeMismatch)) => continue,
-                Err(e) => break Err(e),
+            // Try to decode a whole message from what's already buffered before
+            // reading more, so a message split across earlier reads completes.
+            // Scope the buffer borrow so it's released before the await below.
+            let decoded = {
+                let buf = self.partial.entry(channel).or_default();
+                match XPCMessage::decode(buf) {
+                    Ok(msg) => {
+                        // A complete wrapper consumes 24 + body_len bytes; drain
+                        // exactly that, preserving any bytes of the next message.
+                        let consumed = (XPC_WRAPPER_LEN + xpc_body_len(buf)).min(buf.len());
+                        buf.drain(..consumed);
+                        Some(msg)
+                    }
+                    // Not enough bytes yet: fall through to read another frame.
+                    Err(IdeviceError::CdTunnel(CdTunnelError::SizeMismatch))
+                    | Err(IdeviceError::NotEnoughBytes(..)) => None,
+                    Err(e) => return Err(e),
+                }
             };
 
-            match msg.message {
-                Some(msg) => {
-                    if let Some(d) = msg.as_dictionary()
-                        && d.is_empty()
-                    {
-                        msg_buffer.clear();
-                        continue;
+            match decoded {
+                Some(msg) => match msg.message {
+                    // Skip empty-dictionary keepalives and bodyless frames.
+                    Some(inner) => {
+                        if let Some(d) = inner.as_dictionary()
+                            && d.is_empty()
+                        {
+                            continue;
+                        }
+                        return Ok(inner.to_plist());
                     }
-                    break Ok(msg.to_plist());
-                }
+                    None => continue,
+                },
                 None => {
-                    // don't care didn't ask
-                    msg_buffer.clear();
-                    continue;
+                    let chunk = self.h2_client.read(channel).await?;
+                    self.partial.entry(channel).or_default().extend(chunk);
                 }
             }
         }
@@ -233,4 +255,12 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
         self.h2_client.send(bytes, stream_id).await?;
         Ok(())
     }
+}
+
+/// The XPC message body length from a decoded-OK wrapper: the little-endian u64
+/// at bytes 8..16. `buf` is known to hold a full wrapper (≥ 24 bytes) here.
+fn xpc_body_len(buf: &[u8]) -> usize {
+    u64::from_le_bytes([
+        buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15],
+    ]) as usize
 }

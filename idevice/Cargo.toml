@@ -24,7 +24,7 @@ plist = { version = "1.8" }
 plist-macro = { version = "0.1.6" }
 serde = { version = "1", features = ["derive"] }
 ns-keyed-archive = { version = "0.1.5", optional = true }
-jktcp = { version = "0.1.4", optional = true, default-features = false }
+jktcp = { version = "0.1.6", optional = true, default-features = false }
 
 thiserror = { version = "2" }
 tracing = { version = "0.1.41" }
@@ -67,6 +67,7 @@ rand = { version = "0.10" }
 obfstr = { version = "0.4", optional = true }
 
 async_zip = { version = "0.0.18", optional = true }
+flate2 = { version = "1", optional = true }
 
 # Drop-in for `std::time::SystemTime` that's a zero-cost alias on native and
 # uses `Date.now()` on wasm32-unknown-unknown (where `SystemTime::now()` panics).
@@ -84,6 +85,9 @@ tokio = { version = "1", features = ["fs"] }
 # transitive `getrandom` crates so Web Crypto is used for randomness, and
 # pull in a pure-Rust rustls `CryptoProvider` (`rustls-rustcrypto`).
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+uuid = { version = "1.23", default-features = false, features = [
+  "js",
+], optional = true }
 getrandom_02 = { package = "getrandom", version = "0.2", default-features = false, features = [
   "js",
 ], optional = true }
@@ -127,6 +131,13 @@ bt_packet_logger = []
 companion_proxy = []
 core_device = ["xpc", "dep:uuid", "dep:ns-keyed-archive"]
 core_device_proxy = ["_serde_json"]
+display_stream = [
+  "core_device",
+  "rsd",
+  "dep:flate2",
+  "dep:futures",
+  "dep:web-time",
+]
 crashreportcopymobile = ["afc"]
 debug_proxy = []
 diagnostics_relay = []
@@ -234,6 +245,7 @@ full = [
   "companion_proxy",
   "core_device",
   "core_device_proxy",
+  "display_stream",
   "crashreportcopymobile",
   "debug_proxy",
   "diagnostics_relay",
