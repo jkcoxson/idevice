@@ -20,6 +20,10 @@ mod application_listing;
 mod bt_packet_logger;
 mod companion_proxy;
 mod condition_inducer;
+mod coredevice_location;
+mod coredevice_pasteboard;
+mod coredevice_rotate;
+mod coredevice_stream;
 mod crash_logs;
 mod debug_proxy;
 mod device_info;
@@ -29,6 +33,7 @@ mod dvt_packet_parser;
 mod energy_monitor;
 mod graphics;
 mod heartbeat_client;
+mod hid;
 mod ideviceinfo;
 mod ideviceinstaller;
 mod installcoordination_proxy;
@@ -49,6 +54,8 @@ mod process_control;
 mod remotexpc;
 mod restore_service;
 mod rppairing;
+mod screencapture;
+mod screencaptureservice;
 mod screenshot;
 mod springboardservices;
 mod syslog_relay;
@@ -110,6 +117,7 @@ async fn main() {
         .with_subcommand("diagnosticsservice", diagnosticsservice::register())
         .with_subcommand("dvt_packet_parser", dvt_packet_parser::register())
         .with_subcommand("heartbeat_client", heartbeat_client::register())
+        .with_subcommand("hid", hid::register())
         .with_subcommand("ideviceinfo", ideviceinfo::register())
         .with_subcommand("ideviceinstaller", ideviceinstaller::register())
         .with_subcommand(
@@ -133,6 +141,11 @@ async fn main() {
         .with_subcommand("rppairing", rppairing::register())
         .with_subcommand("restore_service", restore_service::register())
         .with_subcommand("screenshot", screenshot::register())
+        .with_subcommand("screencapture", screencapture::register())
+        .with_subcommand("screencaptureservice", screencaptureservice::register())
+        .with_subcommand("location", coredevice_location::register())
+        .with_subcommand("pasteboard", coredevice_pasteboard::register())
+        .with_subcommand("rotate", coredevice_rotate::register())
         .with_subcommand("springboard", springboardservices::register())
         .with_subcommand("syslog_relay", syslog_relay::register())
         .with_subcommand("energy_monitor", energy_monitor::register())
@@ -207,6 +220,9 @@ async fn main() {
         "heartbeat_client" => {
             heartbeat_client::main(sub_args, provider).await;
         }
+        "hid" => {
+            hid::main(sub_args, provider).await;
+        }
         "ideviceinfo" => {
             ideviceinfo::main(sub_args, provider).await;
         }
@@ -266,6 +282,21 @@ async fn main() {
         }
         "screenshot" => {
             screenshot::main(sub_args, provider).await;
+        }
+        "screencapture" => {
+            screencapture::main(sub_args, provider).await;
+        }
+        "screencaptureservice" => {
+            screencaptureservice::main(sub_args, provider).await;
+        }
+        "location" => {
+            coredevice_location::main(sub_args, provider).await;
+        }
+        "pasteboard" => {
+            coredevice_pasteboard::main(sub_args, provider).await;
+        }
+        "rotate" => {
+            coredevice_rotate::main(sub_args, provider).await;
         }
         "springboard" => {
             springboardservices::main(sub_args, provider).await;

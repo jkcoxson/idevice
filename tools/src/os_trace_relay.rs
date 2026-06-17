@@ -14,10 +14,22 @@ pub async fn main(_arguments: &CollectedArguments, provider: Box<dyn IdeviceProv
 
     let mut relay = log_client.start_trace(None).await.expect("Start failed");
 
+    const MAX_CONSECUTIVE_ERRORS: usize = 16;
+    let mut consecutive_errors = 0usize;
     loop {
-        println!(
-            "{:#?}",
-            relay.next().await.expect("Failed to read next log")
-        );
+        match relay.next().await {
+            Ok(log) => {
+                consecutive_errors = 0;
+                println!("{log:#?}");
+            }
+            Err(e) => {
+                consecutive_errors += 1;
+                eprintln!("skip log ({consecutive_errors}/{MAX_CONSECUTIVE_ERRORS}): {e:?}");
+                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+                    eprintln!("too many consecutive errors; stopping");
+                    break;
+                }
+            }
+        }
     }
 }

@@ -10,10 +10,28 @@ use crate::{
 
 mod app_service;
 mod diagnosticsservice;
+#[cfg(feature = "display_stream")]
+pub mod display_stream;
+mod errors;
+#[cfg(feature = "display_stream")]
+pub mod hid;
+mod location_service;
 mod openstdiosocket;
+mod orientation_service;
+mod pasteboard_service;
+mod screencaptureservices;
 pub use app_service::*;
 pub use diagnosticsservice::*;
+#[cfg(feature = "display_stream")]
+pub use display_stream::*;
+pub use errors::CoreDeviceError;
+#[cfg(feature = "display_stream")]
+pub use hid::*;
+pub use location_service::*;
 pub use openstdiosocket::*;
+pub use orientation_service::*;
+pub use pasteboard_service::*;
+pub use screencaptureservices::*;
 
 const CORE_SERVICE_VERSION: &str = "443.18";
 
@@ -39,10 +57,31 @@ impl<R: ReadWrite> CoreDeviceServiceClient<R> {
         self.invoke(feature, Some(input)).await
     }
 
+    pub async fn invoke_with_plist_action(
+        &mut self,
+        feature: impl Into<String>,
+        input: plist::Dictionary,
+        action_identifier: impl Into<String>,
+    ) -> Result<plist::Value, IdeviceError> {
+        let input: XPCObject = plist::Value::Dictionary(input).into();
+        let input = input.to_dictionary().unwrap();
+        self.invoke_inner(feature, Some(input), Some(action_identifier.into()))
+            .await
+    }
+
     pub async fn invoke(
         &mut self,
         feature: impl Into<String>,
         input: Option<crate::xpc::Dictionary>,
+    ) -> Result<plist::Value, IdeviceError> {
+        self.invoke_inner(feature, input, None).await
+    }
+
+    async fn invoke_inner(
+        &mut self,
+        feature: impl Into<String>,
+        input: Option<crate::xpc::Dictionary>,
+        action_identifier: Option<String>,
     ) -> Result<plist::Value, IdeviceError> {
         let feature = feature.into();
         let input: crate::xpc::XPCObject = match input {
@@ -51,9 +90,10 @@ impl<R: ReadWrite> CoreDeviceServiceClient<R> {
         };
 
         let mut req = xpc::Dictionary::new();
+        let protocol_version = if action_identifier.is_some() { 2 } else { 0 };
         req.insert(
             "CoreDevice.CoreDeviceDDIProtocolVersion".into(),
-            XPCObject::Int64(0),
+            XPCObject::Int64(protocol_version),
         );
         req.insert("CoreDevice.action".into(), xpc::Dictionary::new().into());
         req.insert(
@@ -73,6 +113,12 @@ impl<R: ReadWrite> CoreDeviceServiceClient<R> {
             "CoreDevice.invocationIdentifier".into(),
             XPCObject::String(uuid::Uuid::new_v4().to_string()),
         );
+        if let Some(action_identifier) = action_identifier {
+            req.insert(
+                "CoreDevice.actionIdentifier".into(),
+                XPCObject::String(action_identifier),
+            );
+        }
 
         self.inner.send_object(req, true).await?;
         let res = self.inner.recv().await?;
@@ -80,19 +126,21 @@ impl<R: ReadWrite> CoreDeviceServiceClient<R> {
             plist::Value::Dictionary(d) => d,
             _ => {
                 warn!("XPC response was not a dictionary");
-                return Err(IdeviceError::UnexpectedResponse(
-                    "XPC response was not a dictionary".into(),
-                ));
+                return Err(CoreDeviceError::MalformedField("(root)").into());
             }
         };
 
         let res = match res.remove("CoreDevice.output") {
             Some(r) => r,
             None => {
-                warn!("XPC response did not have an output");
-                return Err(IdeviceError::UnexpectedResponse(
-                    "XPC response missing CoreDevice.output".into(),
-                ));
+                // The device replied with an error rather than an output. Surface
+                // its contents (commonly under "CoreDevice.error") so callers can
+                // see why a feature invocation was rejected.
+                warn!("XPC response did not have an output: {res:?}");
+                return match res.get("CoreDevice.error") {
+                    Some(e) => Err(CoreDeviceError::DeviceError(format!("{e:?}")).into()),
+                    None => Err(CoreDeviceError::MissingField("CoreDevice.output").into()),
+                };
             }
         };
 
