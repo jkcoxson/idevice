@@ -6,7 +6,7 @@
 use plist::Dictionary;
 use std::future::Future;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::pin::Pin;
 use std::time::SystemTime;
 use tokio::io::AsyncReadExt;
@@ -28,6 +28,25 @@ pub struct DirEntryInfo {
     pub is_file: bool,
     pub size: u64,
     pub modified: Option<SystemTime>,
+}
+
+/// Resolves a device-supplied DeviceLink path against the host backup directory.
+///
+/// During a backup the device sends paths for the host to read/write/move. Some
+/// of these are absolute-looking (e.g. `/.b/6/...`). Passing them straight to
+/// [`Path::join`] is unsafe: Rust drops the base when the argument is absolute,
+/// so the operation escapes the backup directory which can cause "Operation
+/// not permitted" errors that abort the backup or read/write outside
+/// it (path traversal). Treat the device path as strictly relative to
+/// `host_dir`, keeping only `Normal` components (dropping any root, `.` or `..`).
+fn host_path(host_dir: &Path, rel: &str) -> PathBuf {
+    let mut out = host_dir.to_path_buf();
+    for comp in Path::new(rel).components() {
+        if let Component::Normal(c) = comp {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// Delegate trait providing host-side storage and platform operations for the
@@ -1150,7 +1169,7 @@ impl MobileBackup2Client {
         rel_path: &str,
         delegate: &dyn BackupDelegate,
     ) -> Result<(), IdeviceError> {
-        let full = host_dir.join(rel_path);
+        let full = host_path(host_dir, rel_path);
         let path_bytes = rel_path.as_bytes().to_vec();
         let nlen = (path_bytes.len() as u32).to_be_bytes();
         self.idevice.send_raw(&nlen).await?;
@@ -1225,7 +1244,7 @@ impl MobileBackup2Client {
             }
             let fname = self.read_exact_string(flen as usize).await?;
 
-            let dst = host_dir.join(&fname);
+            let dst = host_path(host_dir, &fname);
             if let Some(parent) = dst.parent() {
                 let _ = delegate.create_dir_all(parent).await;
             }
@@ -1302,7 +1321,7 @@ impl MobileBackup2Client {
             && arr.len() >= 2
             && let Some(plist::Value::String(dir)) = arr.get(1)
         {
-            let path = host_dir.join(dir);
+            let path = host_path(host_dir, dir);
             return match delegate.create_dir_all(&path).await {
                 Ok(_) => 0,
                 Err(_) => -1,
@@ -1322,8 +1341,8 @@ impl MobileBackup2Client {
         {
             for (from, to_v) in map.iter() {
                 if let Some(to) = to_v.as_string() {
-                    let old = host_dir.join(from);
-                    let newp = host_dir.join(to);
+                    let old = host_path(host_dir, from);
+                    let newp = host_path(host_dir, to);
                     if let Some(parent) = newp.parent() {
                         let _ = delegate.create_dir_all(parent).await;
                     }
@@ -1348,7 +1367,7 @@ impl MobileBackup2Client {
         {
             for it in items {
                 if let Some(p) = it.as_string() {
-                    let path = host_dir.join(p);
+                    let path = host_path(host_dir, p);
                     if delegate.exists(&path).await && delegate.remove(&path).await.is_err() {
                         return -1;
                     }
@@ -1369,8 +1388,8 @@ impl MobileBackup2Client {
             && let (Some(plist::Value::String(src)), Some(plist::Value::String(dst))) =
                 (arr.get(1), arr.get(2))
         {
-            let from = host_dir.join(src);
-            let to = host_dir.join(dst);
+            let from = host_path(host_dir, src);
+            let to = host_path(host_dir, dst);
             if let Some(parent) = to.parent() {
                 let _ = delegate.create_dir_all(parent).await;
             }
@@ -1641,7 +1660,7 @@ impl MobileBackup2Client {
             return plist::Value::Dictionary(dirlist);
         };
 
-        let full_path = host_dir.join(&rel_path);
+        let full_path = host_path(host_dir, &rel_path);
         if let Ok(entries) = delegate.list_dir(&full_path).await {
             for entry in entries {
                 let mut fdict = Dictionary::new();
