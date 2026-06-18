@@ -112,8 +112,9 @@ pub trait BackupDelegate: Send + Sync {
 /// Default [`BackupDelegate`] that reads/writes to the local filesystem via `tokio::fs`.
 ///
 /// [`get_free_disk_space`](BackupDelegate::get_free_disk_space) reports real free
-/// space via `statfs`/`statvfs` on Unix and `GetDiskFreeSpaceExW` on Windows; on
-/// other platforms it returns `0` (override if you need disk-space reporting there).
+/// space via `statfs`/`statvfs` on Unix and `GetDiskFreeSpaceExW` on Windows;
+/// platforms without an OS query report a large constant (a backup host is assumed
+/// to have room). Override for exact accounting.
 ///
 /// Native-only: `tokio::fs` doesn't compile on `wasm32-unknown-unknown`.
 /// Wasm consumers must implement their own [`BackupDelegate`] backed by
@@ -124,11 +125,15 @@ pub struct FsBackupDelegate;
 
 #[cfg(not(target_arch = "wasm32"))]
 impl BackupDelegate for FsBackupDelegate {
-    /// Free space in bytes available to an unprivileged user on the volume
-    /// backing `path` (resolved through symlinks and mount points), walking up to
-    /// the nearest existing ancestor. Returns `0` when it can't be determined or
-    /// on unsupported platforms.
+    /// Free space in bytes available to an unprivileged user on the volume backing
+    /// `path` (resolved through symlinks and mount points), walking up to the
+    /// nearest existing ancestor. Where the OS can't be queried it reports a large
+    /// constant instead of `0`, since a backup host is assumed to have room.
     fn get_free_disk_space(&self, path: &Path) -> u64 {
+        // Returned when the OS can't tell us — no query on this platform, or the
+        // path resolved to nothing: assume the host has room rather than `0`.
+        const ASSUMED_FREE: u64 = 1 << 50; // ~1 PiB, far above any device backup
+
         // Available bytes on the volume backing an existing `p`, or `None` if the
         // query fails (e.g. `p` doesn't exist yet). Interior-NUL paths — which no
         // real path has — return `None` so the caller walks up to a usable parent.
@@ -208,7 +213,7 @@ impl BackupDelegate for FsBackupDelegate {
             }
             match dir.parent() {
                 Some(parent) => dir = parent,
-                None => return 0,
+                None => return ASSUMED_FREE,
             }
         }
     }
