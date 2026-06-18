@@ -124,110 +124,92 @@ pub struct FsBackupDelegate;
 
 #[cfg(not(target_arch = "wasm32"))]
 impl BackupDelegate for FsBackupDelegate {
-    /// Free space (bytes available to an unprivileged user) on the volume holding
-    /// `path`, walking up to the nearest existing ancestor. Returning `0` here
-    /// makes the device abort the backup with `ErrorCode 105` (insufficient
-    /// space), so the default needs a real value.
-    ///
-    /// Symlinks and mount points are resolved by the OS: `statvfs` /
-    /// `GetDiskFreeSpaceExW` both report the volume that actually backs `path`
-    /// (i.e. where backup data lands), which is the figure the device wants.
-    /// A path containing an interior NUL — which no real filesystem path has —
-    /// is skipped and the walk-up continues to the nearest NUL-free ancestor.
+    /// Free space in bytes available to an unprivileged user on the volume
+    /// backing `path` (resolved through symlinks and mount points), walking up to
+    /// the nearest existing ancestor. Returns `0` when it can't be determined or
+    /// on unsupported platforms.
     fn get_free_disk_space(&self, path: &Path) -> u64 {
-        #[cfg(unix)]
-        {
-            use std::os::unix::ffi::OsStrExt;
-            let mut dir = path;
-            loop {
-                if let Ok(c) = std::ffi::CString::new(dir.as_os_str().as_bytes()) {
-                    // Apple's `statvfs` reports `f_bavail` through a 32-bit
-                    // `fsblkcnt_t`, which rolls over for volumes with more than
-                    // ~4 TB free — Darwin does not scale `f_frsize` to compensate
-                    // (rust-lang/libc; Apple Libc). `statfs` exposes a 64-bit
-                    // `f_bavail`, so use it on Apple targets and `statvfs` elsewhere.
-                    #[cfg(target_vendor = "apple")]
-                    {
-                        let mut stat = std::mem::MaybeUninit::<libc::statfs>::uninit();
-                        // SAFETY: `c` is a valid NUL-terminated path and `stat` is
-                        // a correctly sized, writable `statfs` buffer.
-                        if unsafe { libc::statfs(c.as_ptr(), stat.as_mut_ptr()) } == 0 {
-                            let stat = unsafe { stat.assume_init() };
-                            // `f_bavail` is in units of `f_bsize` for `statfs`.
-                            #[allow(clippy::unnecessary_cast)]
-                            return stat.f_bavail as u64 * stat.f_bsize as u64;
-                        }
+        // Available bytes on the volume backing an existing `p`, or `None` if the
+        // query fails (e.g. `p` doesn't exist yet). Interior-NUL paths — which no
+        // real path has — return `None` so the caller walks up to a usable parent.
+        #[allow(clippy::unnecessary_cast)] // block-count/size widths vary per platform
+        fn available(p: &Path) -> Option<u64> {
+            #[cfg(unix)]
+            {
+                use std::os::unix::ffi::OsStrExt;
+                let c = std::ffi::CString::new(p.as_os_str().as_bytes()).ok()?;
+                // Apple's `statvfs` f_bavail is a 32-bit count that rolls over past
+                // ~4 TB free; `statfs` is 64-bit. Use `statfs` on Apple, `statvfs`
+                // elsewhere — both give bytes as `f_bavail * (block size)`.
+                #[cfg(target_vendor = "apple")]
+                {
+                    let mut s = std::mem::MaybeUninit::<libc::statfs>::uninit();
+                    // SAFETY: `c` is NUL-terminated; `s` is a writable buffer.
+                    if unsafe { libc::statfs(c.as_ptr(), s.as_mut_ptr()) } != 0 {
+                        return None;
                     }
-                    #[cfg(not(target_vendor = "apple"))]
-                    {
-                        let mut stat = std::mem::MaybeUninit::<libc::statvfs>::uninit();
-                        // SAFETY: `c` is a valid NUL-terminated path and `stat` is
-                        // a correctly sized, writable `statvfs` buffer.
-                        if unsafe { libc::statvfs(c.as_ptr(), stat.as_mut_ptr()) } == 0 {
-                            let stat = unsafe { stat.assume_init() };
-                            // `f_bavail` is in units of `f_frsize` for `statvfs`;
-                            // widths differ per platform, so cast both.
-                            #[allow(clippy::unnecessary_cast)]
-                            return stat.f_bavail as u64 * stat.f_frsize as u64;
-                        }
+                    let s = unsafe { s.assume_init() };
+                    Some(s.f_bavail as u64 * s.f_bsize as u64)
+                }
+                #[cfg(not(target_vendor = "apple"))]
+                {
+                    let mut s = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+                    // SAFETY: `c` is NUL-terminated; `s` is a writable buffer.
+                    if unsafe { libc::statvfs(c.as_ptr(), s.as_mut_ptr()) } != 0 {
+                        return None;
                     }
+                    let s = unsafe { s.assume_init() };
+                    Some(s.f_bavail as u64 * s.f_frsize as u64)
                 }
-                match dir.parent() {
-                    Some(parent) => dir = parent,
-                    None => return 0,
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::ffi::OsStrExt;
+                // kernel32!GetDiskFreeSpaceExW; lpFreeBytesAvailableToCaller is
+                // 64-bit bytes available to the caller.
+                #[link(name = "kernel32")]
+                unsafe extern "system" {
+                    fn GetDiskFreeSpaceExW(
+                        lpDirectoryName: *const u16,
+                        lpFreeBytesAvailableToCaller: *mut u64,
+                        lpTotalNumberOfBytes: *mut u64,
+                        lpTotalNumberOfFreeBytes: *mut u64,
+                    ) -> i32;
                 }
+                let mut wide: Vec<u16> = p.as_os_str().encode_wide().collect();
+                if wide.contains(&0) {
+                    return None; // a NUL would terminate the path early
+                }
+                wide.push(0);
+                let mut avail = 0u64;
+                // SAFETY: `wide` is NUL-terminated; the out-params are writable u64
+                // slots; `avail` is read only on success.
+                (unsafe {
+                    GetDiskFreeSpaceExW(
+                        wide.as_ptr(),
+                        &mut avail,
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut(),
+                    )
+                } != 0)
+                    .then_some(avail)
+            }
+            #[cfg(not(any(unix, windows)))]
+            {
+                let _ = p;
+                None
             }
         }
-        #[cfg(windows)]
-        {
-            use std::os::windows::ffi::OsStrExt;
-            // kernel32!GetDiskFreeSpaceExW — no new dependency, mirrors the raw
-            // `libc::statvfs` FFI above. `lpFreeBytesAvailableToCaller` is already
-            // 64-bit bytes available to the caller (honouring quotas), so there is
-            // no block-count multiplication and no per-platform width concern.
-            #[link(name = "kernel32")]
-            unsafe extern "system" {
-                fn GetDiskFreeSpaceExW(
-                    lpDirectoryName: *const u16,
-                    lpFreeBytesAvailableToCaller: *mut u64,
-                    lpTotalNumberOfBytes: *mut u64,
-                    lpTotalNumberOfFreeBytes: *mut u64,
-                ) -> i32;
+
+        let mut dir = path;
+        loop {
+            if let Some(bytes) = available(dir) {
+                return bytes;
             }
-            let mut dir = path;
-            loop {
-                let mut wide: Vec<u16> = dir.as_os_str().encode_wide().collect();
-                // Reject an interior NUL (impossible in a real path): a premature
-                // wide-string terminator would silently query the wrong path.
-                // Skip to the parent, mirroring `CString::new` on Unix.
-                if !wide.contains(&0) {
-                    wide.push(0);
-                    let mut avail: u64 = 0;
-                    // SAFETY: `wide` is a valid NUL-terminated UTF-16 path; the
-                    // three out-params are writable `u64` (`ULARGE_INTEGER`) slots,
-                    // and `avail` is read only when the call reports success.
-                    if unsafe {
-                        GetDiskFreeSpaceExW(
-                            wide.as_ptr(),
-                            &mut avail,
-                            std::ptr::null_mut(),
-                            std::ptr::null_mut(),
-                        )
-                    } != 0
-                    {
-                        return avail;
-                    }
-                }
-                match dir.parent() {
-                    Some(parent) => dir = parent,
-                    None => return 0,
-                }
+            match dir.parent() {
+                Some(parent) => dir = parent,
+                None => return 0,
             }
-        }
-        #[cfg(not(any(unix, windows)))]
-        {
-            let _ = path;
-            0
         }
     }
 
