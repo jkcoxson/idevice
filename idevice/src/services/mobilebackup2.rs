@@ -112,8 +112,8 @@ pub trait BackupDelegate: Send + Sync {
 /// Default [`BackupDelegate`] that reads/writes to the local filesystem via `tokio::fs`.
 ///
 /// [`get_free_disk_space`](BackupDelegate::get_free_disk_space) reports real free
-/// space via `statvfs` on Unix and `GetDiskFreeSpaceExW` on Windows; on other
-/// platforms it returns `0` (override if you need disk-space reporting there).
+/// space via `statfs`/`statvfs` on Unix and `GetDiskFreeSpaceExW` on Windows; on
+/// other platforms it returns `0` (override if you need disk-space reporting there).
 ///
 /// Native-only: `tokio::fs` doesn't compile on `wasm32-unknown-unknown`.
 /// Wasm consumers must implement their own [`BackupDelegate`] backed by
@@ -141,14 +141,35 @@ impl BackupDelegate for FsBackupDelegate {
             let mut dir = path;
             loop {
                 if let Ok(c) = std::ffi::CString::new(dir.as_os_str().as_bytes()) {
-                    let mut stat = std::mem::MaybeUninit::<libc::statvfs>::uninit();
-                    // SAFETY: `c` is a valid NUL-terminated path and `stat` is
-                    // a correctly sized, writable `statvfs` buffer.
-                    if unsafe { libc::statvfs(c.as_ptr(), stat.as_mut_ptr()) } == 0 {
-                        let stat = unsafe { stat.assume_init() };
-                        // `f_bavail` / `f_frsize` widths differ per platform; cast both.
-                        #[allow(clippy::unnecessary_cast)]
-                        return stat.f_bavail as u64 * stat.f_frsize as u64;
+                    // Apple's `statvfs` reports `f_bavail` through a 32-bit
+                    // `fsblkcnt_t`, which rolls over for volumes with more than
+                    // ~4 TB free — Darwin does not scale `f_frsize` to compensate
+                    // (rust-lang/libc; Apple Libc). `statfs` exposes a 64-bit
+                    // `f_bavail`, so use it on Apple targets and `statvfs` elsewhere.
+                    #[cfg(target_vendor = "apple")]
+                    {
+                        let mut stat = std::mem::MaybeUninit::<libc::statfs>::uninit();
+                        // SAFETY: `c` is a valid NUL-terminated path and `stat` is
+                        // a correctly sized, writable `statfs` buffer.
+                        if unsafe { libc::statfs(c.as_ptr(), stat.as_mut_ptr()) } == 0 {
+                            let stat = unsafe { stat.assume_init() };
+                            // `f_bavail` is in units of `f_bsize` for `statfs`.
+                            #[allow(clippy::unnecessary_cast)]
+                            return stat.f_bavail as u64 * stat.f_bsize as u64;
+                        }
+                    }
+                    #[cfg(not(target_vendor = "apple"))]
+                    {
+                        let mut stat = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+                        // SAFETY: `c` is a valid NUL-terminated path and `stat` is
+                        // a correctly sized, writable `statvfs` buffer.
+                        if unsafe { libc::statvfs(c.as_ptr(), stat.as_mut_ptr()) } == 0 {
+                            let stat = unsafe { stat.assume_init() };
+                            // `f_bavail` is in units of `f_frsize` for `statvfs`;
+                            // widths differ per platform, so cast both.
+                            #[allow(clippy::unnecessary_cast)]
+                            return stat.f_bavail as u64 * stat.f_frsize as u64;
+                        }
                     }
                 }
                 match dir.parent() {
