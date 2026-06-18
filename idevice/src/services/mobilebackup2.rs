@@ -112,8 +112,8 @@ pub trait BackupDelegate: Send + Sync {
 /// Default [`BackupDelegate`] that reads/writes to the local filesystem via `tokio::fs`.
 ///
 /// [`get_free_disk_space`](BackupDelegate::get_free_disk_space) reports real free
-/// space via `statvfs` on Unix; on other platforms it returns `0` (override if
-/// you need disk-space reporting there).
+/// space via `statvfs` on Unix and `GetDiskFreeSpaceExW` on Windows; on other
+/// platforms it returns `0` (override if you need disk-space reporting there).
 ///
 /// Native-only: `tokio::fs` doesn't compile on `wasm32-unknown-unknown`.
 /// Wasm consumers must implement their own [`BackupDelegate`] backed by
@@ -128,6 +128,12 @@ impl BackupDelegate for FsBackupDelegate {
     /// `path`, walking up to the nearest existing ancestor. Returning `0` here
     /// makes the device abort the backup with `ErrorCode 105` (insufficient
     /// space), so the default needs a real value.
+    ///
+    /// Symlinks and mount points are resolved by the OS: `statvfs` /
+    /// `GetDiskFreeSpaceExW` both report the volume that actually backs `path`
+    /// (i.e. where backup data lands), which is the figure the device wants.
+    /// A path containing an interior NUL — which no real filesystem path has —
+    /// is skipped and the walk-up continues to the nearest NUL-free ancestor.
     fn get_free_disk_space(&self, path: &Path) -> u64 {
         #[cfg(unix)]
         {
@@ -151,7 +157,53 @@ impl BackupDelegate for FsBackupDelegate {
                 }
             }
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::OsStrExt;
+            // kernel32!GetDiskFreeSpaceExW — no new dependency, mirrors the raw
+            // `libc::statvfs` FFI above. `lpFreeBytesAvailableToCaller` is already
+            // 64-bit bytes available to the caller (honouring quotas), so there is
+            // no block-count multiplication and no per-platform width concern.
+            #[link(name = "kernel32")]
+            unsafe extern "system" {
+                fn GetDiskFreeSpaceExW(
+                    lpDirectoryName: *const u16,
+                    lpFreeBytesAvailableToCaller: *mut u64,
+                    lpTotalNumberOfBytes: *mut u64,
+                    lpTotalNumberOfFreeBytes: *mut u64,
+                ) -> i32;
+            }
+            let mut dir = path;
+            loop {
+                let mut wide: Vec<u16> = dir.as_os_str().encode_wide().collect();
+                // Reject an interior NUL (impossible in a real path): a premature
+                // wide-string terminator would silently query the wrong path.
+                // Skip to the parent, mirroring `CString::new` on Unix.
+                if !wide.contains(&0) {
+                    wide.push(0);
+                    let mut avail: u64 = 0;
+                    // SAFETY: `wide` is a valid NUL-terminated UTF-16 path; the
+                    // three out-params are writable `u64` (`ULARGE_INTEGER`) slots,
+                    // and `avail` is read only when the call reports success.
+                    if unsafe {
+                        GetDiskFreeSpaceExW(
+                            wide.as_ptr(),
+                            &mut avail,
+                            std::ptr::null_mut(),
+                            std::ptr::null_mut(),
+                        )
+                    } != 0
+                    {
+                        return avail;
+                    }
+                }
+                match dir.parent() {
+                    Some(parent) => dir = parent,
+                    None => return 0,
+                }
+            }
+        }
+        #[cfg(not(any(unix, windows)))]
         {
             let _ = path;
             0
@@ -1735,7 +1787,7 @@ impl crate::RsdService for MobileBackup2Client {
     }
 }
 
-#[cfg(all(test, unix, not(target_arch = "wasm32")))]
+#[cfg(all(test, any(unix, windows), not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
 
@@ -1749,8 +1801,8 @@ mod tests {
 
     #[test]
     fn fs_delegate_free_space_walks_up_to_existing_ancestor() {
-        let free = FsBackupDelegate
-            .get_free_disk_space(Path::new("./does/not/exist/anywhere/right/now"));
-        assert!(free > 0, "should statvfs an existing ancestor, got {free}");
+        let free =
+            FsBackupDelegate.get_free_disk_space(Path::new("./does/not/exist/anywhere/right/now"));
+        assert!(free > 0, "should resolve an existing ancestor, got {free}");
     }
 }
