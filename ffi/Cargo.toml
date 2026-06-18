@@ -17,6 +17,7 @@ plist = "1.7.1"
 plist_ffi = { version = "0.1.6" }
 uuid = { version = "1.12", features = ["v4"], optional = true }
 serde_json = { version = "1", optional = true }
+mdns-sd = { version = "0.19", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock"] }
@@ -60,7 +61,7 @@ pcapd = ["idevice/pcapd"]
 preboard_service = ["idevice/preboard_service"]
 obfuscate = ["idevice/obfuscate"]
 restore_service = ["idevice/restore_service"]
-remote_pairing = ["idevice/remote_pairing"]
+remote_pairing = ["idevice/remote_pairing", "dep:mdns-sd"]
 rsd = ["idevice/rsd"]
 syslog_relay = ["idevice/syslog_relay"]
 tcp = ["idevice/tcp"]

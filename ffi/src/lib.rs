@@ -47,6 +47,8 @@ pub mod mobilebackup2;
 pub mod notification_proxy;
 #[cfg(feature = "syslog_relay")]
 pub mod os_trace_relay;
+#[cfg(feature = "remote_pairing")]
+pub mod pairable_host;
 mod pairing_file;
 #[cfg(feature = "pcapd")]
 pub mod pcapd;
