@@ -123,7 +123,10 @@ pub(super) fn parse_peer_device_from_tlv(
 ///
 /// Algorithm: `SipHash-2-4(key=alt_irk, msg=service_identifier)` → take 8-byte LE output,
 /// return the first 6 bytes in **reverse** order.
-pub(super) fn compute_auth_tag(alt_irk: &[u8; 16], service_identifier: &str) -> [u8; 6] {
+///
+/// Use this to populate the `authTag` TXT record when advertising a
+/// `_remotepairing-pairable-host._tcp` service (base64-encode the result).
+pub fn compute_auth_tag(alt_irk: &[u8; 16], service_identifier: &str) -> [u8; 6] {
     let k0 = u64::from_le_bytes(alt_irk[..8].try_into().unwrap());
     let k1 = u64::from_le_bytes(alt_irk[8..16].try_into().unwrap());
     let mut sip = SipHasher::new_with_keys(k0, k1);

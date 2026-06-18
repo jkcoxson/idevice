@@ -6,7 +6,7 @@ use serde::Serialize;
 use serde_json::json;
 use std::{fmt::Debug, pin::Pin};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 
 use crate::{
     IdeviceError, ReadWrite, RemoteXpcClient, remote_pairing::RPPAIRING_MAGIC, xpc::XPCObject,
@@ -37,22 +37,45 @@ pub trait RpPairingSocketProvider: Debug {
 #[derive(Debug)]
 pub struct RpPairingSocket<R: ReadWrite> {
     pub inner: R,
+    /// The value placed in the `originatedBy` field of every envelope we send.
+    ///
+    /// The host (the side that connects to a device and initiates pairing) sends
+    /// `"host"`. The responder side - a "pairable host" that a device connects to
+    /// and pairs *into* (see [`crate::remote_pairing::PairableHost`]) - sends
+    /// `"device"`, because in rppairing terms it plays the accessory/responder role.
+    originated_by: &'static str,
 }
 
 impl<R: ReadWrite> RpPairingSocket<R> {
+    /// Creates a socket for the initiating host (sends `originatedBy: "host"`).
     pub fn new(socket: R) -> Self {
-        Self { inner: socket }
+        Self {
+            inner: socket,
+            originated_by: "host",
+        }
+    }
+
+    /// Creates a socket for the responder side (sends `originatedBy: "device"`).
+    ///
+    /// Use this when accepting a device-initiated pairing with
+    /// [`crate::remote_pairing::PairableHost`].
+    pub fn new_device(socket: R) -> Self {
+        Self {
+            inner: socket,
+            originated_by: "device",
+        }
     }
 
     async fn send_rppairing(&mut self, value: impl Serialize) -> Result<(), IdeviceError> {
         let value = serde_json::to_string(&value)?;
         let x = value.as_bytes();
 
-        self.inner.write_all(RPPAIRING_MAGIC).await?;
-        self.inner
-            .write_all(&(x.len() as u16).to_be_bytes())
-            .await?;
-        self.inner.write_all(x).await?;
+        let mut frame = Vec::with_capacity(RPPAIRING_MAGIC.len() + 2 + x.len());
+        frame.extend_from_slice(RPPAIRING_MAGIC);
+        frame.extend_from_slice(&(x.len() as u16).to_be_bytes());
+        frame.extend_from_slice(x);
+        self.inner.write_all(&frame).await?;
+        self.inner.flush().await?;
         Ok(())
     }
 }
@@ -65,7 +88,7 @@ impl<R: ReadWrite> RpPairingSocketProvider for RpPairingSocket<R> {
     ) -> Pin<Box<dyn Future<Output = Result<(), IdeviceError>> + Send + '_>> {
         let v = json!({
             "message": {"plain": {"_0": value}},
-            "originatedBy": "host",
+            "originatedBy": self.originated_by,
             "sequenceNumber": seq
         });
 
@@ -82,7 +105,7 @@ impl<R: ReadWrite> RpPairingSocketProvider for RpPairingSocket<R> {
     ) -> Pin<Box<dyn Future<Output = Result<(), IdeviceError>> + Send + '_>> {
         let v = json!({
             "message": {"streamEncrypted": {"_0": B64.encode(&ciphertext)}},
-            "originatedBy": "host",
+            "originatedBy": self.originated_by,
             "sequenceNumber": seq
         });
 
@@ -96,9 +119,8 @@ impl<R: ReadWrite> RpPairingSocketProvider for RpPairingSocket<R> {
         &'a mut self,
     ) -> Pin<Box<dyn Future<Output = Result<plist::Value, IdeviceError>> + Send + 'a>> {
         Box::pin(async move {
-            self.inner
-                .read_exact(&mut vec![0u8; RPPAIRING_MAGIC.len()])
-                .await?;
+            let mut magic = vec![0u8; RPPAIRING_MAGIC.len()];
+            self.inner.read_exact(&mut magic).await?;
 
             let mut packet_len_bytes = [0u8; 2];
             self.inner.read_exact(&mut packet_len_bytes).await?;
@@ -106,6 +128,12 @@ impl<R: ReadWrite> RpPairingSocketProvider for RpPairingSocket<R> {
 
             let mut value = vec![0u8; packet_len as usize];
             self.inner.read_exact(&mut value).await?;
+
+            debug!("recv_rppairing: {packet_len} json bytes");
+            trace!(
+                "recv_rppairing payload: {}",
+                String::from_utf8_lossy(&value)
+            );
 
             let value: serde_json::Value = serde_json::from_slice(&value)?;
 
