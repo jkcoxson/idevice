@@ -111,8 +111,9 @@ pub trait BackupDelegate: Send + Sync {
 
 /// Default [`BackupDelegate`] that reads/writes to the local filesystem via `tokio::fs`.
 ///
-/// Returns `0` for [`get_free_disk_space`](BackupDelegate::get_free_disk_space);
-/// override or wrap this if you need real disk-space reporting.
+/// [`get_free_disk_space`](BackupDelegate::get_free_disk_space) reports real free
+/// space via `statvfs` on Unix; on other platforms it returns `0` (override if
+/// you need disk-space reporting there).
 ///
 /// Native-only: `tokio::fs` doesn't compile on `wasm32-unknown-unknown`.
 /// Wasm consumers must implement their own [`BackupDelegate`] backed by
@@ -123,8 +124,38 @@ pub struct FsBackupDelegate;
 
 #[cfg(not(target_arch = "wasm32"))]
 impl BackupDelegate for FsBackupDelegate {
-    fn get_free_disk_space(&self, _path: &Path) -> u64 {
-        0
+    /// Free space (bytes available to an unprivileged user) on the volume holding
+    /// `path`, walking up to the nearest existing ancestor. Returning `0` here
+    /// makes the device abort the backup with `ErrorCode 105` (insufficient
+    /// space), so the default needs a real value.
+    fn get_free_disk_space(&self, path: &Path) -> u64 {
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            let mut dir = path;
+            loop {
+                if let Ok(c) = std::ffi::CString::new(dir.as_os_str().as_bytes()) {
+                    let mut stat = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+                    // SAFETY: `c` is a valid NUL-terminated path and `stat` is
+                    // a correctly sized, writable `statvfs` buffer.
+                    if unsafe { libc::statvfs(c.as_ptr(), stat.as_mut_ptr()) } == 0 {
+                        let stat = unsafe { stat.assume_init() };
+                        // `f_bavail` / `f_frsize` widths differ per platform; cast both.
+                        #[allow(clippy::unnecessary_cast)]
+                        return stat.f_bavail as u64 * stat.f_frsize as u64;
+                    }
+                }
+                match dir.parent() {
+                    Some(parent) => dir = parent,
+                    None => return 0,
+                }
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = path;
+            0
+        }
     }
 
     fn open_file_read<'a>(
@@ -1701,5 +1732,25 @@ impl crate::RsdService for MobileBackup2Client {
         client.dl_version_exchange().await?;
         client.version_exchange().await?;
         Ok(client)
+    }
+}
+
+#[cfg(all(test, unix, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fs_delegate_reports_real_free_space() {
+        // The stock delegate must report real space — returning 0 makes the
+        // device abort the backup with ErrorCode 105.
+        let free = FsBackupDelegate.get_free_disk_space(Path::new("."));
+        assert!(free > 0, "expected non-zero free space, got {free}");
+    }
+
+    #[test]
+    fn fs_delegate_free_space_walks_up_to_existing_ancestor() {
+        let free = FsBackupDelegate
+            .get_free_disk_space(Path::new("./does/not/exist/anywhere/right/now"));
+        assert!(free > 0, "should statvfs an existing ancestor, got {free}");
     }
 }
