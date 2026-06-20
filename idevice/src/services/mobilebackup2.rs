@@ -111,11 +111,6 @@ pub trait BackupDelegate: Send + Sync {
 
 /// Default [`BackupDelegate`] that reads/writes to the local filesystem via `tokio::fs`.
 ///
-/// [`get_free_disk_space`](BackupDelegate::get_free_disk_space) reports real free
-/// space via `statfs`/`statvfs` on Unix and `GetDiskFreeSpaceExW` on Windows;
-/// platforms without an OS query report a large constant (a backup host is assumed
-/// to have room). Override for exact accounting.
-///
 /// Native-only: `tokio::fs` doesn't compile on `wasm32-unknown-unknown`.
 /// Wasm consumers must implement their own [`BackupDelegate`] backed by
 /// IndexedDB / OPFS / an in-memory store / etc.
@@ -128,15 +123,12 @@ impl BackupDelegate for FsBackupDelegate {
     /// Free space in bytes available to an unprivileged user on the volume backing
     /// `path` (resolved through symlinks and mount points), walking up to the
     /// nearest existing ancestor. Where the OS can't be queried it reports a large
-    /// constant instead of `0`, since a backup host is assumed to have room.
+    /// constant.
     fn get_free_disk_space(&self, path: &Path) -> u64 {
-        // Returned when the OS can't tell us — no query on this platform, or the
-        // path resolved to nothing: assume the host has room rather than `0`.
-        const ASSUMED_FREE: u64 = 1 << 50; // ~1 PiB, far above any device backup
+        const ASSUMED_FREE: u64 = 1 << 50;
 
         // Available bytes on the volume backing an existing `p`, or `None` if the
-        // query fails (e.g. `p` doesn't exist yet). Interior-NUL paths — which no
-        // real path has — return `None` so the caller walks up to a usable parent.
+        // query fails (e.g. `p` doesn't exist yet).
         #[allow(clippy::unnecessary_cast)] // block-count/size widths vary per platform
         fn available(p: &Path) -> Option<u64> {
             #[cfg(unix)]
@@ -144,8 +136,7 @@ impl BackupDelegate for FsBackupDelegate {
                 use std::os::unix::ffi::OsStrExt;
                 let c = std::ffi::CString::new(p.as_os_str().as_bytes()).ok()?;
                 // Apple's `statvfs` f_bavail is a 32-bit count that rolls over past
-                // ~4 TB free; `statfs` is 64-bit. Use `statfs` on Apple, `statvfs`
-                // elsewhere — both give bytes as `f_bavail * (block size)`.
+                // ~4 TB free; `statfs` is 64-bit.
                 #[cfg(target_vendor = "apple")]
                 {
                     let mut s = std::mem::MaybeUninit::<libc::statfs>::uninit();
@@ -1801,8 +1792,6 @@ mod tests {
 
     #[test]
     fn fs_delegate_reports_real_free_space() {
-        // The stock delegate must report real space — returning 0 makes the
-        // device abort the backup with ErrorCode 105.
         let free = FsBackupDelegate.get_free_disk_space(Path::new("."));
         assert!(free > 0, "expected non-zero free space, got {free}");
     }
