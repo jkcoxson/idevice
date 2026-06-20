@@ -130,9 +130,6 @@ pub trait BackupDelegate: Send + Sync {
 
 /// Default [`BackupDelegate`] that reads/writes to the local filesystem via `tokio::fs`.
 ///
-/// Returns `0` for [`get_free_disk_space`](BackupDelegate::get_free_disk_space);
-/// override or wrap this if you need real disk-space reporting.
-///
 /// Native-only: `tokio::fs` doesn't compile on `wasm32-unknown-unknown`.
 /// Wasm consumers must implement their own [`BackupDelegate`] backed by
 /// IndexedDB / OPFS / an in-memory store / etc.
@@ -142,8 +139,93 @@ pub struct FsBackupDelegate;
 
 #[cfg(not(target_arch = "wasm32"))]
 impl BackupDelegate for FsBackupDelegate {
-    fn get_free_disk_space(&self, _path: &Path) -> u64 {
-        0
+    /// Free space in bytes available to an unprivileged user on the volume backing
+    /// `path` (resolved through symlinks and mount points), walking up to the
+    /// nearest existing ancestor. Where the OS can't be queried it reports a large
+    /// constant.
+    fn get_free_disk_space(&self, path: &Path) -> u64 {
+        const ASSUMED_FREE: u64 = 1 << 50;
+
+        // Available bytes on the volume backing an existing `p`, or `None` if the
+        // query fails (e.g. `p` doesn't exist yet).
+        #[allow(clippy::unnecessary_cast)] // block-count/size widths vary per platform
+        fn available(p: &Path) -> Option<u64> {
+            #[cfg(unix)]
+            {
+                use std::os::unix::ffi::OsStrExt;
+                let c = std::ffi::CString::new(p.as_os_str().as_bytes()).ok()?;
+                // Apple's `statvfs` f_bavail is a 32-bit count that rolls over past
+                // ~4 TB free; `statfs` is 64-bit.
+                #[cfg(target_vendor = "apple")]
+                {
+                    let mut s = std::mem::MaybeUninit::<libc::statfs>::uninit();
+                    // SAFETY: `c` is NUL-terminated; `s` is a writable buffer.
+                    if unsafe { libc::statfs(c.as_ptr(), s.as_mut_ptr()) } != 0 {
+                        return None;
+                    }
+                    let s = unsafe { s.assume_init() };
+                    Some(s.f_bavail as u64 * s.f_bsize as u64)
+                }
+                #[cfg(not(target_vendor = "apple"))]
+                {
+                    let mut s = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+                    // SAFETY: `c` is NUL-terminated; `s` is a writable buffer.
+                    if unsafe { libc::statvfs(c.as_ptr(), s.as_mut_ptr()) } != 0 {
+                        return None;
+                    }
+                    let s = unsafe { s.assume_init() };
+                    Some(s.f_bavail as u64 * s.f_frsize as u64)
+                }
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::ffi::OsStrExt;
+                // kernel32!GetDiskFreeSpaceExW; lpFreeBytesAvailableToCaller is
+                // 64-bit bytes available to the caller.
+                #[link(name = "kernel32")]
+                unsafe extern "system" {
+                    fn GetDiskFreeSpaceExW(
+                        lpDirectoryName: *const u16,
+                        lpFreeBytesAvailableToCaller: *mut u64,
+                        lpTotalNumberOfBytes: *mut u64,
+                        lpTotalNumberOfFreeBytes: *mut u64,
+                    ) -> i32;
+                }
+                let mut wide: Vec<u16> = p.as_os_str().encode_wide().collect();
+                if wide.contains(&0) {
+                    return None; // a NUL would terminate the path early
+                }
+                wide.push(0);
+                let mut avail = 0u64;
+                // SAFETY: `wide` is NUL-terminated; the out-params are writable u64
+                // slots; `avail` is read only on success.
+                (unsafe {
+                    GetDiskFreeSpaceExW(
+                        wide.as_ptr(),
+                        &mut avail,
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut(),
+                    )
+                } != 0)
+                    .then_some(avail)
+            }
+            #[cfg(not(any(unix, windows)))]
+            {
+                let _ = p;
+                None
+            }
+        }
+
+        let mut dir = path;
+        loop {
+            if let Some(bytes) = available(dir) {
+                return bytes;
+            }
+            match dir.parent() {
+                Some(parent) => dir = parent,
+                None => return ASSUMED_FREE,
+            }
+        }
     }
 
     fn open_file_read<'a>(
@@ -1720,5 +1802,23 @@ impl crate::RsdService for MobileBackup2Client {
         client.dl_version_exchange().await?;
         client.version_exchange().await?;
         Ok(client)
+    }
+}
+
+#[cfg(all(test, any(unix, windows), not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fs_delegate_reports_real_free_space() {
+        let free = FsBackupDelegate.get_free_disk_space(Path::new("."));
+        assert!(free > 0, "expected non-zero free space, got {free}");
+    }
+
+    #[test]
+    fn fs_delegate_free_space_walks_up_to_existing_ancestor() {
+        let free =
+            FsBackupDelegate.get_free_disk_space(Path::new("./does/not/exist/anywhere/right/now"));
+        assert!(free > 0, "should resolve an existing ancestor, got {free}");
     }
 }
