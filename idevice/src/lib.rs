@@ -533,32 +533,40 @@ impl Idevice {
         }
     }
 
+    /// Reads from the socket until `delimiter` is found, returning the data before it.
+    ///
+    /// `buffer` is owned by the caller and persists across calls. Any data read past the
+    /// first delimiter is retained in `buffer`. The caller must reuse the same buffer for a given stream.
     #[cfg(feature = "syslog_relay")]
     async fn read_until_delim(
         &mut self,
+        buffer: &mut bytes::BytesMut,
         delimiter: &[u8],
     ) -> Result<Option<bytes::BytesMut>, IdeviceError> {
         if let Some(socket) = &mut self.socket {
-            let mut buffer = bytes::BytesMut::with_capacity(1024);
             let mut temp = [0u8; 1024];
 
             loop {
-                let n = socket.read(&mut temp).await?;
-                if n == 0 {
-                    if buffer.is_empty() {
-                        return Ok(None); // EOF and no data
-                    } else {
-                        return Ok(Some(buffer)); // EOF but return partial data
-                    }
-                }
-
-                buffer.extend_from_slice(&temp[..n]);
-
+                // Check for the delimiter in data already buffered (including any
+                // remainder carried over from a previous call) before reading more.
                 if let Some(pos) = buffer.windows(delimiter.len()).position(|w| w == delimiter) {
                     let mut line = buffer.split_to(pos + delimiter.len());
                     line.truncate(line.len() - delimiter.len()); // remove delimiter
                     return Ok(Some(line));
                 }
+
+                let n = socket.read(&mut temp).await?;
+                if n == 0 {
+                    if buffer.is_empty() {
+                        return Ok(None); // EOF and no data
+                    } else {
+                        // EOF but return partial data, draining the buffer so a
+                        // subsequent call reports EOF.
+                        return Ok(Some(buffer.split()));
+                    }
+                }
+
+                buffer.extend_from_slice(&temp[..n]);
             }
         } else {
             Err(IdeviceError::NoEstablishedConnection)

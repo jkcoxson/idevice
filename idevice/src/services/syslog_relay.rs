@@ -7,6 +7,8 @@ use crate::{Idevice, IdeviceError, IdeviceService, obf};
 pub struct SyslogRelayClient {
     /// The underlying device connection with established SyslogRelay service
     pub idevice: Idevice,
+    /// Persistent read buffer holding data read past the previous log's delimiter
+    buffer: bytes::BytesMut,
 }
 
 impl IdeviceService for SyslogRelayClient {
@@ -26,7 +28,10 @@ impl SyslogRelayClient {
     /// # Arguments
     /// * `idevice` - Pre-established device connection
     pub fn new(idevice: Idevice) -> Self {
-        Self { idevice }
+        Self {
+            idevice,
+            buffer: bytes::BytesMut::with_capacity(1024),
+        }
     }
 
     /// Get the next log from the relay
@@ -37,7 +42,10 @@ impl SyslogRelayClient {
     /// # Errors
     /// UnexpectedResponse if the service sends an EOF
     pub async fn next(&mut self) -> Result<String, IdeviceError> {
-        let res = self.idevice.read_until_delim(b"\n\x00").await?;
+        let res = self
+            .idevice
+            .read_until_delim(&mut self.buffer, b"\n\x00")
+            .await?;
         match res {
             Some(res) => Ok(String::from_utf8_lossy(&res).to_string()),
             None => Err(IdeviceError::UnexpectedResponse(
