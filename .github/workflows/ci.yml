@@ -201,18 +201,11 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      # Use Scoop to install just (reuse your existing scoop setup)
-      - uses: MinoruSekine/setup-scoop@v4.0.2
+      # Install just from a prebuilt GitHub release binary
+      - name: Install just
+        uses: taiki-e/install-action@v2
         with:
-          buckets: main extras
-          apps: just doxygen plantuml
-
-      # (Paranoid) ensure shims and cargo bin are on PATH for subsequent steps
-      - name: Ensure tools on PATH
-        shell: pwsh
-        run: |
-          echo "$env:USERPROFILE\scoop\shims" >> $env:GITHUB_PATH
-          echo "$env:USERPROFILE\.cargo\bin"  >> $env:GITHUB_PATH
+          tool: just
 
       - name: Cache Cargo
         uses: actions/cache@v4
