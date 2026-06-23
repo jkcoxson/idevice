@@ -39,7 +39,8 @@ async fn finish_tunnel(
     use idevice::remote_pairing::connect_tls_psk_tunnel_native;
 
     let tunnel_port = rpc.create_tcp_listener().await?;
-    let tunnel_addr = std::net::SocketAddr::new(connect_addr.ip(), tunnel_port);
+    let mut tunnel_addr = connect_addr;
+    tunnel_addr.set_port(tunnel_port);
     let tunnel_stream = tokio::net::TcpStream::connect(tunnel_addr)
         .await
         .map_err(|e| IdeviceError::InternalError(format!("TLS tunnel: {e}")))?;
