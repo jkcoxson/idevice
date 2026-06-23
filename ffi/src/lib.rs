@@ -82,12 +82,14 @@ pub mod wda_bridge;
 pub use errors::*;
 pub use pairing_file::*;
 
-use idevice::{Idevice, IdeviceSocket, ReadWrite};
+use idevice::{Idevice, IdeviceError, IdeviceSocket, ReadWrite};
 use once_cell::sync::Lazy;
 use plist_ffi::PlistWrapper;
 use std::{
     ffi::{CStr, CString, c_char, c_void},
     ptr::null_mut,
+    sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
 };
 use tokio::runtime::{self, Runtime};
 
@@ -108,6 +110,8 @@ static LOCAL_RUNTIME: Lazy<Runtime> = Lazy::new(|| {
         .build()
         .unwrap()
 });
+
+static GLOBAL_TIMEOUT: AtomicU64 = AtomicU64::new(5);
 
 /// Spawn the future on the global runtime and block current (FFI) thread until result.
 /// F and R must be Send + 'static.
@@ -277,7 +281,7 @@ pub unsafe extern "C" fn idevice_new_tcp_socket(
     };
 
     let device = run_sync(async move {
-        let stream = tokio::net::TcpStream::connect(addr).await?;
+        let stream = run_global_timeout(|| tokio::net::TcpStream::connect(addr)).await?;
         Ok::<idevice::Idevice, idevice::IdeviceError>(idevice::Idevice::new(
             Box::new(stream),
             label,
@@ -396,6 +400,27 @@ pub unsafe extern "C" fn idevice_start_session(
         Ok(_) => null_mut(),
         Err(e) => ffi_err!(e),
     }
+}
+
+/// Sets the timeout on async calls such as TCP connections
+///
+/// # Safety
+/// This function is safe to call from any thread at any time
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_set_global_timeout(secs: u64) {
+    GLOBAL_TIMEOUT.store(secs, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub(crate) async fn run_global_timeout<F, R, E>(f: impl FnOnce() -> F) -> Result<R, IdeviceError>
+where
+    F: Future<Output = Result<R, E>>,
+    E: Into<IdeviceError>,
+{
+    let timeout = GLOBAL_TIMEOUT.load(Ordering::Relaxed);
+    tokio::time::timeout(Duration::from_secs(timeout), f())
+        .await
+        .map_err(|_| IdeviceError::Timeout)?
+        .map_err(Into::into)
 }
 
 /// Frees an Idevice handle

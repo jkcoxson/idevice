@@ -758,6 +758,8 @@ pub enum IdeviceError {
     #[cfg(all(feature = "openssl", not(feature = "rustls")))]
     #[error("TLS verification build failed")]
     TlsBuilderFailed(#[from] openssl::error::ErrorStack),
+    #[error("Operation Timeout")]
+    Timeout,
 
     // 2: Data format errors
     #[error("io on plist")]
@@ -968,6 +970,7 @@ impl IdeviceError {
             IdeviceError::Rustls(_) => 3,
             #[cfg(any(feature = "rustls", feature = "openssl"))]
             IdeviceError::TlsBuilderFailed(_) => 4,
+            IdeviceError::Timeout => 109,
 
             // 5: Data format
             IdeviceError::Plist(_) => 5,

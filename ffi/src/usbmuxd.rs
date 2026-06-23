@@ -7,7 +7,8 @@ use std::{
 };
 
 use crate::{
-    IdeviceFfiError, IdeviceHandle, IdevicePairingFile, ffi_err, run_sync, run_sync_local,
+    IdeviceFfiError, IdeviceHandle, IdevicePairingFile, ffi_err, run_global_timeout, run_sync,
+    run_sync_local,
     util::{SockAddr, c_socket_to_rust, idevice_sockaddr, idevice_socklen_t},
 };
 use futures::{Stream, StreamExt};
@@ -58,7 +59,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_new_tcp_connection(
     };
 
     let res = run_sync(async move {
-        let stream = tokio::net::TcpStream::connect(addr).await?;
+        let stream = run_global_timeout(|| tokio::net::TcpStream::connect(addr)).await?;
         Ok::<_, IdeviceError>(UsbmuxdConnection::new(Box::new(stream), tag))
     });
 

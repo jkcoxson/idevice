@@ -14,7 +14,10 @@ use tokio::{
     net::tcp::{OwnedReadHalf, OwnedWriteHalf},
 };
 
-use crate::{IdeviceFfiError, core_device_proxy::AdapterHandle, ffi_err, run_sync, run_sync_local};
+use crate::{
+    IdeviceFfiError, core_device_proxy::AdapterHandle, ffi_err, run_global_timeout, run_sync,
+    run_sync_local,
+};
 
 pub struct TcpFeedObject {
     sender: Arc<Mutex<OwnedWriteHalf>>,
@@ -77,9 +80,10 @@ pub unsafe extern "C" fn idevice_tcp_stack_into_sync_objects(
                 }
             };
 
-            let stream = tokio::net::TcpStream::connect(format!("127.0.0.1:{port}"))
-                .await
-                .ok()?;
+            let stream =
+                run_global_timeout(|| tokio::net::TcpStream::connect(format!("127.0.0.1:{port}")))
+                    .await
+                    .ok()?;
             stream.set_nodelay(true).ok()?;
             let (stream2, _) = listener.accept().await.ok()?;
             stream2.set_nodelay(true).ok()?;
