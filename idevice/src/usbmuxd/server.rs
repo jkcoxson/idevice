@@ -63,7 +63,9 @@ impl UsbmuxdServerRequest {
             "SavePairRecord" => {
                 let pair_record_data = match plist.get("PairRecordData") {
                     Some(plist::Value::Data(d)) => d.clone(),
-                    Some(_) => return Err(UsbmuxdError::UnexpectedFieldType("PairRecordData").into()),
+                    Some(_) => {
+                        return Err(UsbmuxdError::UnexpectedFieldType("PairRecordData").into());
+                    }
                     None => return Err(UsbmuxdError::MissingField("PairRecordData").into()),
                 };
                 let pair_record_id = match plist.get("PairRecordID") {
@@ -153,9 +155,9 @@ fn get_string(plist: &plist::Dictionary, key: &'static str) -> Result<String, Us
 
 fn get_unsigned(plist: &plist::Dictionary, key: &'static str) -> Result<u64, UsbmuxdError> {
     match plist.get(key) {
-        Some(plist::Value::Integer(i)) => {
-            i.as_unsigned().ok_or(UsbmuxdError::UnexpectedFieldType(key))
-        }
+        Some(plist::Value::Integer(i)) => i
+            .as_unsigned()
+            .ok_or(UsbmuxdError::UnexpectedFieldType(key)),
         Some(_) => Err(UsbmuxdError::UnexpectedFieldType(key)),
         None => Err(UsbmuxdError::MissingField(key)),
     }
