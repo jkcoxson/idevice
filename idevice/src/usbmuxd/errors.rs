@@ -12,6 +12,12 @@ pub enum UsbmuxdError {
     BadDevice,
     #[error("usb bad version")]
     BadVersion,
+    #[error("request missing required field: {0}")]
+    MissingField(&'static str),
+    #[error("request field had an unexpected type: {0}")]
+    UnexpectedFieldType(&'static str),
+    #[error("unknown or unsupported MessageType: {0}")]
+    UnknownMessageType(String),
 }
 
 impl UsbmuxdError {
@@ -21,6 +27,9 @@ impl UsbmuxdError {
             Self::BadCommand => 2,
             Self::BadDevice => 3,
             Self::BadVersion => 4,
+            Self::MissingField(_) => 5,
+            Self::UnexpectedFieldType(_) => 6,
+            Self::UnknownMessageType(_) => 7,
         }
     }
 }

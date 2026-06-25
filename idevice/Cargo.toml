@@ -169,6 +169,8 @@ xctest = [
   "core_device_proxy",
 ]
 springboardservices = []
+# Bonjour/mDNS auth-tag device matching (`idevice::mdns`).
+mdns = ["dep:hkdf", "dep:hmac", "dep:sha2"]
 misagent = []
 mobile_image_mounter = ["dep:sha2"]
 mobileactivationd = ["_reqwest"]
@@ -263,6 +265,7 @@ full = [
   "installcoordination_proxy",
   "xctest",
   "location_simulation",
+  "mdns",
   "misagent",
   "mobile_image_mounter",
   "mobileactivationd",

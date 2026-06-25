@@ -6,6 +6,8 @@
 #[cfg(feature = "pair")]
 mod ca;
 pub mod cursor;
+#[cfg(feature = "mdns")]
+pub mod mdns;
 mod obfuscation;
 pub mod pairing_file;
 pub mod provider;

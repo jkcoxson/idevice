@@ -26,6 +26,9 @@ use errors::UsbmuxdError;
 mod des;
 pub mod errors;
 mod raw_packet;
+pub mod server;
+
+pub use raw_packet::RawPacket;
 
 /// Represents the connection type of a device
 #[derive(Debug, Clone, PartialEq, Eq)]
