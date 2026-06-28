@@ -1542,15 +1542,19 @@ impl MobileBackup2Client {
         Ok(())
     }
 
-    /// Assert a complete backup dir structure exists (Info + Manifest + Status plists)
+    /// Assert a readable backup dir structure exists.
+    ///
+    /// `Info.plist` is host-side display metadata and is not required for
+    /// MobileBackup2 to read a modern backup. The files required for modern
+    /// backup readability are the status plist plus the manifest plist/database.
     async fn assert_backup_exists(
         backup_root: &Path,
         source: &str,
         delegate: &dyn BackupDelegate,
     ) -> Result<(), IdeviceError> {
         let device_dir = backup_root.join(source);
-        if delegate.exists(&device_dir.join("Info.plist")).await
-            && delegate.exists(&device_dir.join("Manifest.plist")).await
+        if delegate.exists(&device_dir.join("Manifest.plist")).await
+            && delegate.exists(&device_dir.join("Manifest.db")).await
             && delegate.exists(&device_dir.join("Status.plist")).await
         {
             Ok(())
