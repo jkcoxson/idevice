@@ -273,12 +273,32 @@ impl BackupDelegate for Mobilebackup2BackupDelegateFFI {
 
     fn list_dir<'a>(
         &'a self,
-        _path: &'a Path,
+        path: &'a Path,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<DirEntryInfo>, IdeviceError>> + Send + 'a>> {
-        // The C delegate doesn't need list_dir - the library's FsBackupDelegate
-        // handles it via tokio::fs. For FFI, return empty since this is only used
-        // for DLContentsOfDirectory which is rare.
-        Box::pin(async { Ok(Vec::new()) })
+        // FFI callers currently pass normal host filesystem paths. Do the
+        // directory enumeration here instead of extending the C callback ABI;
+        // returning an empty listing makes MobileBackup2 believe existing backup
+        // files are absent and can produce MBErrorDomain/205 at the end of an
+        // otherwise readable backup.
+        Box::pin(async move {
+            let entries =
+                std::fs::read_dir(path).map_err(|e| IdeviceError::InternalError(e.to_string()))?;
+            let mut out = Vec::new();
+            for entry in entries {
+                let entry = entry.map_err(|e| IdeviceError::InternalError(e.to_string()))?;
+                let metadata = entry
+                    .metadata()
+                    .map_err(|e| IdeviceError::InternalError(e.to_string()))?;
+                out.push(DirEntryInfo {
+                    name: entry.file_name().to_string_lossy().into_owned(),
+                    is_dir: metadata.is_dir(),
+                    is_file: metadata.is_file(),
+                    size: metadata.len(),
+                    modified: metadata.modified().ok(),
+                });
+            }
+            Ok(out)
+        })
     }
 
     fn on_progress(&self, bytes_done: u64, bytes_total: u64, overall_progress: f64) {
