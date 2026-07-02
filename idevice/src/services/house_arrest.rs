@@ -91,12 +91,18 @@ impl HouseArrestClient {
     /// Returns `IdeviceError` if the request or AFC setup fails
     async fn vend(mut self, bundle_id: String, cmd: String) -> Result<AfcClient, IdeviceError> {
         let req = crate::plist!({
-            "Command": cmd,
+            "Command": cmd.clone(),
             "Identifier": bundle_id
         });
 
         self.idevice.send_plist(req).await?;
-        self.idevice.read_plist().await?;
+        let response = self.idevice.read_plist().await?;
+
+        if let Some(err) = response.get("Error").and_then(|e| e.as_string()) {
+            return Err(IdeviceError::UnexpectedResponse(format!(
+                "house_arrest {cmd} failed: {err}"
+            )));
+        }
 
         Ok(AfcClient::new(self.idevice))
     }
