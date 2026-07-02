@@ -150,6 +150,78 @@ impl LockdownClient {
         Ok(())
     }
 
+    /// Removes a value on the device
+    ///
+    /// Sends a lockdown `RemoveValue` request. Wire format matches Apple's
+    /// `AMDeviceRemoveValue`: `{ "Request": "RemoveValue", "Domain"?: domain, "Key": key }`.
+    ///
+    /// # Arguments
+    /// * `key` - The key to remove
+    /// * `domain` - An optional domain to remove from
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if communication fails or the device replies with an `Error`
+    pub async fn remove_value(
+        &mut self,
+        key: impl Into<String>,
+        domain: Option<&str>,
+    ) -> Result<(), IdeviceError> {
+        let key = key.into();
+
+        let req = crate::plist!({
+            "Label": self.idevice.label.clone(),
+            "Request": "RemoveValue",
+            "Key": key,
+            "Domain":? domain
+        });
+
+        self.idevice.send_plist(req).await?;
+        let response: plist::Dictionary = self.idevice.read_plist().await?;
+        if let Some(plist::Value::String(e)) = response.get("Error") {
+            return Err(IdeviceError::UnexpectedResponse(format!(
+                "RemoveValue failed: {e}"
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Unpairs the host from the device
+    ///
+    /// Sends a lockdown `Unpair` request carrying the host pair-record identity.
+    ///
+    /// Note this only removes the pairing from the device side. The host-side pairing record
+    /// (stored by usbmuxd) should be removed separately via
+    /// [`crate::usbmuxd::UsbmuxdConnection::delete_pair_record`].
+    ///
+    /// # Arguments
+    /// * `host_id` - The `HostID` from the pairing record (see
+    ///   [`crate::pairing_file::PairingFile::host_id`])
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if communication fails or the device replies with an `Error`.
+    pub async fn unpair(&mut self, host_id: impl Into<String>) -> Result<(), IdeviceError> {
+        let host_id = host_id.into();
+
+        let req = crate::plist!({
+            "Label": self.idevice.label.clone(),
+            "Request": "Unpair",
+            "PairRecord": {
+                "HostID": host_id
+            }
+        });
+
+        self.idevice.send_plist(req).await?;
+        let response: plist::Dictionary = self.idevice.read_plist().await?;
+        if let Some(plist::Value::String(e)) = response.get("Error") {
+            return Err(IdeviceError::UnexpectedResponse(format!(
+                "Unpair failed: {e}"
+            )));
+        }
+
+        Ok(())
+    }
+
     /// Starts a secure TLS session with the device
     ///
     /// # Arguments
@@ -231,11 +303,36 @@ impl LockdownClient {
         &mut self,
         identifier: impl Into<String>,
     ) -> Result<(u16, bool), IdeviceError> {
+        self.start_service_with_escrow(identifier, None).await
+    }
+
+    /// Requests to start a service, optionally presenting an escrow keybag so the device unlocks
+    /// its data protection for the service session.
+    ///
+    /// This mirrors Apple's `AMDeviceSecureStartService` with `UnlockEscrowBag = true`: the
+    /// `StartService` lockdown request gains an `EscrowBag` key. Without it the device leaves data
+    /// protection locked, so a service that must write protection-class files (mobilebackup2
+    /// restore of an *encrypted* backup, house_arrest) fails device-side with
+    /// "setting protection class (device locked?)" (MBErrorDomain 208). Non-protected data is
+    /// unaffected, which is why a non-encrypted restore succeeds without the escrow bag.
+    ///
+    /// # Arguments
+    /// * `identifier` - The service identifier (e.g., "com.apple.mobilebackup2")
+    /// * `escrow_bag` - The device's escrow keybag from the pairing record; `None` behaves exactly
+    ///   like [`start_service`](Self::start_service).
+    pub async fn start_service_with_escrow(
+        &mut self,
+        identifier: impl Into<String>,
+        escrow_bag: Option<Vec<u8>>,
+    ) -> Result<(u16, bool), IdeviceError> {
         let identifier = identifier.into();
-        let req = crate::plist!({
+        let mut req = crate::plist!({
             "Request": "StartService",
             "Service": identifier,
         });
+        if let (Some(bag), plist::Value::Dictionary(d)) = (escrow_bag, &mut req) {
+            d.insert("EscrowBag".into(), plist::Value::Data(bag));
+        }
         self.idevice.send_plist(req).await?;
         let response = self.idevice.read_plist().await?;
 
@@ -288,6 +385,51 @@ impl LockdownClient {
         let host_id = host_id.into();
         let system_buid = system_buid.into();
 
+        let (req, mut pair_record, private_key) = self
+            .build_pair_request(&host_id, &system_buid, host_name)
+            .await?;
+
+        loop {
+            self.idevice.send_plist(req.clone()).await?;
+            match self.idevice.read_plist().await {
+                Ok(escrow) => {
+                    pair_record.insert(
+                        "HostPrivateKey".into(),
+                        plist::Value::Data(private_key.clone()),
+                    );
+                    if let Some(escrow) = escrow.get("EscrowBag").and_then(|x| x.as_data()) {
+                        pair_record.insert("EscrowBag".into(), plist::Value::Data(escrow.to_vec()));
+                    }
+
+                    let p = crate::pairing_file::PairingFile::from_value(
+                        &plist::Value::Dictionary(pair_record),
+                    )?;
+
+                    break Ok(p);
+                }
+                Err(IdeviceError::PairingDialogResponsePending) => {
+                    crate::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+                Err(e) => break Err(e),
+            }
+        }
+    }
+
+    /// Builds the lockdown `Pair` request and the accompanying host pair record.
+    ///
+    /// This fetches the device public key and WiFi MAC, generates the pairing certificates, and
+    /// assembles the pair record (WITHOUT `HostPrivateKey`, which is inserted only after the device
+    /// accepts the pairing) plus the outgoing request.
+    ///
+    /// # Returns
+    /// A tuple of `(request, pair_record_without_host_private_key, ca_private_key)`.
+    #[cfg(feature = "pair")]
+    async fn build_pair_request(
+        &mut self,
+        host_id: &str,
+        system_buid: &str,
+        host_name: Option<&str>,
+    ) -> Result<(plist::Value, plist::Dictionary, Vec<u8>), IdeviceError> {
         let pub_key = self.get_value(Some("DevicePublicKey"), None).await?;
         let pub_key = match pub_key.as_data().map(|x| x.to_vec()) {
             Some(p) => p,
@@ -311,7 +453,7 @@ impl LockdownClient {
         };
 
         let ca = crate::ca::generate_certificates(&pub_key, None).unwrap();
-        let mut pair_record = crate::plist!(dict {
+        let pair_record = crate::plist!(dict {
             "DevicePublicKey": pub_key,
             "DeviceCertificate": ca.dev_cert,
             "HostCertificate": ca.host_cert.clone(),
@@ -333,27 +475,54 @@ impl LockdownClient {
             }
         });
 
-        loop {
-            self.idevice.send_plist(req.clone()).await?;
-            match self.idevice.read_plist().await {
-                Ok(escrow) => {
-                    pair_record.insert("HostPrivateKey".into(), plist::Value::Data(ca.private_key));
-                    if let Some(escrow) = escrow.get("EscrowBag").and_then(|x| x.as_data()) {
-                        pair_record.insert("EscrowBag".into(), plist::Value::Data(escrow.to_vec()));
-                    }
+        Ok((req, pair_record, ca.private_key))
+    }
 
-                    let p = crate::pairing_file::PairingFile::from_value(
-                        &plist::Value::Dictionary(pair_record),
-                    )?;
+    /// Attempts to pair with the device exactly ONCE, without looping or sleeping.
+    ///
+    /// Unlike [`LockdownClient::pair`], this does NOT block on
+    /// [`IdeviceError::PairingDialogResponsePending`]: the pending/denied/password-protected
+    /// errors are propagated directly to the caller so it can drive its own retry/UI flow (e.g.
+    /// showing a "Trust This Computer" prompt). The lockdown "Error" field is mapped to the
+    /// corresponding [`IdeviceError`] variant by `read_plist`.
+    ///
+    /// Note that this does NOT save the file to usbmuxd's cache. That's a responsibility of the
+    /// caller.
+    ///
+    /// # Arguments
+    /// * `host_id` - The host ID, in the form of a UUID. Typically generated from the host name
+    /// * `system_buid` - UUID fetched from usbmuxd. Doesn't appear to affect function.
+    ///
+    /// # Returns
+    /// The newly generated pairing record on success.
+    ///
+    /// # Errors
+    /// Returns `IdeviceError`, including `PairingDialogResponsePending`, `UserDeniedPairing`, and
+    /// `PasswordProtected` surfaced directly from the device.
+    #[cfg(feature = "pair")]
+    pub async fn pair_once(
+        &mut self,
+        host_id: impl Into<String>,
+        system_buid: impl Into<String>,
+        host_name: Option<&str>,
+    ) -> Result<crate::pairing_file::PairingFile, IdeviceError> {
+        let host_id = host_id.into();
+        let system_buid = system_buid.into();
 
-                    break Ok(p);
-                }
-                Err(IdeviceError::PairingDialogResponsePending) => {
-                    crate::time::sleep(std::time::Duration::from_secs(1)).await;
-                }
-                Err(e) => break Err(e),
-            }
+        let (req, mut pair_record, private_key) = self
+            .build_pair_request(&host_id, &system_buid, host_name)
+            .await?;
+
+        self.idevice.send_plist(req).await?;
+        // Propagates Err(PairingDialogResponsePending)/UserDeniedPairing/PasswordProtected etc.
+        let escrow = self.idevice.read_plist().await?;
+
+        pair_record.insert("HostPrivateKey".into(), plist::Value::Data(private_key));
+        if let Some(escrow) = escrow.get("EscrowBag").and_then(|x| x.as_data()) {
+            pair_record.insert("EscrowBag".into(), plist::Value::Data(escrow.to_vec()));
         }
+
+        crate::pairing_file::PairingFile::from_value(&plist::Value::Dictionary(pair_record))
     }
 
     /// Tell the device to enter recovery mode
