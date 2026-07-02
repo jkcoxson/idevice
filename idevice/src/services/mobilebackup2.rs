@@ -1215,7 +1215,7 @@ impl MobileBackup2Client {
         host_dir: &Path,
         delegate: &dyn BackupDelegate,
     ) -> Result<(), IdeviceError> {
-        let mut err_any = false;
+        let mut errplist = Dictionary::new();
         if let plist::Value::Array(arr) = dl_value
             && arr.len() >= 2
             && let Some(plist::Value::Array(files)) = arr.get(1)
@@ -1223,20 +1223,27 @@ impl MobileBackup2Client {
             for pv in files {
                 if let Some(path) = pv.as_string() {
                     debug!("Device requested file: {path}");
-                    if let Err(e) = self.send_single_file(host_dir, path, delegate).await {
-                        warn!("Failed to send file {path}: {e}");
-                        err_any = true;
+                    if let Some((code, desc)) =
+                        self.send_single_file(host_dir, path, delegate).await?
+                    {
+                        warn!("Failed to send file {path}: {desc} ({code})");
+                        let mut entry = Dictionary::new();
+                        entry.insert("DLFileErrorString".into(), plist::Value::String(desc));
+                        // `code` is a signed device error (e.g. -6 == ENOENT); pass it
+                        // through as a signed integer so the device reads it correctly.
+                        entry.insert("DLFileErrorCode".into(), plist::Value::Integer(code.into()));
+                        errplist.insert(path.to_string(), plist::Value::Dictionary(entry));
                     }
                 }
             }
         }
         // terminating zero dword
         self.idevice.send_raw(&0u32.to_be_bytes()).await?;
-        if err_any {
+        if !errplist.is_empty() {
             self.send_status_response(
                 -13,
                 Some("Multi status"),
-                Some(plist::Value::Dictionary(Dictionary::new())),
+                Some(plist::Value::Dictionary(errplist)),
             )
             .await
         } else {
@@ -1245,38 +1252,46 @@ impl MobileBackup2Client {
         }
     }
 
+    /// Streams one host file to the device in response to `DLMessageDownloadFiles`.
+    ///
+    /// Returns `Ok(None)` when the file was sent successfully, or `Ok(Some((device_err,
+    /// message)))` when a per-file error was framed to the device (so the caller can
+    /// record it in the Multi status dictionary). Only a fatal socket error yields
+    /// `Err`.
     async fn send_single_file(
         &mut self,
         host_dir: &Path,
         rel_path: &str,
         delegate: &dyn BackupDelegate,
-    ) -> Result<(), IdeviceError> {
+    ) -> Result<Option<(i64, String)>, IdeviceError> {
         let full = host_path(host_dir, rel_path);
         let path_bytes = rel_path.as_bytes().to_vec();
         let nlen = (path_bytes.len() as u32).to_be_bytes();
         self.idevice.send_raw(&nlen).await?;
         self.idevice.send_raw(&path_bytes).await?;
 
+        const DEV_ERR_ENOENT: i64 = -6;
+        const DEV_ERR_GENERIC: i64 = -1;
+
         let mut f = match delegate.open_file_read(&full).await {
             Ok(f) => f,
             Err(e) => {
-                // send error
                 let desc = e.to_string();
-                let size = (desc.len() as u32 + 1).to_be_bytes();
-                let mut hdr = Vec::with_capacity(5);
-                hdr.extend_from_slice(&size);
-                hdr.push(DL_CODE_ERROR_LOCAL);
-                self.idevice.send_raw(&hdr).await?;
-                self.idevice.send_raw(desc.as_bytes()).await?;
-                return Ok(());
+                self.send_file_error(&desc).await?;
+                return Ok(Some((DEV_ERR_ENOENT, desc)));
             }
         };
         let mut buf = [0u8; 32768];
         loop {
-            let read = f.read(&mut buf).unwrap_or(0);
-            if read == 0 {
-                break;
-            }
+            let read = match f.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => n,
+                Err(e) => {
+                    let desc = e.to_string();
+                    self.send_file_error(&desc).await?;
+                    return Ok(Some((DEV_ERR_GENERIC, desc)));
+                }
+            };
             let size = ((read as u32) + 1).to_be_bytes();
             let mut hdr = Vec::with_capacity(5);
             hdr.extend_from_slice(&size);
@@ -1289,7 +1304,19 @@ impl MobileBackup2Client {
         ok[..4].copy_from_slice(&1u32.to_be_bytes());
         ok[4] = DL_CODE_SUCCESS;
         self.idevice.send_raw(&ok).await?;
-        Ok(())
+        Ok(None)
+    }
+
+    /// Sends a single `DL_CODE_ERROR_LOCAL` block: `[u32 len][0x06][msg]`, where
+    /// `len` counts the code byte plus the message bytes.
+    async fn send_file_error(&mut self, desc: &str) -> Result<(), IdeviceError> {
+        let msg = desc.as_bytes();
+        let size = ((msg.len() as u32) + 1).to_be_bytes();
+        let mut block = Vec::with_capacity(4 + 1 + msg.len());
+        block.extend_from_slice(&size);
+        block.push(DL_CODE_ERROR_LOCAL);
+        block.extend_from_slice(msg);
+        self.idevice.send_raw(&block).await
     }
 
     async fn handle_upload_files(
