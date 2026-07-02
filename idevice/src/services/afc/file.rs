@@ -109,6 +109,10 @@ crate::impl_to_structs!(FileDescriptor<'_>, OwnedFileDescriptor;  {
         self.inner.as_mut().read().await
     }
 
+    pub async fn read_n(&mut self, n: usize) -> Result<Vec<u8>, IdeviceError> {
+        self.inner.as_mut().read_n(n).await
+    }
+
     /// Writes data to the file
     ///
     /// # Arguments
