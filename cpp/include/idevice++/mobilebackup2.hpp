@@ -50,6 +50,9 @@ struct BackupDelegateCallbacks {
     /// Check if a path is a directory
     std::function<bool(const std::string&)>                         is_dir;
 
+    /// Optional cancellation callback
+    std::function<bool()>                                           is_cancelled;
+
     /// Optional progress callback: bytes_done, bytes_total, overall_progress
     std::function<void(uint64_t, uint64_t, double)>                 on_progress;
 };

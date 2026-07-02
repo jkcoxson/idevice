@@ -143,6 +143,11 @@ extern "C" bool is_dir_trampoline(const char* path, void* ctx) {
     return false;
 }
 
+extern "C" bool is_cancelled_trampoline(void* ctx) {
+    auto& cbs = *static_cast<BackupDelegateCallbacks*>(ctx);
+    return cbs.is_cancelled ? cbs.is_cancelled() : false;
+}
+
 extern "C" void on_progress_trampoline(uint64_t bytes_done,
                                        uint64_t bytes_total,
                                        double   overall_progress,
@@ -167,6 +172,7 @@ Mobilebackup2BackupDelegateFFI make_ffi_delegate(BackupDelegateCallbacks& cbs) {
     d.copy                = copy_trampoline;
     d.exists              = exists_trampoline;
     d.is_dir              = is_dir_trampoline;
+    d.is_cancelled        = cbs.is_cancelled ? is_cancelled_trampoline : nullptr;
     d.on_progress         = cbs.on_progress ? on_progress_trampoline : nullptr;
     return d;
 }
