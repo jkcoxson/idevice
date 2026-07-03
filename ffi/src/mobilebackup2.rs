@@ -324,16 +324,32 @@ impl BackupDelegate for Mobilebackup2BackupDelegateFFI {
 
     fn list_dir<'a>(
         &'a self,
-        _path: &'a Path,
+        path: &'a Path,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<DirEntryInfo>, IdeviceError>> + Send + 'a>> {
-        // The C delegate doesn't need list_dir - the library's FsBackupDelegate
-        // handles it via tokio::fs. For FFI, return empty since this is only used
-        // for DLContentsOfDirectory which is rare.
+        // The MobileBackup2 layer formats these entries into the DLContentsOfDirectory response
+        // If one of the entry has a metadata error (transient or not), the listing will return
+        // Err, except for the modified one.
         Box::pin(async move {
             if is_cancelled(self) {
                 return Err(cancelled_error());
             }
-            Ok(Vec::new())
+            let entries =
+                std::fs::read_dir(path).map_err(|e| IdeviceError::InternalError(e.to_string()))?;
+            let mut out = Vec::new();
+            for entry in entries {
+                let entry = entry.map_err(|e| IdeviceError::InternalError(e.to_string()))?;
+                let metadata = entry
+                    .metadata()
+                    .map_err(|e| IdeviceError::InternalError(e.to_string()))?;
+                out.push(DirEntryInfo {
+                    name: entry.file_name().to_string_lossy().into_owned(),
+                    is_dir: metadata.is_dir(),
+                    is_file: metadata.is_file(),
+                    size: metadata.len(),
+                    modified: metadata.modified().ok(),
+                });
+            }
+            Ok(out)
         })
     }
 
