@@ -249,7 +249,8 @@ pub fn register() -> JkCommand {
                     JkArgument::new()
                         .with_help("Source identifier for the backup")
                         .required(true),
-                ),
+                )
+                .with_flag(JkFlag::new("full").with_help("Force a full backup from the device")),
         )
         .with_subcommand(
             "restore",
@@ -371,9 +372,17 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
             let source = sub_args.next_argument::<String>();
             let source = source.as_deref();
 
+            let options = if sub_args.has_flag("full") {
+                let mut opts = plist::Dictionary::new();
+                opts.insert("ForceFullBackup".into(), plist::Value::Boolean(true));
+                Some(opts)
+            } else {
+                None
+            };
+
             println!("Starting backup...");
             match backup_client
-                .backup_from_path(Path::new(&dir), source, None, &delegate)
+                .backup_from_path(Path::new(&dir), source, options, &delegate)
                 .await
             {
                 Ok(Some(response)) => {

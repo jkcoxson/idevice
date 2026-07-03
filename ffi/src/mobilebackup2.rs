@@ -76,6 +76,9 @@ pub struct Mobilebackup2BackupDelegateFFI {
 
     pub is_dir: extern "C" fn(path: *const c_char, context: *mut c_void) -> bool,
 
+    /// Optional cancellation callback. May be NULL.
+    pub is_cancelled: Option<extern "C" fn(context: *mut c_void) -> bool>,
+
     /// Optional progress callback. May be NULL.
     pub on_progress: Option<
         extern "C" fn(
@@ -105,6 +108,10 @@ struct FfiFileWriter {
 impl Write for FfiFileWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         let d = unsafe { &*self.delegate };
+        if is_cancelled(d) {
+            return Err(std::io::Error::other("operation cancelled"));
+        }
+
         let err = (d.write_chunk)(self.path_c.as_ptr(), buf.as_ptr(), buf.len(), d.context);
         if err.is_null() {
             Ok(buf.len())
@@ -148,8 +155,22 @@ fn ffi_err_to_idevice(err: *mut IdeviceFfiError) -> IdeviceError {
     IdeviceError::InternalError(msg)
 }
 
+fn cancelled_error() -> IdeviceError {
+    IdeviceError::InternalError("operation cancelled".to_string())
+}
+
+fn is_cancelled(delegate: &Mobilebackup2BackupDelegateFFI) -> bool {
+    delegate
+        .is_cancelled
+        .map(|cb| cb(delegate.context))
+        .unwrap_or(false)
+}
+
 impl BackupDelegate for Mobilebackup2BackupDelegateFFI {
     fn get_free_disk_space(&self, path: &Path) -> u64 {
+        if is_cancelled(self) {
+            return 0;
+        }
         let c = path_to_cstring(path);
         (self.get_free_disk_space)(c.as_ptr(), self.context)
     }
@@ -159,6 +180,10 @@ impl BackupDelegate for Mobilebackup2BackupDelegateFFI {
         path: &'a Path,
     ) -> Pin<Box<dyn Future<Output = Result<Box<dyn Read + Send>, IdeviceError>> + Send + 'a>> {
         Box::pin(async move {
+            if is_cancelled(self) {
+                return Err(cancelled_error());
+            }
+
             let c = path_to_cstring(path);
             let mut data: *mut u8 = null_mut();
             let mut len: usize = 0;
@@ -181,6 +206,10 @@ impl BackupDelegate for Mobilebackup2BackupDelegateFFI {
     ) -> Pin<Box<dyn Future<Output = Result<Box<dyn Write + Send>, IdeviceError>> + Send + 'a>>
     {
         Box::pin(async move {
+            if is_cancelled(self) {
+                return Err(cancelled_error());
+            }
+
             let c = path_to_cstring(path);
             let err = (self.create_file_write)(c.as_ptr(), self.context);
             if !err.is_null() {
@@ -198,6 +227,10 @@ impl BackupDelegate for Mobilebackup2BackupDelegateFFI {
         path: &'a Path,
     ) -> Pin<Box<dyn Future<Output = Result<(), IdeviceError>> + Send + 'a>> {
         Box::pin(async move {
+            if is_cancelled(self) {
+                return Err(cancelled_error());
+            }
+
             let c = path_to_cstring(path);
             let err = (self.create_dir_all)(c.as_ptr(), self.context);
             if err.is_null() {
@@ -213,6 +246,10 @@ impl BackupDelegate for Mobilebackup2BackupDelegateFFI {
         path: &'a Path,
     ) -> Pin<Box<dyn Future<Output = Result<(), IdeviceError>> + Send + 'a>> {
         Box::pin(async move {
+            if is_cancelled(self) {
+                return Err(cancelled_error());
+            }
+
             let c = path_to_cstring(path);
             let err = (self.remove)(c.as_ptr(), self.context);
             if err.is_null() {
@@ -229,6 +266,10 @@ impl BackupDelegate for Mobilebackup2BackupDelegateFFI {
         to: &'a Path,
     ) -> Pin<Box<dyn Future<Output = Result<(), IdeviceError>> + Send + 'a>> {
         Box::pin(async move {
+            if is_cancelled(self) {
+                return Err(cancelled_error());
+            }
+
             let cf = path_to_cstring(from);
             let ct = path_to_cstring(to);
             let err = (self.rename)(cf.as_ptr(), ct.as_ptr(), self.context);
@@ -246,6 +287,10 @@ impl BackupDelegate for Mobilebackup2BackupDelegateFFI {
         dst: &'a Path,
     ) -> Pin<Box<dyn Future<Output = Result<(), IdeviceError>> + Send + 'a>> {
         Box::pin(async move {
+            if is_cancelled(self) {
+                return Err(cancelled_error());
+            }
+
             let cs = path_to_cstring(src);
             let cd = path_to_cstring(dst);
             let err = (self.copy)(cs.as_ptr(), cd.as_ptr(), self.context);
@@ -259,6 +304,9 @@ impl BackupDelegate for Mobilebackup2BackupDelegateFFI {
 
     fn exists<'a>(&'a self, path: &'a Path) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>> {
         Box::pin(async move {
+            if is_cancelled(self) {
+                return false;
+            }
             let c = path_to_cstring(path);
             (self.exists)(c.as_ptr(), self.context)
         })
@@ -266,6 +314,9 @@ impl BackupDelegate for Mobilebackup2BackupDelegateFFI {
 
     fn is_dir<'a>(&'a self, path: &'a Path) -> Pin<Box<dyn Future<Output = bool> + Send + 'a>> {
         Box::pin(async move {
+            if is_cancelled(self) {
+                return false;
+            }
             let c = path_to_cstring(path);
             (self.is_dir)(c.as_ptr(), self.context)
         })
@@ -281,6 +332,9 @@ impl BackupDelegate for Mobilebackup2BackupDelegateFFI {
         // files are absent and can produce MBErrorDomain/205 at the end of an
         // otherwise readable backup.
         Box::pin(async move {
+            if is_cancelled(self) {
+                return Err(cancelled_error());
+            }
             let entries =
                 std::fs::read_dir(path).map_err(|e| IdeviceError::InternalError(e.to_string()))?;
             let mut out = Vec::new();
@@ -302,6 +356,9 @@ impl BackupDelegate for Mobilebackup2BackupDelegateFFI {
     }
 
     fn on_progress(&self, bytes_done: u64, bytes_total: u64, overall_progress: f64) {
+        if is_cancelled(self) {
+            return;
+        }
         if let Some(cb) = self.on_progress {
             cb(bytes_done, bytes_total, overall_progress, self.context);
         }
