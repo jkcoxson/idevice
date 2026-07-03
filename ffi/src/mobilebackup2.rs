@@ -326,11 +326,9 @@ impl BackupDelegate for Mobilebackup2BackupDelegateFFI {
         &'a self,
         path: &'a Path,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<DirEntryInfo>, IdeviceError>> + Send + 'a>> {
-        // FFI callers currently pass normal host filesystem paths. Do the
-        // directory enumeration here instead of extending the C callback ABI;
-        // returning an empty listing makes MobileBackup2 believe existing backup
-        // files are absent and can produce MBErrorDomain/205 at the end of an
-        // otherwise readable backup.
+        // The MobileBackup2 layer formats these entries into the DLContentsOfDirectory response
+        // If one of the entry has a metadata error (transient or not), the listing will return
+        // Err, except for the modified one.
         Box::pin(async move {
             if is_cancelled(self) {
                 return Err(cancelled_error());
