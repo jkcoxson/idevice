@@ -30,6 +30,30 @@ pub struct ImageMounter {
     idevice: Idevice,
 }
 
+fn is_developer_disk_image_mounted(entry: &plist::Value) -> bool {
+    let Some(entry) = entry.as_dictionary() else {
+        return false;
+    };
+
+    let mount_path_matches = entry
+        .get("MountPath")
+        .and_then(|value| value.as_string())
+        .is_some_and(|value| value == "/System/Developer");
+    let image_type_matches = entry
+        .get("PersonalizedImageType")
+        .and_then(|value| value.as_string())
+        .is_some_and(|value| value == "DeveloperDiskImage");
+    let disk_type_matches = match entry
+        .get("DiskImageType")
+        .and_then(|value| value.as_string())
+    {
+        Some(value) => value == "Personalized",
+        None => true,
+    };
+
+    mount_path_matches && image_type_matches && disk_type_matches
+}
+
 impl IdeviceService for ImageMounter {
     /// Returns the image mounter service name as registered with lockdownd
     fn service_name() -> std::borrow::Cow<'static, str> {
@@ -524,6 +548,16 @@ impl ImageMounter {
         Fut: std::future::Future<Output = ()>,
         S: Clone,
     {
+        if self
+            .copy_devices()
+            .await?
+            .iter()
+            .any(is_developer_disk_image_mounted)
+        {
+            debug!("Image already mounted");
+            return Ok(());
+        }
+
         // Try to fetch personalization manifest
         let mut hasher = Sha384::new();
         hasher.update(&image);
@@ -541,8 +575,12 @@ impl ImageMounter {
 
                 // Get manifest from TSS
                 let manifest_dict: plist::Dictionary = plist::from_bytes(build_manifest)?;
-                self.get_manifest_from_tss(&manifest_dict, unique_chip_id)
-                    .await?
+                self.get_manifest_from_tss(
+                    &manifest_dict,
+                    unique_chip_id,
+                    Some("DeveloperDiskImage"),
+                )
+                .await?
             }
         };
 
@@ -651,7 +689,7 @@ impl ImageMounter {
 
                 // Get manifest from TSS
                 let manifest_dict: plist::Dictionary = plist::from_bytes(build_manifest)?;
-                self.get_manifest_from_tss(&manifest_dict, unique_chip_id)
+                self.get_manifest_from_tss(&manifest_dict, unique_chip_id, None)
                     .await?
             }
         };
@@ -683,12 +721,15 @@ impl ImageMounter {
         &mut self,
         build_manifest: &plist::Dictionary,
         unique_chip_id: u64,
+        personalized_image_type: Option<&str>,
     ) -> Result<Vec<u8>, IdeviceError> {
         use tracing::{debug, warn};
 
         let mut request = TSSRequest::new();
 
-        let personalization_identifiers = self.query_personalization_identifiers(None).await?;
+        let personalization_identifiers = self
+            .query_personalization_identifiers(personalized_image_type)
+            .await?;
         for (key, val) in &personalization_identifiers {
             if key.starts_with("Ap,") {
                 request.insert(key, val.clone());
