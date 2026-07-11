@@ -54,4 +54,12 @@ Result<plist_t, FfiError> Lockdown::get_value(const char* key, const char* domai
     return Ok(out);
 }
 
+Result<void, FfiError> Lockdown::enter_recovery() {
+    FfiError e(::lockdownd_enter_recovery(handle_.get()));
+    if (e) {
+        return Err(e);
+    }
+    return Ok();
+}
+
 } // namespace IdeviceFFI

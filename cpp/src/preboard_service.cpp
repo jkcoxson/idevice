@@ -17,7 +17,8 @@ Result<PreboardService, FfiError> PreboardService::connect(Provider& provider) {
     return Ok(PreboardService::adopt(out));
 }
 
-Result<PreboardService, FfiError> PreboardService::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+Result<PreboardService, FfiError> PreboardService::connect_rsd(AdapterHandle*      adapter,
+                                                               RsdHandshakeHandle* handshake) {
     PreboardServiceClientHandle* out = nullptr;
     FfiError                     e(::preboard_service_connect_rsd(adapter, handshake, &out));
     if (e) {
@@ -36,12 +37,16 @@ Result<PreboardService, FfiError> PreboardService::from_socket(Idevice&& socket)
     return Ok(PreboardService::adopt(out));
 }
 
-Result<void, FfiError> PreboardService::create_stashbag(const std::vector<uint8_t>& manifest) {
-    FfiError e(::preboard_service_create_stashbag(handle_.get(), manifest.data(), manifest.size()));
+Result<StashbagOutcome, FfiError>
+PreboardService::create_stashbag(const std::vector<uint8_t>& manifest) {
+    IdeviceStashbagOutcome outcome = IdeviceStashbagOutcome::NotRequired;
+    FfiError               e(::preboard_service_create_stashbag(
+        handle_.get(), manifest.data(), manifest.size(), &outcome));
     if (e) {
         return Err(e);
     }
-    return Ok();
+    return Ok(outcome == IdeviceStashbagOutcome::CommitRequired ? StashbagOutcome::CommitRequired
+                                                                : StashbagOutcome::NotRequired);
 }
 
 Result<void, FfiError> PreboardService::commit_stashbag(const std::vector<uint8_t>& manifest) {

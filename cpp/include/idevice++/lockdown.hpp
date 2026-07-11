@@ -23,6 +23,7 @@ class Lockdown {
     Result<void, FfiError>                      start_session(const PairingFile& pf);
     Result<std::pair<uint16_t, bool>, FfiError> start_service(const std::string& identifier);
     Result<plist_t, FfiError>                   get_value(const char* key, const char* domain);
+    Result<void, FfiError>                      enter_recovery();
 
     // RAII / moves
     ~Lockdown() noexcept                              = default;

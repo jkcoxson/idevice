@@ -81,6 +81,9 @@ if (WIN32)
     userenv
     ntdll
     bcrypt
+    crypt32
+    secur32
+    ncrypt
   )
 endif()
 
@@ -112,3 +115,19 @@ foreach(EXAMPLE_FILE ${EXAMPLE_SOURCES})
     # Link to your C++ wrapper (inherits Rust lib + frameworks/system libs)
     target_link_libraries(${EXAMPLE_NAME} PRIVATE idevice_cpp)
 endforeach()
+
+# The `restore` example drives recovery/DFU over USB. On macOS/Linux it uses
+# libusb-1.0; on Windows (or when libusb is absent) the USB path is stubbed.
+if (TARGET restore AND NOT WIN32)
+    find_package(PkgConfig QUIET)
+    if (PkgConfig_FOUND)
+        pkg_check_modules(LIBUSB IMPORTED_TARGET libusb-1.0)
+    endif()
+    if (TARGET PkgConfig::LIBUSB)
+        target_link_libraries(restore PRIVATE PkgConfig::LIBUSB)
+        target_compile_definitions(restore PRIVATE IDEVICE_HAVE_LIBUSB=1)
+        message(STATUS "restore example: libusb-1.0 found; USB recovery driving enabled")
+    else()
+        message(WARNING "restore example: libusb-1.0 not found; building with USB driving stubbed")
+    endif()
+endif()

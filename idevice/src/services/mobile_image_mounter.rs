@@ -7,7 +7,7 @@
 //!
 //! Handles the complete workflow from uploading images to mounting them with proper signatures.
 
-use tracing::debug;
+use tracing::{debug, warn};
 
 #[cfg(feature = "rsd")]
 use crate::RsdService;
@@ -684,16 +684,10 @@ impl ImageMounter {
         build_manifest: &plist::Dictionary,
         unique_chip_id: u64,
     ) -> Result<Vec<u8>, IdeviceError> {
-        use tracing::{debug, warn};
-
         let mut request = TSSRequest::new();
 
         let personalization_identifiers = self.query_personalization_identifiers(None).await?;
-        for (key, val) in &personalization_identifiers {
-            if key.starts_with("Ap,") {
-                request.insert(key, val.clone());
-            }
-        }
+        request.add_ap_personalization_identifiers(&personalization_identifiers);
 
         let board_id = match personalization_identifiers.get("BoardId") {
             Some(plist::Value::Integer(b)) => match b.as_unsigned() {
@@ -726,144 +720,42 @@ impl ImageMounter {
             }
         };
 
-        request.insert("@ApImg4Ticket", true);
-        request.insert("@BBTicket", true);
-        request.insert("ApBoardID", board_id);
-        request.insert("ApChipID", chip_id);
-        request.insert("ApECID", unique_chip_id);
-        request.insert(
-            "ApNonce",
-            plist::Value::Data(self.query_nonce(Some("DeveloperDiskImage")).await?),
+        request.set_ap_img4_ticket(true);
+        request.set_bb_ticket(true);
+        let ap_nonce = self.query_nonce(Some("DeveloperDiskImage")).await?;
+        request.add_common_tags(
+            board_id,
+            chip_id,
+            unique_chip_id,
+            Some(ap_nonce),
+            Some(vec![0; 20]),
         );
-        request.insert("ApProductionMode", true);
-        request.insert("ApSecurityDomain", 1);
-        request.insert("ApSecurityMode", true);
-        request.insert("SepNonce", plist::Value::Data(vec![0; 20]));
-        request.insert("UID_MODE", false);
 
-        let identities = match build_manifest.get("BuildIdentities") {
-            Some(plist::Value::Array(i)) => i,
-            _ => {
-                return Err(IdeviceError::BadBuildManifest);
-            }
-        };
-        let mut build_identity = None;
-        for id in identities {
-            let id = match id {
-                plist::Value::Dictionary(id) => id,
-                _ => {
-                    debug!("build identity wasn't a dictionary");
-                    continue;
-                }
-            };
-
-            let ap_board_id = match id.get("ApBoardID") {
-                Some(plist::Value::String(a)) => a,
-                _ => {
-                    debug!("Build identity contained no ApBoardID");
-                    continue;
-                }
-            };
-            let ap_board_id = match u64::from_str_radix(ap_board_id.trim_start_matches("0x"), 16) {
-                Ok(a) => a,
-                Err(_) => {
-                    debug!("Could not parse {ap_board_id} as usize");
-                    continue;
-                }
-            };
-            if ap_board_id != board_id {
-                continue;
-            }
-            let ap_chip_id = match id.get("ApChipID") {
-                Some(plist::Value::String(a)) => a,
-                _ => {
-                    debug!("Build identity contained no ApChipID");
-                    continue;
-                }
-            };
-            let ap_chip_id = match u64::from_str_radix(ap_chip_id.trim_start_matches("0x"), 16) {
-                Ok(a) => a,
-                Err(_) => {
-                    debug!("Could not parse {ap_board_id} as usize");
-                    continue;
-                }
-            };
-            if ap_chip_id != chip_id {
-                continue;
-            }
-            build_identity = Some(id.to_owned());
-            break;
-        }
-
-        let build_identity = match build_identity {
-            Some(b) => b,
-            None => {
-                return Err(IdeviceError::BadBuildManifest);
-            }
-        };
-
-        let manifest = match build_identity.get("Manifest") {
-            Some(plist::Value::Dictionary(m)) => m,
-            _ => {
-                return Err(IdeviceError::BadBuildManifest);
-            }
-        };
+        let build_identity =
+            crate::tss::select_build_identity(build_manifest, board_id, chip_id, None)?;
 
         let parameters = crate::plist!(dict {
             "ApProductionMode": true,
-            "ApSecurityMode": 1,
             "ApSecurityMode": true,
             "ApSupportsImg4": true
         });
 
-        for (key, manifest_item) in manifest {
-            println!("{key}, {manifest_item:?}");
-            let manifest_item = match manifest_item {
-                plist::Value::Dictionary(m) => m,
-                _ => {
-                    debug!("Manifest item wasn't a dictionary");
-                    continue;
-                }
-            };
-            if manifest_item.get("Info").is_none() {
-                debug!("Manifest item didn't contain info");
-                continue;
-            }
+        let ddi_rules: &[plist::Value] = build_identity
+            .get("Manifest")
+            .and_then(|m| m.as_dictionary())
+            .and_then(|m| m.get("LoadableTrustCache"))
+            .and_then(|c| c.as_dictionary())
+            .and_then(|c| c.get("Info"))
+            .and_then(|i| i.as_dictionary())
+            .and_then(|i| i.get("RestoreRequestRules"))
+            .and_then(|r| r.as_array())
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
 
-            match manifest_item.get("Trusted") {
-                Some(plist::Value::Boolean(t)) => {
-                    if !t {
-                        debug!("Info item isn't trusted");
-                        continue;
-                    }
-                }
-                _ => {
-                    debug!("Info didn't contain trusted bool");
-                    continue;
-                }
-            }
+        request.populate_from_manifest(build_identity, &parameters, Some(ddi_rules))?;
 
-            let mut tss_entry = manifest_item.clone();
-            tss_entry.remove("Info");
-
-            if let Some(info) = manifest
-                .get("LoadableTrustCache")
-                .and_then(|l| l.as_dictionary())
-                .and_then(|l| l.get("Info"))
-                .and_then(|i| i.as_dictionary())
-                && let Some(plist::Value::Array(rules)) = info.get("RestoreRequestRules")
-            {
-                crate::tss::apply_restore_request_rules(&mut tss_entry, &parameters, rules);
-            }
-
-            if manifest_item.get("Digest").is_none() {
-                tss_entry.insert("Digest".into(), plist::Value::Data(vec![]));
-            }
-
-            request.insert(key, tss_entry);
-        }
         let res = request.send().await?;
-        let mut res = match res {
+        let res = match res {
             plist::Value::Dictionary(r) => r,
             _ => {
                 warn!("Apple returned a non-dictionary plist");
@@ -873,15 +765,7 @@ impl ImageMounter {
             }
         };
 
-        match res.remove("ApImg4Ticket") {
-            Some(plist::Value::Data(d)) => Ok(d),
-            _ => {
-                warn!("TSS response didn't contain ApImg4Ticket data");
-                Err(IdeviceError::UnexpectedResponse(
-                    "missing ApImg4Ticket data in TSS response".into(),
-                ))
-            }
-        }
+        crate::tss::extract_img4_ticket(&res)
     }
 }
 

@@ -60,6 +60,8 @@ pair = ["idevice/pair"]
 pcapd = ["idevice/pcapd"]
 preboard_service = ["idevice/preboard_service"]
 obfuscate = ["idevice/obfuscate"]
+restore = ["idevice/restore", "dep:futures"]
+restore_recovery = ["restore", "idevice/restore_recovery"]
 restore_service = ["idevice/restore_service"]
 remote_pairing = ["idevice/remote_pairing", "dep:mdns-sd"]
 rsd = ["idevice/rsd"]
@@ -104,6 +106,8 @@ full = [
   "pair",
   "pcapd",
   "preboard_service",
+  "restore",
+  "restore_recovery",
   "restore_service",
   "remote_pairing",
   "rsd",

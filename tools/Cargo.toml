@@ -59,6 +59,7 @@ ns-keyed-archive = "0.1.5"
 uuid = "1.16"
 futures-util = { version = "0.3" }
 mdns-sd = { version = "0.19" }
+nusb = { version = "0.2.4", features = ["tokio"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

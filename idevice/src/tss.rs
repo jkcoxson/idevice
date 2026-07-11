@@ -87,13 +87,20 @@ impl TSSRequest {
             .await?;
 
         debug!("Apple responded with {res}");
-        let res = res.trim_start_matches("STATUS=0&");
-        let res = res.trim_start_matches("MESSAGE=");
-        if !res.starts_with("SUCCESS") {
-            warn!("TSS responded with non-success value");
-            return Err(IdeviceError::UnexpectedResponse(
-                "TSS server responded with non-success status".into(),
-            ));
+        let trimmed = res.trim_start_matches("STATUS=0&");
+        let trimmed = trimmed.trim_start_matches("MESSAGE=");
+        if !trimmed.starts_with("SUCCESS") {
+            // On failure Apple returns `STATUS=<n>&MESSAGE=<text>` (no
+            // REQUEST_STRING); surface it so the caller sees why it was rejected.
+            let detail = res
+                .split("&REQUEST_STRING=")
+                .next()
+                .unwrap_or(res.as_str())
+                .trim();
+            warn!("TSS responded with non-success value: {detail}");
+            return Err(IdeviceError::UnexpectedResponse(format!(
+                "TSS server responded with non-success status ({detail})"
+            )));
         }
         let res = res.split("REQUEST_STRING=").collect::<Vec<&str>>();
         if res.len() < 2 {
@@ -103,6 +110,329 @@ impl TSSRequest {
             ));
         }
         Ok(plist::from_bytes(res[1].as_bytes())?)
+    }
+
+    /// Sets the `@ApImg4Ticket` request flag.
+    ///
+    /// When true, the server returns a signed IMG4 manifest (`ApImg4Ticket`).
+    pub fn set_ap_img4_ticket(&mut self, value: bool) {
+        self.insert("@ApImg4Ticket", value);
+    }
+
+    /// Sets the `@BBTicket` request flag (request a baseband ticket).
+    pub fn set_bb_ticket(&mut self, value: bool) {
+        self.insert("@BBTicket", value);
+    }
+
+    /// Adds the common `Ap*` identity tags shared by the developer-disk-image
+    /// personalization flow and the full IPSW restore flow.
+    ///
+    /// Sets `ApBoardID`, `ApChipID`, `ApECID`, `ApProductionMode` (true),
+    /// `ApSecurityDomain` (1), `ApSecurityMode` (true) and `UID_MODE` (false).
+    /// `ap_nonce`/`sep_nonce`, when supplied, are inserted as `ApNonce`/`SepNonce`
+    /// data blobs.
+    pub fn add_common_tags(
+        &mut self,
+        board_id: u64,
+        chip_id: u64,
+        ecid: u64,
+        ap_nonce: Option<Vec<u8>>,
+        sep_nonce: Option<Vec<u8>>,
+    ) {
+        self.insert("ApBoardID", board_id);
+        self.insert("ApChipID", chip_id);
+        self.insert("ApECID", ecid);
+        self.insert("ApProductionMode", true);
+        self.insert("ApSecurityDomain", 1);
+        self.insert("ApSecurityMode", true);
+        self.insert("UID_MODE", false);
+        if let Some(n) = ap_nonce {
+            self.insert("ApNonce", plist::Value::Data(n));
+        }
+        if let Some(n) = sep_nonce {
+            self.insert("SepNonce", plist::Value::Data(n));
+        }
+    }
+
+    /// Removes a key from the request, returning the removed value if present.
+    pub fn remove(&mut self, key: &str) -> Option<Value> {
+        self.inner.remove(key)
+    }
+
+    pub fn add_build_identity_tags(&mut self, build_identity: &plist::Dictionary, keys: &[&str]) {
+        for &key in keys {
+            if let Some(v) = build_identity.get(key) {
+                let converted = match v {
+                    Value::String(s) if s.starts_with("0x") => {
+                        match u64::from_str_radix(s.trim_start_matches("0x"), 16) {
+                            Ok(n) => Value::from(n),
+                            Err(_) => v.clone(),
+                        }
+                    }
+                    _ => v.clone(),
+                };
+                self.insert(key, converted);
+            }
+        }
+    }
+
+    pub fn add_ap_personalization_identifiers(&mut self, identifiers: &plist::Dictionary) {
+        for (key, val) in identifiers {
+            if key.starts_with("Ap,") {
+                self.insert(key.clone(), val.clone());
+            }
+        }
+    }
+
+    pub fn add_ap_tags(&mut self, build_identity: &plist::Dictionary) {
+        const KEYS: &[&str] = &[
+            "UniqueBuildID",
+            "Ap,OSLongVersion",
+            "Ap,OSReleaseType",
+            "Ap,ProductType",
+            "Ap,SDKPlatform",
+            "Ap,SikaFuse",
+            "Ap,Target",
+            "Ap,TargetType",
+            "Ap,ProductMarketingVersion",
+            "ApBoardID",
+            "ApChipID",
+            "ApSecurityDomain",
+            "BMU,BoardID",
+            "BMU,ChipID",
+            "BbChipID",
+            "BbProvisioningManifestKeyHash",
+            "BbActivationManifestKeyHash",
+            "BbCalibrationManifestKeyHash",
+            "BbFactoryActivationManifestKeyHash",
+            "BbFDRSecurityKeyHash",
+            "BbSkeyId",
+            "SE,ChipID",
+            "Savage,ChipID",
+            "Savage,PatchEpoch",
+            "Yonkers,BoardID",
+            "Yonkers,ChipID",
+            "Yonkers,PatchEpoch",
+            "Rap,BoardID",
+            "Rap,ChipID",
+            "Rap,SecurityDomain",
+            "Baobab,BoardID",
+            "Baobab,ChipID",
+            "Baobab,ManifestEpoch",
+            "Baobab,SecurityDomain",
+            "eUICC,ChipID",
+            "PearlCertificationRootPub",
+            "Timer,BoardID,1",
+            "Timer,BoardID,2",
+            "Timer,ChipID,1",
+            "Timer,ChipID,2",
+            "Timer,SecurityDomain,1",
+            "Timer,SecurityDomain,2",
+            "NeRDEpoch",
+        ];
+        for &key in KEYS {
+            if let Some(v) = build_identity.get(key) {
+                let converted = match v {
+                    Value::String(s) if s.starts_with("0x") => {
+                        match u64::from_str_radix(s.trim_start_matches("0x"), 16) {
+                            Ok(n) => Value::from(n),
+                            Err(_) => v.clone(),
+                        }
+                    }
+                    _ => v.clone(),
+                };
+                self.insert(key, converted);
+            }
+        }
+
+        if let Some(r) = build_identity
+            .get("Info")
+            .and_then(|i| i.as_dictionary())
+            .and_then(|i| i.get("RequiresUIDMode"))
+        {
+            self.insert("RequiresUIDMode", r.clone());
+        }
+    }
+
+    pub fn add_ap_manifest_tags(
+        &mut self,
+        build_identity: &plist::Dictionary,
+        parameters: &plist::Dictionary,
+    ) -> Result<(), IdeviceError> {
+        const SKIP_KEYS: &[&str] = &[
+            "BasebandFirmware",
+            "SE,UpdatePayload",
+            "BaseSystem",
+            "Diags",
+            "Ap,ExclaveOS",
+        ];
+
+        let manifest = match build_identity.get("Manifest") {
+            Some(plist::Value::Dictionary(m)) => m,
+            _ => return Err(IdeviceError::BadBuildManifest),
+        };
+        let supports_img4 = parameters
+            .get("ApSupportsImg4")
+            .and_then(Value::as_boolean)
+            .unwrap_or(false);
+
+        for (key, manifest_item) in manifest {
+            if SKIP_KEYS.contains(&key.as_str()) || key.starts_with("Cryptex1,") {
+                continue;
+            }
+            let manifest_item = match manifest_item {
+                plist::Value::Dictionary(m) => m,
+                _ => continue,
+            };
+            let info = match manifest_item.get("Info") {
+                Some(plist::Value::Dictionary(i)) => i,
+                _ => continue,
+            };
+            // For IMG4 devices, only components with RestoreRequestRules belong
+            // in the AP ticket.
+            let has_rules = info.contains_key("RestoreRequestRules");
+            if supports_img4 && !has_rules {
+                debug!("skipping {key}: no RestoreRequestRules");
+                continue;
+            }
+            if info
+                .get("IsFTAB")
+                .and_then(Value::as_boolean)
+                .unwrap_or(false)
+            {
+                continue;
+            }
+
+            let mut tss_entry = manifest_item.clone();
+            tss_entry.remove("Info");
+
+            if let Some(plist::Value::Array(rules)) = info.get("RestoreRequestRules") {
+                apply_restore_request_rules(&mut tss_entry, parameters, rules);
+            }
+
+            let trusted = manifest_item
+                .get("Trusted")
+                .and_then(Value::as_boolean)
+                .unwrap_or(false);
+            if trusted && !tss_entry.contains_key("Digest") {
+                tss_entry.insert("Digest".into(), plist::Value::Data(Vec::new()));
+            }
+
+            self.insert(key.clone(), tss_entry);
+        }
+
+        Ok(())
+    }
+
+    pub fn add_baseband_tags(&mut self, parameters: &plist::Dictionary) {
+        self.insert("@BBTicket", true);
+
+        const KEYS: &[&str] = &[
+            "BbChipID",
+            "BbProvisioningManifestKeyHash",
+            "BbActivationManifestKeyHash",
+            "BbCalibrationManifestKeyHash",
+            "BbFactoryActivationManifestKeyHash",
+            "BbFDRSecurityKeyHash",
+            "BbSkeyId",
+            "BbNonce",
+            "BbGoldCertId",
+            "BbSNUM",
+            "PearlCertificationRootPub",
+            "Ap,OSLongVersion",
+        ];
+        for &key in KEYS {
+            if let Some(v) = parameters.get(key) {
+                self.insert(key, v.clone());
+            }
+        }
+
+        if let Some(bbfw) = parameters
+            .get("Manifest")
+            .and_then(|m| m.as_dictionary())
+            .and_then(|m| m.get("BasebandFirmware"))
+            .and_then(|b| b.as_dictionary())
+        {
+            let mut bbfwdict = bbfw.clone();
+            bbfwdict.remove("Info");
+
+            let bb_chip_id = parameters
+                .get("BbChipID")
+                .and_then(Value::as_unsigned_integer);
+            let bb_cert_id = parameters
+                .get("BbGoldCertId")
+                .and_then(Value::as_unsigned_integer);
+            if bb_chip_id == Some(0x68) {
+                if matches!(bb_cert_id, Some(0x26F3_FACC | 0x5CF2_EC4E | 0x8399_785A)) {
+                    bbfwdict.remove("PSI2-PartialDigest");
+                    bbfwdict.remove("RestorePSI2-PartialDigest");
+                } else {
+                    bbfwdict.remove("PSI-PartialDigest");
+                    bbfwdict.remove("RestorePSI-PartialDigest");
+                }
+            }
+            self.insert("BasebandFirmware", Value::Dictionary(bbfwdict));
+        }
+    }
+
+    pub fn populate_from_manifest(
+        &mut self,
+        build_identity: &plist::Dictionary,
+        parameters: &plist::Dictionary,
+        rules_override: Option<&[plist::Value]>,
+    ) -> Result<(), IdeviceError> {
+        let manifest = match build_identity.get("Manifest") {
+            Some(plist::Value::Dictionary(m)) => m,
+            _ => return Err(IdeviceError::BadBuildManifest),
+        };
+
+        for (key, manifest_item) in manifest {
+            let manifest_item = match manifest_item {
+                plist::Value::Dictionary(m) => m,
+                _ => {
+                    debug!("Manifest item {key} wasn't a dictionary");
+                    continue;
+                }
+            };
+
+            let info = match manifest_item.get("Info") {
+                Some(plist::Value::Dictionary(i)) => i,
+                _ => {
+                    debug!("Manifest item {key} didn't contain Info");
+                    continue;
+                }
+            };
+
+            if !matches!(
+                manifest_item.get("Trusted"),
+                Some(plist::Value::Boolean(true))
+            ) {
+                debug!("Manifest item {key} isn't trusted");
+                continue;
+            }
+
+            let mut tss_entry = manifest_item.clone();
+            tss_entry.remove("Info");
+
+            let rules = match rules_override {
+                Some(r) => Some(r),
+                None => info
+                    .get("RestoreRequestRules")
+                    .and_then(|v| v.as_array())
+                    .map(|v| v.as_slice()),
+            };
+            if let Some(rules) = rules {
+                apply_restore_request_rules(&mut tss_entry, parameters, rules);
+            }
+
+            if manifest_item.get("Digest").is_none() {
+                tss_entry.insert("Digest".into(), plist::Value::Data(Vec::new()));
+            }
+
+            self.insert(key.clone(), tss_entry);
+        }
+
+        Ok(())
     }
 }
 
@@ -128,7 +458,7 @@ impl Default for TSSRequest {
 pub fn apply_restore_request_rules(
     input: &mut plist::Dictionary,
     parameters: &plist::Dictionary,
-    rules: &Vec<plist::Value>,
+    rules: &[plist::Value],
 ) {
     for rule in rules {
         if let plist::Value::Dictionary(rule) = rule {
@@ -192,5 +522,69 @@ pub fn apply_restore_request_rules(
         } else {
             warn!("Rule wasn't a dictionary");
         }
+    }
+}
+
+fn parse_hex_field(v: Option<&plist::Value>) -> Option<u64> {
+    match v {
+        Some(plist::Value::String(s)) => u64::from_str_radix(s.trim_start_matches("0x"), 16).ok(),
+        Some(plist::Value::Integer(i)) => i.as_unsigned(),
+        _ => None,
+    }
+}
+
+pub fn select_build_identity<'a>(
+    build_manifest: &'a plist::Dictionary,
+    board_id: u64,
+    chip_id: u64,
+    restore_behavior: Option<&str>,
+) -> Result<&'a plist::Dictionary, IdeviceError> {
+    let identities = match build_manifest.get("BuildIdentities") {
+        Some(plist::Value::Array(i)) => i,
+        _ => return Err(IdeviceError::BadBuildManifest),
+    };
+
+    for id in identities {
+        let id = match id {
+            plist::Value::Dictionary(id) => id,
+            _ => {
+                debug!("build identity wasn't a dictionary");
+                continue;
+            }
+        };
+
+        if parse_hex_field(id.get("ApBoardID")) != Some(board_id) {
+            continue;
+        }
+        if parse_hex_field(id.get("ApChipID")) != Some(chip_id) {
+            continue;
+        }
+        if let Some(behavior) = restore_behavior {
+            let matches = id
+                .get("Info")
+                .and_then(|i| i.as_dictionary())
+                .and_then(|i| i.get("RestoreBehavior"))
+                .and_then(|b| b.as_string())
+                == Some(behavior);
+            if !matches {
+                continue;
+            }
+        }
+        return Ok(id);
+    }
+
+    Err(IdeviceError::BadBuildManifest)
+}
+
+/// Extracts the `ApImg4Ticket` blob from a TSS response dictionary.
+///
+/// # Errors
+/// Returns [`IdeviceError::UnexpectedResponse`] if the ticket is absent.
+pub fn extract_img4_ticket(response: &plist::Dictionary) -> Result<Vec<u8>, IdeviceError> {
+    match response.get("ApImg4Ticket") {
+        Some(plist::Value::Data(d)) => Ok(d.clone()),
+        _ => Err(IdeviceError::UnexpectedResponse(
+            "missing ApImg4Ticket data in TSS response".into(),
+        )),
     }
 }
