@@ -43,6 +43,8 @@ pub mod os_trace_relay;
 pub mod pcapd;
 #[cfg(feature = "preboard_service")]
 pub mod preboard_service;
+#[cfg(any(feature = "restore", feature = "preboard_service"))]
+pub mod restore;
 #[cfg(feature = "restore_service")]
 pub mod restore_service;
 #[cfg(feature = "rsd")]

@@ -822,6 +822,9 @@ pub enum IdeviceError {
     BadBuildManifest,
     #[error("image not mounted")]
     ImageNotMounted,
+    #[cfg(any(feature = "restore", feature = "preboard_service"))]
+    #[error(transparent)]
+    Restore(#[from] services::restore::RestoreError),
 
     // 6: Pairing errors (lockdown)
     #[cfg(feature = "pair")]
@@ -1062,6 +1065,10 @@ impl IdeviceError {
             IdeviceError::TestRunnerDisconnected => 206,
             #[cfg(feature = "xctest")]
             IdeviceError::XcTestTimeout(_) => 207,
+
+            // 208: Restore (see RestoreError::sub_code for the specific failure)
+            #[cfg(any(feature = "restore", feature = "preboard_service"))]
+            IdeviceError::Restore(_) => 208,
         }
     }
 
@@ -1084,6 +1091,8 @@ impl IdeviceError {
             IdeviceError::InstallationProxy(e) => e.sub_code(),
             #[cfg(feature = "core_device")]
             IdeviceError::CoreDevice(e) => e.sub_code(),
+            #[cfg(any(feature = "restore", feature = "preboard_service"))]
+            IdeviceError::Restore(e) => e.sub_code(),
             _ => 0,
         }
     }

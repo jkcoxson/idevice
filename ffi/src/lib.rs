@@ -55,6 +55,8 @@ pub mod pcapd;
 #[cfg(feature = "preboard_service")]
 pub mod preboard_service;
 pub mod provider;
+#[cfg(feature = "restore")]
+pub mod restore;
 #[cfg(feature = "restore_service")]
 pub mod restore_service;
 #[cfg(feature = "remote_pairing")]

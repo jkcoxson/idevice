@@ -69,6 +69,8 @@ obfstr = { version = "0.4", optional = true }
 async_zip = { version = "0.0.18", optional = true }
 flate2 = { version = "1", optional = true }
 
+der = { version = "0.7", optional = true, features = ["alloc", "derive"] }
+
 # Drop-in for `std::time::SystemTime` that's a zero-cost alias on native and
 # uses `Date.now()` on wasm32-unknown-unknown (where `SystemTime::now()` panics).
 web-time = { version = "1", optional = true }
@@ -226,6 +228,22 @@ remote_pairing = [
   "dep:sha2",
   "dep:rsa",
 ]
+restore = [
+  "tss",
+  "dep:async_zip",
+  "async_zip/tokio",
+  "async_zip/deflate",
+  "dep:futures",
+  "dep:der",
+  "dep:sha2",
+  "dep:sha1",
+  "tokio/net",
+  "tokio/macros",
+  "tokio/rt",
+  "tokio/time",
+  "reqwest/native-tls",
+]
+restore_recovery = ["restore"]
 restore_service = []
 rsd = ["xpc"]
 screenshotr = []
@@ -276,6 +294,8 @@ full = [
   "pcapd",
   "preboard_service",
   "remote_pairing",
+  "restore",
+  "restore_recovery",
   "restore_service",
   "rsd",
   "screenshotr",
