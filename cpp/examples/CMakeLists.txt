@@ -81,6 +81,9 @@ if (WIN32)
     userenv
     ntdll
     bcrypt
+    crypt32
+    secur32
+    ncrypt
   )
 endif()
 
