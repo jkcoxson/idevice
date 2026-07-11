@@ -241,7 +241,8 @@ restore = [
   "tokio/macros",
   "tokio/rt",
   "tokio/time",
-  "reqwest/native-tls",
+  "rustls",
+  "reqwest/rustls-no-provider",
 ]
 restore_recovery = ["restore"]
 restore_service = []

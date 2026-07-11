@@ -614,6 +614,7 @@ async fn streamed_key_response(message: &plist::Dictionary) -> Result<Value, Ide
         .to_vec();
     info!("proxying StreamedImageDecryptionKey POST {url}");
 
+    crate::ensure_default_crypto_provider();
     let mut req = reqwest::Client::new().post(url).body(body);
     if let Some(headers) = arguments
         .get("RequestAdditionalHeaders")
@@ -681,6 +682,7 @@ async fn url_asset_response(message: &plist::Dictionary) -> Result<Value, Idevic
         .and_then(Value::as_string)
         .ok_or_else(|| IdeviceError::Restore(RestoreError::MissingField("RequestURL".into())))?;
     info!("proxying URLAsset GET {url}");
+    crate::ensure_default_crypto_provider();
     let response = reqwest::Client::new().get(url).send().await?;
     http_response_to_plist(response).await
 }

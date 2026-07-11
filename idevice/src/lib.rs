@@ -149,6 +149,77 @@ pub trait RsdService: Sized {
 /// the required ReadWrite characteristics.
 pub type IdeviceSocket = Box<dyn ReadWrite>;
 
+/// Installs a process-default rustls [`CryptoProvider`] matching the selected
+/// crypto backend (`ring` / `aws-lc` / `wasm-crypto`), unless one is already
+/// installed.
+pub(crate) fn ensure_default_crypto_provider() {
+    #[cfg(feature = "rustls")]
+    {
+        if CryptoProvider::get_default().is_none() {
+            // rust-analyzer will choke on this block, don't worry about it
+            let crypto_provider: CryptoProvider = {
+                #[cfg(all(feature = "ring", not(feature = "aws-lc")))]
+                {
+                    debug!("Using ring crypto backend");
+                    rustls::crypto::ring::default_provider()
+                }
+
+                #[cfg(all(feature = "aws-lc", not(feature = "ring")))]
+                {
+                    debug!("Using aws-lc crypto backend");
+                    rustls::crypto::aws_lc_rs::default_provider()
+                }
+
+                #[cfg(all(
+                    target_arch = "wasm32",
+                    feature = "wasm-crypto",
+                    not(any(feature = "ring", feature = "aws-lc"))
+                ))]
+                {
+                    debug!("Using rustls-rustcrypto (pure Rust) crypto backend");
+                    rustls_rustcrypto::provider()
+                }
+
+                #[cfg(all(
+                    not(target_arch = "wasm32"),
+                    not(any(feature = "ring", feature = "aws-lc"))
+                ))]
+                {
+                    compile_error!(
+                        "No crypto backend was selected! Specify an idevice feature for a crypto backend"
+                    );
+                }
+                #[cfg(all(
+                    target_arch = "wasm32",
+                    not(any(feature = "ring", feature = "aws-lc", feature = "wasm-crypto"))
+                ))]
+                {
+                    compile_error!(
+                        "No crypto backend was selected! On wasm32 enable the `wasm-crypto` (or `wasm`) feature."
+                    );
+                }
+
+                #[cfg(all(feature = "ring", feature = "aws-lc"))]
+                {
+                    // We can't throw a compile error because it breaks rust-analyzer.
+                    // My sanity while debugging the workspace crates are more important.
+
+                    debug!("Using ring crypto backend, because both were passed");
+                    tracing::warn!("Both ring && aws-lc are selected as idevice crypto backends!");
+                    rustls::crypto::ring::default_provider()
+                }
+            };
+
+            if let Err(e) = CryptoProvider::install_default(crypto_provider) {
+                // For whatever reason, getting the default provider will return None on iOS at
+                // random. Installing the default provider a second time will return an error, so
+                // we will log it but not propogate it. An issue should be opened with rustls.
+                tracing::error!("Failed to set crypto provider: {e:?}");
+            }
+        }
+    }
+}
+
 /// Main handle for communicating with an iOS device
 ///
 /// Manages the connection socket and provides methods for common device operations
@@ -595,70 +666,7 @@ impl Idevice {
                 );
             }
 
-            if CryptoProvider::get_default().is_none() {
-                // rust-analyzer will choke on this block, don't worry about it
-                let crypto_provider: CryptoProvider = {
-                    #[cfg(all(feature = "ring", not(feature = "aws-lc")))]
-                    {
-                        debug!("Using ring crypto backend");
-                        rustls::crypto::ring::default_provider()
-                    }
-
-                    #[cfg(all(feature = "aws-lc", not(feature = "ring")))]
-                    {
-                        debug!("Using aws-lc crypto backend");
-                        rustls::crypto::aws_lc_rs::default_provider()
-                    }
-
-                    #[cfg(all(
-                        target_arch = "wasm32",
-                        feature = "wasm-crypto",
-                        not(any(feature = "ring", feature = "aws-lc"))
-                    ))]
-                    {
-                        debug!("Using rustls-rustcrypto (pure Rust) crypto backend");
-                        rustls_rustcrypto::provider()
-                    }
-
-                    #[cfg(all(
-                        not(target_arch = "wasm32"),
-                        not(any(feature = "ring", feature = "aws-lc"))
-                    ))]
-                    {
-                        compile_error!(
-                            "No crypto backend was selected! Specify an idevice feature for a crypto backend"
-                        );
-                    }
-                    #[cfg(all(
-                        target_arch = "wasm32",
-                        not(any(feature = "ring", feature = "aws-lc", feature = "wasm-crypto"))
-                    ))]
-                    {
-                        compile_error!(
-                            "No crypto backend was selected! On wasm32 enable the `wasm-crypto` (or `wasm`) feature."
-                        );
-                    }
-
-                    #[cfg(all(feature = "ring", feature = "aws-lc"))]
-                    {
-                        // We can't throw a compile error because it breaks rust-analyzer.
-                        // My sanity while debugging the workspace crates are more important.
-
-                        debug!("Using ring crypto backend, because both were passed");
-                        tracing::warn!(
-                            "Both ring && aws-lc are selected as idevice crypto backends!"
-                        );
-                        rustls::crypto::ring::default_provider()
-                    }
-                };
-
-                if let Err(e) = CryptoProvider::install_default(crypto_provider) {
-                    // For whatever reason, getting the default provider will return None on iOS at
-                    // random. Installing the default provider a second time will return an error, so
-                    // we will log it but not propogate it. An issue should be opened with rustls.
-                    tracing::error!("Failed to set crypto provider: {e:?}");
-                }
-            }
+            ensure_default_crypto_provider();
             let config = sni::create_client_config(pairing_file)?;
             let connector = tokio_rustls::TlsConnector::from(Arc::new(config));
 

@@ -52,8 +52,10 @@ mod pcapd;
 mod preboard;
 mod process_control;
 mod remotexpc;
+#[cfg(not(target_os = "windows"))]
 mod restore;
 mod restore_service;
+#[cfg(not(target_os = "windows"))]
 mod restore_usb;
 mod rppairing;
 mod screencapture;
@@ -71,7 +73,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     // Set the base CLI
-    let arguments = JkCommand::new()
+    let builder = JkCommand::new()
         .with_flag(
             JkFlag::new("about")
                 .with_help("Prints the about message")
@@ -140,8 +142,12 @@ async fn main() {
         .with_subcommand("preboard", preboard::register())
         .with_subcommand("process_control", process_control::register())
         .with_subcommand("remotexpc", remotexpc::register())
-        .with_subcommand("rppairing", rppairing::register())
-        .with_subcommand("restore", restore::register())
+        .with_subcommand("rppairing", rppairing::register());
+
+    #[cfg(not(target_os = "windows"))]
+    let builder = builder.with_subcommand("restore", restore::register());
+
+    let arguments = builder
         .with_subcommand("restore_service", restore_service::register())
         .with_subcommand("screenshot", screenshot::register())
         .with_subcommand("screencapture", screencapture::register())
@@ -179,6 +185,7 @@ async fn main() {
     };
 
     // I hate this
+    #[cfg(not(target_os = "windows"))]
     if subcommand.as_str() == "restore" {
         let provider = get_provider(udid, host, pairing_file, "idevice-rs-tools")
             .await
