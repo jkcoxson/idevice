@@ -73,6 +73,7 @@ impl TSSRequest {
             "Sending TSS request: {}",
             crate::pretty_print_dictionary(&self.inner)
         );
+        crate::ensure_default_crypto_provider();
         let client = reqwest::Client::new();
 
         let res = client

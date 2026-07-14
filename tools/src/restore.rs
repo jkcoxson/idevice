@@ -81,18 +81,6 @@ async fn run(
         "Update"
     };
 
-    {
-        let mut ipsw = open_ipsw(&ipsw_path).await?;
-        let build_manifest = ipsw.build_manifest().await?;
-        if !manifest_supports_img4(&build_manifest) {
-            return Err(IdeviceError::Restore(RestoreError::Other(
-                "this IPSW targets 32-bit IMG3 devices (iPhone 5 / iPad 4 and \
-                 earlier); idevice's restore is IMG4-only and does not support them"
-                    .into(),
-            )));
-        }
-    }
-
     if behavior == "Update"
         && let Some(provider) = provider.as_deref()
     {
@@ -553,25 +541,6 @@ async fn boot_to_restore(
         .await?;
     let _ = recovery.send_command_with_request("bootx", 1).await;
     Ok(())
-}
-
-fn build_identity_supports_img4(build_identity: &plist::Dictionary) -> bool {
-    build_identity
-        .get("Ap,SupportsImg4")
-        .and_then(plist::Value::as_boolean)
-        == Some(true)
-}
-
-/// Whether any build identity in the manifest is for an IMG4 device.
-fn manifest_supports_img4(build_manifest: &plist::Dictionary) -> bool {
-    build_manifest
-        .get("BuildIdentities")
-        .and_then(plist::Value::as_array)
-        .is_some_and(|ids| {
-            ids.iter()
-                .filter_map(plist::Value::as_dictionary)
-                .any(build_identity_supports_img4)
-        })
 }
 
 /// Whether the build identity has a component.
