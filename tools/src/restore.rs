@@ -42,9 +42,19 @@ pub fn register() -> JkCommand {
                 .with_help("Path to a decrypted filesystem DMG (for AEA IPSWs)"),
         )
         .with_flag(JkFlag::new("erase").with_help("Erase the device (default: update)"))
-        .with_flag(
-            JkFlag::new("exit-recovery")
-                .with_help("Just reboot a device out of recovery mode and exit"),
+        .with_subcommand(
+            "exit-recovery",
+            JkCommand::new().help("Just reboot a device out of recovery mode and exit"),
+        )
+        .with_subcommand(
+            "info",
+            JkCommand::new()
+                .help("Print the identifiers a device in recovery/DFU mode reports over USB")
+                .with_flag(
+                    JkFlag::new("ecid")
+                        .with_argument(JkArgument::new().required(true))
+                        .with_help("Only match the device with this ECID (hex)"),
+                ),
         )
 }
 
@@ -59,8 +69,13 @@ async fn run(
     arguments: &CollectedArguments,
     provider: Option<Box<dyn IdeviceProvider>>,
 ) -> Result<(), IdeviceError> {
+    // Info path: read and print a recovery/DFU device's identifiers, then exit.
+    if let Some(info_args) = arguments.get_subcommand("info") {
+        return run_info(info_args).await;
+    }
+
     // Rescue path: boot a stuck device out of recovery and exit.
-    if arguments.has_flag("exit-recovery") {
+    if arguments.get_subcommand("exit-recovery").is_some() {
         let transport = find_recovery_transport(None, Duration::from_secs(5)).await?;
         let mut recovery = RecoveryDevice::new(transport).await?;
         let _ = recovery.set_autoboot(true).await;
@@ -262,6 +277,75 @@ async fn run(
         }
         Err(e) => Err(e),
     }
+}
+
+async fn run_info(arguments: &CollectedArguments) -> Result<(), IdeviceError> {
+    let ecid = match arguments.get_flag::<String>("ecid") {
+        Some(s) => Some(parse_hex_u64(&s)?),
+        None => None,
+    };
+
+    let transport = find_recovery_transport(ecid, Duration::from_secs(5)).await?;
+    let recovery = RecoveryDevice::new(transport).await?;
+    let mode = recovery.mode();
+    let info = recovery.info();
+
+    fn hex_u64(v: Option<u64>) -> String {
+        v.map(|v| format!("{v:#x}")).unwrap_or_else(|| "-".into())
+    }
+    fn hex_bytes(v: &Option<Vec<u8>>) -> String {
+        use std::fmt::Write;
+        match v {
+            Some(bytes) => bytes.iter().fold(String::new(), |mut s, b| {
+                let _ = write!(s, "{b:02x}");
+                s
+            }),
+            None => "-".into(),
+        }
+    }
+
+    println!("recovery device info:");
+    println!(
+        "  mode:      {mode:?} (idProduct {:#06x})",
+        mode.product_id()
+    );
+    println!("  CPID:      {}", hex_u64(info.cpid));
+    println!("  BDID:      {}", hex_u64(info.bdid));
+    println!("  ECID:      {}", hex_u64(info.ecid));
+    println!(
+        "  IBFL:      {} (IMG4-aware: {})",
+        hex_u64(info.ibfl),
+        info.is_image4_supported()
+    );
+    println!("  SRNM:      {}", info.srnm.as_deref().unwrap_or("-"));
+    println!("  SRTG:      {}", info.srtg.as_deref().unwrap_or("-"));
+    println!("  ApNonce:   {}", hex_bytes(&info.ap_nonce));
+    println!("  SEPNonce:  {}", hex_bytes(&info.sep_nonce));
+
+    const KNOWN: &[&str] = &[
+        "CPID", "BDID", "ECID", "IBFL", "SRNM", "SRTG", "NONC", "SNON",
+    ];
+    let mut extras: Vec<(&String, &String)> = info
+        .raw
+        .iter()
+        .filter(|(k, _)| !KNOWN.contains(&k.as_str()))
+        .collect();
+    extras.sort_by(|a, b| a.0.cmp(b.0));
+    if !extras.is_empty() {
+        println!("  other:");
+        for (k, v) in extras {
+            println!("    {k}: {v}");
+        }
+    }
+
+    Ok(())
+}
+
+/// Parses a hex integer, tolerating an optional `0x` prefix.
+fn parse_hex_u64(s: &str) -> Result<u64, IdeviceError> {
+    let trimmed = s.trim().trim_start_matches("0x").trim_start_matches("0X");
+    u64::from_str_radix(trimmed, 16)
+        .map_err(|_| IdeviceError::Restore(RestoreError::Other(format!("invalid ECID hex: {s}"))))
 }
 
 /// A recovery device plus the nonces read from normal mode (if it was reached
