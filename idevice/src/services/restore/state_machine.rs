@@ -215,6 +215,14 @@ impl RestoreProgressSender {
     pub(super) fn send(&self, event: RestoreProgressEvent) {
         let _ = self.tx.unbounded_send(event);
     }
+
+    /// Best-effort emit of one event from outside the crate. Lets a caller report host-side
+    /// setup phases (entering recovery, sending the ramdisk, booting) that happen before
+    /// [`run_restore`] takes over and the device starts sending its own `ProgressMsg`s. A dropped
+    /// receiver is ignored.
+    pub fn emit_event(&self, event: RestoreProgressEvent) {
+        self.send(event);
+    }
 }
 
 /// The receiving half of a restore progress channel. Await [`recv`](Self::recv)
