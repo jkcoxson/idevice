@@ -31,6 +31,7 @@ pub enum AfcOpcode {
     SetSocketBs = 0x0000001A,   // SetSocketBlockSize (0x800000)
     FileLock = 0x0000001B,      // FileRefLock
     MakeLink = 0x0000001C,      // MakeLink
+    GetFileHash = 0x0000001D,   // GetFileHash
     SetFileTime = 0x0000001E,   // Set st_mtime
     RemovePathAndContents = 0x00000022,
 }
@@ -51,6 +52,18 @@ pub enum AfcFopenMode {
 pub enum LinkType {
     Hardlink = 0x00000001,
     Symlink = 0x00000002,
+}
+
+/// flock(2)-style operations for the FileRefLock opcode (0x1B).
+#[repr(u64)]
+#[derive(Clone, Copy, Debug)]
+pub enum AfcLockOp {
+    /// `LOCK_SH | LOCK_NB`
+    SharedLock = 5,
+    /// `LOCK_EX | LOCK_NB`
+    ExclusiveLock = 6,
+    /// `LOCK_UN | LOCK_NB`
+    Unlock = 12,
 }
 
 impl TryFrom<u64> for AfcOpcode {
@@ -86,6 +99,7 @@ impl TryFrom<u64> for AfcOpcode {
             0x0000001A => Ok(Self::SetSocketBs),
             0x0000001B => Ok(Self::FileLock),
             0x0000001C => Ok(Self::MakeLink),
+            0x0000001D => Ok(Self::GetFileHash),
             0x0000001E => Ok(Self::SetFileTime),
             _ => Err(()),
         }

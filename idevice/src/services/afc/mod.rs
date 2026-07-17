@@ -194,39 +194,7 @@ impl AfcClient {
         &mut self,
         path: impl Into<String>,
     ) -> Result<FileInfo, IdeviceError> {
-        let path = path.into();
-        let header_payload = path.as_bytes().to_vec();
-        let header_len = header_payload.len() as u64 + AfcPacketHeader::LEN;
-
-        let header = AfcPacketHeader {
-            magic: MAGIC,
-            entire_len: header_len, // it's the same since the payload is empty for this
-            header_payload_len: header_len,
-            packet_num: self.package_number,
-            operation: AfcOpcode::GetFileInfo,
-        };
-        self.package_number += 1;
-
-        let packet = AfcPacket {
-            header,
-            header_payload,
-            payload: Vec::new(),
-        };
-
-        self.send(packet).await?;
-        let res = self.read().await?;
-
-        let strings: Vec<String> = res
-            .payload
-            .split(|b| *b == 0)
-            .filter(|s| !s.is_empty())
-            .map(|s| String::from_utf8_lossy(s).into_owned())
-            .collect();
-
-        let mut kvs: HashMap<String, String> = strings
-            .chunks_exact(2)
-            .map(|chunk| (chunk[0].clone(), chunk[1].clone()))
-            .collect();
+        let mut kvs = self.get_file_info_raw(path).await?;
 
         let size = kvs
             .remove("st_size")
@@ -273,37 +241,7 @@ impl AfcClient {
     /// # Returns
     /// A `DeviceInfo` struct containing device filesystem information
     pub async fn get_device_info(&mut self) -> Result<DeviceInfo, IdeviceError> {
-        let header_len = AfcPacketHeader::LEN;
-
-        let header = AfcPacketHeader {
-            magic: MAGIC,
-            entire_len: header_len, // it's the same since the payload is empty for this
-            header_payload_len: header_len,
-            packet_num: self.package_number,
-            operation: AfcOpcode::GetDevInfo,
-        };
-        self.package_number += 1;
-
-        let packet = AfcPacket {
-            header,
-            header_payload: Vec::new(),
-            payload: Vec::new(),
-        };
-
-        self.send(packet).await?;
-        let res = self.read().await?;
-
-        let strings: Vec<String> = res
-            .payload
-            .split(|b| *b == 0)
-            .filter(|s| !s.is_empty())
-            .map(|s| String::from_utf8_lossy(s).into_owned())
-            .collect();
-
-        let mut kvs: HashMap<String, String> = strings
-            .chunks_exact(2)
-            .map(|chunk| (chunk[0].clone(), chunk[1].clone()))
-            .collect();
+        let mut kvs = self.get_device_info_raw().await?;
 
         let model = kvs.remove("Model").ok_or(AfcError::MissingAttribute)?;
         let total_bytes = kvs
@@ -568,6 +506,140 @@ impl AfcClient {
         self.read().await?;
 
         Ok(())
+    }
+
+    /// Sends a single AFC operation and reads its response.
+    ///
+    /// Builds a packet from `opcode`, `header_payload` and `payload`, assigns the next packet
+    /// number, sends it and returns the parsed reply. [`read`](Self::read) turns an error status
+    /// reply into an `Err`, so a returned packet always represents success.
+    ///
+    /// # Arguments
+    /// * `opcode` - The AFC operation to perform
+    /// * `header_payload` - The operation's header payload (opcode-specific arguments)
+    /// * `payload` - The operation's trailing payload (bulk data), or empty
+    pub async fn send_op(
+        &mut self,
+        opcode: AfcOpcode,
+        header_payload: Vec<u8>,
+        payload: Vec<u8>,
+    ) -> Result<AfcPacket, IdeviceError> {
+        let header_len = header_payload.len() as u64 + AfcPacketHeader::LEN;
+        let header = AfcPacketHeader {
+            magic: MAGIC,
+            entire_len: header_len + payload.len() as u64,
+            header_payload_len: header_len,
+            packet_num: self.package_number,
+            operation: opcode,
+        };
+        self.package_number += 1;
+
+        let packet = AfcPacket {
+            header,
+            header_payload,
+            payload,
+        };
+
+        self.send(packet).await?;
+        self.read().await
+    }
+
+    /// Retrieves the device-computed hash of a file.
+    ///
+    /// Sends the `GetFileHash` operation (opcode 0x1D); the device replies with the raw hash
+    /// bytes of the file at `path`.
+    ///
+    /// # Arguments
+    /// * `path` - Path to the file to hash
+    ///
+    /// # Returns
+    /// The raw hash bytes as reported by the device
+    pub async fn get_file_hash(
+        &mut self,
+        path: impl Into<String>,
+    ) -> Result<Vec<u8>, IdeviceError> {
+        let path = path.into();
+        let res = self
+            .send_op(AfcOpcode::GetFileHash, path.as_bytes().to_vec(), Vec::new())
+            .await?;
+        Ok(res.payload)
+    }
+
+    /// Sets the modification time of a file.
+    ///
+    /// Sends the `SetFileTime` operation (opcode 0x1E). The header payload is the modification
+    /// time followed by the path.
+    ///
+    /// # Arguments
+    /// * `path` - Path to the file
+    /// * `mtime` - Modification time in nanoseconds since the Unix epoch
+    pub async fn set_file_time(
+        &mut self,
+        path: impl Into<String>,
+        mtime: u64,
+    ) -> Result<(), IdeviceError> {
+        let path = path.into();
+        let mut header_payload = mtime.to_le_bytes().to_vec();
+        header_payload.extend_from_slice(path.as_bytes());
+        self.send_op(AfcOpcode::SetFileTime, header_payload, Vec::new())
+            .await?;
+        Ok(())
+    }
+
+    /// Retrieves information about the AFC connection.
+    ///
+    /// Sends the `GetConnectionInfo` operation (opcode 0x16) and returns the raw key/value
+    /// strings the device reports, in the same NUL-separated wire form as device/file info.
+    pub async fn get_connection_info(&mut self) -> Result<HashMap<String, String>, IdeviceError> {
+        let res = self
+            .send_op(AfcOpcode::GetConInfo, Vec::new(), Vec::new())
+            .await?;
+        Ok(Self::parse_kv_payload(&res.payload))
+    }
+
+    /// Parses an AFC key/value payload (NUL-separated strings, alternating key then value).
+    fn parse_kv_payload(payload: &[u8]) -> HashMap<String, String> {
+        let strings: Vec<String> = payload
+            .split(|b| *b == 0)
+            .filter(|s| !s.is_empty())
+            .map(|s| String::from_utf8_lossy(s).into_owned())
+            .collect();
+        strings
+            .chunks_exact(2)
+            .map(|chunk| (chunk[0].clone(), chunk[1].clone()))
+            .collect()
+    }
+
+    /// Retrieves the raw key/value attributes of a file or directory.
+    ///
+    /// Sends the `GetFileInfo` operation (opcode 0x0A) and returns the attribute strings exactly
+    /// as the device reports them (e.g. `st_size`, `st_mtime`, `st_birthtime`, `st_link_target`).
+    /// Prefer [`get_file_info`](Self::get_file_info) for a typed view; use this when the raw
+    /// values (such as the nanosecond timestamps) are needed verbatim.
+    ///
+    /// # Arguments
+    /// * `path` - Path to the file or directory
+    pub async fn get_file_info_raw(
+        &mut self,
+        path: impl Into<String>,
+    ) -> Result<HashMap<String, String>, IdeviceError> {
+        let path = path.into();
+        let res = self
+            .send_op(AfcOpcode::GetFileInfo, path.as_bytes().to_vec(), Vec::new())
+            .await?;
+        Ok(Self::parse_kv_payload(&res.payload))
+    }
+
+    /// Retrieves the raw key/value attributes of the device's filesystem.
+    ///
+    /// Sends the `GetDeviceInfo` operation (opcode 0x0B) and returns the attribute strings exactly
+    /// as the device reports them (e.g. `FSTotalBytes`, `FSFreeBytes`, `FSBlockSize`, `Model`).
+    /// Prefer [`get_device_info`](Self::get_device_info) for a typed view.
+    pub async fn get_device_info_raw(&mut self) -> Result<HashMap<String, String>, IdeviceError> {
+        let res = self
+            .send_op(AfcOpcode::GetDevInfo, Vec::new(), Vec::new())
+            .await?;
+        Ok(Self::parse_kv_payload(&res.payload))
     }
 
     /// Reads a response packet from the device

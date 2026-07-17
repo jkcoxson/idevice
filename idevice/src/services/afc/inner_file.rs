@@ -199,6 +199,33 @@ crate::impl_to_structs!(InnerFileDescriptor<'_>, OwnedInnerFileDescriptor; {
         Ok(())
     }
 
+    /// Applies an flock(2)-style lock to the file (AFC FileRefLock, opcode 0x1B)
+    ///
+    /// # Arguments
+    /// * `op` - The lock operation to apply (shared/exclusive lock, or unlock)
+    pub async fn lock(
+        mut self: Pin<&mut Self>,
+        op: crate::afc::opcode::AfcLockOp,
+    ) -> Result<(), IdeviceError> {
+        let header_payload = [self.fd.to_le_bytes(), (op as u64).to_le_bytes()].concat();
+        self.as_mut()
+            .send_packet(AfcOpcode::FileLock, header_payload, Vec::new())
+            .await?;
+        Ok(())
+    }
+
+    /// Sets the size of the file, truncating or extending it (AFC FileRefSetFileSize, opcode 0x15)
+    ///
+    /// # Arguments
+    /// * `size` - The new size of the file in bytes
+    pub async fn set_size(mut self: Pin<&mut Self>, size: u64) -> Result<(), IdeviceError> {
+        let header_payload = [self.fd.to_le_bytes(), size.to_le_bytes()].concat();
+        self.as_mut()
+            .send_packet(AfcOpcode::FileSetSize, header_payload, Vec::new())
+            .await?;
+        Ok(())
+    }
+
     fn store_pending_read(mut self: Pin<&mut Self>, buf_rem: usize) {
         unsafe {
             let this = self.as_mut().get_unchecked_mut() as *mut Self;

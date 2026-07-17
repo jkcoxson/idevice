@@ -120,6 +120,22 @@ crate::impl_to_structs!(FileDescriptor<'_>, OwnedFileDescriptor;  {
     pub async fn write_entire(&mut self, bytes: &[u8]) -> Result<(), IdeviceError> {
         self.inner.as_mut().write(bytes).await
     }
+
+    /// Applies an flock(2)-style lock to the file
+    ///
+    /// # Arguments
+    /// * `op` - The lock operation to apply (shared/exclusive lock, or unlock)
+    pub async fn lock(&mut self, op: crate::afc::opcode::AfcLockOp) -> Result<(), IdeviceError> {
+        self.inner.as_mut().lock(op).await
+    }
+
+    /// Sets the size of the file, truncating or extending it
+    ///
+    /// # Arguments
+    /// * `size` - The new size of the file in bytes
+    pub async fn set_size(&mut self, size: u64) -> Result<(), IdeviceError> {
+        self.inner.as_mut().set_size(size).await
+    }
 });
 
 crate::impl_trait_to_structs!(AsyncRead for FileDescriptor<'_>, OwnedFileDescriptor; {
