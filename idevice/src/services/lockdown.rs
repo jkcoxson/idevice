@@ -18,6 +18,7 @@ use crate::{Idevice, IdeviceError, IdeviceService, obf, pairing_file};
 pub struct LockdownClient {
     /// The underlying device connection with established lockdown service
     pub idevice: crate::Idevice,
+    pub session_id: Option<String>,
 }
 
 #[cfg(feature = "rsd")]
@@ -69,7 +70,10 @@ impl LockdownClient {
     /// # Arguments
     /// * `idevice` - Pre-established device connection
     pub fn new(idevice: Idevice) -> Self {
-        Self { idevice }
+        Self {
+            idevice,
+            session_id: None,
+        }
     }
 
     /// Retrieves a specific value from the device
@@ -280,8 +284,43 @@ impl LockdownClient {
             }
         }
 
+        // Capture the SessionID so we can later formally StopSession (see `stop_session`).
+        self.session_id = response
+            .get("SessionID")
+            .and_then(|v| v.as_string())
+            .map(String::from);
+
         self.idevice.start_session(pairing_file, legacy).await?;
         Ok(legacy)
+    }
+
+    /// Stops the secure lockdown session previously started with [`start_session`](Self::start_session).
+    ///
+    /// Sends a lockdown `StopSession` request carrying the `SessionID` the device returned when the
+    /// session was started. Note this does NOT tear down the TLS socket in place, the caller is
+    /// expected to drop the connection.
+    ///
+    /// # Errors
+    /// Returns `IdeviceError` if communication fails or the device replies with an `Error`.
+    pub async fn stop_session(&mut self) -> Result<(), IdeviceError> {
+        let mut req = crate::plist!({
+            "Label": self.idevice.label.clone(),
+            "Request": "StopSession"
+        });
+        if let (Some(id), plist::Value::Dictionary(d)) = (&self.session_id, &mut req) {
+            d.insert("SessionID".into(), plist::Value::String(id.clone()));
+        }
+
+        self.idevice.send_plist(req).await?;
+        let response: plist::Dictionary = self.idevice.read_plist().await?;
+        if let Some(plist::Value::String(e)) = response.get("Error") {
+            return Err(IdeviceError::UnexpectedResponse(format!(
+                "StopSession failed: {e}"
+            )));
+        }
+
+        self.session_id = None;
+        Ok(())
     }
 
     /// Requests to start a service on the device
