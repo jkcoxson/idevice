@@ -71,6 +71,33 @@ impl<'a> MobileActivationdClient<'a> {
         Ok(())
     }
 
+    /// Asks mobileactivationd to build a fresh activation info blob
+    /// (`CreateActivationInfoRequest`).
+    pub async fn create_activation_info(&self) -> Result<plist::Value, IdeviceError> {
+        let res = self
+            .send_command("CreateActivationInfoRequest", None)
+            .await?;
+        Self::extract_value(res)
+    }
+
+    pub async fn create_session_info(&self) -> Result<plist::Value, IdeviceError> {
+        let res = self
+            .send_command("CreateTunnel1SessionInfoRequest", None)
+            .await?;
+        Self::extract_value(res)
+    }
+
+    fn extract_value(res: Dictionary) -> Result<plist::Value, IdeviceError> {
+        if let Some(err) = res.get("Error") {
+            return Err(IdeviceError::UnexpectedResponse(format!(
+                "mobileactivationd returned error: {err:?}"
+            )));
+        }
+        res.get("Value")
+            .cloned()
+            .ok_or_else(|| IdeviceError::UnexpectedResponse("response missing Value".into()))
+    }
+
     async fn send_command(
         &self,
         command: impl Into<String>,
