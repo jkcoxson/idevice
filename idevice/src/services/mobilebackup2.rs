@@ -235,9 +235,15 @@ impl BackupDelegate for FsBackupDelegate {
         path: &'a Path,
     ) -> Pin<Box<dyn Future<Output = Result<Box<dyn Read + Send>, IdeviceError>> + Send + 'a>> {
         Box::pin(async move {
-            let file = tokio::fs::File::open(path)
-                .await
-                .map_err(|e| IdeviceError::InternalError(e.to_string()))?;
+            // Missing files must surface as NotFound: the DL loop reports them
+            // to the device as ENOENT, which is how "no previous backup" reads.
+            let file = tokio::fs::File::open(path).await.map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    IdeviceError::NotFound
+                } else {
+                    IdeviceError::InternalError(e.to_string())
+                }
+            })?;
             let std_file = file.into_std().await;
             Ok(Box::new(std_file) as Box<dyn Read + Send>)
         })
@@ -1281,9 +1287,15 @@ impl MobileBackup2Client {
         let mut f = match delegate.open_file_read(&full).await {
             Ok(f) => f,
             Err(e) => {
+                // Only a genuinely missing file is ENOENT; any other open failure
+                // (I/O, corruption) must not tell the device the file is absent.
+                let code = match e {
+                    IdeviceError::NotFound => DEV_ERR_ENOENT,
+                    _ => DEV_ERR_GENERIC,
+                };
                 let desc = e.to_string();
                 self.send_file_error(&desc).await?;
-                return Ok(Some((DEV_ERR_ENOENT, desc)));
+                return Ok(Some((code, desc)));
             }
         };
         let mut buf = [0u8; 32768];
