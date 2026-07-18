@@ -120,6 +120,8 @@ pub trait BackupDelegate: Send + Sync {
     fn on_file_received(&self, _path: &str, _file_count: u32) {}
 
     /// Called periodically during file transfer with byte-level progress.
+    /// A `DownloadFiles` batch fires once with only the device percentage
+    /// (both byte fields 0) — that is how restore progress arrives.
     ///
     /// - `bytes_done`: total bytes transferred so far in this upload batch
     /// - `bytes_total`: total expected bytes for this batch (0 if unknown)
@@ -1131,6 +1133,9 @@ impl MobileBackup2Client {
 
             match tag.as_str() {
                 "DLMessageDownloadFiles" => {
+                    // The send path tracks no byte counts (idevicebackup2 parity);
+                    // report the device percentage parsed from this message.
+                    delegate.on_progress(0, 0, overall_progress);
                     self.handle_download_files(&value, host_dir, delegate)
                         .await?;
                 }
