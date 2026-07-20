@@ -132,7 +132,54 @@ impl RecoveryDevice {
             info,
         };
         dev.configure().await?;
+        dev.load_nonces_from_descriptor().await;
         Ok(dev)
+    }
+
+    /// Fills in the AP/SEP nonces from USB string descriptor index 1
+    async fn load_nonces_from_descriptor(&mut self) {
+        if self.info.ap_nonce.is_some() && self.info.sep_nonce.is_some() {
+            return;
+        }
+        match self.read_string_descriptor(1).await {
+            Ok(extra) => {
+                debug!("string descriptor 1: {extra:?}");
+                let parsed = DeviceInfo::parse(&extra);
+                if self.info.ap_nonce.is_none() {
+                    self.info.ap_nonce = parsed.ap_nonce;
+                }
+                if self.info.sep_nonce.is_none() {
+                    self.info.sep_nonce = parsed.sep_nonce;
+                }
+                for (k, v) in parsed.raw {
+                    self.info.raw.entry(k).or_insert(v);
+                }
+            }
+            Err(e) => debug!("could not read string descriptor 1 for nonces: {e}"),
+        }
+    }
+
+    async fn read_string_descriptor(&mut self, index: u8) -> Result<String, IdeviceError> {
+        let data = self
+            .transport
+            .control_in(
+                ControlSetup::new(0x80, 0x06, (0x03 << 8) | index as u16, 0x0409),
+                255,
+                USB_TIMEOUT_MS,
+            )
+            .await?;
+        // A string descriptor is [bLength, bDescriptorType=0x03, UTF-16LE units...].
+        if data.len() < 2 || data[1] != 0x03 {
+            return Err(IdeviceError::Restore(RestoreError::Recovery(format!(
+                "string descriptor {index} malformed or absent"
+            ))));
+        }
+        let end = (data[0] as usize).min(data.len());
+        let units: Vec<u16> = data[2..end]
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        Ok(String::from_utf16_lossy(&units))
     }
 
     /// Applies the per-mode configuration/interface setup.
