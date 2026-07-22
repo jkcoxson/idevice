@@ -5,11 +5,13 @@ use std::os::raw::{c_float, c_int};
 use std::ptr::{self, null_mut};
 
 use idevice::core_device::AppServiceClient;
-use idevice::{IdeviceError, ReadWrite, RsdService};
+use idevice::{IdeviceError, ReadWrite};
 
-use crate::core_device_proxy::AdapterHandle;
-use crate::rsd::RsdHandshakeHandle;
 use crate::{IdeviceFfiError, ReadWriteOpaque, ffi_err, run_sync, run_sync_local};
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
+use crate::{core_device_proxy::AdapterHandle, rsd::RsdHandshakeHandle};
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
+use idevice::RsdService as _;
 
 /// Opaque handle to an AppServiceClient
 pub struct AppServiceHandle(pub AppServiceClient<Box<dyn ReadWrite>>);
@@ -80,6 +82,7 @@ pub struct IconDataC {
 /// # Safety
 /// `provider` and `handshake` must be valid pointers to handles allocated by this library
 /// `handle` must be a valid pointer to a location where the handle will be stored
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn app_service_connect_rsd(
     provider: *mut AdapterHandle,
@@ -608,6 +611,7 @@ pub unsafe extern "C" fn app_service_free_signal_response(response: *mut SignalR
 ///
 /// # Safety
 /// All pointer parameters must be valid
+#[cfg(feature = "dvt")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn app_service_fetch_app_icon(
     handle: *mut AppServiceHandle,

@@ -61,7 +61,7 @@ pub mod restore;
 pub mod restore_service;
 #[cfg(feature = "remote_pairing")]
 pub mod rp_pairing_file;
-#[cfg(feature = "xpc")]
+#[cfg(feature = "rsd")]
 pub mod rsd;
 #[cfg(feature = "screenshotr")]
 pub mod screenshotr;

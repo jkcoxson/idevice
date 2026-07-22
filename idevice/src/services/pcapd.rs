@@ -5,7 +5,7 @@ use plist::Value;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 
-use crate::{Idevice, IdeviceError, IdeviceService, RsdService, obf};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 const ETHERNET_HEADER: &[u8] = &[
     0xBE, 0xEF, 0xBE, 0xEF, 0xBE, 0xEF, 0xBE, 0xEF, 0xBE, 0xEF, 0xBE, 0xEF, 0x08, 0x00,
@@ -29,7 +29,8 @@ impl IdeviceService for PcapdClient {
     }
 }
 
-impl RsdService for PcapdClient {
+#[cfg(feature = "rsd")]
+impl crate::RsdService for PcapdClient {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.pcapd.shim.remote")
     }

@@ -15,7 +15,7 @@ use std::borrow::Cow;
 use web_time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
-    IdeviceError, ReadWrite, RemoteXpcClient, RsdService, obf,
+    IdeviceError, ReadWrite, RemoteXpcClient, obf,
     services::core_device::CoreDeviceError,
     xpc::{Dictionary, XPCObject},
 };
@@ -186,7 +186,8 @@ pub struct IndigoHidClient<R: ReadWrite> {
     inner: RemoteXpcClient<R>,
 }
 
-impl RsdService for IndigoHidClient<Box<dyn ReadWrite>> {
+#[cfg(feature = "rsd")]
+impl crate::RsdService for IndigoHidClient<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> Cow<'static, str> {
         obf!("com.apple.coredevice.hid.indigo")
     }
@@ -401,7 +402,8 @@ pub struct UniversalHidServiceClient<R: ReadWrite> {
     inner: RemoteXpcClient<R>,
 }
 
-impl RsdService for UniversalHidServiceClient<Box<dyn ReadWrite>> {
+#[cfg(feature = "rsd")]
+impl crate::RsdService for UniversalHidServiceClient<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> Cow<'static, str> {
         obf!("com.apple.coredevice.hid.universalhidservice")
     }

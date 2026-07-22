@@ -4,14 +4,13 @@
 
 use std::ptr::null_mut;
 
-use idevice::{
-    IdeviceError, IdeviceService, RsdService, misagent::MisagentClient, provider::IdeviceProvider,
-};
+use idevice::{IdeviceError, IdeviceService, misagent::MisagentClient, provider::IdeviceProvider};
 
-use crate::{
-    IdeviceFfiError, core_device_proxy::AdapterHandle, ffi_err, provider::IdeviceProviderHandle,
-    rsd::RsdHandshakeHandle, run_sync_local,
-};
+use crate::{IdeviceFfiError, ffi_err, provider::IdeviceProviderHandle, run_sync_local};
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
+use crate::{core_device_proxy::AdapterHandle, rsd::RsdHandshakeHandle};
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
+use idevice::RsdService as _;
 
 pub struct MisagentClientHandle(pub MisagentClient);
 
@@ -66,6 +65,7 @@ pub unsafe extern "C" fn misagent_connect(
 /// `provider` must be a valid pointer to a handle allocated by this library
 /// `handshake` must be a valid pointer to a handle allocated by this library
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn misagent_connect_rsd(
     provider: *mut AdapterHandle,

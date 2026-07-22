@@ -1,8 +1,9 @@
 // Jackson Coxson
 
-use crate::{IdeviceError, ReadWrite, RemoteXpcClient, RsdService, obf};
+use crate::{IdeviceError, ReadWrite, RemoteXpcClient, obf};
 
-impl RsdService for InstallcoordinationProxy<Box<dyn ReadWrite>> {
+#[cfg(feature = "rsd")]
+impl crate::RsdService for InstallcoordinationProxy<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.remote.installcoordination_proxy")
     }

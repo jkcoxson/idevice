@@ -1,6 +1,6 @@
 // Jackson Coxson
 
-use crate::{IdeviceError, ReadWrite, RsdService, obf};
+use crate::{IdeviceError, ReadWrite, obf};
 
 use super::CoreDeviceError;
 
@@ -24,7 +24,8 @@ impl ImageFormat {
     }
 }
 
-impl RsdService for ScreenCaptureServiceClient<Box<dyn ReadWrite>> {
+#[cfg(feature = "rsd")]
+impl crate::RsdService for ScreenCaptureServiceClient<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.coredevice.screencaptureservice")
     }

@@ -3,7 +3,7 @@
 use plist::Dictionary;
 use tracing::warn;
 
-use crate::{IdeviceError, ReadWrite, RemoteXpcClient, RsdService, obf};
+use crate::{IdeviceError, ReadWrite, RemoteXpcClient, obf};
 
 /// Client for interacting with the Restore Service
 #[derive(Debug)]
@@ -12,7 +12,8 @@ pub struct RestoreServiceClient {
     pub stream: RemoteXpcClient<Box<dyn ReadWrite>>,
 }
 
-impl RsdService for RestoreServiceClient {
+#[cfg(feature = "rsd")]
+impl crate::RsdService for RestoreServiceClient {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.RestoreRemoteServices.restoreserviced")
     }

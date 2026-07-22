@@ -18,7 +18,7 @@
 use std::borrow::Cow;
 
 use crate::{
-    IdeviceError, ReadWrite, RemoteXpcClient, RsdService, obf, xpc,
+    IdeviceError, ReadWrite, RemoteXpcClient, obf, xpc,
     xpc::{Dictionary, XPCObject},
 };
 
@@ -269,7 +269,8 @@ pub struct PasteboardServiceClient<R: ReadWrite> {
     inner: RemoteXpcClient<R>,
 }
 
-impl RsdService for PasteboardServiceClient<Box<dyn ReadWrite>> {
+#[cfg(feature = "rsd")]
+impl crate::RsdService for PasteboardServiceClient<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> Cow<'static, str> {
         obf!("com.apple.coredevice.pasteboardservice")
     }

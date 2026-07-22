@@ -2,9 +2,10 @@
 
 use tokio::io::AsyncReadExt;
 
-use crate::{IdeviceError, ReadWrite, RsdService, obf};
+use crate::{IdeviceError, ReadWrite, obf};
 
-impl RsdService for OpenStdioSocketClient {
+#[cfg(feature = "rsd")]
+impl crate::RsdService for OpenStdioSocketClient {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.coredevice.openstdiosocket")
     }

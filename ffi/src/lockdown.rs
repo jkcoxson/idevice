@@ -2,16 +2,17 @@
 
 use std::ptr::null_mut;
 
-use idevice::{
-    IdeviceError, IdeviceService, RsdService as _, lockdown::LockdownClient,
-    provider::IdeviceProvider,
-};
+use idevice::{IdeviceError, IdeviceService, lockdown::LockdownClient, provider::IdeviceProvider};
 use plist_ffi::plist_t;
 
 use crate::{
-    IdeviceFfiError, IdeviceHandle, IdevicePairingFile, core_device_proxy::AdapterHandle, ffi_err,
-    provider::IdeviceProviderHandle, rsd::RsdHandshakeHandle, run_sync_local,
+    IdeviceFfiError, IdeviceHandle, IdevicePairingFile, ffi_err, provider::IdeviceProviderHandle,
+    run_sync_local,
 };
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
+use crate::{core_device_proxy::AdapterHandle, rsd::RsdHandshakeHandle};
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
+use idevice::RsdService as _;
 
 pub struct LockdowndClientHandle(pub LockdownClient);
 
@@ -69,6 +70,7 @@ pub unsafe extern "C" fn lockdownd_connect(
 /// `provider` must be a valid pointer to a handle allocated by this library
 /// `handshake` must be a valid pointer to a handle allocated by this library
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lockdownd_connect_rsd(
     provider: *mut AdapterHandle,

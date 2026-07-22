@@ -2,7 +2,7 @@
 
 use tracing::warn;
 
-use crate::{Idevice, IdeviceError, IdeviceService, RsdService, obf};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 #[derive(Debug)]
 pub struct CompanionProxy {
@@ -24,7 +24,8 @@ impl IdeviceService for CompanionProxy {
     }
 }
 
-impl RsdService for CompanionProxy {
+#[cfg(feature = "rsd")]
+impl crate::RsdService for CompanionProxy {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.companion_proxy.shim.remote")
     }

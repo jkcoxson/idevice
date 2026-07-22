@@ -4,9 +4,6 @@ use crate::provider::IdeviceProvider;
 use crate::services::lockdown::LockdownClient;
 use crate::{Idevice, IdeviceError, ReadWrite, obf};
 
-#[cfg(feature = "rsd")]
-use crate::RsdService;
-
 #[cfg(feature = "application_listing")]
 pub mod application_listing;
 #[cfg(feature = "condition_inducer")]
@@ -37,7 +34,8 @@ pub mod sysmontap;
 #[cfg(feature = "xctest")]
 pub mod xctest;
 
-impl RsdService for remote_server::RemoteServerClient<Box<dyn ReadWrite>> {
+#[cfg(feature = "rsd")]
+impl crate::RsdService for remote_server::RemoteServerClient<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.instruments.dtservicehub")
     }

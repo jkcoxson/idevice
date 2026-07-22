@@ -8,9 +8,10 @@ use std::fmt::Write;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::debug;
 
-use crate::{IdeviceError, ReadWrite, RsdService, obf};
+use crate::{IdeviceError, ReadWrite, obf};
 
-impl RsdService for DebugProxyClient<Box<dyn ReadWrite>> {
+#[cfg(feature = "rsd")]
+impl crate::RsdService for DebugProxyClient<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.internal.dt.remote.debugproxy")
     }

@@ -2,15 +2,15 @@ use std::os::raw::c_char;
 use std::{ffi::CString, ptr::null_mut};
 
 use idevice::{
-    IdeviceError, IdeviceService, RsdService, os_trace_relay::OsTraceRelayClient,
-    provider::IdeviceProvider,
+    IdeviceError, IdeviceService, os_trace_relay::OsTraceRelayClient, provider::IdeviceProvider,
 };
 
 use crate::run_sync_local;
-use crate::{
-    IdeviceFfiError, core_device_proxy::AdapterHandle, ffi_err, provider::IdeviceProviderHandle,
-    rsd::RsdHandshakeHandle,
-};
+use crate::{IdeviceFfiError, ffi_err, provider::IdeviceProviderHandle};
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
+use crate::{core_device_proxy::AdapterHandle, rsd::RsdHandshakeHandle};
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
+use idevice::RsdService as _;
 
 pub struct OsTraceRelayClientHandle(pub OsTraceRelayClient);
 pub struct OsTraceRelayReceiverHandle(pub idevice::os_trace_relay::OsTraceRelayReceiver);
@@ -87,6 +87,7 @@ pub unsafe extern "C" fn os_trace_relay_connect(
 /// `provider` must be a valid pointer to a handle allocated by this library
 /// `handshake` must be a valid pointer to a handle allocated by this library
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn os_trace_relay_connect_rsd(
     provider: *mut AdapterHandle,

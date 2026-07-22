@@ -1,11 +1,23 @@
 // Jackson Coxson
 
-use idevice::provider::{IdeviceProvider, TcpProvider, UsbmuxdProvider};
+use idevice::provider::IdeviceProvider;
+#[cfg(feature = "tcp")]
+use idevice::provider::TcpProvider;
+#[cfg(feature = "usbmuxd")]
+use idevice::provider::UsbmuxdProvider;
+#[cfg(any(feature = "tcp", feature = "usbmuxd"))]
+use std::ffi::CStr;
+#[cfg(any(feature = "tcp", feature = "usbmuxd"))]
 use std::os::raw::c_char;
-use std::{ffi::CStr, ptr::null_mut};
+use std::ptr::null_mut;
 
+#[cfg(feature = "usbmuxd")]
+use crate::usbmuxd::UsbmuxdAddrHandle;
+#[cfg(feature = "tcp")]
+use crate::util;
+#[cfg(feature = "tcp")]
 use crate::util::{SockAddr, idevice_sockaddr};
-use crate::{IdeviceFfiError, ffi_err, usbmuxd::UsbmuxdAddrHandle, util};
+use crate::{IdeviceFfiError, ffi_err};
 use crate::{IdevicePairingFile, run_sync};
 
 pub struct IdeviceProviderHandle(pub Box<dyn IdeviceProvider>);
@@ -26,6 +38,7 @@ pub struct IdeviceProviderHandle(pub Box<dyn IdeviceProvider>);
 /// `pairing_file` is consumed must never be used again
 /// `label` must be a valid Cstr
 /// `provider` must be a valid, non-null pointer to a location where the handle will be stored
+#[cfg(feature = "tcp")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn idevice_tcp_provider_new(
     ip: *const idevice_sockaddr,
@@ -93,6 +106,7 @@ pub unsafe extern "C" fn idevice_provider_free(provider: *mut IdeviceProviderHan
 /// `udid` must be a valid CStr
 /// `label` must be a valid Cstr
 /// `provider` must be a valid, non-null pointer to a location where the handle will be stored
+#[cfg(feature = "usbmuxd")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn usbmuxd_provider_new(
     addr: *mut UsbmuxdAddrHandle,

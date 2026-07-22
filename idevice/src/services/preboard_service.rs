@@ -5,7 +5,7 @@ use std::time::Duration;
 use plist::Value;
 use tracing::{info, warn};
 
-use crate::{Idevice, IdeviceError, IdeviceService, RsdService, obf, restore::RestoreError};
+use crate::{Idevice, IdeviceError, IdeviceService, obf, restore::RestoreError};
 
 /// Client for interacting with the preboard service on the device.
 #[derive(Debug)]
@@ -25,7 +25,7 @@ impl IdeviceService for PreboardServiceClient {
 }
 
 #[cfg(feature = "rsd")]
-impl RsdService for PreboardServiceClient {
+impl crate::RsdService for PreboardServiceClient {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.preboardservice_v2.shim.remote")
     }

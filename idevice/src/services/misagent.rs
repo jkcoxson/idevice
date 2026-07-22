@@ -5,7 +5,7 @@
 
 use tracing::warn;
 
-use crate::{Idevice, IdeviceError, IdeviceService, RsdService, obf};
+use crate::{Idevice, IdeviceError, IdeviceService, obf};
 
 /// Client for interacting with the iOS misagent service
 ///
@@ -19,7 +19,8 @@ pub struct MisagentClient {
     pub idevice: Idevice,
 }
 
-impl RsdService for MisagentClient {
+#[cfg(feature = "rsd")]
+impl crate::RsdService for MisagentClient {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.misagent.shim.remote")
     }

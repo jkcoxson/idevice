@@ -7,11 +7,12 @@
 //! plaintext RTP/HEVC to the receiver address we provide.
 
 use crate::{
-    IdeviceError, ReadWrite, RsdService, obf,
+    IdeviceError, ReadWrite, obf,
     xpc::{Dictionary as XpcDictionary, XPCObject},
 };
 
-impl RsdService for DisplayServiceClient<Box<dyn ReadWrite>> {
+#[cfg(feature = "rsd")]
+impl crate::RsdService for DisplayServiceClient<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.coredevice.displayservice")
     }

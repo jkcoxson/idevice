@@ -5,11 +5,13 @@ use std::os::raw::c_int;
 use std::ptr::{self, null_mut};
 
 use idevice::debug_proxy::{DebugProxyClient, DebugserverCommand};
-use idevice::{IdeviceError, ReadWrite, RsdService};
+use idevice::{IdeviceError, ReadWrite};
 
-use crate::core_device_proxy::AdapterHandle;
-use crate::rsd::RsdHandshakeHandle;
 use crate::{IdeviceFfiError, ReadWriteOpaque, ffi_err, run_sync, run_sync_local};
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
+use crate::{core_device_proxy::AdapterHandle, rsd::RsdHandshakeHandle};
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
+use idevice::RsdService as _;
 
 /// Opaque handle to a DebugProxyClient
 pub struct DebugProxyHandle(pub DebugProxyClient<Box<dyn ReadWrite>>);
@@ -126,6 +128,7 @@ pub unsafe extern "C" fn debugserver_command_free(command: *mut DebugserverComma
 /// # Safety
 /// `provider` must be a valid pointer to a handle allocated by this library
 /// `handshake` must be a valid pointer to a location where the handle will be stored
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn debug_proxy_connect_rsd(
     provider: *mut AdapterHandle,

@@ -1,7 +1,10 @@
 check-features:
-  cd idevice
-  cargo hack check --feature-powerset --no-dev-deps
-  cd ..
+  cargo hack check -p idevice --each-feature --no-dev-deps \
+    --features ring \
+    --exclude-features aws-lc,openssl,rustcrypto,wasm,wasm-crypto
+  cargo hack check -p idevice-ffi --each-feature --no-dev-deps \
+    --features ring \
+    --exclude-features aws-lc,openssl,rustcrypto
 
 ci-check: build-ffi-native build-tools-native build-cpp build-c
   cargo clippy --all-targets --all-features -- -D warnings

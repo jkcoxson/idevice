@@ -4,11 +4,12 @@ use plist_macro::plist_to_xml_bytes;
 use serde::Deserialize;
 use tracing::warn;
 
-use crate::{IdeviceError, ReadWrite, RsdService, obf, xpc::XPCObject};
+use crate::{IdeviceError, ReadWrite, obf, xpc::XPCObject};
 
 use super::CoreDeviceServiceClient;
 
-impl RsdService for AppServiceClient<Box<dyn ReadWrite>> {
+#[cfg(feature = "rsd")]
+impl crate::RsdService for AppServiceClient<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.coredevice.appservice")
     }

@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use crate::{IdeviceError, ReadWrite, RsdService, obf};
+use crate::{IdeviceError, ReadWrite, obf};
 
 use super::CoreDeviceError;
 
@@ -16,7 +16,8 @@ pub struct LocationScenario {
     pub localized_name: String,
 }
 
-impl RsdService for LocationServiceClient<Box<dyn ReadWrite>> {
+#[cfg(feature = "rsd")]
+impl crate::RsdService for LocationServiceClient<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.coredevice.locationservice")
     }

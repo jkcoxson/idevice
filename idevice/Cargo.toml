@@ -129,7 +129,7 @@ _http = ["tokio/net", "dep:webpki-roots"]
 
 afc = ["dep:chrono", "dep:futures"]
 amfi = []
-bt_packet_logger = []
+bt_packet_logger = ["dep:futures", "dep:async-stream"]
 companion_proxy = []
 core_device = ["xpc", "dep:uuid", "dep:ns-keyed-archive"]
 core_device_proxy = ["_serde_json"]
@@ -143,7 +143,12 @@ display_stream = [
 crashreportcopymobile = ["afc"]
 debug_proxy = []
 diagnostics_relay = []
-dvt = ["dep:ns-keyed-archive"]
+dvt = [
+  "dep:ns-keyed-archive",
+  "tokio/sync",
+  "tokio/rt",
+  "tokio/macros",
+]
 energy_monitor = ["dvt"]
 graphics = ["dvt", "rsd"]
 device_info = ["dvt"]
@@ -159,7 +164,7 @@ installation_proxy = [
   "async_zip/tokio",
   "async_zip/deflate",
 ]
-installcoordination_proxy = []
+installcoordination_proxy = ["xpc"]
 xctest = [
   "dvt",
   "installation_proxy",
@@ -177,7 +182,7 @@ misagent = []
 mobile_image_mounter = ["dep:sha2"]
 mobileactivationd = []
 mobilebackup2 = []
-wda = ["_serde_json", "tokio/time", "tokio/net"]
+wda = ["_serde_json", "tokio/time", "tokio/net", "tokio/rt"]
 notification_proxy = [
   "tokio/macros",
   "tokio/time",
@@ -242,7 +247,7 @@ restore = [
   "tokio/time",
 ]
 restore_recovery = ["restore"]
-restore_service = []
+restore_service = ["xpc"]
 rsd = ["xpc"]
 screenshotr = []
 syslog_relay = ["dep:bytes", "dep:chrono"]

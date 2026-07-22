@@ -6,12 +6,14 @@ use std::ptr::null_mut;
 
 use futures::{Stream, StreamExt};
 use idevice::core_device::DiagnostisServiceClient;
-use idevice::{IdeviceError, ReadWrite, RsdService};
+use idevice::{IdeviceError, ReadWrite};
 use tracing::debug;
 
-use crate::core_device_proxy::AdapterHandle;
-use crate::rsd::RsdHandshakeHandle;
 use crate::{IdeviceFfiError, ReadWriteOpaque, ffi_err, run_sync, run_sync_local};
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
+use crate::{core_device_proxy::AdapterHandle, rsd::RsdHandshakeHandle};
+#[cfg(feature = "rsd")]
+use idevice::RsdService as _;
 
 /// Opaque handle to an AppServiceClient
 pub struct DiagnosticsServiceHandle(pub DiagnostisServiceClient<Box<dyn ReadWrite>>);
@@ -32,6 +34,7 @@ pub struct SysdiagnoseStreamHandle<'a>(
 /// # Safety
 /// `provider` and `handshake` must be valid pointers to handles allocated by this library
 /// `handle` must be a valid pointer to a location where the handle will be stored
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn diagnostics_service_connect_rsd(
     provider: *mut AdapterHandle,

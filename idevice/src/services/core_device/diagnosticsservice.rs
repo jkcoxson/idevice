@@ -5,9 +5,10 @@ use std::pin::Pin;
 use futures::Stream;
 use tracing::warn;
 
-use crate::{IdeviceError, ReadWrite, RsdService, obf};
+use crate::{IdeviceError, ReadWrite, obf};
 
-impl RsdService for DiagnostisServiceClient<Box<dyn ReadWrite>> {
+#[cfg(feature = "rsd")]
+impl crate::RsdService for DiagnostisServiceClient<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
         obf!("com.apple.coredevice.diagnosticsservice")
     }

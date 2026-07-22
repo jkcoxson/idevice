@@ -3,16 +3,20 @@
 use std::{io::SeekFrom, ptr::null_mut};
 
 use idevice::{
-    IdeviceError, IdeviceService, RsdService,
+    IdeviceError, IdeviceService,
     afc::{AfcClient, DeviceInfo, FileInfo, file::FileDescriptor},
     provider::IdeviceProvider,
 };
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use crate::{
-    IdeviceFfiError, IdeviceHandle, LOCAL_RUNTIME, core_device_proxy::AdapterHandle, ffi_err,
-    provider::IdeviceProviderHandle, rsd::RsdHandshakeHandle, run_sync, run_sync_local,
+    IdeviceFfiError, IdeviceHandle, LOCAL_RUNTIME, ffi_err, provider::IdeviceProviderHandle,
+    run_sync, run_sync_local,
 };
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
+use crate::{core_device_proxy::AdapterHandle, rsd::RsdHandshakeHandle};
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
+use idevice::RsdService as _;
 
 pub struct AfcClientHandle(pub AfcClient);
 
@@ -68,6 +72,7 @@ pub unsafe extern "C" fn afc_client_connect(
 /// `provider` must be a valid pointer to a handle allocated by this library
 /// `handshake` must be a valid pointer to a handle allocated by this library
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn afc_client_connect_rsd(
     provider: *mut AdapterHandle,

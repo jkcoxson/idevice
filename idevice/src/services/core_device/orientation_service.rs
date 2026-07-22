@@ -3,7 +3,7 @@
 
 use std::borrow::Cow;
 
-use crate::{IdeviceError, ReadWrite, RemoteXpcClient, RsdService, obf, xpc};
+use crate::{IdeviceError, ReadWrite, RemoteXpcClient, obf, xpc};
 
 use super::CoreDeviceError;
 
@@ -67,7 +67,8 @@ pub struct OrientationServiceClient<R: ReadWrite> {
     inner: RemoteXpcClient<R>,
 }
 
-impl RsdService for OrientationServiceClient<Box<dyn ReadWrite>> {
+#[cfg(feature = "rsd")]
+impl crate::RsdService for OrientationServiceClient<Box<dyn ReadWrite>> {
     fn rsd_service_name() -> Cow<'static, str> {
         obf!("com.apple.coredevice.devicecontrol")
     }

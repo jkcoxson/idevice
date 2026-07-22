@@ -7,10 +7,9 @@ use idevice::restore_service::RestoreServiceClient;
 use idevice::{IdeviceError, RsdService};
 use plist_ffi::plist_t;
 
-use crate::{
-    IdeviceFfiError, ReadWriteOpaque, core_device_proxy::AdapterHandle, ffi_err,
-    rsd::RsdHandshakeHandle, run_sync_local,
-};
+use crate::{IdeviceFfiError, ReadWriteOpaque, ffi_err, run_sync_local};
+#[cfg(feature = "core_device_proxy")]
+use crate::{core_device_proxy::AdapterHandle, rsd::RsdHandshakeHandle};
 
 pub struct RestoreServiceClientHandle(pub RestoreServiceClient);
 
@@ -68,6 +67,7 @@ pub unsafe extern "C" fn restore_service_new(
 /// `provider` must be a valid pointer to a handle allocated by this library
 /// `handshake` must be a valid pointer to a handle allocated by this library
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
+#[cfg(feature = "core_device_proxy")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn restore_service_connect_rsd(
     provider: *mut AdapterHandle,

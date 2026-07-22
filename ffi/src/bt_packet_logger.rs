@@ -3,14 +3,16 @@
 use std::ptr::null_mut;
 
 use idevice::{
-    IdeviceError, IdeviceService, RsdService, bt_packet_logger::BtPacketLoggerClient,
-    provider::IdeviceProvider,
+    IdeviceError, IdeviceService, bt_packet_logger::BtPacketLoggerClient, provider::IdeviceProvider,
 };
 
 use crate::{
-    IdeviceFfiError, IdeviceHandle, core_device_proxy::AdapterHandle, ffi_err,
-    provider::IdeviceProviderHandle, rsd::RsdHandshakeHandle, run_sync_local,
+    IdeviceFfiError, IdeviceHandle, ffi_err, provider::IdeviceProviderHandle, run_sync_local,
 };
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
+use crate::{core_device_proxy::AdapterHandle, rsd::RsdHandshakeHandle};
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
+use idevice::RsdService as _;
 
 pub struct BtPacketLoggerClientHandle(pub BtPacketLoggerClient);
 
@@ -84,6 +86,7 @@ pub unsafe extern "C" fn bt_packet_logger_connect(
 /// `provider` must be a valid pointer to a handle allocated by this library
 /// `handshake` must be a valid pointer to a handle allocated by this library
 /// `client` must be a valid, non-null pointer to a location where the handle will be stored
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn bt_packet_logger_connect_rsd(
     provider: *mut AdapterHandle,
