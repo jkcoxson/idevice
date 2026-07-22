@@ -50,7 +50,6 @@ tracing = { version = "0.1.41" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # tun-rs = { version = "1.5", features = ["async"] }
 sha2 = { version = "0.10" }
-ureq = { version = "3" }
 clap = { version = "4.5", features = ["derive"] }
 jkcli = { version = "0.1.1" }
 plist = { version = "1.7" }
