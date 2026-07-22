@@ -6,6 +6,8 @@
 #[cfg(feature = "pair")]
 mod ca;
 pub mod cursor;
+#[cfg(feature = "_http")]
+pub mod http;
 #[cfg(feature = "mdns")]
 pub mod mdns;
 mod obfuscation;
@@ -779,9 +781,9 @@ pub enum IdeviceError {
     NotEnoughBytes(usize, usize),
     #[error("integer overflow")]
     IntegerOverflow,
-    #[cfg(feature = "_reqwest")]
-    #[error("http reqwest error")]
-    Reqwest(#[from] reqwest::Error),
+    #[cfg(feature = "_http")]
+    #[error("HTTP request failed: {0}")]
+    Http(String),
 
     // 3: Protocol/device response errors
     #[error("unexpected response from device: {0}")]
@@ -986,8 +988,8 @@ impl IdeviceError {
             IdeviceError::AddrParseError(_) => 9,
             IdeviceError::NotEnoughBytes(_, _) => 10,
             IdeviceError::IntegerOverflow => 11,
-            #[cfg(feature = "_reqwest")]
-            IdeviceError::Reqwest(_) => 12,
+            #[cfg(feature = "_http")]
+            IdeviceError::Http(_) => 12,
 
             // 13: Protocol/device response
             IdeviceError::UnexpectedResponse(_) => 13,

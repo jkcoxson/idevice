@@ -54,10 +54,7 @@ pub async fn get_tunneld_devices(
     socket: SocketAddr,
 ) -> Result<HashMap<String, TunneldDevice>, IdeviceError> {
     // Make HTTP GET request to tunneld endpoint
-    let res: Value = reqwest::get(format!("http://{socket}"))
-        .await?
-        .json()
-        .await?;
+    let res: Value = crate::http::get(format!("http://{socket}")).await?.json()?;
 
     // Verify response is a JSON object
     let res = match res.as_object() {

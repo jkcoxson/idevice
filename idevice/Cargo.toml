@@ -39,9 +39,7 @@ chrono = { version = "0.4", optional = true, default-features = false, features 
 serde_json = { version = "1", optional = true }
 bytes = { version = "1.10", optional = true }
 
-reqwest = { version = "0.13", features = [
-  "json",
-], optional = true, default-features = false }
+webpki-roots = { version = "1", optional = true }
 futures = { version = "0.3", optional = true }
 async-stream = { version = "0.3.6", optional = true }
 
@@ -120,24 +118,14 @@ bytes = "1.10.1"
 
 [features]
 default = ["aws-lc"]
-aws-lc = [
-  "rustls",
-  "rustls/aws-lc-rs",
-  "tokio-rustls/aws-lc-rs",
-  "reqwest?/rustls-no-provider",
-]
-ring = [
-  "rustls",
-  "rustls/ring",
-  "tokio-rustls/ring",
-  "reqwest?/rustls-no-provider",
-]
+aws-lc = ["rustls", "rustls/aws-lc-rs", "tokio-rustls/aws-lc-rs"]
+ring = ["rustls", "rustls/ring", "tokio-rustls/ring"]
 rustls = ["dep:rustls", "dep:tokio-rustls"]
-openssl = ["dep:openssl", "dep:tokio-openssl", "reqwest?/native-tls"]
+openssl = ["dep:openssl", "dep:tokio-openssl"]
 # Internal features: gate error‐conversion impls so every feature that pulls
 # in the dep automatically gets `From<…> for IdeviceError`.
 _serde_json = ["dep:serde_json"]
-_reqwest = ["dep:reqwest"]
+_http = ["tokio/net", "dep:webpki-roots"]
 
 afc = ["dep:chrono", "dep:futures"]
 amfi = []
@@ -187,7 +175,7 @@ springboardservices = []
 mdns = ["dep:hkdf", "dep:hmac", "dep:sha2"]
 misagent = []
 mobile_image_mounter = ["dep:sha2"]
-mobileactivationd = ["_reqwest"]
+mobileactivationd = []
 mobilebackup2 = []
 wda = ["_serde_json", "tokio/time", "tokio/net"]
 notification_proxy = [
@@ -208,7 +196,7 @@ pair = [
 pcapd = []
 preboard_service = []
 obfuscate = ["dep:obfstr"]
-rustcrypto = ["rustls", "dep:rustls-rustcrypto", "reqwest?/rustls-no-provider"]
+rustcrypto = ["rustls", "dep:rustls-rustcrypto"]
 wasm-crypto = ["rustcrypto"]
 # Enables wasm32-unknown-unknown support: forwards Web Crypto features to
 # the transitive `getrandom` crates and selects `rustls-rustcrypto` as the
@@ -264,8 +252,8 @@ tunnel_tcp_stack = ["dep:jktcp"]
 # `tokio/fs`, which doesn't compile on wasm32, so it is opt-in rather than
 # implied by `tunnel_tcp_stack`.
 tunnel_tcp_stack_pcap = ["tunnel_tcp_stack", "jktcp/pcap"]
-tss = ["dep:uuid", "_reqwest"]
-tunneld = ["_serde_json", "_reqwest"]
+tss = ["dep:uuid", "_http"]
+tunneld = ["_serde_json", "_http"]
 usbmuxd = ["tokio/net", "dep:futures"]
 xpc = ["dep:indexmap", "dep:uuid", "dep:async-stream", "dep:futures"]
 full = [

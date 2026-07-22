@@ -614,8 +614,7 @@ async fn streamed_key_response(message: &plist::Dictionary) -> Result<Value, Ide
         .to_vec();
     info!("proxying StreamedImageDecryptionKey POST {url}");
 
-    crate::ensure_default_crypto_provider();
-    let mut req = reqwest::Client::new().post(url).body(body);
+    let mut req = crate::http::HttpRequest::post(url).body(body);
     if let Some(headers) = arguments
         .get("RequestAdditionalHeaders")
         .and_then(Value::as_dictionary)
@@ -626,7 +625,7 @@ async fn streamed_key_response(message: &plist::Dictionary) -> Result<Value, Ide
             }
         }
     }
-    http_response_to_plist(req.send().await?).await
+    http_response_to_plist(req.send().await?)
 }
 
 fn is_truthy(v: &Value) -> bool {
@@ -682,22 +681,18 @@ async fn url_asset_response(message: &plist::Dictionary) -> Result<Value, Idevic
         .and_then(Value::as_string)
         .ok_or_else(|| IdeviceError::Restore(RestoreError::MissingField("RequestURL".into())))?;
     info!("proxying URLAsset GET {url}");
-    crate::ensure_default_crypto_provider();
-    let response = reqwest::Client::new().get(url).send().await?;
-    http_response_to_plist(response).await
+    let response = crate::http::get(url).await?;
+    http_response_to_plist(response)
 }
 
-async fn http_response_to_plist(response: reqwest::Response) -> Result<Value, IdeviceError> {
-    let status = response.status().as_u16() as i64;
+fn http_response_to_plist(response: crate::http::HttpResponse) -> Result<Value, IdeviceError> {
+    let status = response.status as i64;
     let mut headers = plist::Dictionary::new();
-    for (k, v) in response.headers() {
-        if let Ok(v) = v.to_str() {
-            headers.insert(k.as_str().to_string(), Value::String(v.to_string()));
-        }
+    for (k, v) in response.headers {
+        headers.insert(k, Value::String(v));
     }
-    let body = response.bytes().await?.to_vec();
     Ok(crate::plist!({
-        "ResponseBody": body,
+        "ResponseBody": response.body,
         "ResponseBodyDone": true,
         "ResponseHeaders": Value::Dictionary(headers),
         "ResponseStatus": status,

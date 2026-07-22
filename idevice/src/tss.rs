@@ -73,19 +73,15 @@ impl TSSRequest {
             "Sending TSS request: {}",
             crate::pretty_print_dictionary(&self.inner)
         );
-        crate::ensure_default_crypto_provider();
-        let client = reqwest::Client::new();
-
-        let res = client
-            .post(TSS_CONTROLLER_ACTION_URL)
+        // The TSS controller is plain HTTP, so no TLS/crypto provider is needed.
+        let res = crate::http::HttpRequest::post(TSS_CONTROLLER_ACTION_URL)
             .header("Cache-Control", "no-cache")
             .header("Content-type", "text/xml; charset=\"utf-8\"")
             .header("User-Agent", "InetURL/1.0")
             .body(plist_to_xml_bytes(&self.inner))
             .send()
             .await?
-            .text()
-            .await?;
+            .text();
 
         debug!("Apple responded with {res}");
         let trimmed = res.trim_start_matches("STATUS=0&");
