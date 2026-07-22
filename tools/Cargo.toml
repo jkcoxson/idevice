@@ -68,4 +68,5 @@ libc = "0.2"
 default = ["aws-lc"]
 aws-lc = ["idevice/aws-lc"]
 ring = ["idevice/ring"]
+rustcrypto = ["idevice/rustcrypto"]
 openssl = ["idevice/openssl"]

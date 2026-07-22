@@ -71,6 +71,8 @@ flate2 = { version = "1", optional = true }
 
 der = { version = "0.7", optional = true, features = ["alloc", "derive"] }
 
+rustls-rustcrypto = { version = "0.0.2-alpha", optional = true }
+
 # Drop-in for `std::time::SystemTime` that's a zero-cost alias on native and
 # uses `Date.now()` on wasm32-unknown-unknown (where `SystemTime::now()` panics).
 web-time = { version = "1", optional = true }
@@ -84,8 +86,9 @@ libc = "0.2"
 tokio = { version = "1", features = ["fs"] }
 
 # wasm32-unknown-unknown: forward `js` / `wasm_js` features through to the
-# transitive `getrandom` crates so Web Crypto is used for randomness, and
-# pull in a pure-Rust rustls `CryptoProvider` (`rustls-rustcrypto`).
+# transitive `getrandom` crates so Web Crypto is used for randomness. The
+# pure-Rust crypto backend (`rustls-rustcrypto`) is a target-independent
+# dependency selected by the `rustcrypto` feature.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 uuid = { version = "1.23", default-features = false, features = [
   "js",
@@ -96,7 +99,6 @@ getrandom_02 = { package = "getrandom", version = "0.2", default-features = fals
 getrandom_04 = { package = "getrandom", version = "0.4", default-features = false, features = [
   "wasm_js",
 ], optional = true }
-rustls-rustcrypto = { version = "0.0.2-alpha", optional = true }
 # Forwards the `web` feature so `rustls-pki-types::UnixTime::now()` uses `Date.now()`.
 rustls-pki-types = { version = "1", default-features = false, features = [
   "web",
@@ -118,10 +120,20 @@ bytes = "1.10.1"
 
 [features]
 default = ["aws-lc"]
-aws-lc = ["rustls", "rustls/aws-lc-rs", "tokio-rustls/aws-lc-rs"]
-ring = ["rustls", "rustls/ring", "tokio-rustls/ring"]
+aws-lc = [
+  "rustls",
+  "rustls/aws-lc-rs",
+  "tokio-rustls/aws-lc-rs",
+  "reqwest?/rustls-no-provider",
+]
+ring = [
+  "rustls",
+  "rustls/ring",
+  "tokio-rustls/ring",
+  "reqwest?/rustls-no-provider",
+]
 rustls = ["dep:rustls", "dep:tokio-rustls"]
-openssl = ["dep:openssl", "dep:tokio-openssl"]
+openssl = ["dep:openssl", "dep:tokio-openssl", "reqwest?/native-tls"]
 # Internal features: gate error‐conversion impls so every feature that pulls
 # in the dep automatically gets `From<…> for IdeviceError`.
 _serde_json = ["dep:serde_json"]
@@ -196,9 +208,8 @@ pair = [
 pcapd = []
 preboard_service = []
 obfuscate = ["dep:obfstr"]
-# Pure-Rust rustls `CryptoProvider` for environments where ring/aws-lc-rs
-# can't be built (notably wasm32-unknown-unknown).
-wasm-crypto = ["rustls", "dep:rustls-rustcrypto"]
+rustcrypto = ["rustls", "dep:rustls-rustcrypto", "reqwest?/rustls-no-provider"]
+wasm-crypto = ["rustcrypto"]
 # Enables wasm32-unknown-unknown support: forwards Web Crypto features to
 # the transitive `getrandom` crates and selects `rustls-rustcrypto` as the
 # TLS crypto backend. Consumers must bring their own transport implementing
@@ -241,8 +252,6 @@ restore = [
   "tokio/macros",
   "tokio/rt",
   "tokio/time",
-  "rustls",
-  "reqwest/rustls-no-provider",
 ]
 restore_recovery = ["restore"]
 restore_service = []

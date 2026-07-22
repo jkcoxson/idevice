@@ -25,6 +25,7 @@ windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock"] }
 [features]
 aws-lc = ["idevice/aws-lc"]
 ring = ["idevice/ring"]
+rustcrypto = ["idevice/rustcrypto"]
 openssl = ["idevice/openssl"]
 
 
