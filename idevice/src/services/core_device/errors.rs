@@ -24,6 +24,22 @@ pub enum CoreDeviceError {
     /// decode.
     #[error("media negotiation blob error: {0}")]
     Negotiation(String),
+
+    /// A touchscreen report contained more contacts than the device supports.
+    #[error("touchscreen report has {0} contacts; at most 5 are supported")]
+    TooManyTouchscreenContacts(usize),
+
+    /// A touchscreen contact identity was outside the supported range.
+    #[error("touchscreen contact identity {0} is outside 0..5")]
+    InvalidTouchscreenContactIdentity(u8),
+
+    /// A touchscreen report used the same contact identity more than once.
+    #[error("touchscreen contact identity {0} is duplicated")]
+    DuplicateTouchscreenContactIdentity(u8),
+
+    /// A multi-touch tap was requested without any contact positions.
+    #[error("multi-touch tap requires at least one contact")]
+    NoTouchscreenContacts,
 }
 
 impl CoreDeviceError {
@@ -33,6 +49,10 @@ impl CoreDeviceError {
             Self::MissingField(_) => 2,
             Self::MalformedField(_) => 3,
             Self::Negotiation(_) => 4,
+            Self::TooManyTouchscreenContacts(_) => 5,
+            Self::InvalidTouchscreenContactIdentity(_) => 6,
+            Self::DuplicateTouchscreenContactIdentity(_) => 7,
+            Self::NoTouchscreenContacts => 8,
         }
     }
 }
