@@ -166,6 +166,16 @@ To wait for WDA and expose localhost bridge URLs for HTTP and MJPEG:
 idevice-tools --udid <device-udid> xctest --bridge io.github.kor1k1.WebDriverAgentRunner.xctrunner
 ```
 
+Pass environment variables to the XCTest runner as comma-separated
+`KEY=VALUE` pairs. When bridging WDA, `USE_PORT` and `MJPEG_SERVER_PORT` also
+select the device-side endpoints used for readiness checks and forwarding:
+
+```bash
+idevice-tools --udid <device-udid> xctest --bridge --env 'USE_PORT=8200,MJPEG_SERVER_PORT=9200' io.github.kor1k1.WebDriverAgentRunner.xctrunner
+```
+
+Escape commas inside values as `\,` and backslashes as `\\`.
+
 The current `wda` support is intentionally a bootstrap layer for readiness
 checks and session startup, rather than a complete long-lived WebDriver
 client.

@@ -20,17 +20,107 @@
 use std::{sync::Arc, time::Duration};
 
 use idevice::{
-    IdeviceService,
+    IdeviceError, IdeviceService,
     dvt::xctest::{TestConfig, XCUITestService},
     provider::IdeviceProvider,
-    services::{installation_proxy::InstallationProxyClient, wda::WdaClient},
+    services::{
+        installation_proxy::InstallationProxyClient,
+        wda::{WdaClient, WdaPorts},
+    },
+};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
+    time::{Instant, sleep, timeout},
 };
 
 use crate::run_test;
 
 const WDA_READINESS_TIMEOUT: Duration = Duration::from_secs(120);
+const BRIDGE_READINESS_TIMEOUT: Duration = Duration::from_secs(30);
+const BRIDGE_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_HTTP_HEADER_SIZE: usize = 64 * 1024;
+const WDA_TEST_PORTS: WdaPorts = WdaPorts {
+    http: 8200,
+    mjpeg: 9200,
+};
 const SETTINGS_BUNDLE: &str = "com.apple.Preferences";
 const RUNNER_NAME_KEYWORDS: &[&str] = &["webdriveragent", "integrationapp", "xctrunner"];
+
+async fn read_bridge_response_head(port: u16, path: &str) -> Result<String, IdeviceError> {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).await?;
+    let request =
+        format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+    stream.write_all(request.as_bytes()).await?;
+
+    let mut response = Vec::new();
+    let head_end = timeout(BRIDGE_REQUEST_TIMEOUT, async {
+        let mut chunk = [0u8; 1024];
+        loop {
+            let read = stream.read(&mut chunk).await?;
+            if read == 0 {
+                return Err(IdeviceError::UnexpectedResponse(
+                    "bridge closed before returning HTTP headers".into(),
+                ));
+            }
+            response.extend_from_slice(&chunk[..read]);
+
+            if let Some(index) = response.windows(4).position(|window| window == b"\r\n\r\n") {
+                return Ok(index + 4);
+            }
+            if response.len() > MAX_HTTP_HEADER_SIZE {
+                return Err(IdeviceError::UnexpectedResponse(
+                    "bridge returned oversized HTTP headers".into(),
+                ));
+            }
+        }
+    })
+    .await
+    .map_err(|_| IdeviceError::Timeout)??;
+
+    response.truncate(head_end);
+    String::from_utf8(response).map_err(IdeviceError::from)
+}
+
+async fn wait_for_bridge_response_head(port: u16, path: &str) -> Result<String, IdeviceError> {
+    let deadline = Instant::now() + BRIDGE_READINESS_TIMEOUT;
+    loop {
+        match read_bridge_response_head(port, path).await {
+            Ok(response) => return Ok(response),
+            Err(_) if Instant::now() < deadline => sleep(Duration::from_millis(250)).await,
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn verify_bridge_response(
+    response_head: &str,
+    expected_content_type: Option<&str>,
+) -> Result<(), IdeviceError> {
+    let status = response_head
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|value| value.parse::<u16>().ok());
+    if !status.is_some_and(|status| (200..300).contains(&status)) {
+        return Err(IdeviceError::UnexpectedResponse(format!(
+            "bridge returned unsuccessful HTTP status: {:?}",
+            response_head.lines().next()
+        )));
+    }
+
+    if let Some(expected) = expected_content_type
+        && !response_head
+            .to_ascii_lowercase()
+            .contains(&expected.to_ascii_lowercase())
+    {
+        return Err(IdeviceError::UnexpectedResponse(format!(
+            "bridge response did not contain content type {expected:?}"
+        )));
+    }
+
+    Ok(())
+}
 
 /// Search installed apps for a bundle whose display name or bundle name
 /// contains one of the runner keywords (case-insensitive). Returns the
@@ -79,7 +169,7 @@ pub async fn run_tests(provider: Arc<dyn IdeviceProvider>, success: &mut u32, fa
     println!("  xctest: runner: {bundle_id}");
 
     // Build TestConfig from the installed runner
-    let cfg = {
+    let mut cfg = {
         let mut iproxy = match InstallationProxyClient::connect(&*provider).await {
             Ok(c) => c,
             Err(e) => {
@@ -98,12 +188,18 @@ pub async fn run_tests(provider: Arc<dyn IdeviceProvider>, success: &mut u32, fa
             }
         }
     };
+    let runner_env = cfg.runner_env.get_or_insert_default();
+    runner_env.insert("USE_PORT".into(), WDA_TEST_PORTS.http.to_string().into());
+    runner_env.insert(
+        "MJPEG_SERVER_PORT".into(),
+        WDA_TEST_PORTS.mjpeg.to_string().into(),
+    );
 
     let service = XCUITestService::new(provider.clone());
 
-    // Launch WDA and wait until it's reachable
+    // Launch WDA on non-default ports, wait until it's reachable, and start the bridge
     let handle = match service
-        .run_until_wda_ready(cfg, WDA_READINESS_TIMEOUT)
+        .run_until_wda_ready_with_bridge(cfg, WDA_READINESS_TIMEOUT)
         .await
     {
         Ok(h) => {
@@ -123,6 +219,30 @@ pub async fn run_tests(provider: Arc<dyn IdeviceProvider>, success: &mut u32, fa
             return;
         }
     };
+
+    run_test!("xctest: WDA custom device ports", success, failure, async {
+        let endpoints = handle.bridge().endpoints();
+        if handle.ports() == WDA_TEST_PORTS && endpoints.device_ports == WDA_TEST_PORTS {
+            Ok(())
+        } else {
+            Err(idevice::IdeviceError::UnexpectedResponse(format!(
+                "expected device ports {:?}, got runner {:?} and bridge {:?}",
+                WDA_TEST_PORTS,
+                handle.ports(),
+                endpoints.device_ports
+            )))
+        }
+    });
+
+    let local_ports = handle.bridge().endpoints().local_ports;
+    run_test!("xctest: WDA HTTP bridge status", success, failure, async {
+        let response = wait_for_bridge_response_head(local_ports.http, "/status").await?;
+        verify_bridge_response(&response, Some("application/json"))
+    });
+    run_test!("xctest: WDA MJPEG bridge stream", success, failure, async {
+        let response = wait_for_bridge_response_head(local_ports.mjpeg, "/").await?;
+        verify_bridge_response(&response, Some("multipart/x-mixed-replace"))
+    });
 
     let mut wda = WdaClient::new(&*provider).with_ports(handle.ports());
 
