@@ -33,6 +33,8 @@ use serde_json::Value as JsonValue;
 use tracing::{debug, warn};
 
 #[cfg(feature = "wda")]
+use crate::services::dvt::errors::DvtError;
+#[cfg(feature = "wda")]
 use crate::services::wda::{WdaClient, WdaPorts};
 #[cfg(feature = "wda")]
 use crate::services::wda_bridge::WdaBridge;
@@ -1909,6 +1911,46 @@ struct NoopXCTestListener;
 #[cfg(feature = "wda")]
 impl XCUITestListener for NoopXCTestListener {}
 
+#[cfg(feature = "wda")]
+fn wda_port_overrides_from_runner_environment(
+    runner_env: Option<&Dictionary>,
+) -> Result<Option<WdaPorts>, DvtError> {
+    let http = wda_port_from_runner_environment(runner_env, "USE_PORT")?;
+    let mjpeg = wda_port_from_runner_environment(runner_env, "MJPEG_SERVER_PORT")?;
+    if http.is_none() && mjpeg.is_none() {
+        return Ok(None);
+    }
+
+    let defaults = WdaPorts::default();
+    Ok(Some(WdaPorts {
+        http: http.unwrap_or(defaults.http),
+        mjpeg: mjpeg.unwrap_or(defaults.mjpeg),
+    }))
+}
+
+#[cfg(feature = "wda")]
+fn wda_port_from_runner_environment(
+    runner_env: Option<&Dictionary>,
+    key: &str,
+) -> Result<Option<u16>, DvtError> {
+    let Some(value) = runner_env.and_then(|env| env.get(key)) else {
+        return Ok(None);
+    };
+    let value = value.as_string().ok_or_else(|| {
+        DvtError::InvalidXCTestRunnerEnvironment(format!("{key} must be a non-zero 16-bit integer"))
+    })?;
+    let port = value
+        .parse::<u16>()
+        .ok()
+        .filter(|port| *port != 0)
+        .ok_or_else(|| {
+            DvtError::InvalidXCTestRunnerEnvironment(format!(
+                "{key} must be a non-zero 16-bit integer, got {value:?}"
+            ))
+        })?;
+    Ok(Some(port))
+}
+
 impl std::fmt::Debug for XCUITestService {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("XCUITestService")
@@ -2037,15 +2079,19 @@ impl XCUITestService {
         cfg: TestConfig,
         readiness_timeout: std::time::Duration,
     ) -> Result<WdaRunHandle, IdeviceError> {
+        let port_overrides = wda_port_overrides_from_runner_environment(cfg.runner_env.as_ref())?;
         let provider = self.provider.clone();
-        let runner_cfg = cfg.clone();
+        let runner_cfg = cfg;
         let task = tokio::spawn(async move {
             let service = XCUITestService::new(provider);
             let mut listener = NoopXCTestListener;
             service.run(runner_cfg, &mut listener, None).await
         });
 
-        let wda = WdaClient::new(&*self.provider);
+        let wda = match port_overrides {
+            Some(ports) => WdaClient::new(&*self.provider).with_ports(ports),
+            None => WdaClient::new(&*self.provider),
+        };
         let deadline = std::time::Instant::now() + readiness_timeout;
         let poll_interval = std::time::Duration::from_millis(250);
 
@@ -2095,5 +2141,70 @@ impl XCUITestService {
         let runner = self.run_until_wda_ready(cfg, readiness_timeout).await?;
         let bridge = WdaBridge::start_with_ports(self.provider.clone(), runner.ports()).await?;
         Ok(WdaBridgedRunHandle { runner, bridge })
+    }
+}
+
+#[cfg(all(test, feature = "wda"))]
+mod tests {
+    use super::wda_port_overrides_from_runner_environment;
+    use crate::services::wda::WdaPorts;
+
+    #[test]
+    fn wda_ports_follow_runner_environment() {
+        let runner_env = crate::plist!(dict {
+            "USE_PORT": "8200",
+            "MJPEG_SERVER_PORT": "9200",
+        });
+
+        let ports = wda_port_overrides_from_runner_environment(Some(&runner_env))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(ports.http, 8200);
+        assert_eq!(ports.mjpeg, 9200);
+    }
+
+    #[test]
+    fn wda_ports_are_not_overridden_without_runner_environment() {
+        assert_eq!(
+            wda_port_overrides_from_runner_environment(None).unwrap(),
+            None
+        );
+
+        let unrelated_environment = crate::plist!(dict {
+            "LANG": "en_US",
+        });
+        assert_eq!(
+            wda_port_overrides_from_runner_environment(Some(&unrelated_environment)).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn wda_port_override_preserves_the_other_client_default() {
+        let runner_env = crate::plist!(dict {
+            "USE_PORT": "8200",
+        });
+        let ports = wda_port_overrides_from_runner_environment(Some(&runner_env))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(ports.http, 8200);
+        assert_eq!(ports.mjpeg, WdaPorts::default().mjpeg);
+    }
+
+    #[test]
+    fn wda_ports_reject_invalid_runner_environment() {
+        for value in ["0", "65536", "not-a-port"] {
+            let runner_env = crate::plist!(dict {
+                "USE_PORT": value,
+            });
+            assert!(wda_port_overrides_from_runner_environment(Some(&runner_env)).is_err());
+        }
+
+        let runner_env = crate::plist!(dict {
+            "MJPEG_SERVER_PORT": 9200i64,
+        });
+        assert!(wda_port_overrides_from_runner_environment(Some(&runner_env)).is_err());
     }
 }

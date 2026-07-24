@@ -12,6 +12,8 @@ pub enum DvtError {
     UnknownChannel(u32),
     #[error("disable memory limit failed")]
     DisableMemoryLimitFailed,
+    #[error("invalid XCTest runner environment: {0}")]
+    InvalidXCTestRunnerEnvironment(String),
 }
 
 impl DvtError {
@@ -21,6 +23,7 @@ impl DvtError {
             Self::UnknownAuxValueType(_) => 2,
             Self::UnknownChannel(_) => 3,
             Self::DisableMemoryLimitFailed => 4,
+            Self::InvalidXCTestRunnerEnvironment(_) => 5,
         }
     }
 }
