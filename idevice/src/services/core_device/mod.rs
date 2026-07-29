@@ -1,6 +1,8 @@
 // Jackson Coxson
 // Ported from pymobiledevice3
 
+use async_stream::try_stream;
+use futures::Stream;
 use tracing::warn;
 
 use crate::{
@@ -34,6 +36,9 @@ pub use pasteboard_service::*;
 pub use screencaptureservices::*;
 
 const CORE_SERVICE_VERSION: &str = "443.18";
+// CoreDeviceUtilities uses this version for the streamapplist action protocol.
+const STREAM_CORE_SERVICE_VERSION: &str = "629.3";
+const STREAM_STATUS_KEY: &str = "CoreDevice.XPCMessageKey.sideChannelStatus";
 
 #[derive(Debug)]
 pub struct CoreDeviceServiceClient<R: ReadWrite> {
@@ -77,6 +82,42 @@ impl<R: ReadWrite> CoreDeviceServiceClient<R> {
         self.invoke_inner(feature, input, None).await
     }
 
+    /// Invokes a CoreDevice feature that returns elements over an XPC side channel.
+    pub(crate) fn invoke_streaming_with_plist(
+        &mut self,
+        feature: impl Into<String>,
+        input: plist::Dictionary,
+    ) -> impl Stream<Item = Result<plist::Value, IdeviceError>> + '_ {
+        let feature = feature.into();
+
+        try_stream! {
+            let input = XPCObject::from(plist::Value::Dictionary(input));
+            let side_channel = uuid::Uuid::new_v4();
+            let stream_input = build_streaming_input(input, side_channel);
+            let req = build_invocation_request(
+                feature,
+                stream_input,
+                None,
+                2,
+                STREAM_CORE_SERVICE_VERSION,
+            );
+            self.inner.send_object(req, true).await?;
+
+            loop {
+                let response = self.inner.recv_any().await?;
+
+                match parse_stream_response(response)? {
+                    StreamingResponse::Elements(batch) => {
+                        for element in batch {
+                            yield element;
+                        }
+                    }
+                    StreamingResponse::Finished => break,
+                }
+            }
+        }
+    }
+
     async fn invoke_inner(
         &mut self,
         feature: impl Into<String>,
@@ -89,36 +130,14 @@ impl<R: ReadWrite> CoreDeviceServiceClient<R> {
             None => crate::xpc::Dictionary::new().into(),
         };
 
-        let mut req = xpc::Dictionary::new();
         let protocol_version = if action_identifier.is_some() { 2 } else { 0 };
-        req.insert(
-            "CoreDevice.CoreDeviceDDIProtocolVersion".into(),
-            XPCObject::Int64(protocol_version),
+        let req = build_invocation_request(
+            feature,
+            input,
+            action_identifier,
+            protocol_version,
+            CORE_SERVICE_VERSION,
         );
-        req.insert("CoreDevice.action".into(), xpc::Dictionary::new().into());
-        req.insert(
-            "CoreDevice.coreDeviceVersion".into(),
-            create_xpc_version_from_string(CORE_SERVICE_VERSION).into(),
-        );
-        req.insert(
-            "CoreDevice.deviceIdentifier".into(),
-            XPCObject::String(uuid::Uuid::new_v4().to_string()),
-        );
-        req.insert(
-            "CoreDevice.featureIdentifier".into(),
-            XPCObject::String(feature),
-        );
-        req.insert("CoreDevice.input".into(), input);
-        req.insert(
-            "CoreDevice.invocationIdentifier".into(),
-            XPCObject::String(uuid::Uuid::new_v4().to_string()),
-        );
-        if let Some(action_identifier) = action_identifier {
-            req.insert(
-                "CoreDevice.actionIdentifier".into(),
-                XPCObject::String(action_identifier),
-            );
-        }
 
         self.inner.send_object(req, true).await?;
         let res = self.inner.recv().await?;
@@ -148,6 +167,95 @@ impl<R: ReadWrite> CoreDeviceServiceClient<R> {
     }
 }
 
+fn build_invocation_request(
+    feature: String,
+    input: XPCObject,
+    action_identifier: Option<String>,
+    protocol_version: i64,
+    core_service_version: &str,
+) -> xpc::Dictionary {
+    let mut req = xpc::Dictionary::new();
+    req.insert(
+        "CoreDevice.CoreDeviceDDIProtocolVersion".into(),
+        XPCObject::Int64(protocol_version),
+    );
+    req.insert("CoreDevice.action".into(), xpc::Dictionary::new().into());
+    req.insert(
+        "CoreDevice.coreDeviceVersion".into(),
+        create_xpc_version_from_string(core_service_version).into(),
+    );
+    req.insert(
+        "CoreDevice.deviceIdentifier".into(),
+        XPCObject::String(uuid::Uuid::new_v4().to_string()),
+    );
+    req.insert(
+        "CoreDevice.featureIdentifier".into(),
+        XPCObject::String(feature),
+    );
+    req.insert("CoreDevice.input".into(), input);
+    req.insert(
+        "CoreDevice.invocationIdentifier".into(),
+        XPCObject::String(uuid::Uuid::new_v4().to_string()),
+    );
+    if let Some(action_identifier) = action_identifier {
+        req.insert(
+            "CoreDevice.actionIdentifier".into(),
+            XPCObject::String(action_identifier),
+        );
+    }
+    req
+}
+
+fn build_streaming_input(input: XPCObject, side_channel: uuid::Uuid) -> XPCObject {
+    let mut stream_proxy = xpc::Dictionary::new();
+    stream_proxy.insert("sideChannel".into(), XPCObject::Uuid(side_channel));
+
+    let mut stream_input = xpc::Dictionary::new();
+    stream_input.insert("actualInput".into(), input);
+    stream_input.insert("streamProxy".into(), stream_proxy.into());
+    stream_input.into()
+}
+
+#[derive(Debug, PartialEq)]
+enum StreamingResponse {
+    Elements(Vec<plist::Value>),
+    Finished,
+}
+
+fn parse_stream_response(response: plist::Value) -> Result<StreamingResponse, IdeviceError> {
+    let mut response = response
+        .into_dictionary()
+        .ok_or(CoreDeviceError::MalformedField("(root)"))?;
+    let mut status = match response.remove(STREAM_STATUS_KEY) {
+        Some(plist::Value::Dictionary(status)) => status,
+        Some(_) => return Err(CoreDeviceError::MalformedField(STREAM_STATUS_KEY).into()),
+        None => {
+            return match response.get("CoreDevice.error") {
+                Some(error) => Err(CoreDeviceError::DeviceError(format!("{error:?}")).into()),
+                None => Err(CoreDeviceError::MissingField(STREAM_STATUS_KEY).into()),
+            };
+        }
+    };
+
+    if let Some(error) = status.remove("receivedError") {
+        return Err(CoreDeviceError::DeviceError(format!("{error:?}")).into());
+    }
+    if status.contains_key("finishStreaming") {
+        return Ok(StreamingResponse::Finished);
+    }
+
+    let pushing = status
+        .remove("pushing")
+        .and_then(plist::Value::into_dictionary)
+        .ok_or(CoreDeviceError::MissingField("pushing"))?;
+    let elements = pushing
+        .get("elements")
+        .and_then(plist::Value::as_array)
+        .cloned()
+        .ok_or(CoreDeviceError::MalformedField("elements"))?;
+    Ok(StreamingResponse::Elements(elements))
+}
+
 fn create_xpc_version_from_string(version: impl Into<String>) -> xpc::Dictionary {
     let version: String = version.into();
     let mut collected_version = Vec::new();
@@ -165,4 +273,89 @@ fn create_xpc_version_from_string(version: impl Into<String>) -> xpc::Dictionary
     res.insert("components".into(), XPCObject::Array(collected_version));
     res.insert("stringValue".into(), XPCObject::String(version));
     res
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn streaming_input_uses_xpc_uuid_side_channel() {
+        let side_channel = uuid::Uuid::new_v4();
+        let input = build_streaming_input(xpc::Dictionary::new().into(), side_channel);
+        let input = input.as_dictionary().expect("stream input dictionary");
+        let proxy = input
+            .get("streamProxy")
+            .and_then(XPCObject::as_dictionary)
+            .expect("stream proxy dictionary");
+
+        assert_eq!(
+            proxy.get("sideChannel"),
+            Some(&XPCObject::Uuid(side_channel))
+        );
+        assert!(input.contains_key("actualInput"));
+    }
+
+    #[test]
+    fn streaming_request_uses_protocol_two_and_streaming_version() {
+        let request = build_invocation_request(
+            "com.apple.coredevice.feature.streamapplist".into(),
+            xpc::Dictionary::new().into(),
+            None,
+            2,
+            STREAM_CORE_SERVICE_VERSION,
+        );
+
+        assert_eq!(
+            request.get("CoreDevice.CoreDeviceDDIProtocolVersion"),
+            Some(&XPCObject::Int64(2))
+        );
+        let version = request
+            .get("CoreDevice.coreDeviceVersion")
+            .and_then(XPCObject::as_dictionary)
+            .expect("CoreDevice version dictionary");
+        assert_eq!(
+            version.get("stringValue"),
+            Some(&XPCObject::String("629.3".into()))
+        );
+    }
+
+    #[test]
+    fn parses_streamed_elements_and_finish_status() {
+        let batch = plist::Value::Dictionary(crate::plist!(dict {
+            STREAM_STATUS_KEY: {
+                "pushing": {
+                    "elements": ["one", "two"],
+                },
+            },
+        }));
+        assert_eq!(
+            parse_stream_response(batch).expect("stream batch"),
+            StreamingResponse::Elements(vec!["one".into(), "two".into()])
+        );
+
+        let finished = plist::Value::Dictionary(crate::plist!(dict {
+            STREAM_STATUS_KEY: {
+                "finishStreaming": true,
+            },
+        }));
+        assert_eq!(
+            parse_stream_response(finished).expect("stream finished"),
+            StreamingResponse::Finished
+        );
+    }
+
+    #[test]
+    fn surfaces_stream_error_status() {
+        let response = plist::Value::Dictionary(crate::plist!(dict {
+            STREAM_STATUS_KEY: {
+                "receivedError": "denied",
+            },
+        }));
+
+        assert!(matches!(
+            parse_stream_response(response),
+            Err(IdeviceError::CoreDevice(CoreDeviceError::DeviceError(_)))
+        ));
+    }
 }

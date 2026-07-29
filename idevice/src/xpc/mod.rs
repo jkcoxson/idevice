@@ -107,46 +107,29 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
         self.recv_from_channel(ROOT_CHANNEL).await
     }
 
-    async fn recv_from_channel(&mut self, channel: u32) -> Result<plist::Value, IdeviceError> {
-        loop {
-            // Try to decode a whole message from what's already buffered before
-            // reading more, so a message split across earlier reads completes.
-            // Scope the buffer borrow so it's released before the await below.
-            let decoded = {
-                let buf = self.partial.entry(channel).or_default();
-                match XPCMessage::decode(buf) {
-                    Ok(msg) => {
-                        // A complete wrapper consumes 24 + body_len bytes; drain
-                        // exactly that, preserving any bytes of the next message.
-                        let consumed = (XPC_WRAPPER_LEN + xpc_body_len(buf)).min(buf.len());
-                        buf.drain(..consumed);
-                        Some(msg)
-                    }
-                    // Not enough bytes yet: fall through to read another frame.
-                    Err(IdeviceError::CdTunnel(CdTunnelError::SizeMismatch))
-                    | Err(IdeviceError::NotEnoughBytes(..)) => None,
-                    Err(e) => return Err(e),
-                }
-            };
+    /// Receives the next XPC object from either control channel.
+    pub(crate) async fn recv_any(&mut self) -> Result<plist::Value, IdeviceError> {
+        self.recv_from_channels(&[REPLY_CHANNEL, ROOT_CHANNEL])
+            .await
+    }
 
-            match decoded {
-                Some(msg) => match msg.message {
-                    // Skip empty-dictionary keepalives and bodyless frames.
-                    Some(inner) => {
-                        if let Some(d) = inner.as_dictionary()
-                            && d.is_empty()
-                        {
-                            continue;
-                        }
-                        return Ok(inner.to_plist());
-                    }
-                    None => continue,
-                },
-                None => {
-                    let chunk = self.h2_client.read(channel).await?;
-                    self.partial.entry(channel).or_default().extend(chunk);
+    async fn recv_from_channel(&mut self, channel: u32) -> Result<plist::Value, IdeviceError> {
+        self.recv_from_channels(&[channel]).await
+    }
+
+    async fn recv_from_channels(&mut self, channels: &[u32]) -> Result<plist::Value, IdeviceError> {
+        loop {
+            for channel in channels {
+                // Try to decode a whole message from what's already buffered before
+                // reading more, so a message split across earlier reads completes.
+                let buf = self.partial.entry(*channel).or_default();
+                if let Some(message) = decode_next_xpc_value(buf)? {
+                    return Ok(message);
                 }
             }
+
+            let (channel, chunk) = self.h2_client.read_any(channels).await?;
+            self.partial.entry(channel).or_default().extend(chunk);
         }
     }
 
@@ -263,4 +246,64 @@ fn xpc_body_len(buf: &[u8]) -> usize {
     u64::from_le_bytes([
         buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15],
     ]) as usize
+}
+
+/// Decodes the next application value already present in `buf`, skipping any
+/// complete keepalive or bodyless wrappers before it.
+fn decode_next_xpc_value(buf: &mut Vec<u8>) -> Result<Option<plist::Value>, IdeviceError> {
+    loop {
+        let message = match XPCMessage::decode(buf) {
+            Ok(message) => message,
+            Err(IdeviceError::CdTunnel(CdTunnelError::SizeMismatch))
+            | Err(IdeviceError::NotEnoughBytes(..)) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+
+        // A complete wrapper consumes 24 + body_len bytes; preserve any bytes
+        // belonging to a following wrapper in the same HTTP/2 DATA payload.
+        let consumed = (XPC_WRAPPER_LEN + xpc_body_len(buf)).min(buf.len());
+        buf.drain(..consumed);
+
+        match message.message {
+            Some(inner) if inner.as_dictionary().is_some_and(Dictionary::is_empty) => continue,
+            Some(inner) => return Ok(Some(inner.to_plist())),
+            None => continue,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn skips_control_wrapper_before_buffered_application_message() {
+        let keepalive = XPCMessage::new(
+            Some(XPCFlag::AlwaysSet),
+            Some(XPCObject::Dictionary(Dictionary::new())),
+            Some(1),
+        )
+        .encode(1)
+        .expect("encode keepalive");
+
+        let mut payload = Dictionary::new();
+        payload.insert("result".into(), XPCObject::String("ok".into()));
+        let expected = XPCObject::Dictionary(payload.clone()).to_plist();
+        let response = XPCMessage::new(
+            Some(XPCFlag::AlwaysSet),
+            Some(XPCObject::Dictionary(payload)),
+            Some(2),
+        )
+        .encode(2)
+        .expect("encode response");
+
+        let mut buffered = keepalive;
+        buffered.extend(response);
+
+        assert_eq!(
+            decode_next_xpc_value(&mut buffered).expect("decode buffered wrappers"),
+            Some(expected)
+        );
+        assert!(buffered.is_empty());
+    }
 }
