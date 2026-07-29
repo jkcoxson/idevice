@@ -41,6 +41,61 @@ pub fn register() -> JkCommand {
                 .with_argument(JkArgument::new().with_help("Y (0-65535)").required(true)),
         )
         .with_subcommand(
+            "multi-tap",
+            JkCommand::new()
+                .help("Tap two to five touchscreen positions in one HID report")
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("first X (0-65535)")
+                        .required(true),
+                )
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("first Y (0-65535)")
+                        .required(true),
+                )
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("second X (0-65535)")
+                        .required(true),
+                )
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("second Y (0-65535)")
+                        .required(true),
+                )
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("optional third X (0-65535)")
+                        .required(false),
+                )
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("optional third Y (0-65535)")
+                        .required(false),
+                )
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("optional fourth X (0-65535)")
+                        .required(false),
+                )
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("optional fourth Y (0-65535)")
+                        .required(false),
+                )
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("optional fifth X (0-65535)")
+                        .required(false),
+                )
+                .with_argument(
+                    JkArgument::new()
+                        .with_help("optional fifth Y (0-65535)")
+                        .required(false),
+                ),
+        )
+        .with_subcommand(
             "drag",
             JkCommand::new()
                 .help(
@@ -164,6 +219,36 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
                 Box::pin(async move {
                     hid.tap(x, y).await.expect("tap failed");
                     eprintln!("tapped ({x}, {y})");
+                })
+            })
+            .await;
+        }
+        "multi-tap" => {
+            let x1 = parse_arg::<u16>(&mut sub_args, "first X");
+            let y1 = parse_arg::<u16>(&mut sub_args, "first Y");
+            let x2 = parse_arg::<u16>(&mut sub_args, "second X");
+            let y2 = parse_arg::<u16>(&mut sub_args, "second Y");
+            let mut positions = vec![(x1, y1), (x2, y2)];
+            let mut optional_coordinates = Vec::new();
+            while let Some(value) = sub_args.next_argument::<String>() {
+                optional_coordinates.push(value);
+            }
+            match parse_touchscreen_positions(optional_coordinates) {
+                Ok(optional_positions) => positions.extend(optional_positions),
+                Err(error) => {
+                    eprintln!("{error}");
+                    return;
+                }
+            }
+            with_touch(&mut adapter, &mut handshake, |hid| {
+                Box::pin(async move {
+                    hid.multi_tap(&positions)
+                        .await
+                        .expect("multi-touch tap failed");
+                    eprintln!(
+                        "sent multi-touch tap report for {} contact(s)",
+                        positions.len()
+                    );
                 })
             })
             .await;
@@ -572,4 +657,65 @@ async fn with_indigo_stream<F>(
 fn parse_arg<T: jkcli::JkArgumentType>(args: &mut CollectedArguments, what: &str) -> T {
     args.next_argument()
         .unwrap_or_else(|| panic!("missing or invalid {what}, pass -h for help"))
+}
+
+fn parse_touchscreen_positions<I, S>(coordinates: I) -> Result<Vec<(u16, u16)>, String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut coordinates = coordinates.into_iter();
+    let mut positions = Vec::new();
+
+    while let Some(raw_x) = coordinates.next() {
+        let raw_x = raw_x.as_ref();
+        let x = raw_x
+            .parse::<u16>()
+            .map_err(|_| format!("invalid optional touchscreen X `{raw_x}`; expected 0-65535"))?;
+
+        let raw_y = coordinates
+            .next()
+            .ok_or_else(|| "each optional touchscreen X must be followed by Y".to_string())?;
+        let raw_y = raw_y.as_ref();
+        let y = raw_y
+            .parse::<u16>()
+            .map_err(|_| format!("invalid optional touchscreen Y `{raw_y}`; expected 0-65535"))?;
+
+        positions.push((x, y));
+    }
+
+    Ok(positions)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_touchscreen_positions;
+
+    #[test]
+    fn parses_optional_touchscreen_positions() {
+        assert_eq!(
+            parse_touchscreen_positions(["10", "20", "30", "40"]),
+            Ok(vec![(10, 20), (30, 40)])
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_optional_touchscreen_coordinates() {
+        assert_eq!(
+            parse_touchscreen_positions(["invalid", "20"]),
+            Err("invalid optional touchscreen X `invalid`; expected 0-65535".to_string())
+        );
+        assert_eq!(
+            parse_touchscreen_positions(["10", "65536"]),
+            Err("invalid optional touchscreen Y `65536`; expected 0-65535".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_unpaired_optional_touchscreen_coordinate() {
+        assert_eq!(
+            parse_touchscreen_positions(["10"]),
+            Err("each optional touchscreen X must be followed by Y".to_string())
+        );
+    }
 }
