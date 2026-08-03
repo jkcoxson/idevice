@@ -915,6 +915,22 @@ impl DriverProxy {
     async fn start_executing_test_plan(&mut self) -> Result<(), IdeviceError> {
         start_executing_test_plan(&mut self.channel).await
     }
+
+    /// iOS 14-16 (serialized transport): actively start the test plan on the
+    /// bridge channel requested by testmanagerd. Mirrors the go-ios xcode12
+    /// path (xcuitestrunner_12.go): after ForChannelRequest returns the bridge
+    /// channel (-1), call `_IDE_startExecutingTestPlanWithProtocolVersion:` with
+    /// the NSKeyedArchived protocol version 36, MethodCallAsync (no reply wait).
+    async fn start_executing_test_plan_legacy(&mut self) -> Result<(), IdeviceError> {
+        let version_bytes = AuxValue::archived_value(Value::Integer(36i64.into()));
+        self.channel
+            .call_method(
+                Some(IDE_START_EXECUTING_TEST_PLAN),
+                Some(vec![version_bytes]),
+                false,
+            )
+            .await
+    }
 }
 
 struct XCTestProcessControlChannel<'a, R: ReadWrite> {
@@ -953,7 +969,11 @@ impl<'a, R: ReadWrite + 'static> XCTestProcessControlChannel<'a, R> {
 /// replies with an empty acknowledgement, registers the channel, and returns a
 /// `Channel` handle to it.
 fn testmanager_uses_proxy(ios_major_version: u8) -> bool {
-    ios_major_version >= 17
+    // iOS 14+ must use the dtxproxy:XCTestManager_IDEInterface:XCTestManager_DaemonConnectionInterface
+    // proxy channel (go-ios xcode12 path); iOS 11-13 use the plain IDEInterface channel.
+    // The previous hardcoded >=17 made iOS 14-16 use the plain channel, which
+    // testmanagerd cancels ("No channel handler specified").
+    ios_major_version >= 14
 }
 
 async fn wait_for_xctest_service_channel(
@@ -990,7 +1010,11 @@ async fn register_early_driver_channel_handler(
     let xctest_config = xctest_config.clone();
     main_client
         .register_incoming_channel_initializer(
-            &[XCTEST_DRIVER_INTERFACE, XCTEST_PROXY_IDE_TO_DRIVER],
+            &[
+                XCTEST_DRIVER_INTERFACE,
+                XCTEST_PROXY_IDE_TO_DRIVER,
+                XCTEST_MANAGER_IDE_INTERFACE, // legacy iOS 15 driver channel name
+            ],
             move |mut channel, _identifier| {
                 let xctest_config = xctest_config.clone();
                 Box::pin(async move {
@@ -1056,18 +1080,32 @@ async fn launch_and_authorize_test_runner(
 async fn start_test_plan_session(
     main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
     _main_proxy: &mut TestManagerProxy<Box<dyn ReadWrite>>,
+    ios_major_version: u8,
 ) -> Result<OwnedChannel<Box<dyn ReadWrite>>, IdeviceError> {
-    let mut driver_proxy = DriverProxy::wait(main_client, 30.0).await?;
-    driver_proxy.start_executing_test_plan().await?;
-    driver_proxy.channel.clear_incoming_handler().await;
-    Ok(driver_proxy.channel)
+    if ios_major_version < 17 {
+        // iOS 14-16: no XCTestDriverInterface channel (serialized transport).
+        // Order matches go-ios: wait for the testmanagerd bridge channel request
+        // (ForChannelRequest), then actively startExecutingTestPlan(36) on it.
+        let mut driver_proxy = DriverProxy::wait(main_client, 30.0).await?;
+        driver_proxy.start_executing_test_plan_legacy().await?;
+        // early handler has served the capabilities exchange; clear it so the
+        // dispatch loop owns channel messages from here on
+        driver_proxy.channel.clear_incoming_handler().await;
+        Ok(driver_proxy.channel)
+    } else {
+        let mut driver_proxy = DriverProxy::wait(main_client, 30.0).await?;
+        driver_proxy.start_executing_test_plan().await?;
+        driver_proxy.channel.clear_incoming_handler().await;
+        Ok(driver_proxy.channel)
+    }
 }
 
 pub(super) async fn wait_for_driver_channel(
     main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
     timeout_secs: f64,
 ) -> Result<OwnedChannel<Box<dyn ReadWrite>>, IdeviceError> {
-    const DRIVER_SERVICE_IDENTIFIERS: &[&str] = &[XCTEST_DRIVER_INTERFACE];
+    const DRIVER_SERVICE_IDENTIFIERS: &[&str] =
+        &[XCTEST_DRIVER_INTERFACE, XCTEST_MANAGER_IDE_INTERFACE]; // the latter for iOS 15
     wait_for_xctest_service_channel(
         main_client,
         DRIVER_SERVICE_IDENTIFIERS,
@@ -2005,15 +2043,47 @@ impl XCUITestService {
         // 3. Build XCTestConfiguration
         let xctest_config = cfg.build_xctest_configuration(session_id, ios_major_version)?;
 
+        // 3.5 iOS < 17: write the xctestconfiguration into the app container's
+        // tmp/ dir (launch env XCTestConfigurationFilePath points at it; iOS 17+
+        // passes config via the capabilities reply instead). Mirrors go-ios
+        // createTestConfigOnDevice (house_arrest VendContainer + write
+        // tmp/<session>.xctestconfiguration).
+        if ios_major_version < 17 {
+            use crate::services::house_arrest::HouseArrestClient;
+            use crate::services::afc::opcode::AfcFopenMode;
+            let mut house = HouseArrestClient::connect(&*self.provider).await?;
+            let mut afc = house.vend_container(&cfg.runner_bundle_id).await?;
+            if let Err(e) = afc.mk_dir("/tmp").await {
+                debug!("mk_dir /tmp: {e} (likely already exists)");
+            }
+            let relative = xctest_path.clone(); // already /tmp/<session>.xctestconfiguration
+            let bytes = xctest_config.to_archive_bytes()?;
+            let mut fd = match afc.open(&relative, AfcFopenMode::WrOnly).await {
+                Ok(fd) => fd,
+                Err(e) => {
+                    warn!("write xctestconfig failed: path={relative} err={e}");
+                    return Err(e);
+                }
+            };
+            fd.write_entire(&bytes).await?;
+            fd.close().await?;
+            debug!("wrote xctestconfiguration to device: {}", relative);
+        }
+
         // 4. Connect to testmanagerd (ctrl + main) and DVT
         let mut conns = connect_testmanagerd(&*self.provider, ios_major_version).await?;
+        // Register the incoming channel initializer BEFORE opening the main
+        // channel: testmanagerd immediately opens the driver bridge channel
+        // (named XCTestManager_IDEInterface on iOS 15) in response to our open;
+        // a late registration gets the request canceled ("No channel handler
+        // specified") and the runner transport times out.
+        register_early_driver_channel_handler(&mut conns.main, &xctest_config).await;
         let mut ctrl_proxy = TestManagerProxy::open(&mut conns.ctrl, ios_major_version).await?;
         let mut main_proxy = TestManagerProxy::open(&mut conns.main, ios_major_version).await?;
         let mut process_control = XCTestProcessControlChannel::open(&mut conns.dvt).await?;
 
         let config_name = cfg.config_name().to_owned();
         initialize_testmanager_sessions(&mut ctrl_proxy, &mut main_proxy, &xctest_config).await?;
-        register_early_driver_channel_handler(&mut conns.main, &xctest_config).await;
         initialize_testmanager_daemon_sessions(
             &mut ctrl_proxy,
             &mut main_proxy,
@@ -2047,7 +2117,8 @@ impl XCUITestService {
         .await?;
 
         // 6-7. Wait for driver channel and start the test plan.
-        let driver_channel = start_test_plan_session(&mut conns.main, &mut main_proxy).await?;
+        let driver_channel =
+            start_test_plan_session(&mut conns.main, &mut main_proxy, ios_major_version).await?;
 
         // 8. Dispatch loop, raced against the runner connection dropping.
         run_dispatch_loop_until_done_or_disconnect(
