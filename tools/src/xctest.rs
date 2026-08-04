@@ -11,10 +11,14 @@ use std::{sync::Arc, time::Duration};
 use idevice::{
     IdeviceError, IdeviceService,
     provider::IdeviceProvider,
-    services::dvt::xctest::{TestConfig, XCUITestService, listener::XCUITestListener},
+    services::dvt::{
+        errors::DvtError,
+        xctest::{TestConfig, XCUITestService, listener::XCUITestListener},
+    },
     services::installation_proxy::InstallationProxyClient,
 };
 use jkcli::{CollectedArguments, JkArgument, JkCommand, JkFlag};
+use plist::{Dictionary, Value};
 
 pub fn register() -> JkCommand {
     JkCommand::new()
@@ -31,6 +35,13 @@ pub fn register() -> JkCommand {
             JkFlag::new("wda-timeout")
                 .with_argument(JkArgument::new().required(true))
                 .with_help("WDA readiness timeout in seconds when --bridge is used (default: 30)"),
+        )
+        .with_flag(
+            JkFlag::new("env")
+                .with_argument(JkArgument::new().required(true))
+                .with_help(
+                    "Runner environment as comma-separated KEY=VALUE pairs (escape commas as \\,)",
+                ),
         )
         .with_argument(
             JkArgument::new()
@@ -65,7 +76,7 @@ impl XCUITestListener for PrintListener {
     async fn test_runner_ready_with_capabilities(&mut self) -> Result<(), IdeviceError> {
         println!("[XCTest] Runner ready. Automation session is live.");
         println!(
-            "[XCTest] If this is WDA, device-side endpoints are usually HTTP :8100 and MJPEG :9100."
+            "[XCTest] WDA device-side ports follow USE_PORT and MJPEG_SERVER_PORT from --env."
         );
         Ok(())
     }
@@ -155,6 +166,10 @@ async fn run(
     let use_bridge = arguments.has_flag("bridge");
     let show_wda_debug_logs = arguments.has_flag("wda-debug-log");
     let wda_timeout = arguments.get_flag::<f64>("wda-timeout").unwrap_or(30.0);
+    let runner_env = arguments
+        .get_flag::<String>("env")
+        .map(|value| parse_runner_environment(&value))
+        .transpose()?;
     let runner_bundle_id: String = arguments
         .next_argument()
         .expect("runner bundle ID is required");
@@ -165,12 +180,13 @@ async fn run(
         println!("[XCTest] Target:  {}", t);
     }
 
-    let cfg = build_test_config(
+    let mut cfg = build_test_config(
         provider.as_ref(),
         &runner_bundle_id,
         target_bundle_id.as_deref(),
     )
     .await?;
+    cfg.runner_env = runner_env;
 
     println!("[XCTest] App path:      {}", cfg.runner_app_path);
     println!("[XCTest] Container:     {}", cfg.runner_app_container);
@@ -219,4 +235,129 @@ async fn build_test_config(
     let mut install_proxy = InstallationProxyClient::connect(provider).await?;
     TestConfig::from_installation_proxy(&mut install_proxy, runner_bundle_id, target_bundle_id)
         .await
+}
+
+fn parse_runner_environment(input: &str) -> Result<Dictionary, DvtError> {
+    if input.is_empty() {
+        return Err(DvtError::InvalidXCTestRunnerEnvironment(
+            "environment cannot be empty".into(),
+        ));
+    }
+
+    let mut environment = Dictionary::new();
+    let mut entry = String::new();
+    let mut escaped = false;
+
+    for character in input.chars() {
+        if escaped {
+            match character {
+                ',' | '\\' => entry.push(character),
+                _ => {
+                    entry.push('\\');
+                    entry.push(character);
+                }
+            }
+            escaped = false;
+        } else {
+            match character {
+                '\\' => escaped = true,
+                ',' => {
+                    insert_runner_environment_entry(&mut environment, &entry)?;
+                    entry.clear();
+                }
+                _ => entry.push(character),
+            }
+        }
+    }
+
+    if escaped {
+        return Err(DvtError::InvalidXCTestRunnerEnvironment(
+            "environment cannot end with an escape character".into(),
+        ));
+    }
+
+    insert_runner_environment_entry(&mut environment, &entry)?;
+    Ok(environment)
+}
+
+fn insert_runner_environment_entry(
+    environment: &mut Dictionary,
+    entry: &str,
+) -> Result<(), DvtError> {
+    let (key, value) = entry.split_once('=').ok_or_else(|| {
+        DvtError::InvalidXCTestRunnerEnvironment(format!("expected KEY=VALUE, got {entry:?}"))
+    })?;
+    if key.is_empty() {
+        return Err(DvtError::InvalidXCTestRunnerEnvironment(
+            "environment variable name cannot be empty".into(),
+        ));
+    }
+
+    environment.insert(key.to_owned(), Value::String(value.to_owned()));
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_runner_environment;
+
+    #[test]
+    fn parses_runner_environment() {
+        let environment = parse_runner_environment(
+            r"USE_PORT=8200,MJPEG_SERVER_PORT=9200,URL=http://localhost?a=1,EMPTY=",
+        )
+        .unwrap();
+
+        assert_eq!(
+            environment
+                .get("USE_PORT")
+                .and_then(|value| value.as_string()),
+            Some("8200")
+        );
+        assert_eq!(
+            environment
+                .get("MJPEG_SERVER_PORT")
+                .and_then(|value| value.as_string()),
+            Some("9200")
+        );
+        assert_eq!(
+            environment.get("URL").and_then(|value| value.as_string()),
+            Some("http://localhost?a=1")
+        );
+        assert_eq!(
+            environment.get("EMPTY").and_then(|value| value.as_string()),
+            Some("")
+        );
+    }
+
+    #[test]
+    fn parses_escaped_commas_and_backslashes() {
+        let environment = parse_runner_environment(r"LABEL=foo\,bar,PATH=C:\\tmp").unwrap();
+
+        assert_eq!(
+            environment.get("LABEL").and_then(|value| value.as_string()),
+            Some("foo,bar")
+        );
+        assert_eq!(
+            environment.get("PATH").and_then(|value| value.as_string()),
+            Some(r"C:\tmp")
+        );
+    }
+
+    #[test]
+    fn duplicate_environment_variables_use_the_last_value() {
+        let environment = parse_runner_environment("LANG=en,LANG=fr").unwrap();
+
+        assert_eq!(
+            environment.get("LANG").and_then(|value| value.as_string()),
+            Some("fr")
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_runner_environment() {
+        for input in ["", "MISSING_VALUE", "=value", "KEY=value,", r"KEY=value\"] {
+            assert!(parse_runner_environment(input).is_err(), "{input:?}");
+        }
+    }
 }
