@@ -64,13 +64,26 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
     // stream. With `--stdout` we stream to stdout (live: pipe into `ffplay -`);
     // else we write a `.hevc` file ffmpeg/VLC can open directly.
     use std::io::Write;
-    let mut sink: Box<dyn Write> = if to_stdout {
-        Box::new(std::io::BufWriter::new(std::io::stdout().lock()))
+    let mut sink: Box<dyn Write + Send> = if to_stdout {
+        Box::new(std::io::BufWriter::new(std::io::stdout()))
     } else {
         Box::new(std::io::BufWriter::new(
             std::fs::File::create(&out_path).expect("create output"),
         ))
     };
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    let writer = std::thread::spawn(move || {
+        while let Ok(buf) = rx.recv() {
+            if sink.write_all(&buf).is_err() {
+                // Player closed the pipe (e.g. ffplay window closed).
+                break;
+            }
+            if to_stdout {
+                let _ = sink.flush();
+            }
+        }
+        let _ = sink.flush();
+    });
     if to_stdout {
         eprintln!("streaming Annex-B HEVC to stdout (pipe into ffplay -); Ctrl-C to stop");
     } else {
@@ -98,14 +111,12 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
                     depacketizer.push(pkt.sequence_number, pkt.timestamp, pkt.payload);
                     let out = depacketizer.take_output();
                     if !out.is_empty() {
-                        if sink.write_all(&out).is_err() {
-                            // Player closed the pipe (e.g. ffplay window closed).
+                        nal_bytes += out.len();
+                        if tx.send(out).is_err() {
+                            // Writer thread stopped: the sink is gone (e.g. ffplay
+                            // window closed and the pipe broke).
                             eprintln!("output closed; stopping");
                             break;
-                        }
-                        nal_bytes += out.len();
-                        if to_stdout {
-                            sink.flush().ok();
                         }
                     }
                     count += 1;
@@ -131,7 +142,8 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
             }
         }
     }
-    sink.flush().ok();
+    drop(tx);
+    let _ = writer.join();
     eprintln!(
         "received {count} RTP packets, wrote {nal_bytes} Annex-B bytes{}",
         if depacketizer.has_parameter_sets() {
