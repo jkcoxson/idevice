@@ -20,6 +20,121 @@ pub const DL_CODE_ERROR_LOCAL: u8 = 0x06;
 pub const DL_CODE_ERROR_REMOTE: u8 = 0x0b;
 pub const DL_CODE_FILE_DATA: u8 = 0x0c;
 
+pub const PROGRESS_EMIT_BYTES: u64 = 256 * 1024;
+
+/// Progress snapshot handed to [`BackupDelegate::on_progress`].
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct BackupProgress {
+    /// Bytes transferred so far in the current batch.
+    pub batch_bytes_done: u64,
+    /// Bytes the device said this batch contains, or 0 if unknown.
+    pub batch_bytes_total: u64,
+    /// Bytes transferred so far across every batch in this session.
+    pub session_bytes_done: u64,
+    /// Estimated total bytes for the whole session, or 0 while not estimable.
+    pub session_bytes_total: u64,
+    /// Overall progress percentage (0.0–100.0), or negative if not yet known.
+    pub overall_progress: f64,
+}
+
+/// Session-wide progress accumulator threaded through the DeviceLink loop.
+#[derive(Default)]
+struct ProgressTracker {
+    /// Device-reported overall progress at the end of the last completed batch.
+    /// Acts as the lower anchor when interpolating inside the current batch.
+    anchor: f64,
+    /// Bytes transferred across all batches so far.
+    session_bytes: u64,
+    last_emit_bytes: u64,
+    last_progress: f64,
+}
+
+#[derive(Clone, Copy)]
+enum BatchPosition {
+    Bytes { done: u64, total: u64 },
+    Files { done: usize, total: usize },
+}
+
+impl BatchPosition {
+    /// Fraction complete in 0.0..=1.0, or `None` when the extent is unknown.
+    fn fraction(&self) -> Option<f64> {
+        match *self {
+            Self::Bytes { done, total } if total > 0 => {
+                Some((done as f64 / total as f64).clamp(0.0, 1.0))
+            }
+            Self::Files { done, total } if total > 0 => {
+                Some((done as f64 / total as f64).clamp(0.0, 1.0))
+            }
+            _ => None,
+        }
+    }
+
+    /// The batch byte total to report, if this batch knows one.
+    fn bytes_total(&self) -> u64 {
+        match *self {
+            Self::Bytes { total, .. } => total,
+            Self::Files { .. } => 0,
+        }
+    }
+}
+
+impl ProgressTracker {
+    fn snapshot(
+        &mut self,
+        batch_bytes_done: u64,
+        position: BatchPosition,
+        target: Option<f64>,
+    ) -> BackupProgress {
+        let batch_bytes_total = position.bytes_total();
+        let mut overall = match target {
+            Some(target) if target > self.anchor => {
+                let fraction = position.fraction().unwrap_or(0.0);
+                self.anchor + (target - self.anchor) * fraction
+            }
+            _ => self.anchor,
+        };
+
+        overall = overall.max(self.last_progress);
+        self.last_progress = overall;
+
+        let session_bytes_done = self.session_bytes + batch_bytes_done;
+        let session_bytes_total = if overall > 0.0 && session_bytes_done > 0 {
+            (session_bytes_done as f64 / (overall / 100.0)) as u64
+        } else {
+            0
+        };
+
+        BackupProgress {
+            batch_bytes_done,
+            batch_bytes_total,
+            session_bytes_done,
+            session_bytes_total,
+            overall_progress: if overall > 0.0 { overall } else { -1.0 },
+        }
+    }
+
+    /// Folds a finished batch into the session totals.
+    fn finish_batch(&mut self, batch_bytes_done: u64, target: Option<f64>) {
+        self.session_bytes += batch_bytes_done;
+        self.last_emit_bytes = self.session_bytes;
+        if let Some(target) = target
+            && target > self.anchor
+        {
+            self.anchor = target;
+        }
+    }
+
+    fn should_emit(&mut self, batch_bytes_done: u64) -> bool {
+        let session_done = self.session_bytes + batch_bytes_done;
+        if session_done.saturating_sub(self.last_emit_bytes) >= PROGRESS_EMIT_BYTES {
+            self.last_emit_bytes = session_done;
+            true
+        } else {
+            false
+        }
+    }
+}
+
 /// Metadata for a single directory entry returned by [`BackupDelegate::list_dir`].
 #[derive(Debug)]
 pub struct DirEntryInfo {
@@ -119,15 +234,18 @@ pub trait BackupDelegate: Send + Sync {
     /// `file_count` is the running total of files received in the current upload batch.
     fn on_file_received(&self, _path: &str, _file_count: u32) {}
 
-    /// Called periodically during file transfer with byte-level progress.
-    /// A `DownloadFiles` batch fires once with only the device percentage
-    /// (both byte fields 0) — that is how restore progress arrives.
+    /// Called during file transfer with a [`BackupProgress`] snapshot.
     ///
-    /// - `bytes_done`: total bytes transferred so far in this upload batch
-    /// - `bytes_total`: total expected bytes for this batch (0 if unknown)
-    /// - `overall_progress`: device-reported overall progress percentage (0.0–100.0),
-    ///   or negative if not yet reported
-    fn on_progress(&self, _bytes_done: u64, _bytes_total: u64, _overall_progress: f64) {}
+    /// Covers both directions: receiving files during a backup and sending them
+    /// during a restore. A restore batch interpolates on file count rather than
+    /// bytes, since the device never says how large the files it asks for are,
+    /// so `batch_bytes_total` is 0 there.
+    ///
+    /// Fires at most once per [`PROGRESS_EMIT_BYTES`] transferred, plus once per
+    /// file sent and once at the end of every batch, so it can be called many
+    /// times per second on a fast link. Implementations that render output
+    /// should throttle by time.
+    fn on_progress(&self, _progress: BackupProgress) {}
 }
 
 /// Default [`BackupDelegate`] that reads/writes to the local filesystem via `tokio::fs`.
@@ -1114,11 +1232,13 @@ impl MobileBackup2Client {
         host_dir: &Path,
         delegate: &dyn BackupDelegate,
     ) -> Result<Option<Dictionary>, IdeviceError> {
-        let mut overall_progress: f64 = -1.0;
+        let mut tracker = ProgressTracker::default();
         loop {
             let (tag, value) = self.receive_dl_message().await?;
 
-            // Extract overall progress from DL messages that carry it
+            // Extract overall progress from DL messages that carry it. The value
+            // describes progress after this message's work completes.
+            let mut target: Option<f64> = None;
             if let plist::Value::Array(arr) = &value {
                 let progress_idx = match tag.as_str() {
                     "DLMessageUploadFiles" => Some(2),
@@ -1133,20 +1253,17 @@ impl MobileBackup2Client {
                     && let Some(plist::Value::Real(p)) = arr.get(idx)
                     && *p > 0.0
                 {
-                    overall_progress = *p;
+                    target = Some(*p);
                 }
             }
 
             match tag.as_str() {
                 "DLMessageDownloadFiles" => {
-                    // The send path tracks no byte counts (idevicebackup2 parity);
-                    // report the device percentage parsed from this message.
-                    delegate.on_progress(0, 0, overall_progress);
-                    self.handle_download_files(&value, host_dir, delegate)
+                    self.handle_download_files(&value, host_dir, delegate, &mut tracker, target)
                         .await?;
                 }
                 "DLMessageUploadFiles" => {
-                    self.handle_upload_files(&value, host_dir, delegate, overall_progress)
+                    self.handle_upload_files(&value, host_dir, delegate, &mut tracker, target)
                         .await?;
                 }
                 "DLMessageGetFreeDiskSpace" => {
@@ -1217,6 +1334,17 @@ impl MobileBackup2Client {
                         .await?;
                 }
             }
+
+            if !matches!(
+                tag.as_str(),
+                "DLMessageUploadFiles" | "DLMessageDownloadFiles"
+            ) && let Some(target) = target
+            {
+                tracker.finish_batch(0, Some(target));
+                let progress =
+                    tracker.snapshot(0, BatchPosition::Bytes { done: 0, total: 0 }, None);
+                delegate.on_progress(progress);
+            }
         }
     }
 
@@ -1225,18 +1353,36 @@ impl MobileBackup2Client {
         dl_value: &plist::Value,
         host_dir: &Path,
         delegate: &dyn BackupDelegate,
+        tracker: &mut ProgressTracker,
+        target_progress: Option<f64>,
     ) -> Result<(), IdeviceError> {
         let mut errplist = Dictionary::new();
+        let mut batch_bytes: u64 = 0;
         if let plist::Value::Array(arr) = dl_value
             && arr.len() >= 2
             && let Some(plist::Value::Array(files)) = arr.get(1)
         {
-            for pv in files {
+            let files_total = files.len();
+            for (idx, pv) in files.iter().enumerate() {
                 if let Some(path) = pv.as_string() {
                     debug!("Device requested file: {path}");
-                    if let Some((code, desc)) =
-                        self.send_single_file(host_dir, path, delegate).await?
-                    {
+                    // Files fully sent before this one.
+                    let position = BatchPosition::Files {
+                        done: idx,
+                        total: files_total,
+                    };
+                    let sent = self
+                        .send_single_file(
+                            host_dir,
+                            path,
+                            delegate,
+                            tracker,
+                            &mut batch_bytes,
+                            position,
+                            target_progress,
+                        )
+                        .await?;
+                    if let Some((code, desc)) = sent {
                         warn!("Failed to send file {path}: {desc} ({code})");
                         let mut entry = Dictionary::new();
                         entry.insert("DLFileErrorString".into(), plist::Value::String(desc));
@@ -1246,10 +1392,22 @@ impl MobileBackup2Client {
                         errplist.insert(path.to_string(), plist::Value::Dictionary(entry));
                     }
                 }
+                let position = BatchPosition::Files {
+                    done: idx + 1,
+                    total: files_total,
+                };
+                let progress = tracker.snapshot(batch_bytes, position, target_progress);
+                delegate.on_progress(progress);
             }
         }
         // terminating zero dword
         self.idevice.send_raw(&0u32.to_be_bytes()).await?;
+
+        tracker.finish_batch(batch_bytes, target_progress);
+        let mut progress = tracker.snapshot(0, BatchPosition::Bytes { done: 0, total: 0 }, None);
+        progress.batch_bytes_done = batch_bytes;
+        delegate.on_progress(progress);
+
         if !errplist.is_empty() {
             self.send_status_response(
                 -13,
@@ -1269,11 +1427,19 @@ impl MobileBackup2Client {
     /// message)))` when a per-file error was framed to the device (so the caller can
     /// record it in the Multi status dictionary). Only a fatal socket error yields
     /// `Err`.
+    ///
+    /// `batch_bytes` accumulates bytes sent across the whole batch so a single
+    /// large file still reports progress while it streams.
+    #[allow(clippy::too_many_arguments)]
     async fn send_single_file(
         &mut self,
         host_dir: &Path,
         rel_path: &str,
         delegate: &dyn BackupDelegate,
+        tracker: &mut ProgressTracker,
+        batch_bytes: &mut u64,
+        position: BatchPosition,
+        target_progress: Option<f64>,
     ) -> Result<Option<(i64, String)>, IdeviceError> {
         let full = host_path(host_dir, rel_path);
         let path_bytes = rel_path.as_bytes().to_vec();
@@ -1315,6 +1481,12 @@ impl MobileBackup2Client {
             hdr.push(DL_CODE_FILE_DATA);
             self.idevice.send_raw(&hdr).await?;
             self.idevice.send_raw(&buf[..read]).await?;
+            *batch_bytes += read as u64;
+
+            if tracker.should_emit(*batch_bytes) {
+                let progress = tracker.snapshot(*batch_bytes, position, target_progress);
+                delegate.on_progress(progress);
+            }
         }
         // success trailer
         let mut ok = [0u8; 5];
@@ -1341,7 +1513,8 @@ impl MobileBackup2Client {
         dl_value: &plist::Value,
         host_dir: &Path,
         delegate: &dyn BackupDelegate,
-        overall_progress: f64,
+        tracker: &mut ProgressTracker,
+        target_progress: Option<f64>,
     ) -> Result<(), IdeviceError> {
         let mut file_count: u32 = 0;
         let mut bytes_done: u64 = 0;
@@ -1394,6 +1567,17 @@ impl MobileBackup2Client {
                     .map_err(|e| IdeviceError::InternalError(e.to_string()))?;
                 bytes_done += block_size as u64;
 
+                // Report mid-file so a single multi-gigabyte file doesn't look
+                // frozen, but only once per PROGRESS_EMIT_BYTES.
+                if tracker.should_emit(bytes_done) {
+                    let position = BatchPosition::Bytes {
+                        done: bytes_done,
+                        total: bytes_total,
+                    };
+                    let progress = tracker.snapshot(bytes_done, position, target_progress);
+                    delegate.on_progress(progress);
+                }
+
                 // Read next block header
                 nlen = self.read_be_u32().await?;
                 if nlen > 0 {
@@ -1405,7 +1589,6 @@ impl MobileBackup2Client {
 
             file_count += 1;
             delegate.on_file_received(&fname, file_count);
-            delegate.on_progress(bytes_done, bytes_total, overall_progress);
 
             // Handle trailing error/status message
             if nlen > 0 && code != DL_CODE_FILE_DATA && code != DL_CODE_SUCCESS {
@@ -1415,6 +1598,19 @@ impl MobileBackup2Client {
         }
 
         debug!("Received {file_count} files from device");
+
+        tracker.finish_batch(bytes_done, target_progress);
+        let mut progress = tracker.snapshot(
+            0,
+            BatchPosition::Bytes {
+                done: 0,
+                total: bytes_total,
+            },
+            None,
+        );
+        progress.batch_bytes_done = bytes_done;
+        delegate.on_progress(progress);
+
         self.send_status_response(0, None, Some(plist::Value::Dictionary(Dictionary::new())))
             .await
     }

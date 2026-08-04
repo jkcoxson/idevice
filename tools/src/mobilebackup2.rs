@@ -4,7 +4,8 @@
 use idevice::{
     IdeviceError, IdeviceService,
     mobilebackup2::{
-        BackupDelegate, DirEntryInfo, FsBackupDelegate, MobileBackup2Client, RestoreOptions,
+        BackupDelegate, BackupProgress, DirEntryInfo, FsBackupDelegate, MobileBackup2Client,
+        RestoreOptions,
     },
     provider::IdeviceProvider,
 };
@@ -14,13 +15,17 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+/// Minimum wall-clock gap between progress line redraws.
+const REDRAW_INTERVAL: Duration = Duration::from_millis(100);
 
 /// CLI backup delegate: delegates filesystem ops to [`FsBackupDelegate`],
 /// adds real disk-space reporting, progress bar, and ETA.
 struct CliBackupDelegate {
     fs: FsBackupDelegate,
     start_time: Mutex<Option<Instant>>,
+    last_draw: Mutex<Option<Instant>>,
 }
 
 impl CliBackupDelegate {
@@ -28,6 +33,7 @@ impl CliBackupDelegate {
         Self {
             fs: FsBackupDelegate,
             start_time: Mutex::new(None),
+            last_draw: Mutex::new(None),
         }
     }
 
@@ -92,54 +98,43 @@ impl BackupDelegate for CliBackupDelegate {
 
     fn on_file_received(&self, _path: &str, _file_count: u32) {}
 
-    fn on_progress(&self, bytes_done: u64, bytes_total: u64, overall_progress: f64) {
+    fn on_progress(&self, progress: BackupProgress) {
         // Initialize start time on first call
-        {
+        let start = {
             let mut start = self.start_time.lock().unwrap();
-            if start.is_none() {
-                *start = Some(Instant::now());
+            *start.get_or_insert_with(Instant::now)
+        };
+
+        {
+            let mut last_draw = self.last_draw.lock().unwrap();
+            let now = Instant::now();
+            let due = last_draw
+                .map(|t: Instant| now.duration_since(t) >= REDRAW_INTERVAL)
+                .unwrap_or(true);
+            let final_tick = progress.overall_progress >= 100.0;
+            if !due && !final_tick {
+                return;
             }
+            *last_draw = Some(now);
         }
 
-        let elapsed = self.start_time.lock().unwrap().unwrap().elapsed().as_secs();
+        let elapsed = start.elapsed().as_secs();
 
-        // Use byte-level progress if we have a total, otherwise fall back to overall %
-        let (progress_str, eta_str) = if bytes_total > 0 {
-            let pct = (bytes_done as f64 / bytes_total as f64) * 100.0;
-            let eta = if pct > 0.0 && elapsed > 0 {
-                let total_secs = (elapsed as f64 / (pct / 100.0)) as u64;
-                let remaining = total_secs.saturating_sub(elapsed);
-                format!(" ETA: {}", Self::format_duration(remaining))
-            } else {
-                String::new()
-            };
-            (
-                format!(
-                    "{:.1}%  {}/{}",
-                    pct,
-                    Self::format_size(bytes_done),
-                    Self::format_size(bytes_total),
-                ),
-                eta,
-            )
-        } else if overall_progress > 0.0 {
-            let eta = if overall_progress > 0.0 && elapsed > 0 {
-                let total_secs = (elapsed as f64 / (overall_progress / 100.0)) as u64;
-                let remaining = total_secs.saturating_sub(elapsed);
-                format!(" ETA: {}", Self::format_duration(remaining))
-            } else {
-                String::new()
-            };
-            (
-                format!(
-                    "{:.1}%  {}",
-                    overall_progress,
-                    Self::format_size(bytes_done),
-                ),
-                eta,
-            )
+        let eta_str = if progress.overall_progress > 0.0 && elapsed > 0 {
+            let total_secs = (elapsed as f64 / (progress.overall_progress / 100.0)) as u64;
+            let remaining = total_secs.saturating_sub(elapsed);
+            format!(" ETA: {}", Self::format_duration(remaining))
         } else {
-            (Self::format_size(bytes_done), String::new())
+            String::new()
+        };
+
+        let done = Self::format_size(progress.session_bytes_done);
+        let progress_str = match (progress.overall_progress, progress.session_bytes_total) {
+            (pct, total) if pct > 0.0 && total > 0 => {
+                format!("{pct:.1}%  {done}/~{}", Self::format_size(total))
+            }
+            (pct, _) if pct > 0.0 => format!("{pct:.1}%  {done}"),
+            _ => done,
         };
 
         eprint!("\r\x1b[2K  {progress_str}{eta_str}");

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::ptr::null_mut;
 
-use idevice::mobilebackup2::{BackupDelegate, DirEntryInfo, MobileBackup2Client};
+use idevice::mobilebackup2::{BackupDelegate, BackupProgress, DirEntryInfo, MobileBackup2Client};
 use idevice::{IdeviceError, IdeviceService, provider::IdeviceProvider};
 use plist_ffi::PlistWrapper;
 
@@ -83,14 +83,34 @@ pub struct Mobilebackup2BackupDelegateFFI {
     pub is_cancelled: Option<extern "C" fn(context: *mut c_void) -> bool>,
 
     /// Optional progress callback. May be NULL.
-    pub on_progress: Option<
-        extern "C" fn(
-            bytes_done: u64,
-            bytes_total: u64,
-            overall_progress: f64,
-            context: *mut c_void,
-        ),
-    >,
+    ///
+    /// `progress` is owned by the caller and only valid for the duration of the
+    /// call; copy out any fields you need to keep.
+    pub on_progress:
+        Option<extern "C" fn(progress: *const Mobilebackup2BackupProgress, context: *mut c_void)>,
+}
+
+/// Progress snapshot passed to `on_progress`.
+///
+/// A session is split into batches of files. `batch_*` describes the batch
+/// currently streaming; `session_*` accumulates across the whole session.
+/// Fields are only ever appended to, so a callback compiled against an older
+/// header stays ABI-compatible.
+#[repr(C)]
+pub struct Mobilebackup2BackupProgress {
+    /// Bytes transferred so far in the current batch.
+    pub batch_bytes_done: u64,
+    /// Bytes the device said this batch contains, or 0 if unknown. Approximate.
+    pub batch_bytes_total: u64,
+    /// Bytes transferred so far across every batch in this session. Monotonic.
+    pub session_bytes_done: u64,
+    /// Estimated total bytes for the session, or 0 while not estimable.
+    /// Derived from the device's percentage, so it drifts. Never exact.
+    pub session_bytes_total: u64,
+    /// Overall progress percentage (0.0-100.0), or negative if not yet known.
+    /// Interpolated within a batch and clamped to be monotonic. Not equal to
+    /// session_bytes_done / session_bytes_total.
+    pub overall_progress: f64,
 }
 
 // Safety: the C side is responsible for thread safety of its context.
@@ -356,12 +376,19 @@ impl BackupDelegate for Mobilebackup2BackupDelegateFFI {
         })
     }
 
-    fn on_progress(&self, bytes_done: u64, bytes_total: u64, overall_progress: f64) {
+    fn on_progress(&self, progress: BackupProgress) {
         if is_cancelled(self) {
             return;
         }
         if let Some(cb) = self.on_progress {
-            cb(bytes_done, bytes_total, overall_progress, self.context);
+            let ffi = Mobilebackup2BackupProgress {
+                batch_bytes_done: progress.batch_bytes_done,
+                batch_bytes_total: progress.batch_bytes_total,
+                session_bytes_done: progress.session_bytes_done,
+                session_bytes_total: progress.session_bytes_total,
+                overall_progress: progress.overall_progress,
+            };
+            cb(&ffi, self.context);
         }
     }
 }

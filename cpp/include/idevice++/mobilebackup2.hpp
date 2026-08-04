@@ -14,6 +14,30 @@ using MobileBackup2Ptr =
     std::unique_ptr<MobileBackup2ClientHandle,
                     FnDeleter<MobileBackup2ClientHandle, mobilebackup2_client_free>>;
 
+/// Progress snapshot for a backup or restore session.
+///
+/// A session is split into batches of files. `batch_*` describes the batch
+/// currently streaming; `session_*` accumulates across the whole session.
+struct BackupProgress {
+    /// Bytes transferred so far in the current batch
+    uint64_t batch_bytes_done    = 0;
+
+    /// Bytes the device said this batch contains, or 0 if unknown. Approximate.
+    uint64_t batch_bytes_total   = 0;
+
+    /// Bytes transferred so far across every batch in this session. Monotonic.
+    uint64_t session_bytes_done  = 0;
+
+    /// Estimated total bytes for the session, or 0 while not estimable.
+    /// Derived from the device's percentage, so it drifts. Never exact.
+    uint64_t session_bytes_total = 0;
+
+    /// Overall progress percentage (0.0-100.0), or negative if not yet known.
+    /// Interpolated within a batch and clamped to be monotonic. Not equal to
+    /// session_bytes_done / session_bytes_total.
+    double   overall_progress    = -1.0;
+};
+
 /// Callback types for BackupDelegate operations.
 /// The C++ caller provides these to drive filesystem I/O during backup/restore.
 struct BackupDelegateCallbacks {
@@ -53,8 +77,9 @@ struct BackupDelegateCallbacks {
     /// Optional cancellation callback
     std::function<bool()>                                           is_cancelled;
 
-    /// Optional progress callback: bytes_done, bytes_total, overall_progress
-    std::function<void(uint64_t, uint64_t, double)>                 on_progress;
+    /// Optional progress callback. Called frequently during transfers; throttle
+    /// any rendering it does.
+    std::function<void(const BackupProgress&)>                      on_progress;
 };
 
 class MobileBackup2 {

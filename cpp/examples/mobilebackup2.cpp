@@ -109,16 +109,18 @@ static bool fs_is_dir(const std::string& path) {
     return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
 }
 
-static void progress_callback(uint64_t bytes_done, uint64_t bytes_total, double overall) {
-    if (bytes_total > 0) {
-        double pct = static_cast<double>(bytes_done) / static_cast<double>(bytes_total) * 100.0;
+static void progress_callback(const IdeviceFFI::BackupProgress& progress) {
+    double done_mb = static_cast<double>(progress.session_bytes_done) / (1024.0 * 1024.0);
+    if (progress.overall_progress > 0 && progress.session_bytes_total > 0) {
         fprintf(stderr,
-                "\r  %.1f%%  %.1f MB / %.1f MB",
-                pct,
-                static_cast<double>(bytes_done) / (1024.0 * 1024.0),
-                static_cast<double>(bytes_total) / (1024.0 * 1024.0));
-    } else if (overall > 0) {
-        fprintf(stderr, "\r  %.1f%%", overall);
+                "\r  %.1f%%  %.1f MB / ~%.1f MB",
+                progress.overall_progress,
+                done_mb,
+                static_cast<double>(progress.session_bytes_total) / (1024.0 * 1024.0));
+    } else if (progress.overall_progress > 0) {
+        fprintf(stderr, "\r  %.1f%%  %.1f MB", progress.overall_progress, done_mb);
+    } else {
+        fprintf(stderr, "\r  %.1f MB", done_mb);
     }
 }
 

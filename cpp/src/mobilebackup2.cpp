@@ -148,13 +148,16 @@ extern "C" bool is_cancelled_trampoline(void* ctx) {
     return cbs.is_cancelled ? cbs.is_cancelled() : false;
 }
 
-extern "C" void on_progress_trampoline(uint64_t bytes_done,
-                                       uint64_t bytes_total,
-                                       double   overall_progress,
-                                       void*    ctx) {
+extern "C" void on_progress_trampoline(const Mobilebackup2BackupProgress* progress, void* ctx) {
     auto& cbs = *static_cast<BackupDelegateCallbacks*>(ctx);
-    if (cbs.on_progress) {
-        cbs.on_progress(bytes_done, bytes_total, overall_progress);
+    if (cbs.on_progress && progress) {
+        BackupProgress p;
+        p.batch_bytes_done    = progress->batch_bytes_done;
+        p.batch_bytes_total   = progress->batch_bytes_total;
+        p.session_bytes_done  = progress->session_bytes_done;
+        p.session_bytes_total = progress->session_bytes_total;
+        p.overall_progress    = progress->overall_progress;
+        cbs.on_progress(p);
     }
 }
 
