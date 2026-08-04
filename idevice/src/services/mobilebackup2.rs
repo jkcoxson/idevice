@@ -120,6 +120,8 @@ pub trait BackupDelegate: Send + Sync {
     fn on_file_received(&self, _path: &str, _file_count: u32) {}
 
     /// Called periodically during file transfer with byte-level progress.
+    /// A `DownloadFiles` batch fires once with only the device percentage
+    /// (both byte fields 0) — that is how restore progress arrives.
     ///
     /// - `bytes_done`: total bytes transferred so far in this upload batch
     /// - `bytes_total`: total expected bytes for this batch (0 if unknown)
@@ -233,9 +235,15 @@ impl BackupDelegate for FsBackupDelegate {
         path: &'a Path,
     ) -> Pin<Box<dyn Future<Output = Result<Box<dyn Read + Send>, IdeviceError>> + Send + 'a>> {
         Box::pin(async move {
-            let file = tokio::fs::File::open(path)
-                .await
-                .map_err(|e| IdeviceError::InternalError(e.to_string()))?;
+            // Missing files must surface as NotFound: the DL loop reports them
+            // to the device as ENOENT, which is how "no previous backup" reads.
+            let file = tokio::fs::File::open(path).await.map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    IdeviceError::NotFound
+                } else {
+                    IdeviceError::InternalError(e.to_string())
+                }
+            })?;
             let std_file = file.into_std().await;
             Ok(Box::new(std_file) as Box<dyn Read + Send>)
         })
@@ -1131,6 +1139,9 @@ impl MobileBackup2Client {
 
             match tag.as_str() {
                 "DLMessageDownloadFiles" => {
+                    // The send path tracks no byte counts (idevicebackup2 parity);
+                    // report the device percentage parsed from this message.
+                    delegate.on_progress(0, 0, overall_progress);
                     self.handle_download_files(&value, host_dir, delegate)
                         .await?;
                 }
@@ -1276,9 +1287,15 @@ impl MobileBackup2Client {
         let mut f = match delegate.open_file_read(&full).await {
             Ok(f) => f,
             Err(e) => {
+                // Only a genuinely missing file is ENOENT; any other open failure
+                // (I/O, corruption) must not tell the device the file is absent.
+                let code = match e {
+                    IdeviceError::NotFound => DEV_ERR_ENOENT,
+                    _ => DEV_ERR_GENERIC,
+                };
                 let desc = e.to_string();
                 self.send_file_error(&desc).await?;
-                return Ok(Some((DEV_ERR_ENOENT, desc)));
+                return Ok(Some((code, desc)));
             }
         };
         let mut buf = [0u8; 32768];
