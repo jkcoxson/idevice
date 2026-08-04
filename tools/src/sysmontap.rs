@@ -95,10 +95,12 @@ pub async fn main(args: &CollectedArguments, provider: Box<dyn IdeviceProvider>)
 
     eprintln!("Sampling every {interval_ms}ms... Press Ctrl+C to stop.\n");
 
-    // Print system attribute header
+    // Print attribute headers so the value arrays below can be read positionally
     if !sys_attrs.is_empty() {
-        print!("System: ");
-        println!("{}", sys_attrs.join(", "));
+        println!("System:  {}", sys_attrs.join(", "));
+    }
+    if !proc_attrs.is_empty() {
+        println!("Process: {}", proc_attrs.join(", "));
     }
 
     loop {
