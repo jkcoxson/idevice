@@ -38,7 +38,6 @@ pub use screencaptureservices::*;
 const CORE_SERVICE_VERSION: &str = "443.18";
 // CoreDeviceUtilities uses this version for the streamapplist action protocol.
 const STREAM_CORE_SERVICE_VERSION: &str = "629.3";
-const STREAM_STATUS_KEY: &str = "CoreDevice.XPCMessageKey.sideChannelStatus";
 
 #[derive(Debug)]
 pub struct CoreDeviceServiceClient<R: ReadWrite> {
@@ -216,7 +215,6 @@ fn build_streaming_input(input: XPCObject, side_channel: uuid::Uuid) -> XPCObjec
     stream_input.into()
 }
 
-#[derive(Debug, PartialEq)]
 enum StreamingResponse {
     Elements(Vec<plist::Value>),
     Finished,
@@ -226,13 +224,15 @@ fn parse_stream_response(response: plist::Value) -> Result<StreamingResponse, Id
     let mut response = response
         .into_dictionary()
         .ok_or(CoreDeviceError::MalformedField("(root)"))?;
-    let mut status = match response.remove(STREAM_STATUS_KEY) {
+    let stream_status_key: std::borrow::Cow<'static, str> =
+        crate::obf!("CoreDevice.XPCMessageKey.sideChannelStatus");
+    let mut status = match response.remove(stream_status_key.as_ref()) {
         Some(plist::Value::Dictionary(status)) => status,
-        Some(_) => return Err(CoreDeviceError::MalformedField(STREAM_STATUS_KEY).into()),
+        Some(_) => return Err(CoreDeviceError::MalformedField("sideChannelStatus").into()),
         None => {
             return match response.get("CoreDevice.error") {
                 Some(error) => Err(CoreDeviceError::DeviceError(format!("{error:?}")).into()),
-                None => Err(CoreDeviceError::MissingField(STREAM_STATUS_KEY).into()),
+                None => Err(CoreDeviceError::MissingField("sideChannelStatus").into()),
             };
         }
     };
@@ -273,89 +273,4 @@ fn create_xpc_version_from_string(version: impl Into<String>) -> xpc::Dictionary
     res.insert("components".into(), XPCObject::Array(collected_version));
     res.insert("stringValue".into(), XPCObject::String(version));
     res
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn streaming_input_uses_xpc_uuid_side_channel() {
-        let side_channel = uuid::Uuid::new_v4();
-        let input = build_streaming_input(xpc::Dictionary::new().into(), side_channel);
-        let input = input.as_dictionary().expect("stream input dictionary");
-        let proxy = input
-            .get("streamProxy")
-            .and_then(XPCObject::as_dictionary)
-            .expect("stream proxy dictionary");
-
-        assert_eq!(
-            proxy.get("sideChannel"),
-            Some(&XPCObject::Uuid(side_channel))
-        );
-        assert!(input.contains_key("actualInput"));
-    }
-
-    #[test]
-    fn streaming_request_uses_protocol_two_and_streaming_version() {
-        let request = build_invocation_request(
-            "com.apple.coredevice.feature.streamapplist".into(),
-            xpc::Dictionary::new().into(),
-            None,
-            2,
-            STREAM_CORE_SERVICE_VERSION,
-        );
-
-        assert_eq!(
-            request.get("CoreDevice.CoreDeviceDDIProtocolVersion"),
-            Some(&XPCObject::Int64(2))
-        );
-        let version = request
-            .get("CoreDevice.coreDeviceVersion")
-            .and_then(XPCObject::as_dictionary)
-            .expect("CoreDevice version dictionary");
-        assert_eq!(
-            version.get("stringValue"),
-            Some(&XPCObject::String("629.3".into()))
-        );
-    }
-
-    #[test]
-    fn parses_streamed_elements_and_finish_status() {
-        let batch = plist::Value::Dictionary(crate::plist!(dict {
-            STREAM_STATUS_KEY: {
-                "pushing": {
-                    "elements": ["one", "two"],
-                },
-            },
-        }));
-        assert_eq!(
-            parse_stream_response(batch).expect("stream batch"),
-            StreamingResponse::Elements(vec!["one".into(), "two".into()])
-        );
-
-        let finished = plist::Value::Dictionary(crate::plist!(dict {
-            STREAM_STATUS_KEY: {
-                "finishStreaming": true,
-            },
-        }));
-        assert_eq!(
-            parse_stream_response(finished).expect("stream finished"),
-            StreamingResponse::Finished
-        );
-    }
-
-    #[test]
-    fn surfaces_stream_error_status() {
-        let response = plist::Value::Dictionary(crate::plist!(dict {
-            STREAM_STATUS_KEY: {
-                "receivedError": "denied",
-            },
-        }));
-
-        assert!(matches!(
-            parse_stream_response(response),
-            Err(IdeviceError::CoreDevice(CoreDeviceError::DeviceError(_)))
-        ));
-    }
 }

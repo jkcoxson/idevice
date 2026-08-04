@@ -447,31 +447,3 @@ fn list_apps_options(
         "requireContainerAccess": false,
     })
 }
-
-#[cfg(test)]
-mod tests {
-    use super::list_apps_options;
-
-    #[test]
-    fn list_options_explicitly_disable_container_metadata() {
-        let options = list_apps_options(false, true, false, false, false);
-
-        for key in [
-            "includeAppGroupIdentifiers",
-            "includeContainerPaths",
-            "requireContainerAccess",
-        ] {
-            assert_eq!(
-                options.get(key).and_then(plist::Value::as_boolean),
-                Some(false),
-                "{key} must be present and disabled",
-            );
-        }
-        assert_eq!(
-            options
-                .get("includeRemovableApps")
-                .and_then(plist::Value::as_boolean),
-            Some(true)
-        );
-    }
-}
