@@ -173,28 +173,6 @@ impl<R: ReadWrite> Http2Client<R> {
         }
     }
 
-    /// Reads the next DATA payload received on any of the requested streams.
-    pub(super) async fn read_any(
-        &mut self,
-        stream_ids: &[u32],
-    ) -> Result<(u32, Vec<u8>), IdeviceError> {
-        for stream_id in stream_ids {
-            self.cache.entry(*stream_id).or_default();
-        }
-        loop {
-            for stream_id in stream_ids {
-                if let Some(data) = self
-                    .cache
-                    .get_mut(stream_id)
-                    .and_then(|cache| cache.pop_front())
-                {
-                    return Ok((*stream_id, data));
-                }
-            }
-            self.pump().await?;
-        }
-    }
-
     /// Read and handle a single inbound frame: ack SETTINGS (applying any
     /// `InitialWindowSize` change), apply WINDOW_UPDATEs to our send windows,
     /// replenish the peer's receive window for inbound DATA and buffer that DATA

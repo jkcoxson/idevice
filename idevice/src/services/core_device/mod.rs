@@ -93,17 +93,33 @@ impl<R: ReadWrite> CoreDeviceServiceClient<R> {
             let input = XPCObject::from(plist::Value::Dictionary(input));
             let side_channel = uuid::Uuid::new_v4();
             let stream_input = build_streaming_input(input, side_channel);
-            let req = build_invocation_request(
-                feature,
-                stream_input,
-                None,
-                2,
-                STREAM_CORE_SERVICE_VERSION,
+            let mut req = xpc::Dictionary::new();
+            req.insert(
+                "CoreDevice.CoreDeviceDDIProtocolVersion".into(),
+                XPCObject::Int64(2),
+            );
+            req.insert("CoreDevice.action".into(), xpc::Dictionary::new().into());
+            req.insert(
+                "CoreDevice.coreDeviceVersion".into(),
+                create_xpc_version_from_string(STREAM_CORE_SERVICE_VERSION).into(),
+            );
+            req.insert(
+                "CoreDevice.deviceIdentifier".into(),
+                XPCObject::String(uuid::Uuid::new_v4().to_string()),
+            );
+            req.insert(
+                "CoreDevice.featureIdentifier".into(),
+                XPCObject::String(feature),
+            );
+            req.insert("CoreDevice.input".into(), stream_input);
+            req.insert(
+                "CoreDevice.invocationIdentifier".into(),
+                XPCObject::String(uuid::Uuid::new_v4().to_string()),
             );
             self.inner.send_object(req, true).await?;
 
             loop {
-                let response = self.inner.recv_any().await?;
+                let response = self.inner.recv_root().await?;
 
                 match parse_stream_response(response)? {
                     StreamingResponse::Elements(batch) => {
@@ -129,14 +145,36 @@ impl<R: ReadWrite> CoreDeviceServiceClient<R> {
             None => crate::xpc::Dictionary::new().into(),
         };
 
+        let mut req = xpc::Dictionary::new();
         let protocol_version = if action_identifier.is_some() { 2 } else { 0 };
-        let req = build_invocation_request(
-            feature,
-            input,
-            action_identifier,
-            protocol_version,
-            CORE_SERVICE_VERSION,
+        req.insert(
+            "CoreDevice.CoreDeviceDDIProtocolVersion".into(),
+            XPCObject::Int64(protocol_version),
         );
+        req.insert("CoreDevice.action".into(), xpc::Dictionary::new().into());
+        req.insert(
+            "CoreDevice.coreDeviceVersion".into(),
+            create_xpc_version_from_string(CORE_SERVICE_VERSION).into(),
+        );
+        req.insert(
+            "CoreDevice.deviceIdentifier".into(),
+            XPCObject::String(uuid::Uuid::new_v4().to_string()),
+        );
+        req.insert(
+            "CoreDevice.featureIdentifier".into(),
+            XPCObject::String(feature),
+        );
+        req.insert("CoreDevice.input".into(), input);
+        req.insert(
+            "CoreDevice.invocationIdentifier".into(),
+            XPCObject::String(uuid::Uuid::new_v4().to_string()),
+        );
+        if let Some(action_identifier) = action_identifier {
+            req.insert(
+                "CoreDevice.actionIdentifier".into(),
+                XPCObject::String(action_identifier),
+            );
+        }
 
         self.inner.send_object(req, true).await?;
         let res = self.inner.recv().await?;
@@ -164,45 +202,6 @@ impl<R: ReadWrite> CoreDeviceServiceClient<R> {
 
         Ok(res)
     }
-}
-
-fn build_invocation_request(
-    feature: String,
-    input: XPCObject,
-    action_identifier: Option<String>,
-    protocol_version: i64,
-    core_service_version: &str,
-) -> xpc::Dictionary {
-    let mut req = xpc::Dictionary::new();
-    req.insert(
-        "CoreDevice.CoreDeviceDDIProtocolVersion".into(),
-        XPCObject::Int64(protocol_version),
-    );
-    req.insert("CoreDevice.action".into(), xpc::Dictionary::new().into());
-    req.insert(
-        "CoreDevice.coreDeviceVersion".into(),
-        create_xpc_version_from_string(core_service_version).into(),
-    );
-    req.insert(
-        "CoreDevice.deviceIdentifier".into(),
-        XPCObject::String(uuid::Uuid::new_v4().to_string()),
-    );
-    req.insert(
-        "CoreDevice.featureIdentifier".into(),
-        XPCObject::String(feature),
-    );
-    req.insert("CoreDevice.input".into(), input);
-    req.insert(
-        "CoreDevice.invocationIdentifier".into(),
-        XPCObject::String(uuid::Uuid::new_v4().to_string()),
-    );
-    if let Some(action_identifier) = action_identifier {
-        req.insert(
-            "CoreDevice.actionIdentifier".into(),
-            XPCObject::String(action_identifier),
-        );
-    }
-    req
 }
 
 fn build_streaming_input(input: XPCObject, side_channel: uuid::Uuid) -> XPCObject {

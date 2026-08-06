@@ -147,13 +147,13 @@ impl<R: ReadWrite> AppServiceClient<R> {
         internal_apps: bool,
         default_apps: bool,
     ) -> Result<Vec<AppListEntry>, IdeviceError> {
-        let options = list_apps_options(
-            app_clips,
-            removable_apps,
-            hidden_apps,
-            internal_apps,
-            default_apps,
-        );
+        let options = crate::plist!(dict {
+            "includeAppClips": app_clips,
+            "includeRemovableApps": removable_apps,
+            "includeHiddenApps": hidden_apps,
+            "includeInternalApps": internal_apps,
+            "includeDefaultApps": default_apps,
+        });
         let res = self
             .inner
             .invoke_with_plist("com.apple.coredevice.feature.listapps", options)
@@ -198,7 +198,7 @@ impl<R: ReadWrite> AppServiceClient<R> {
         internal_apps: bool,
         default_apps: bool,
     ) -> impl Stream<Item = Result<AppListEntry, IdeviceError>> + '_ {
-        let options = list_apps_options(
+        let options = stream_apps_options(
             app_clips,
             removable_apps,
             hidden_apps,
@@ -427,7 +427,7 @@ impl<R: ReadWrite> AppServiceClient<R> {
     }
 }
 
-fn list_apps_options(
+fn stream_apps_options(
     app_clips: bool,
     removable_apps: bool,
     hidden_apps: bool,
