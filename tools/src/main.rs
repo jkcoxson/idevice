@@ -68,8 +68,22 @@ mod xctest;
 
 mod pcap;
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    let child = std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .name("idevice-tools-main".to_string())
+        .spawn(|| {
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .expect("failed to build tokio runtime");
+            rt.block_on(async_main());
+        })
+        .expect("failed to spawn main thread");
+    child.join().expect("main thread panicked");
+}
+
+async fn async_main() {
     tracing_subscriber::fmt::init();
 
     // Set the base CLI
