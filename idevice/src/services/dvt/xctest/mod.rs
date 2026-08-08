@@ -2051,7 +2051,7 @@ impl XCUITestService {
         if ios_major_version < 17 {
             use crate::services::house_arrest::HouseArrestClient;
             use crate::services::afc::opcode::AfcFopenMode;
-            let mut house = HouseArrestClient::connect(&*self.provider).await?;
+            let house = HouseArrestClient::connect(&*self.provider).await?;
             let mut afc = house.vend_container(&cfg.runner_bundle_id).await?;
             if let Err(e) = afc.mk_dir("/tmp").await {
                 debug!("mk_dir /tmp: {e} (likely already exists)");

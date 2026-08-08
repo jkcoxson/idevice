@@ -169,6 +169,7 @@ xctest = [
   "dvt",
   "installation_proxy",
   "afc",
+  "house_arrest",
   "dep:uuid",
   "dep:ns-keyed-archive",
   "tunnel_tcp_stack",
