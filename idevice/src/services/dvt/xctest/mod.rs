@@ -2049,8 +2049,8 @@ impl XCUITestService {
         // createTestConfigOnDevice (house_arrest VendContainer + write
         // tmp/<session>.xctestconfiguration).
         if ios_major_version < 17 {
-            use crate::services::house_arrest::HouseArrestClient;
             use crate::services::afc::opcode::AfcFopenMode;
+            use crate::services::house_arrest::HouseArrestClient;
             let house = HouseArrestClient::connect(&*self.provider).await?;
             let mut afc = house.vend_container(&cfg.runner_bundle_id).await?;
             if let Err(e) = afc.mk_dir("/tmp").await {
