@@ -2250,6 +2250,111 @@ mod tests {
     use crate::services::wda::WdaPorts;
 
     #[test]
+    fn testmanager_uses_proxy_for_all_supported_ios_versions() {
+        // The proxied daemon channel is used on every supported iOS version,
+        // matching tidevice (unconditional) and pymobiledevice3 (proxy form is
+        // version-independent). Lock this in so a version threshold cannot
+        // silently regress iOS 11-13 back onto the plain channel.
+        for version in 11..=18u8 {
+            assert!(
+                super::testmanager_uses_proxy(version),
+                "iOS {version} should use the proxied daemon channel"
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_launch_env_points_at_config_file() {
+        let session = uuid::Uuid::new_v4();
+        let config_path = format!(
+            "/tmp/{}.xctestconfiguration",
+            session.to_string().to_uppercase()
+        );
+        let (_, env, _) = super::build_launch_env(
+            15,
+            &session,
+            "/app/Runner.app",
+            "/var/mobile/Containers/Data/Application/ABC",
+            "WebDriverAgentRunner",
+            &config_path,
+            None,
+            None,
+        );
+
+        // iOS < 17: the runner reads the config from the path we write into
+        // the app container's tmp/ dir.
+        let on_device = env
+            .get("XCTestConfigurationFilePath")
+            .and_then(|v| v.as_string())
+            .expect("XCTestConfigurationFilePath set");
+        assert!(on_device.starts_with("/var/mobile/Containers/Data/Application/ABC/tmp/"));
+        assert!(on_device.ends_with(".xctestconfiguration"));
+        // iOS 17+ only marker must not leak into the legacy launch env.
+        assert!(env.get("XCTestManagerVariant").is_none());
+    }
+
+    #[test]
+    fn ios17_launch_env_clears_config_file_and_sets_variant() {
+        let session = uuid::Uuid::new_v4();
+        let (_, env, _) = super::build_launch_env(
+            17,
+            &session,
+            "/app/Runner.app",
+            "/var/mobile/Containers/Data/Application/ABC",
+            "WebDriverAgentRunner",
+            "/tmp/x.xctestconfiguration",
+            None,
+            None,
+        );
+
+        // iOS 17+: config travels via the capabilities reply, so the env path
+        // is cleared and the DDI variant marker is set.
+        assert_eq!(
+            env.get("XCTestConfigurationFilePath")
+                .and_then(|v| v.as_string()),
+            Some("")
+        );
+        assert_eq!(
+            env.get("XCTestManagerVariant").and_then(|v| v.as_string()),
+            Some("DDI")
+        );
+        let dyld_fw = env
+            .get("DYLD_FRAMEWORK_PATH")
+            .and_then(|v| v.as_string())
+            .expect("DYLD_FRAMEWORK_PATH set");
+        assert!(dyld_fw.starts_with('$'));
+    }
+
+    #[test]
+    fn launch_env_merges_runner_overrides() {
+        let session = uuid::Uuid::new_v4();
+        let extra = crate::plist!(dict {
+            "USE_PORT": "8200",
+            "NSUnbufferedIO": "NO",
+        });
+        let (_, env, _) = super::build_launch_env(
+            15,
+            &session,
+            "/app/Runner.app",
+            "/var/mobile/Containers/Data/Application/ABC",
+            "WebDriverAgentRunner",
+            "/tmp/x.xctestconfiguration",
+            Some(&extra),
+            None,
+        );
+
+        assert_eq!(
+            env.get("USE_PORT").and_then(|v| v.as_string()),
+            Some("8200")
+        );
+        // Caller-provided env overrides the base value.
+        assert_eq!(
+            env.get("NSUnbufferedIO").and_then(|v| v.as_string()),
+            Some("NO")
+        );
+    }
+
+    #[test]
     fn wda_ports_follow_runner_environment() {
         let runner_env = crate::plist!(dict {
             "USE_PORT": "8200",
