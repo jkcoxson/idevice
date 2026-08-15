@@ -1,5 +1,6 @@
 // Jackson Coxson
 
+use futures_util::TryStreamExt;
 use idevice::{
     IdeviceService, RsdService,
     core_device::{AppServiceClient, OpenStdioSocketClient},
@@ -79,6 +80,16 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
 
     // Make the connection to RemoteXPC
     let mut handshake = RsdHandshake::new(stream).await.unwrap();
+    let app_service_name = AppServiceClient::rsd_service_name();
+    let supports_stream_apps = handshake
+        .services
+        .get(app_service_name.as_ref())
+        .and_then(|service| service.features.as_ref())
+        .is_some_and(|features| {
+            features
+                .iter()
+                .any(|feature| feature == "com.apple.coredevice.feature.streamapplist")
+        });
 
     let mut asc = AppServiceClient::connect_rsd(&mut adapter, &mut handshake)
         .await
@@ -89,10 +100,14 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
 
     match sub_name.as_str() {
         "list" => {
-            let apps = asc
-                .list_apps(true, true, true, true, true)
-                .await
-                .expect("Failed to get apps");
+            let apps = if supports_stream_apps {
+                asc.stream_apps(true, true, true, true, true)
+                    .try_collect()
+                    .await
+            } else {
+                asc.list_apps(true, true, true, true, true).await
+            }
+            .expect("Failed to get apps");
             println!("{apps:#?}");
         }
         "launch" => {

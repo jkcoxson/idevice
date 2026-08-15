@@ -1,5 +1,6 @@
 // Jackson Coxson
 
+use futures::{Stream, StreamExt};
 use plist_macro::plist_to_xml_bytes;
 use serde::Deserialize;
 use tracing::warn;
@@ -183,6 +184,39 @@ impl<R: ReadWrite> AppServiceClient<R> {
         }
 
         Ok(desd)
+    }
+
+    /// Streams applications through CoreDevice's side channel.
+    ///
+    /// Consume the stream to completion before invoking another operation on this
+    /// client. If it is dropped early, reconnect the client before reusing it.
+    pub fn stream_apps(
+        &mut self,
+        app_clips: bool,
+        removable_apps: bool,
+        hidden_apps: bool,
+        internal_apps: bool,
+        default_apps: bool,
+    ) -> impl Stream<Item = Result<AppListEntry, IdeviceError>> + '_ {
+        let options = stream_apps_options(
+            app_clips,
+            removable_apps,
+            hidden_apps,
+            internal_apps,
+            default_apps,
+        );
+        self.inner
+            .invoke_streaming_with_plist("com.apple.coredevice.feature.streamapplist", options)
+            .map(|element| {
+                element.and_then(|element| {
+                    plist::from_value(&element).map_err(|error| {
+                        warn!("Failed to parse streamed app entry: {error:?}");
+                        IdeviceError::UnexpectedResponse(
+                            "failed to parse streamed app list entry".into(),
+                        )
+                    })
+                })
+            })
     }
 
     /// Launches an application by a bundle ID.
@@ -391,4 +425,25 @@ impl<R: ReadWrite> AppServiceClient<R> {
             }
         }
     }
+}
+
+fn stream_apps_options(
+    app_clips: bool,
+    removable_apps: bool,
+    hidden_apps: bool,
+    internal_apps: bool,
+    default_apps: bool,
+) -> plist::Dictionary {
+    crate::plist!(dict {
+        "includeAppClips": app_clips,
+        "includeRemovableApps": removable_apps,
+        "includeHiddenApps": hidden_apps,
+        "includeInternalApps": internal_apps,
+        "includeDefaultApps": default_apps,
+        // The InstalledAppsRequestParams decoder requires these keys even when
+        // app listing does not request container or App Group metadata.
+        "includeAppGroupIdentifiers": false,
+        "includeContainerPaths": false,
+        "requireContainerAccess": false,
+    })
 }
