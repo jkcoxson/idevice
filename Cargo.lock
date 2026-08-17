@@ -1364,9 +1364,9 @@ dependencies = [
 
 [[package]]
 name = "jktcp"
-version = "0.1.6"
+version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54408d8a86952b9f1cc009782ad7bbb4007a7caaba0599db441e0eae8785288c"
+checksum = "4d3b9e59938be47d261173086c65a9352fe048951bc502109e7595b70b60cd98"
 dependencies = [
  "futures",
  "getrandom 0.3.4",

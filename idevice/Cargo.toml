@@ -24,7 +24,7 @@ plist = { version = "1.8" }
 plist-macro = { version = "0.1.6" }
 serde = { version = "1", features = ["derive"] }
 ns-keyed-archive = { version = "0.1.5", optional = true }
-jktcp = { version = "0.1.6", optional = true, default-features = false }
+jktcp = { version = "0.1.7", optional = true, default-features = false }
 
 thiserror = { version = "2" }
 tracing = { version = "0.1.41" }
@@ -143,12 +143,7 @@ display_stream = [
 crashreportcopymobile = ["afc"]
 debug_proxy = []
 diagnostics_relay = []
-dvt = [
-  "dep:ns-keyed-archive",
-  "tokio/sync",
-  "tokio/rt",
-  "tokio/macros",
-]
+dvt = ["dep:ns-keyed-archive", "tokio/sync", "tokio/rt", "tokio/macros"]
 energy_monitor = ["dvt"]
 graphics = ["dvt", "rsd"]
 device_info = ["dvt"]
