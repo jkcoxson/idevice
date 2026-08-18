@@ -890,10 +890,11 @@ struct DriverProxy {
 impl DriverProxy {
     async fn wait(
         client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
+        ios_major_version: u8,
         timeout_secs: f64,
     ) -> Result<Self, IdeviceError> {
         Ok(Self {
-            channel: wait_for_driver_channel(client, timeout_secs).await?,
+            channel: wait_for_driver_channel(client, ios_major_version, timeout_secs).await?,
         })
     }
 
@@ -964,19 +965,31 @@ fn testmanager_uses_proxy(ios_major_version: u8) -> bool {
 
 async fn wait_for_xctest_service_channel(
     main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
+    plain_identifiers: &[&str],
     proxy_remote_identifiers: &[&str],
+    ios_major_version: u8,
     timeout_secs: f64,
 ) -> Result<OwnedChannel<Box<dyn ReadWrite>>, IdeviceError> {
     let timeout = Some(std::time::Duration::from_secs_f64(timeout_secs));
 
-    // Every supported iOS version (11+) uses the proxied daemon channel, so
-    // wait for exactly that form under a single deadline (pymobiledevice3
-    // parity). A sequential proxied-then-plain fallback would double the
-    // effective timeout and could only select the plain channel after the
-    // proxied wait expired.
-    let code = main_client
-        .wait_for_proxied_service_channel_code(proxy_remote_identifiers, true, Some(true), timeout)
-        .await;
+    // Wait for exactly the channel form this iOS version uses, under a single
+    // deadline (pymobiledevice3 parity). A sequential proxied-then-plain
+    // fallback would double the effective timeout and could only select the
+    // plain channel after the proxied wait expired.
+    let code = if testmanager_uses_proxy(ios_major_version) {
+        main_client
+            .wait_for_proxied_service_channel_code(
+                proxy_remote_identifiers,
+                true,
+                Some(true),
+                timeout,
+            )
+            .await
+    } else {
+        main_client
+            .wait_for_service_channel_code(plain_identifiers, Some(true), timeout)
+            .await
+    };
     let code = match code {
         Ok(code) => code,
         Err(IdeviceError::XcTestTimeout(_)) => return Err(IdeviceError::TestRunnerTimeout),
@@ -1066,7 +1079,7 @@ async fn start_test_plan_session(
     _main_proxy: &mut TestManagerProxy<Box<dyn ReadWrite>>,
     ios_major_version: u8,
 ) -> Result<OwnedChannel<Box<dyn ReadWrite>>, IdeviceError> {
-    let mut driver_proxy = DriverProxy::wait(main_client, 30.0).await?;
+    let mut driver_proxy = DriverProxy::wait(main_client, ios_major_version, 30.0).await?;
     if ios_major_version < 17 {
         // iOS 14-16: serialized transport — testmanagerd requested the bridge
         // channel (ForChannelRequest), so actively start the plan on it with
@@ -1083,11 +1096,19 @@ async fn start_test_plan_session(
 
 pub(super) async fn wait_for_driver_channel(
     main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
+    ios_major_version: u8,
     timeout_secs: f64,
 ) -> Result<OwnedChannel<Box<dyn ReadWrite>>, IdeviceError> {
     const DRIVER_SERVICE_IDENTIFIERS: &[&str] =
         &[XCTEST_DRIVER_INTERFACE, XCTEST_MANAGER_IDE_INTERFACE]; // the latter for iOS 15
-    wait_for_xctest_service_channel(main_client, DRIVER_SERVICE_IDENTIFIERS, timeout_secs).await
+    wait_for_xctest_service_channel(
+        main_client,
+        DRIVER_SERVICE_IDENTIFIERS,
+        DRIVER_SERVICE_IDENTIFIERS,
+        ios_major_version,
+        timeout_secs,
+    )
+    .await
 }
 
 /// Signals the test runner to begin executing the test plan.
