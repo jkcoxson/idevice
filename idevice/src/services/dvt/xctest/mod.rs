@@ -353,7 +353,14 @@ pub(crate) fn build_launch_env(
         }
     }
 
-    // iOS >= 17 — extend DYLD paths and clear config path (sent via capabilities)
+    // iOS >= 14 — config travels via the _XCT_testRunnerReadyWithCapabilities_
+    // reply, so the on-disk path is cleared (matches go-ios xcode12: writing
+    // an .xctestconfiguration file on iOS 14-16 broke test runs there).
+    if ios_major_version >= 14 {
+        env.insert("XCTestConfigurationFilePath".into(), "".into());
+    }
+
+    // iOS >= 17 — extend DYLD paths and mark the DDI variant.
     if ios_major_version >= 17 {
         let existing_fw = env
             .get("DYLD_FRAMEWORK_PATH")
@@ -373,8 +380,6 @@ pub(crate) fn build_launch_env(
                 existing_fw
             ),
             "DYLD_LIBRARY_PATH": format!("${}:/System/Developer/usr/lib", existing_lib),
-            // Config path is sent as return value of _XCT_testRunnerReadyWithCapabilities_
-            "XCTestConfigurationFilePath": "",
             "XCTestManagerVariant": "DDI",
         });
         for (key, value) in ios17_env {
@@ -2060,12 +2065,14 @@ impl XCUITestService {
         // 3. Build XCTestConfiguration
         let xctest_config = cfg.build_xctest_configuration(session_id, ios_major_version)?;
 
-        // 3.5 iOS < 17: write the xctestconfiguration into the app container's
-        // tmp/ dir (launch env XCTestConfigurationFilePath points at it; iOS 17+
-        // passes config via the capabilities reply instead). Mirrors go-ios
-        // createTestConfigOnDevice (house_arrest VendContainer + write
-        // tmp/<session>.xctestconfiguration).
-        if ios_major_version < 17 {
+        // 3.5 iOS 11-13: write the xctestconfiguration into the app container's
+        // tmp/ dir (launch env XCTestConfigurationFilePath points at it). iOS
+        // 14+ passes the config via the _XCT_testRunnerReadyWithCapabilities_
+        // reply instead — writing the file there is unnecessary and, per go-ios,
+        // historically broke test runs on iOS 14-16. Mirrors go-ios's
+        // setupXcuiTest (house_arrest VendContainer + write
+        // tmp/<session>.xctestconfiguration) for the legacy iOS 11-13 path.
+        if ios_major_version < 14 {
             use crate::services::afc::opcode::AfcFopenMode;
             use crate::services::house_arrest::HouseArrestClient;
             let house = HouseArrestClient::connect(&*self.provider).await?;
@@ -2265,14 +2272,14 @@ mod tests {
     }
 
     #[test]
-    fn legacy_launch_env_points_at_config_file() {
+    fn ios11_13_launch_env_points_at_config_file() {
         let session = uuid::Uuid::new_v4();
         let config_path = format!(
             "/tmp/{}.xctestconfiguration",
             session.to_string().to_uppercase()
         );
         let (_, env, _) = super::build_launch_env(
-            15,
+            13,
             &session,
             "/app/Runner.app",
             "/var/mobile/Containers/Data/Application/ABC",
@@ -2282,7 +2289,7 @@ mod tests {
             None,
         );
 
-        // iOS < 17: the runner reads the config from the path we write into
+        // iOS 11-13: the runner reads the config from the path we write into
         // the app container's tmp/ dir.
         let on_device = env
             .get("XCTestConfigurationFilePath")
@@ -2291,6 +2298,31 @@ mod tests {
         assert!(on_device.starts_with("/var/mobile/Containers/Data/Application/ABC/tmp/"));
         assert!(on_device.ends_with(".xctestconfiguration"));
         // iOS 17+ only marker must not leak into the legacy launch env.
+        assert!(env.get("XCTestManagerVariant").is_none());
+    }
+
+    #[test]
+    fn ios14_16_launch_env_clears_config_file_path() {
+        let session = uuid::Uuid::new_v4();
+        let (_, env, _) = super::build_launch_env(
+            15,
+            &session,
+            "/app/Runner.app",
+            "/var/mobile/Containers/Data/Application/ABC",
+            "WebDriverAgentRunner",
+            "/tmp/x.xctestconfiguration",
+            None,
+            None,
+        );
+
+        // iOS 14-16: config travels via the _XCT_testRunnerReadyWithCapabilities_
+        // reply, so the env path is cleared (go-ios xcode12 parity) and no
+        // DDI marker is set yet.
+        assert_eq!(
+            env.get("XCTestConfigurationFilePath")
+                .and_then(|v| v.as_string()),
+            Some("")
+        );
         assert!(env.get("XCTestManagerVariant").is_none());
     }
 
