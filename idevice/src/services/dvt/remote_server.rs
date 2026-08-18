@@ -560,49 +560,7 @@ impl<R: ReadWrite> RemoteServerClient<R> {
         self.shared.registry_notify.notify_waiters();
     }
 
-    pub(crate) async fn wait_for_registered_channel_code(
-        &self,
-        identifiers: &[&str],
-        remote: Option<bool>,
-        timeout: Option<std::time::Duration>,
-    ) -> Result<i32, IdeviceError> {
-        let wait_future = async {
-            loop {
-                if let Some(code) = self.find_registered_channel_code(identifiers, remote).await {
-                    return Ok(code);
-                }
-
-                if self.shared.closed.load(Ordering::Relaxed) {
-                    return Err(Self::closed_error());
-                }
-
-                tokio::select! {
-                    _ = self.shared.registry_notify.notified() => {}
-                    _ = self.shared.closed_notify.notified() => return Err(Self::closed_error()),
-                }
-            }
-        };
-
-        match timeout {
-            Some(timeout) => crate::time::timeout(timeout, wait_future)
-                .await
-                .map_err(|_| remote_timeout_error(timeout))?,
-            None => wait_future.await,
-        }
-    }
-
-    /// Waits for the code of a service channel matching one of the given identifiers.
-    pub(crate) async fn wait_for_service_channel_code(
-        &self,
-        identifiers: &[&str],
-        remote: Option<bool>,
-        timeout: Option<std::time::Duration>,
-    ) -> Result<i32, IdeviceError> {
-        self.wait_for_registered_channel_code(identifiers, remote, timeout)
-            .await
-    }
-
-    pub(crate) async fn wait_for_proxied_channel_code(
+    async fn wait_for_proxied_channel_code(
         &self,
         identifiers: &[&str],
         remote_service: bool,
@@ -652,19 +610,6 @@ impl<R: ReadWrite> RemoteServerClient<R> {
     ) -> Result<i32, IdeviceError> {
         self.wait_for_proxied_channel_code(identifiers, remote_service, remote_channel, timeout)
             .await
-    }
-
-    async fn find_registered_channel_code(
-        &self,
-        identifiers: &[&str],
-        remote: Option<bool>,
-    ) -> Option<i32> {
-        let metadata = self.shared.channel_metadata.lock().await;
-        metadata.values().find_map(|entry| {
-            let matches_identifier = identifiers.contains(&entry.identifier.as_str());
-            let matches_remote = remote.is_none_or(|remote_flag| remote_flag == entry.remote);
-            (matches_identifier && matches_remote).then_some(entry.code)
-        })
     }
 
     async fn find_registered_proxied_channel_code(
