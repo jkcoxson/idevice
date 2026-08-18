@@ -52,12 +52,8 @@ pub const XCTEST_PROXY_IDE_TO_DAEMON: &str =
 pub const XCTEST_PROXY_IDE_TO_DRIVER: &str =
     "dtxproxy:XCTestManager_IDEInterface:XCTestDriverInterface";
 
-/// iOS < 17 proxy channel: XCTestDriverInterface ↔ XCTestManager_IDEInterface
-/// (reverse channel from the runner, opened by testmanagerd on legacy
-/// transports). Format matches pymobiledevice3's legacy implementation
-/// (`serve_channel("dtxproxy:XCTestDriverInterface:XCTestManager_IDEInterface", …)`)
-/// and the identifier observed on iOS 15.x devices. Note the sub-service order
-/// is the reverse of the iOS 17+ form above.
+/// iOS 14-16 reverse bridge channel opened by testmanagerd.
+/// The sub-service order is reversed from the iOS 17+ form above.
 pub const XCTEST_PROXY_DRIVER_TO_IDE: &str =
     "dtxproxy:XCTestDriverInterface:XCTestManager_IDEInterface";
 

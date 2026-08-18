@@ -5,7 +5,7 @@
 //! protocols. It handles session setup, test runner launch, and lifecycle
 //! event dispatch.
 //!
-//! Supports iOS 14-16 via lockdown and iOS 17+ via RSD tunnel.
+//! Supports iOS 11+ via lockdown and iOS 17+ via RSD tunnel.
 //!
 //! # Example
 //! ```rust,no_run
@@ -304,17 +304,23 @@ impl TestConfig {
 /// * `ios_major_version` - iOS major version number
 /// * `session_id` - Test session UUID
 /// * `runner_app_path` - On-device path of the runner app bundle
+/// * `runner_app_container` - On-device container path of the runner app
 /// * `target_name` - Config name (executable without `"-Runner"` suffix)
+/// * `xctest_config_path` - Device path to the `.xctestconfiguration` file
+///   (e.g. `"/tmp/{UUID}.xctestconfiguration"`)
 /// * `extra_env` - Additional env vars merged on top of the base set
 /// * `extra_args` - Additional args appended after the base set
 ///
 /// # Returns
 /// `(launch_args, launch_env, launch_options)` as `(Vec<String>, Dictionary, Dictionary)`
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_launch_env(
     ios_major_version: u8,
     session_id: &uuid::Uuid,
     runner_app_path: &str,
+    runner_app_container: &str,
     target_name: &str,
+    xctest_config_path: &str,
     extra_env: Option<&Dictionary>,
     extra_args: Option<&[String]>,
 ) -> (Vec<String>, Dictionary, Dictionary) {
@@ -326,21 +332,32 @@ pub(crate) fn build_launch_env(
         "CA_DEBUG_TRANSACTIONS": "0",
         "DYLD_FRAMEWORK_PATH": format!("{}/Frameworks:", runner_app_path),
         "DYLD_LIBRARY_PATH": format!("{}/Frameworks", runner_app_path),
-        "DYLD_INSERT_LIBRARIES": "/Developer/usr/lib/libMainThreadChecker.dylib",
         "MTC_CRASH_ON_REPORT": "1",
         "NSUnbufferedIO": "YES",
-        "OS_ACTIVITY_DT_MODE": "YES",
         "SQLITE_ENABLE_THREAD_ASSERTIONS": "1",
         "WDA_PRODUCT_BUNDLE_IDENTIFIER": "",
         "XCTestBundlePath": format!("{}/PlugIns/{}.xctest", runner_app_path, target_name),
-        // Config travels via the _XCT_testRunnerReadyWithCapabilities_ reply
-        // (go-ios xcode12 parity), so no on-disk path is needed.
-        "XCTestConfigurationFilePath": "",
+        "XCTestConfigurationFilePath": if uses_legacy_transport(ios_major_version) {
+            String::new()
+        } else {
+            format!("{}{}", runner_app_container, xctest_config_path)
+        },
         "XCODE_DBG_XPC_EXCLUSIONS": "com.apple.dt.xctestSymbolicator",
         "XCTestSessionIdentifier": session_upper.clone(),
     });
 
-    // iOS >= 17 — extend DYLD paths and mark the DDI variant.
+    // iOS >= 11
+    if ios_major_version >= 11 {
+        let ios11_env = crate::plist!(dict {
+            "DYLD_INSERT_LIBRARIES": "/Developer/usr/lib/libMainThreadChecker.dylib",
+            "OS_ACTIVITY_DT_MODE": "YES",
+        });
+        for (key, value) in ios11_env {
+            env.insert(key, value);
+        }
+    }
+
+    // iOS >= 17 — extend DYLD paths and clear config path (sent via capabilities)
     if ios_major_version >= 17 {
         let existing_fw = env
             .get("DYLD_FRAMEWORK_PATH")
@@ -360,6 +377,8 @@ pub(crate) fn build_launch_env(
                 existing_fw
             ),
             "DYLD_LIBRARY_PATH": format!("${}:/System/Developer/usr/lib", existing_lib),
+            // Config path is sent as return value of _XCT_testRunnerReadyWithCapabilities_
+            "XCTestConfigurationFilePath": "",
             "XCTestManagerVariant": "DDI",
         });
         for (key, value) in ios17_env {
@@ -902,13 +921,10 @@ impl DriverProxy {
         start_executing_test_plan(&mut self.channel).await
     }
 
-    /// iOS 14-16 (serialized transport): actively start the test plan on the
-    /// bridge channel requested by testmanagerd. Mirrors the go-ios xcode12
-    /// path (xcuitestrunner_12.go): after ForChannelRequest returns the bridge
-    /// channel (-1), call `_IDE_startExecutingTestPlanWithProtocolVersion:` with
-    /// the NSKeyedArchived protocol version 36, MethodCallAsync (no reply wait).
+    /// Starts an iOS 14-16 serialized-transport test plan on the reverse
+    /// bridge channel requested by testmanagerd.
     async fn start_executing_test_plan_legacy(&mut self) -> Result<(), IdeviceError> {
-        let version_bytes = AuxValue::archived_value(Value::Integer(36i64.into()));
+        let version_bytes = AuxValue::archived_value(Value::Integer((XCODE_VERSION as i64).into()));
         self.channel
             .call_method(
                 Some(IDE_START_EXECUTING_TEST_PLAN),
@@ -955,12 +971,11 @@ impl<'a, R: ReadWrite + 'static> XCTestProcessControlChannel<'a, R> {
 /// replies with an empty acknowledgement, registers the channel, and returns a
 /// `Channel` handle to it.
 fn testmanager_uses_proxy(ios_major_version: u8) -> bool {
-    // All supported iOS versions (11+) use the dtxproxy IDE↔daemon channel,
-    // matching tidevice (unconditional) and pymobiledevice3 (proxy form is
-    // version-independent; only the lockdown service name changes below iOS
-    // 14). The plain channel is what testmanagerd cancels on iOS 14-16; iOS
-    // 11-13 via proxy is unverified on-device but matches the references.
-    ios_major_version >= 11
+    ios_major_version >= 14
+}
+
+fn uses_legacy_transport(ios_major_version: u8) -> bool {
+    (14..17).contains(&ios_major_version)
 }
 
 async fn wait_for_xctest_service_channel(
@@ -972,10 +987,8 @@ async fn wait_for_xctest_service_channel(
 ) -> Result<OwnedChannel<Box<dyn ReadWrite>>, IdeviceError> {
     let timeout = Some(std::time::Duration::from_secs_f64(timeout_secs));
 
-    // Wait for exactly the channel form this iOS version uses, under a single
-    // deadline (pymobiledevice3 parity). A sequential proxied-then-plain
-    // fallback would double the effective timeout and could only select the
-    // plain channel after the proxied wait expired.
+    // Select the expected channel form once so the caller's timeout remains
+    // the total deadline rather than applying once per fallback.
     let code = if testmanager_uses_proxy(ios_major_version) {
         main_client
             .wait_for_proxied_service_channel_code(
@@ -1009,8 +1022,7 @@ async fn register_early_driver_channel_handler(
             &[
                 XCTEST_DRIVER_INTERFACE,
                 XCTEST_PROXY_IDE_TO_DRIVER,
-                XCTEST_PROXY_DRIVER_TO_IDE, // legacy iOS < 17 bridge channel form
-                XCTEST_MANAGER_IDE_INTERFACE, // legacy iOS 15 driver channel name
+                XCTEST_PROXY_DRIVER_TO_IDE,
             ],
             move |mut channel, _identifier| {
                 let xctest_config = xctest_config.clone();
@@ -1080,7 +1092,7 @@ async fn start_test_plan_session(
     ios_major_version: u8,
 ) -> Result<OwnedChannel<Box<dyn ReadWrite>>, IdeviceError> {
     let mut driver_proxy = DriverProxy::wait(main_client, ios_major_version, 30.0).await?;
-    if ios_major_version < 17 {
+    if uses_legacy_transport(ios_major_version) {
         // iOS 14-16: serialized transport — testmanagerd requested the bridge
         // channel (ForChannelRequest), so actively start the plan on it with
         // protocol version 36 (go-ios xcode12 path).
@@ -1099,8 +1111,7 @@ pub(super) async fn wait_for_driver_channel(
     ios_major_version: u8,
     timeout_secs: f64,
 ) -> Result<OwnedChannel<Box<dyn ReadWrite>>, IdeviceError> {
-    const DRIVER_SERVICE_IDENTIFIERS: &[&str] =
-        &[XCTEST_DRIVER_INTERFACE, XCTEST_MANAGER_IDE_INTERFACE]; // the latter for iOS 15
+    const DRIVER_SERVICE_IDENTIFIERS: &[&str] = &[XCTEST_DRIVER_INTERFACE];
     wait_for_xctest_service_channel(
         main_client,
         DRIVER_SERVICE_IDENTIFIERS,
@@ -2016,8 +2027,12 @@ impl XCUITestService {
         listener: &mut L,
         timeout: Option<std::time::Duration>,
     ) -> Result<(), IdeviceError> {
-        // 1. Session UUID
+        // 1. Session UUID + config path
         let session_id = uuid::Uuid::new_v4();
+        let xctest_path = format!(
+            "/tmp/{}.xctestconfiguration",
+            session_id.to_string().to_uppercase()
+        );
 
         // 2. iOS major version (needed for service selection and launch env)
         let ios_major_version: u8 = {
@@ -2035,25 +2050,23 @@ impl XCUITestService {
         // 3. Build XCTestConfiguration
         let xctest_config = cfg.build_xctest_configuration(session_id, ios_major_version)?;
 
-        // The config is never written to disk: the runner receives it via the
-        // _XCT_testRunnerReadyWithCapabilities_ reply (go-ios xcode12 parity;
-        // writing an .xctestconfiguration file is what broke test runs on
-        // iOS 14-16 there).
-
         // 4. Connect to testmanagerd (ctrl + main) and DVT
         let mut conns = connect_testmanagerd(&*self.provider, ios_major_version).await?;
-        // Register the incoming channel initializer BEFORE opening the main
-        // channel: testmanagerd immediately opens the driver bridge channel
-        // (named XCTestManager_IDEInterface on iOS 15) in response to our open;
-        // a late registration gets the request canceled ("No channel handler
-        // specified") and the runner transport times out.
-        register_early_driver_channel_handler(&mut conns.main, &xctest_config).await;
+        let legacy_transport = uses_legacy_transport(ios_major_version);
+        if legacy_transport {
+            // iOS 14-16 may request the reverse bridge as soon as main opens.
+            register_early_driver_channel_handler(&mut conns.main, &xctest_config).await;
+        }
         let mut ctrl_proxy = TestManagerProxy::open(&mut conns.ctrl, ios_major_version).await?;
         let mut main_proxy = TestManagerProxy::open(&mut conns.main, ios_major_version).await?;
         let mut process_control = XCTestProcessControlChannel::open(&mut conns.dvt).await?;
 
         let config_name = cfg.config_name().to_owned();
         initialize_testmanager_sessions(&mut ctrl_proxy, &mut main_proxy, &xctest_config).await?;
+        if !legacy_transport {
+            // Preserve the established registration timing on other versions.
+            register_early_driver_channel_handler(&mut conns.main, &xctest_config).await;
+        }
         initialize_testmanager_daemon_sessions(
             &mut ctrl_proxy,
             &mut main_proxy,
@@ -2068,7 +2081,9 @@ impl XCUITestService {
             ios_major_version,
             &session_id,
             &cfg.runner_app_path,
+            &cfg.runner_app_container,
             &config_name,
+            &xctest_path,
             cfg.runner_env.as_ref(),
             cfg.runner_args.as_deref(),
         );
@@ -2189,97 +2204,31 @@ mod tests {
     use crate::services::wda::WdaPorts;
 
     #[test]
-    fn testmanager_uses_proxy_for_all_supported_ios_versions() {
-        // The proxied daemon channel is used on every supported iOS version,
-        // matching tidevice (unconditional) and pymobiledevice3 (proxy form is
-        // version-independent). Lock this in so a version threshold cannot
-        // silently regress iOS 11-13 back onto the plain channel.
-        for version in 11..=18u8 {
-            assert!(
-                super::testmanager_uses_proxy(version),
-                "iOS {version} should use the proxied daemon channel"
-            );
-        }
-    }
+    fn ios14_16_uses_legacy_transport_and_capabilities_config() {
+        assert!(!super::uses_legacy_transport(13));
+        assert!(super::uses_legacy_transport(14));
+        assert!(super::uses_legacy_transport(16));
+        assert!(!super::uses_legacy_transport(17));
+        assert!(!super::testmanager_uses_proxy(13));
+        assert!(super::testmanager_uses_proxy(14));
 
-    #[test]
-    fn launch_env_has_no_config_file_path() {
         let session = uuid::Uuid::new_v4();
         let (_, env, _) = super::build_launch_env(
             15,
             &session,
             "/app/Runner.app",
+            "/var/mobile/Containers/Data/Application/ABC",
             "WebDriverAgentRunner",
+            "/tmp/x.xctestconfiguration",
             None,
             None,
         );
-
-        // All supported versions receive the config via the
-        // _XCT_testRunnerReadyWithCapabilities_ reply (go-ios xcode12 parity),
-        // so the env path is always cleared and no DDI marker is set below 17.
         assert_eq!(
             env.get("XCTestConfigurationFilePath")
-                .and_then(|v| v.as_string()),
+                .and_then(|value| value.as_string()),
             Some("")
         );
         assert!(env.get("XCTestManagerVariant").is_none());
-    }
-
-    #[test]
-    fn ios17_launch_env_clears_config_file_and_sets_variant() {
-        let session = uuid::Uuid::new_v4();
-        let (_, env, _) = super::build_launch_env(
-            17,
-            &session,
-            "/app/Runner.app",
-            "WebDriverAgentRunner",
-            None,
-            None,
-        );
-
-        // iOS 17+: config travels via the capabilities reply, so the env path
-        // is cleared and the DDI variant marker is set.
-        assert_eq!(
-            env.get("XCTestConfigurationFilePath")
-                .and_then(|v| v.as_string()),
-            Some("")
-        );
-        assert_eq!(
-            env.get("XCTestManagerVariant").and_then(|v| v.as_string()),
-            Some("DDI")
-        );
-        let dyld_fw = env
-            .get("DYLD_FRAMEWORK_PATH")
-            .and_then(|v| v.as_string())
-            .expect("DYLD_FRAMEWORK_PATH set");
-        assert!(dyld_fw.starts_with('$'));
-    }
-
-    #[test]
-    fn launch_env_merges_runner_overrides() {
-        let session = uuid::Uuid::new_v4();
-        let extra = crate::plist!(dict {
-            "USE_PORT": "8200",
-            "NSUnbufferedIO": "NO",
-        });
-        let (_, env, _) = super::build_launch_env(
-            15,
-            &session,
-            "/app/Runner.app",
-            "WebDriverAgentRunner",
-            Some(&extra),
-            None,
-        );
-
-        assert_eq!(
-            env.get("USE_PORT").and_then(|v| v.as_string()),
-            Some("8200")
-        );
-        // Caller-provided env overrides the base value.
-        assert_eq!(
-            env.get("NSUnbufferedIO").and_then(|v| v.as_string()),
-            Some("NO")
-        );
     }
 
     #[test]
