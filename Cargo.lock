@@ -1275,6 +1275,7 @@ dependencies = [
 name = "idevice-tools"
 version = "0.1.65"
 dependencies = [
+ "base64 0.22.1",
  "clap",
  "futures-util",
  "idevice",

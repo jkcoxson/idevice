@@ -27,6 +27,10 @@ pub const USB_TIMEOUT_MS: u32 = 10_000;
 pub const TRANSFER_SIZE_RECOVERY: usize = 0x8000;
 /// Control transfer chunk size in DFU/WTF mode.
 pub const TRANSFER_SIZE_DFU: usize = 0x800;
+/// Max packet size of the high-speed bulk OUT endpoint iBoot exposes in recovery
+/// mode. A payload that is a whole multiple of this needs a terminating
+/// zero-length packet (see [`RecoveryDevice::send_buffer`]).
+const BULK_MAX_PACKET_SIZE: usize = 512;
 
 /// A boxed, `Send` future returned by [`RecoveryTransport`] methods.
 pub type RecoveryFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, IdeviceError>> + Send + 'a>>;
@@ -286,6 +290,10 @@ impl RecoveryDevice {
                     chunk.len()
                 ))));
             }
+        }
+
+        if !buf.is_empty() && buf.len().is_multiple_of(BULK_MAX_PACKET_SIZE) {
+            self.transport.bulk_out(0x04, &[], USB_TIMEOUT_MS).await?;
         }
         Ok(())
     }

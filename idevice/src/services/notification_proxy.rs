@@ -226,3 +226,116 @@ impl crate::RsdService for NotificationProxyClient {
         Ok(Self::new(idevice))
     }
 }
+
+/// The RemoteXPC-native notification proxy (iOS 17+).
+#[cfg(feature = "rsd")]
+#[derive(Debug)]
+pub struct RemoteNotificationProxyClient<R: crate::ReadWrite> {
+    inner: crate::RemoteXpcClient<R>,
+}
+
+#[cfg(feature = "rsd")]
+impl crate::RsdService for RemoteNotificationProxyClient<Box<dyn crate::ReadWrite>> {
+    fn rsd_service_name() -> std::borrow::Cow<'static, str> {
+        crate::obf!("com.apple.mobile.notification_proxy.remote")
+    }
+
+    async fn from_stream(stream: Box<dyn crate::ReadWrite>) -> Result<Self, IdeviceError> {
+        Self::new(stream).await
+    }
+}
+
+#[cfg(feature = "rsd")]
+impl<R: crate::ReadWrite> RemoteNotificationProxyClient<R> {
+    pub async fn new(stream: R) -> Result<Self, IdeviceError> {
+        let mut inner = crate::RemoteXpcClient::new(stream).await?;
+        inner.do_handshake().await?;
+        Ok(Self { inner })
+    }
+
+    /// Posts a notification on the device.
+    pub async fn post_notification(
+        &mut self,
+        notification_name: impl Into<String>,
+    ) -> Result<(), IdeviceError> {
+        self.inner
+            .send_object(
+                crate::xpc!({
+                    "Command": "PostNotification",
+                    "Name": notification_name.into()
+                }),
+                false,
+            )
+            .await
+    }
+
+    /// Registers interest in a notification, after which the device relays it
+    /// back whenever it fires. Read them with
+    /// [`receive_notification`](Self::receive_notification).
+    pub async fn observe_notification(
+        &mut self,
+        notification_name: impl Into<String>,
+    ) -> Result<(), IdeviceError> {
+        self.inner
+            .send_object(
+                crate::xpc!({
+                    "Command": "ObserveNotification",
+                    "Name": notification_name.into()
+                }),
+                true,
+            )
+            .await
+    }
+
+    /// Registers interest in several notifications at once.
+    pub async fn observe_notifications(
+        &mut self,
+        notification_names: &[&str],
+    ) -> Result<(), IdeviceError> {
+        for name in notification_names {
+            self.observe_notification(*name).await?;
+        }
+        Ok(())
+    }
+
+    /// Waits for the next relayed notification and returns its name.
+    pub async fn receive_notification(&mut self) -> Result<String, IdeviceError> {
+        let res = self.inner.recv_root().await?;
+        Self::relayed_name(res)
+    }
+
+    /// Continuous stream of relayed notification names.
+    pub fn into_stream(mut self) -> Pin<Box<dyn Stream<Item = Result<String, IdeviceError>> + Send>>
+    where
+        R: 'static,
+    {
+        Box::pin(async_stream::try_stream! {
+            loop {
+                let res = self.inner.recv_root().await?;
+                yield Self::relayed_name(res)?;
+            }
+        })
+    }
+
+    fn relayed_name(response: plist::Value) -> Result<String, IdeviceError> {
+        let response = response
+            .into_dictionary()
+            .ok_or_else(|| IdeviceError::UnexpectedResponse("relay response not a dict".into()))?;
+
+        match response.get("Command").and_then(|c| c.as_string()) {
+            Some("RelayNotification") => match response.get("Name").and_then(|n| n.as_string()) {
+                Some(name) => Ok(name.to_string()),
+                None => Err(IdeviceError::UnexpectedResponse(
+                    "missing Name in RelayNotification".into(),
+                )),
+            },
+            Some("ProxyDeath") => {
+                warn!("NotificationProxy died!");
+                Err(IdeviceError::NotificationProxyDeath)
+            }
+            _ => Err(IdeviceError::UnexpectedResponse(
+                "unexpected Command in notification response".into(),
+            )),
+        }
+    }
+}

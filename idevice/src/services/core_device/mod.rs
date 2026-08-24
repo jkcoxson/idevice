@@ -11,24 +11,30 @@ use crate::{
 };
 
 mod app_service;
+mod configuration_service;
 mod diagnosticsservice;
 #[cfg(feature = "display_stream")]
 pub mod display_stream;
 mod errors;
+mod file_service;
 #[cfg(feature = "display_stream")]
 pub mod hid;
+mod icon_service;
 mod location_service;
 mod openstdiosocket;
 mod orientation_service;
 mod pasteboard_service;
 mod screencaptureservices;
 pub use app_service::*;
+pub use configuration_service::*;
 pub use diagnosticsservice::*;
 #[cfg(feature = "display_stream")]
 pub use display_stream::*;
 pub use errors::CoreDeviceError;
+pub use file_service::*;
 #[cfg(feature = "display_stream")]
 pub use hid::*;
+pub use icon_service::*;
 pub use location_service::*;
 pub use openstdiosocket::*;
 pub use orientation_service::*;
@@ -36,8 +42,6 @@ pub use pasteboard_service::*;
 pub use screencaptureservices::*;
 
 const CORE_SERVICE_VERSION: &str = "443.18";
-// CoreDeviceUtilities uses this version for the streamapplist action protocol.
-const STREAM_CORE_SERVICE_VERSION: &str = "629.3";
 
 #[derive(Debug)]
 pub struct CoreDeviceServiceClient<R: ReadWrite> {
@@ -69,7 +73,28 @@ impl<R: ReadWrite> CoreDeviceServiceClient<R> {
     ) -> Result<plist::Value, IdeviceError> {
         let input: XPCObject = plist::Value::Dictionary(input).into();
         let input = input.to_dictionary().unwrap();
-        self.invoke_inner(feature, Some(input), Some(action_identifier.into()))
+        self.invoke_inner(
+            Some(feature.into()),
+            Some(input),
+            Some(action_identifier.into()),
+        )
+        .await
+    }
+
+    /// Invokes a CoreDevice action that has no feature behind it.
+    ///
+    /// Some services - the configuration service among them - dispatch purely on
+    /// `CoreDevice.actionIdentifier` and advertise no matching feature, so the
+    /// request carries neither `CoreDevice.featureIdentifier` nor
+    /// `CoreDevice.action`.
+    pub async fn invoke_action_with_plist(
+        &mut self,
+        action_identifier: impl Into<String>,
+        input: plist::Dictionary,
+    ) -> Result<plist::Value, IdeviceError> {
+        let input: XPCObject = plist::Value::Dictionary(input).into();
+        let input = input.to_dictionary().unwrap();
+        self.invoke_inner(None, Some(input), Some(action_identifier.into()))
             .await
     }
 
@@ -78,7 +103,7 @@ impl<R: ReadWrite> CoreDeviceServiceClient<R> {
         feature: impl Into<String>,
         input: Option<crate::xpc::Dictionary>,
     ) -> Result<plist::Value, IdeviceError> {
-        self.invoke_inner(feature, input, None).await
+        self.invoke_inner(Some(feature.into()), input, None).await
     }
 
     /// Invokes a CoreDevice feature that returns elements over an XPC side channel.
@@ -101,7 +126,7 @@ impl<R: ReadWrite> CoreDeviceServiceClient<R> {
             req.insert("CoreDevice.action".into(), xpc::Dictionary::new().into());
             req.insert(
                 "CoreDevice.coreDeviceVersion".into(),
-                create_xpc_version_from_string(STREAM_CORE_SERVICE_VERSION).into(),
+                create_xpc_version_from_string(CORE_SERVICE_VERSION).into(),
             );
             req.insert(
                 "CoreDevice.deviceIdentifier".into(),
@@ -135,11 +160,10 @@ impl<R: ReadWrite> CoreDeviceServiceClient<R> {
 
     async fn invoke_inner(
         &mut self,
-        feature: impl Into<String>,
+        feature: Option<String>,
         input: Option<crate::xpc::Dictionary>,
         action_identifier: Option<String>,
     ) -> Result<plist::Value, IdeviceError> {
-        let feature = feature.into();
         let input: crate::xpc::XPCObject = match input {
             Some(i) => i.into(),
             None => crate::xpc::Dictionary::new().into(),
@@ -160,10 +184,12 @@ impl<R: ReadWrite> CoreDeviceServiceClient<R> {
             "CoreDevice.deviceIdentifier".into(),
             XPCObject::String(uuid::Uuid::new_v4().to_string()),
         );
-        req.insert(
-            "CoreDevice.featureIdentifier".into(),
-            XPCObject::String(feature),
-        );
+        if let Some(feature) = feature {
+            req.insert(
+                "CoreDevice.featureIdentifier".into(),
+                XPCObject::String(feature),
+            );
+        }
         req.insert("CoreDevice.input".into(), input);
         req.insert(
             "CoreDevice.invocationIdentifier".into(),

@@ -141,6 +141,7 @@ display_stream = [
   "dep:web-time",
 ]
 crashreportcopymobile = ["afc"]
+cryptexd = ["xpc", "rsd"]
 debug_proxy = []
 diagnostics_relay = []
 dvt = ["dep:ns-keyed-archive", "tokio/sync", "tokio/rt", "tokio/macros"]
@@ -245,7 +246,7 @@ restore_recovery = ["restore"]
 restore_service = ["xpc"]
 rsd = ["xpc"]
 screenshotr = []
-syslog_relay = ["dep:bytes", "dep:chrono"]
+syslog_relay = ["dep:bytes", "dep:chrono", "dep:uuid"]
 tcp = ["tokio/net"]
 tunnel_tcp_stack = ["dep:jktcp"]
 # Adds pcap (`tokio::fs`) support to the software TCP tunnel. Pulls in
@@ -265,6 +266,7 @@ full = [
   "core_device_proxy",
   "display_stream",
   "crashreportcopymobile",
+  "cryptexd",
   "debug_proxy",
   "diagnostics_relay",
   "dvt",

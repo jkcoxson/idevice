@@ -20,11 +20,15 @@ mod application_listing;
 mod bt_packet_logger;
 mod companion_proxy;
 mod condition_inducer;
+mod coredevice_configuration;
+mod coredevice_fileservice;
+mod coredevice_icon;
 mod coredevice_location;
 mod coredevice_pasteboard;
 mod coredevice_rotate;
 mod coredevice_stream;
 mod crash_logs;
+mod cryptexd;
 mod debug_proxy;
 mod device_info;
 mod diagnostics;
@@ -51,6 +55,8 @@ mod pair;
 mod pcapd;
 mod preboard;
 mod process_control;
+mod remote_notification_proxy;
+mod remotepairing_lockdown;
 mod remotexpc;
 #[cfg(not(target_os = "windows"))]
 mod restore;
@@ -130,6 +136,7 @@ async fn async_main() {
         .with_subcommand("bt_packet_logger", bt_packet_logger::register())
         .with_subcommand("companion_proxy", companion_proxy::register())
         .with_subcommand("crash_logs", crash_logs::register())
+        .with_subcommand("cryptexd", cryptexd::register())
         .with_subcommand("debug_proxy", debug_proxy::register())
         .with_subcommand("diagnostics", diagnostics::register())
         .with_subcommand("diagnosticsservice", diagnosticsservice::register())
@@ -156,6 +163,11 @@ async fn async_main() {
         .with_subcommand("preboard", preboard::register())
         .with_subcommand("process_control", process_control::register())
         .with_subcommand("remotexpc", remotexpc::register())
+        .with_subcommand(
+            "remote_notification_proxy",
+            remote_notification_proxy::register(),
+        )
+        .with_subcommand("remotepairing_lockdown", remotepairing_lockdown::register())
         .with_subcommand("rppairing", rppairing::register());
 
     #[cfg(not(target_os = "windows"))]
@@ -169,6 +181,9 @@ async fn async_main() {
         .with_subcommand("location", coredevice_location::register())
         .with_subcommand("pasteboard", coredevice_pasteboard::register())
         .with_subcommand("rotate", coredevice_rotate::register())
+        .with_subcommand("configuration", coredevice_configuration::register())
+        .with_subcommand("icon", coredevice_icon::register())
+        .with_subcommand("fileservice", coredevice_fileservice::register())
         .with_subcommand("springboard", springboardservices::register())
         .with_subcommand("syslog_relay", syslog_relay::register())
         .with_subcommand("energy_monitor", energy_monitor::register())
@@ -237,6 +252,9 @@ async fn async_main() {
         }
         "crash_logs" => {
             crash_logs::main(sub_args, provider).await;
+        }
+        "cryptexd" => {
+            cryptexd::main(sub_args, provider).await;
         }
         "debug_proxy" => {
             debug_proxy::main(sub_args, provider).await;
@@ -307,6 +325,12 @@ async fn async_main() {
         "remotexpc" => {
             remotexpc::main(sub_args, provider).await;
         }
+        "remote_notification_proxy" => {
+            remote_notification_proxy::main(sub_args, provider).await;
+        }
+        "remotepairing_lockdown" => {
+            remotepairing_lockdown::main(sub_args, provider).await;
+        }
         "rppairing" => {
             rppairing::main(sub_args, provider).await;
         }
@@ -330,6 +354,15 @@ async fn async_main() {
         }
         "rotate" => {
             coredevice_rotate::main(sub_args, provider).await;
+        }
+        "configuration" => {
+            coredevice_configuration::main(sub_args, provider).await;
+        }
+        "icon" => {
+            coredevice_icon::main(sub_args, provider).await;
+        }
+        "fileservice" => {
+            coredevice_fileservice::main(sub_args, provider).await;
         }
         "springboard" => {
             springboardservices::main(sub_args, provider).await;

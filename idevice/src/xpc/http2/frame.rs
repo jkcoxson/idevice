@@ -18,6 +18,7 @@ pub enum Frame {
     WindowUpdate(WindowUpdateFrame),
     Headers(HeadersFrame),
     Data(DataFrame),
+    RstStream(RstStreamFrame),
 }
 
 impl Frame {
@@ -48,9 +49,10 @@ impl Frame {
             0x00 => Self::Data(DataFrame {
                 stream_id,
                 payload: body.to_vec(),
+                end_stream: flags & 0x01 != 0,
             }),
             0x01 => Self::Headers(HeadersFrame { stream_id }),
-            0x03 => return Err(XpcError::HttpStreamReset.into()),
+            0x03 => Self::RstStream(RstStreamFrame { stream_id }),
             0x04 => {
                 // settings: a sequence of (u16 identifier, u32 value) entries
                 let mut settings = Vec::new();
@@ -181,16 +183,24 @@ impl HttpFrame for HeadersFrame {
 }
 
 #[derive(Debug, Clone)]
+pub struct RstStreamFrame {
+    pub stream_id: u32,
+}
+
+#[derive(Debug, Clone)]
 pub struct DataFrame {
     pub stream_id: u32,
     pub payload: Vec<u8>,
+    /// Sets END_STREAM, marking this as the last frame we send on the stream.
+    pub end_stream: bool,
 }
 
 impl HttpFrame for DataFrame {
     fn serialize(&self) -> Vec<u8> {
         let mut res = (self.payload.len() as u32).to_be_bytes().to_vec();
         res.remove(0); // only 3 significant bytes
-        res.extend([0x00, 0x00]); // frame type, flags
+        res.push(0x00); // frame type
+        res.push(if self.end_stream { 0x01 } else { 0x00 }); // flags
         res.extend(self.stream_id.to_be_bytes());
         res.extend(self.payload.clone());
         res

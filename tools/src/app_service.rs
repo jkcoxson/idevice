@@ -8,12 +8,18 @@ use idevice::{
     provider::IdeviceProvider,
     rsd::RsdHandshake,
 };
-use jkcli::{CollectedArguments, JkArgument, JkCommand};
+use jkcli::{CollectedArguments, JkArgument, JkCommand, JkFlag};
 
 pub fn register() -> JkCommand {
     JkCommand::new()
         .help("Interact with the RemoteXPC app service on the device")
-        .with_subcommand("list", JkCommand::new().help("List apps on the device"))
+        .with_subcommand(
+            "list",
+            JkCommand::new().help("List apps on the device").with_flag(
+                JkFlag::new("no-stream")
+                    .with_help("Use the plain listapps feature instead of streamapplist"),
+            ),
+        )
         .with_subcommand(
             "launch",
             JkCommand::new()
@@ -42,27 +48,6 @@ pub fn register() -> JkCommand {
                 .help("Uninstall an app")
                 .with_argument(JkArgument::new().with_help("PID to signal").required(true))
                 .with_argument(JkArgument::new().with_help("Signal to send").required(true)),
-        )
-        .with_subcommand(
-            "icon",
-            JkCommand::new()
-                .help("Fetch an icon for an app")
-                .with_argument(
-                    JkArgument::new()
-                        .with_help("Bundle ID for the app")
-                        .required(true),
-                )
-                .with_argument(
-                    JkArgument::new()
-                        .with_help("Path to save it to")
-                        .required(true),
-                )
-                .with_argument(
-                    JkArgument::new()
-                        .with_help("Height and width")
-                        .required(true),
-                )
-                .with_argument(JkArgument::new().with_help("Scale").required(true)),
         )
         .subcommand_required(true)
 }
@@ -100,6 +85,9 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
 
     match sub_name.as_str() {
         "list" => {
+            // The streaming feature is preferred when advertised; --no-stream
+            // forces the plain listapps invocation.
+            let supports_stream_apps = supports_stream_apps && !sub_args.has_flag("no-stream");
             let apps = if supports_stream_apps {
                 asc.stream_apps(true, true, true, true, true)
                     .try_collect()
@@ -187,33 +175,6 @@ pub async fn main(arguments: &CollectedArguments, provider: Box<dyn IdeviceProvi
 
             let res = asc.send_signal(pid, signal).await.expect("no signal");
             println!("{res:#?}");
-        }
-        "icon" => {
-            let bundle_id: String = match sub_args.next_argument() {
-                Some(b) => b,
-                None => {
-                    eprintln!("No bundle ID passed");
-                    return;
-                }
-            };
-            let save_path: String = match sub_args.next_argument() {
-                Some(b) => b,
-                None => {
-                    eprintln!("No bundle ID passed");
-                    return;
-                }
-            };
-            let hw: f32 = sub_args.next_argument().unwrap_or(1.0);
-            let scale: f32 = sub_args.next_argument().unwrap_or(1.0);
-
-            let res = asc
-                .fetch_app_icon(bundle_id, hw, hw, scale, true)
-                .await
-                .expect("no signal");
-            println!("{res:?}");
-            tokio::fs::write(save_path, res.data)
-                .await
-                .expect("failed to save");
         }
         _ => unreachable!(),
     }

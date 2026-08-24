@@ -40,6 +40,10 @@ pub enum CoreDeviceError {
     /// A multi-touch tap was requested without any contact positions.
     #[error("multi-touch tap requires at least one contact")]
     NoTouchscreenContacts,
+
+    /// A caller-supplied argument was outside the range the device accepts.
+    #[error("invalid argument: {0}")]
+    InvalidArgument(&'static str),
 }
 
 impl CoreDeviceError {
@@ -53,6 +57,7 @@ impl CoreDeviceError {
             Self::InvalidTouchscreenContactIdentity(_) => 6,
             Self::DuplicateTouchscreenContactIdentity(_) => 7,
             Self::NoTouchscreenContacts => 8,
+            Self::InvalidArgument(_) => 9,
         }
     }
 }

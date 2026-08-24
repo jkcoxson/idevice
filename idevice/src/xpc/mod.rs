@@ -17,6 +17,9 @@ pub use format::{Dictionary, XPCMessage, XPCObject};
 
 const ROOT_CHANNEL: u32 = 1;
 const REPLY_CHANNEL: u32 = 3;
+/// First stream ID available for an outbound file transfer. Client-initiated
+/// streams must be odd, and 1/3 are taken by the root and reply channels.
+const FIRST_OUTBOUND_FILE_STREAM: u32 = 5;
 
 /// Fixed XPC message-wrapper header: magic + flags + body length + message id.
 const XPC_WRAPPER_LEN: usize = 24;
@@ -28,8 +31,10 @@ pub struct RemoteXpcClient<R: ReadWrite> {
     // reply_id: u64 // maybe not used?
     /// Per-channel bytes accumulated toward the next whole XPC message. Persisted
     /// across `recv_from_channel` calls so a partially-received message survives a
-    /// cancelled read — required for `recv_push` to be safe in a `select!`.
+    /// cancelled read.
     partial: std::collections::HashMap<u32, Vec<u8>>,
+    /// Stream ID for the next outbound file transfer.
+    next_outbound_file_stream: u32,
 }
 
 impl<R: ReadWrite> RemoteXpcClient<R> {
@@ -38,6 +43,7 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
             h2_client: http2::Http2Client::new(socket).await?,
             root_id: 1,
             partial: std::collections::HashMap::new(),
+            next_outbound_file_stream: FIRST_OUTBOUND_FILE_STREAM,
         })
     }
 
@@ -107,31 +113,48 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
         self.recv_from_channel(ROOT_CHANNEL).await
     }
 
+    pub async fn recv_any(&mut self) -> Result<plist::Value, IdeviceError> {
+        const CHANNELS: [u32; 2] = [ROOT_CHANNEL, REPLY_CHANNEL];
+        loop {
+            for channel in CHANNELS {
+                if let Some(msg) = self.take_buffered(channel)?
+                    && let Some(inner) = msg.message
+                    && !inner.as_dictionary().is_some_and(|d| d.is_empty())
+                {
+                    return Ok(inner.to_plist());
+                }
+            }
+            let (channel, chunk) = self.h2_client.read_any(&CHANNELS).await?;
+            self.partial.entry(channel).or_default().extend(chunk);
+        }
+    }
+
+    /// Decodes one whole message out of `channel`'s buffered bytes, if there is
+    /// one, consuming exactly the bytes it occupies so the next message in the
+    /// buffer survives. Returns `None` when the buffer doesn't hold a whole
+    /// message yet.
+    fn take_buffered(&mut self, channel: u32) -> Result<Option<XPCMessage>, IdeviceError> {
+        let buf = self.partial.entry(channel).or_default();
+        match XPCMessage::decode(buf) {
+            Ok(msg) => {
+                let consumed = (XPC_WRAPPER_LEN + xpc_body_len(buf)).min(buf.len());
+                buf.drain(..consumed);
+                Ok(Some(msg))
+            }
+            // Not enough bytes yet.
+            Err(IdeviceError::CdTunnel(CdTunnelError::SizeMismatch))
+            | Err(IdeviceError::NotEnoughBytes(..)) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     async fn recv_from_channel(&mut self, channel: u32) -> Result<plist::Value, IdeviceError> {
         loop {
             // Try to decode a whole message from what's already buffered before
             // reading more, so a message split across earlier reads completes.
-            // Scope the buffer borrow so it's released before the await below.
-            let decoded = {
-                let buf = self.partial.entry(channel).or_default();
-                match XPCMessage::decode(buf) {
-                    Ok(msg) => {
-                        // A complete wrapper consumes 24 + body_len bytes; drain
-                        // exactly that, preserving any bytes of the next message.
-                        let consumed = (XPC_WRAPPER_LEN + xpc_body_len(buf)).min(buf.len());
-                        buf.drain(..consumed);
-                        Some(msg)
-                    }
-                    // Not enough bytes yet: fall through to read another frame.
-                    Err(IdeviceError::CdTunnel(CdTunnelError::SizeMismatch))
-                    | Err(IdeviceError::NotEnoughBytes(..)) => None,
-                    Err(e) => return Err(e),
-                }
-            };
-
-            match decoded {
+            match self.take_buffered(channel)? {
+                // Skip empty-dictionary keepalives and bodyless frames.
                 Some(msg) => match msg.message {
-                    // Skip empty-dictionary keepalives and bodyless frames.
                     Some(inner) => {
                         if let Some(d) = inner.as_dictionary()
                             && d.is_empty()
@@ -236,6 +259,35 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
                 yield data;
             }
         }
+    }
+
+    /// Pushes the payload of a file transfer we announced in an earlier request.
+    pub async fn send_file_transfer(
+        &mut self,
+        transfer_id: u64,
+        data: &[u8],
+    ) -> Result<(), IdeviceError> {
+        let stream_id = self.next_outbound_file_stream;
+        self.next_outbound_file_stream += 2;
+
+        self.h2_client.open_stream(stream_id).await?;
+
+        // The preamble is a DATA frame like any other, so it has to go through
+        // the flow-controlled send path: sending it unaccounted overruns the
+        // connection window once an earlier transfer has drained it, and the
+        // device answers with GOAWAY (FLOW_CONTROL_ERROR).
+        let preamble = XPCMessage::new(
+            Some(XPCFlag::FileTxStreamRequest | XPCFlag::AlwaysSet),
+            None,
+            Some(transfer_id),
+        )
+        .encode(transfer_id)?;
+        self.h2_client.send(preamble, stream_id).await?;
+        self.h2_client.send(data.to_vec(), stream_id).await?;
+        self.h2_client
+            .send_end_stream(Vec::new(), stream_id)
+            .await?;
+        Ok(())
     }
 
     pub async fn open_file_stream_for_response(

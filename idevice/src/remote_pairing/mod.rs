@@ -21,6 +21,7 @@ use tracing::{debug, warn};
 use x25519_dalek::{EphemeralSecret, PublicKey as X25519PublicKey};
 
 pub mod errors;
+mod lockdown;
 mod opack;
 mod peer_device;
 mod responder;
@@ -31,6 +32,7 @@ mod tlv;
 pub mod tunnel;
 
 // export
+pub use lockdown::RemotePairingLockdownService;
 pub use peer_device::{PeerDevice, compute_auth_tag};
 pub use responder::{PAIRABLE_HOST_SERVICE_TYPE, PairableHost, PairableHostInfo};
 pub use rp_pairing_file::RpPairingFile;

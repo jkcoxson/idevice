@@ -42,6 +42,20 @@ pub struct OsTraceLog {
     pub filename: String,
     pub message: String,
     pub label: Option<SyslogLabel>,
+    /// Unique process ID (the activity stream's `procid` field). Equals `pid` in
+    /// practice on iOS.
+    pub procid: u64,
+    /// ID of the thread that emitted the entry (the stream's `thread` field).
+    pub thread_id: u64,
+    /// Load address offset of the log call site within the sender image. Pair
+    /// with `image_uuid` to symbolicate.
+    pub image_offset: u32,
+    /// UUID of the sender image, i.e. the one named by `image_name`.
+    pub image_uuid: uuid::Uuid,
+    /// UUID of the process' main executable, i.e. the one named by `filename`.
+    pub process_image_uuid: uuid::Uuid,
+    /// Raw monotonic device timestamp in mach ticks.
+    pub mach_timestamp: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -220,6 +234,11 @@ impl OsTraceRelayReceiver {
         let packet_length = u32::from_le_bytes([pl[0], pl[1], pl[2], pl[3]]);
 
         let packet = self.inner.idevice.read_raw(packet_length as usize).await?;
+        if packet.len() < ENTRY_HEADER_LEN {
+            return Err(IdeviceError::UnexpectedResponse(
+                "log packet shorter than the fixed entry header".into(),
+            ));
+        }
 
         // 9 bytes of padding
         let packet = &packet[9..];
@@ -228,7 +247,10 @@ impl OsTraceRelayReceiver {
         let pid = u32::from_le_bytes([packet[0], packet[1], packet[2], packet[3]]);
         let packet = &packet[4..];
 
-        // Skip 42 unknown bytes
+        // The next 42 bytes hold the procid, then the process' main executable
+        // UUID at +8. The rest is unidentified.
+        let procid = read_u64(packet, 0);
+        let process_image_uuid = read_uuid(packet, 8);
         let packet = &packet[42..];
 
         // Parse timestamp (seconds + microseconds)
@@ -245,7 +267,11 @@ impl OsTraceRelayReceiver {
         let log_level: LogLevel = log_level.try_into()?;
         let packet = &packet[1..];
 
-        // Skip 38 unknown bytes
+        // The next 38 bytes hold the raw mach timestamp at +4, the emitting
+        // thread's ID at +14, and the sender image's UUID at +22.
+        let mach_timestamp = read_u64(packet, 4);
+        let thread_id = read_u64(packet, 14);
+        let image_uuid = read_uuid(packet, 22);
         let packet = &packet[38..];
 
         // Parse string sizes
@@ -254,8 +280,10 @@ impl OsTraceRelayReceiver {
         let message_size = u16::from_le_bytes([packet[0], packet[1]]) as usize;
         let packet = &packet[2..];
 
-        // Skip 6 bytes
-        let packet = &packet[6..];
+        // Skip 2 bytes, then the sender image offset
+        let packet = &packet[2..];
+        let image_offset = u32::from_le_bytes([packet[0], packet[1], packet[2], packet[3]]);
+        let packet = &packet[4..];
 
         // Parse subsystem and category sizes
         let subsystem_size =
@@ -327,6 +355,12 @@ impl OsTraceRelayReceiver {
             filename,
             message,
             label,
+            procid,
+            thread_id,
+            image_offset,
+            image_uuid,
+            process_image_uuid,
+            mach_timestamp,
         })
     }
 }
@@ -360,4 +394,24 @@ impl crate::RsdService for OsTraceRelayClient {
         idevice.rsd_checkin().await?;
         Ok(Self { idevice })
     }
+}
+
+/// Size of the fixed header at the start of every binary syslog entry. Every
+/// fixed-offset field below lives inside it.
+const ENTRY_HEADER_LEN: usize = 129;
+
+/// Reads a little-endian `u64` at `offset` within `buf`, which the caller has
+/// already length-checked against [`ENTRY_HEADER_LEN`].
+fn read_u64(buf: &[u8], offset: usize) -> u64 {
+    let mut b = [0u8; 8];
+    b.copy_from_slice(&buf[offset..offset + 8]);
+    u64::from_le_bytes(b)
+}
+
+/// Reads a 16-byte UUID at `offset` within `buf`, which the caller has already
+/// length-checked against [`ENTRY_HEADER_LEN`].
+fn read_uuid(buf: &[u8], offset: usize) -> uuid::Uuid {
+    let mut b = [0u8; 16];
+    b.copy_from_slice(&buf[offset..offset + 16]);
+    uuid::Uuid::from_bytes(b)
 }
