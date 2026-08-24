@@ -88,4 +88,69 @@ Result<std::string, FfiError> NotificationProxy::receive_notification_with_timeo
     return Ok(std::move(name));
 }
 
+// -------- RemoteNotificationProxy --------
+
+Result<RemoteNotificationProxy, FfiError>
+RemoteNotificationProxy::connect_rsd(AdapterHandle* adapter, RsdHandshakeHandle* handshake) {
+    RemoteNotificationProxyClientHandle* out = nullptr;
+    FfiError e(::remote_notification_proxy_connect_rsd(adapter, handshake, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(RemoteNotificationProxy::adopt(out));
+}
+
+Result<RemoteNotificationProxy, FfiError>
+RemoteNotificationProxy::from_readwrite_ptr(ReadWriteOpaque* consumed) {
+    RemoteNotificationProxyClientHandle* out = nullptr;
+    FfiError                             e(::remote_notification_proxy_new(consumed, &out));
+    if (e) {
+        return Err(e);
+    }
+    return Ok(RemoteNotificationProxy::adopt(out));
+}
+
+Result<void, FfiError> RemoteNotificationProxy::post_notification(const std::string& name) {
+    FfiError e(::remote_notification_proxy_post(handle_.get(), name.c_str()));
+    if (e) {
+        return Err(e);
+    }
+    return Ok();
+}
+
+Result<void, FfiError> RemoteNotificationProxy::observe_notification(const std::string& name) {
+    FfiError e(::remote_notification_proxy_observe(handle_.get(), name.c_str()));
+    if (e) {
+        return Err(e);
+    }
+    return Ok();
+}
+
+Result<void, FfiError>
+RemoteNotificationProxy::observe_notifications(const std::vector<std::string>& names) {
+    std::vector<const char*> ptrs;
+    ptrs.reserve(names.size());
+    for (const auto& n : names) {
+        ptrs.push_back(n.c_str());
+    }
+    FfiError e(::remote_notification_proxy_observe_multiple(handle_.get(),
+                                                            ptrs.empty() ? nullptr : ptrs.data(),
+                                                            ptrs.size()));
+    if (e) {
+        return Err(e);
+    }
+    return Ok();
+}
+
+Result<std::string, FfiError> RemoteNotificationProxy::receive_notification() {
+    char*    name_ptr = nullptr;
+    FfiError e(::remote_notification_proxy_receive(handle_.get(), &name_ptr));
+    if (e) {
+        return Err(e);
+    }
+    std::string name(name_ptr);
+    ::notification_proxy_free_string(name_ptr);
+    return Ok(std::move(name));
+}
+
 } // namespace IdeviceFFI

@@ -353,3 +353,247 @@ pub unsafe extern "C" fn notification_proxy_client_free(
         let _ = unsafe { Box::from_raw(handle) };
     }
 }
+
+/// Opaque handle to the RemoteXPC-native notification proxy (iOS 17+)
+#[cfg(feature = "rsd")]
+pub struct RemoteNotificationProxyClientHandle(
+    pub idevice::notification_proxy::RemoteNotificationProxyClient<Box<dyn idevice::ReadWrite>>,
+);
+
+/// Connects to the remote notification proxy over RSD
+///
+/// # Arguments
+/// * [`provider`] - An adapter created by this library
+/// * [`handshake`] - An RSD handshake from the same provider
+/// * [`client`] - On success, will be set to point to a newly allocated handle
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `provider` and `handshake` must be valid pointers to handles allocated by this library
+/// `client` must be a valid, non-null pointer to a location where the handle will be stored
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn remote_notification_proxy_connect_rsd(
+    provider: *mut AdapterHandle,
+    handshake: *mut RsdHandshakeHandle,
+    client: *mut *mut RemoteNotificationProxyClientHandle,
+) -> *mut IdeviceFfiError {
+    if provider.is_null() || handshake.is_null() || client.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let res = run_sync_local(async {
+        let provider_ref = unsafe { &mut (*provider).0 };
+        let handshake_ref = unsafe { &mut (*handshake).0 };
+
+        idevice::notification_proxy::RemoteNotificationProxyClient::connect_rsd(
+            provider_ref,
+            handshake_ref,
+        )
+        .await
+    });
+
+    match res {
+        Ok(c) => {
+            unsafe { *client = Box::into_raw(Box::new(RemoteNotificationProxyClientHandle(c))) };
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Creates a remote notification proxy client from a socket
+///
+/// # Arguments
+/// * [`socket`] - The socket to use for communication. Consumed regardless of the result.
+/// * [`client`] - On success, will be set to point to a newly allocated handle
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// `socket` must be a valid pointer to a handle allocated by this library
+/// `client` must be a valid, non-null pointer to a location where the handle will be stored
+#[cfg(feature = "rsd")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn remote_notification_proxy_new(
+    socket: *mut crate::ReadWriteOpaque,
+    client: *mut *mut RemoteNotificationProxyClientHandle,
+) -> *mut IdeviceFfiError {
+    if socket.is_null() || client.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let socket = unsafe { Box::from_raw(socket) };
+    let res = crate::run_sync(async move {
+        idevice::notification_proxy::RemoteNotificationProxyClient::new(socket.inner.unwrap()).await
+    });
+
+    match res {
+        Ok(c) => {
+            unsafe { *client = Box::into_raw(Box::new(RemoteNotificationProxyClientHandle(c))) };
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Posts a notification on the device
+///
+/// # Arguments
+/// * [`client`] - A valid handle
+/// * [`name`] - The notification to post
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// All pointer parameters must be valid
+#[cfg(feature = "rsd")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn remote_notification_proxy_post(
+    client: *mut RemoteNotificationProxyClientHandle,
+    name: *const c_char,
+) -> *mut IdeviceFfiError {
+    if client.is_null() || name.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let name = match unsafe { CStr::from_ptr(name) }.to_str() {
+        Ok(n) => n.to_string(),
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
+    };
+
+    let client_ref = unsafe { &mut (*client).0 };
+    match run_sync_local(async { client_ref.post_notification(name).await }) {
+        Ok(()) => null_mut(),
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Registers interest in a notification, after which the device relays it back
+/// whenever it fires
+///
+/// # Arguments
+/// * [`client`] - A valid handle
+/// * [`name`] - The notification to observe
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// All pointer parameters must be valid
+#[cfg(feature = "rsd")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn remote_notification_proxy_observe(
+    client: *mut RemoteNotificationProxyClientHandle,
+    name: *const c_char,
+) -> *mut IdeviceFfiError {
+    if client.is_null() || name.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let name = match unsafe { CStr::from_ptr(name) }.to_str() {
+        Ok(n) => n.to_string(),
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
+    };
+
+    let client_ref = unsafe { &mut (*client).0 };
+    match run_sync_local(async { client_ref.observe_notification(name).await }) {
+        Ok(()) => null_mut(),
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Registers interest in several notifications at once
+///
+/// # Arguments
+/// * [`client`] - A valid handle
+/// * [`names`] - The notifications to observe
+/// * [`len`] - How many notifications were passed
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// All pointer parameters must be valid, and `names` must hold `len` strings
+#[cfg(feature = "rsd")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn remote_notification_proxy_observe_multiple(
+    client: *mut RemoteNotificationProxyClientHandle,
+    names: *const *const c_char,
+    len: usize,
+) -> *mut IdeviceFfiError {
+    if client.is_null() || names.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let mut collected = Vec::with_capacity(len);
+    for i in 0..len {
+        let name = unsafe { *names.add(i) };
+        if name.is_null() {
+            return ffi_err!(IdeviceError::FfiInvalidArg);
+        }
+        match unsafe { CStr::from_ptr(name) }.to_str() {
+            Ok(n) => collected.push(n),
+            Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
+        }
+    }
+
+    let client_ref = unsafe { &mut (*client).0 };
+    match run_sync_local(async { client_ref.observe_notifications(&collected).await }) {
+        Ok(()) => null_mut(),
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Waits for the next relayed notification and returns its name
+///
+/// # Arguments
+/// * [`client`] - A valid handle
+/// * [`name_out`] - On success, set to the notification's name. Free with
+///   `notification_proxy_free_string`.
+///
+/// # Returns
+/// An IdeviceFfiError on error, null on success
+///
+/// # Safety
+/// All pointer parameters must be valid
+#[cfg(feature = "rsd")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn remote_notification_proxy_receive(
+    client: *mut RemoteNotificationProxyClientHandle,
+    name_out: *mut *mut c_char,
+) -> *mut IdeviceFfiError {
+    if client.is_null() || name_out.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let client_ref = unsafe { &mut (*client).0 };
+    match run_sync_local(async { client_ref.receive_notification().await }) {
+        Ok(name) => match CString::new(name) {
+            Ok(name) => {
+                unsafe { *name_out = name.into_raw() };
+                null_mut()
+            }
+            Err(_) => ffi_err!(IdeviceError::FfiInvalidString),
+        },
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// Frees a remote notification proxy handle
+///
+/// # Safety
+/// `handle` must be a valid pointer to a handle allocated by this library, or NULL
+#[cfg(feature = "rsd")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn remote_notification_proxy_free(
+    handle: *mut RemoteNotificationProxyClientHandle,
+) {
+    if !handle.is_null() {
+        let _ = unsafe { Box::from_raw(handle) };
+    }
+}

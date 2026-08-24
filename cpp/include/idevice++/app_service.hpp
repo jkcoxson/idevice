@@ -50,14 +50,6 @@ struct SignalResponse {
     uint32_t            signal{};
 };
 
-struct IconData {
-    std::vector<uint8_t> data;
-    double               icon_width{};
-    double               icon_height{};
-    double               minimum_width{};
-    double               minimum_height{};
-};
-
 class AppService {
   public:
     // Factory: connect via RSD (borrows adapter & handshake)
@@ -84,11 +76,7 @@ class AppService {
 
     Result<SignalResponse, FfiError>            send_signal(uint32_t pid, uint32_t signal);
 
-    Result<IconData, FfiError>                  fetch_icon(const std::string& bundle_id,
-                                                           float              width,
-                                                           float              height,
-                                                           float              scale,
-                                                           bool               allow_placeholder);
+    // App icons moved to their own service, see idevice++/icon_service.hpp
 
     // RAII / moves
     ~AppService() noexcept                         = default;

@@ -46,4 +46,42 @@ class NotificationProxy {
     NotificationProxyPtr handle_{};
 };
 
+using RemoteNotificationProxyPtr =
+    std::unique_ptr<RemoteNotificationProxyClientHandle,
+                    FnDeleter<RemoteNotificationProxyClientHandle, remote_notification_proxy_free>>;
+
+// The RemoteXPC-native notification proxy (iOS 17+).
+class RemoteNotificationProxy {
+  public:
+    // Factory: connect via RSD tunnel
+    static Result<RemoteNotificationProxy, FfiError> connect_rsd(AdapterHandle*      adapter,
+                                                                 RsdHandshakeHandle* handshake);
+
+    // Factory: wrap a ReadWrite stream (consumes it)
+    static Result<RemoteNotificationProxy, FfiError> from_readwrite_ptr(ReadWriteOpaque* consumed);
+
+    // Ops
+    Result<void, FfiError>        post_notification(const std::string& name);
+    Result<void, FfiError>        observe_notification(const std::string& name);
+    Result<void, FfiError>        observe_notifications(const std::vector<std::string>& names);
+    Result<std::string, FfiError> receive_notification();
+
+    // RAII / moves
+    ~RemoteNotificationProxy() noexcept                                      = default;
+    RemoteNotificationProxy(RemoteNotificationProxy&&) noexcept              = default;
+    RemoteNotificationProxy& operator=(RemoteNotificationProxy&&) noexcept   = default;
+    RemoteNotificationProxy(const RemoteNotificationProxy&)                  = delete;
+    RemoteNotificationProxy&       operator=(const RemoteNotificationProxy&) = delete;
+
+    RemoteNotificationProxyClientHandle* raw() const noexcept { return handle_.get(); }
+    static RemoteNotificationProxy adopt(RemoteNotificationProxyClientHandle* h) noexcept {
+        return RemoteNotificationProxy(h);
+    }
+
+  private:
+    explicit RemoteNotificationProxy(RemoteNotificationProxyClientHandle* h) noexcept
+        : handle_(h) {}
+    RemoteNotificationProxyPtr handle_{};
+};
+
 } // namespace IdeviceFFI

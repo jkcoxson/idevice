@@ -36,6 +36,7 @@ companion_proxy = ["idevice/companion_proxy"]
 core_device = ["idevice/core_device", "dep:futures", "dep:uuid", "rsd"]
 core_device_proxy = ["idevice/core_device_proxy", "idevice/tunnel_tcp_stack"]
 crashreportcopymobile = ["idevice/crashreportcopymobile", "afc"]
+cryptexd = ["idevice/cryptexd", "rsd", "tss"]
 debug_proxy = ["idevice/debug_proxy"]
 diagnostics_relay = ["idevice/diagnostics_relay"]
 dvt = ["idevice/dvt"]
@@ -89,6 +90,7 @@ full = [
   "core_device",
   "core_device_proxy",
   "crashreportcopymobile",
+  "cryptexd",
   "debug_proxy",
   "diagnostics_relay",
   "dvt",

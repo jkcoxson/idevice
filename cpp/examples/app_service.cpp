@@ -9,6 +9,7 @@
 #include <idevice++/app_service.hpp>
 #include <idevice++/core_device_proxy.hpp>
 #include <idevice++/ffi.hpp>
+#include <idevice++/icon_service.hpp>
 #include <idevice++/option.hpp>
 #include <idevice++/provider.hpp>
 #include <idevice++/readwrite.hpp>
@@ -186,22 +187,28 @@ int main(int argc, char** argv) {
         float       hw        = (argc >= 5) ? std::stof(argv[4]) : 1.0f;
         float       scale     = (argc >= 6) ? std::stof(argv[5]) : 1.0f;
 
-        auto        icon =
-            app.fetch_icon(bundle_id, hw, hw, scale, /*allow_placeholder*/ true)
-                .unwrap_or_else([](FfiError e) -> IconData { die("fetch_app_icon failed", e); });
+        // Icons come from their own CoreDevice service, not the app service.
+        auto        icons     = IconService::connect_rsd(adapter, rsd)
+                         .unwrap_or_else([](FfiError e) -> IconService {
+                             die("failed to connect IconService", e);
+                         });
+
+        auto icon = icons.fetch_icon(bundle_id, hw, hw, scale, /*allow_placeholder*/ true)
+                        .unwrap_or_else([](FfiError e) -> AppIcon { die("fetch_icon failed", e); });
 
         std::ofstream out(save_path, std::ios::binary);
         if (!out) {
             std::cerr << "Failed to open " << save_path << " for writing\n";
             return 1;
         }
-        out.write(reinterpret_cast<const char*>(icon.data.data()),
-                  static_cast<std::streamsize>(icon.data.size()));
+        out.write(reinterpret_cast<const char*>(icon.png_data.data()),
+                  static_cast<std::streamsize>(icon.png_data.size()));
         out.close();
 
-        std::cout << "Saved icon to " << save_path << " (" << icon.data.size() << " bytes, "
-                  << icon.icon_width << "x" << icon.icon_height << ", min " << icon.minimum_width
-                  << "x" << icon.minimum_height << ")\n";
+        std::cout << "Saved icon to " << save_path << " (" << icon.png_data.size() << " bytes, "
+                  << icon.pixel_width << "x" << icon.pixel_height << " px, " << icon.width << "x"
+                  << icon.height << " pt @" << icon.scale << "x"
+                  << (icon.is_placeholder ? ", placeholder" : "") << ")\n";
         return 0;
 
     } else {

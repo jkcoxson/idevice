@@ -16,6 +16,8 @@ pub mod core_device;
 pub mod core_device_proxy;
 #[cfg(feature = "crashreportcopymobile")]
 pub mod crashreportcopymobile;
+#[cfg(feature = "cryptexd")]
+pub mod cryptexd;
 #[cfg(feature = "debug_proxy")]
 pub mod debug_proxy;
 #[cfg(feature = "diagnostics_relay")]
@@ -55,6 +57,8 @@ pub mod pcapd;
 #[cfg(feature = "preboard_service")]
 pub mod preboard_service;
 pub mod provider;
+#[cfg(feature = "remote_pairing")]
+pub mod remote_pairing_lockdown;
 #[cfg(feature = "restore")]
 pub mod restore;
 #[cfg(feature = "restore_service")]

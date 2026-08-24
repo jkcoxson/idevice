@@ -156,26 +156,4 @@ Result<SignalResponse, FfiError> AppService::send_signal(uint32_t pid,
   return Ok(std::move(out));
 }
 
-Result<IconData, FfiError> AppService::fetch_icon(const std::string &bundle_id,
-                                                  float width, float height,
-                                                  float scale,
-                                                  bool allow_placeholder) {
-  IconDataC *c = nullptr;
-  if (IdeviceFfiError *e = ::app_service_fetch_app_icon(
-          handle_.get(), bundle_id.c_str(), width, height, scale,
-          allow_placeholder ? 1 : 0, &c)) {
-    return Err(FfiError(e));
-  }
-  IconData out;
-  if (c->data && c->data_len) {
-    out.data.assign(c->data, c->data + c->data_len);
-  }
-  out.icon_width = c->icon_width;
-  out.icon_height = c->icon_height;
-  out.minimum_width = c->minimum_width;
-  out.minimum_height = c->minimum_height;
-  ::app_service_free_icon_data(c);
-  return Ok(std::move(out));
-}
-
 } // namespace IdeviceFFI

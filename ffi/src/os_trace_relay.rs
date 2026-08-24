@@ -25,6 +25,20 @@ pub struct OsTraceLog {
     pub filename: *const c_char,
     pub message: *const c_char,
     pub label: *const SyslogLabel,
+    /// Unique process ID (the activity stream's `procid` field). Equals `pid`
+    /// in practice on iOS.
+    pub procid: u64,
+    /// ID of the thread that emitted the entry
+    pub thread_id: u64,
+    /// Load address offset of the log call site within the sender image. Pair
+    /// with `image_uuid` to symbolicate.
+    pub image_offset: u32,
+    /// UUID of the sender image, i.e. the one named by `image_name`
+    pub image_uuid: [u8; 16],
+    /// UUID of the process' main executable, i.e. the one named by `filename`
+    pub process_image_uuid: [u8; 16],
+    /// Raw monotonic device timestamp in mach ticks
+    pub mach_timestamp: u64,
 }
 
 #[repr(C)]
@@ -254,6 +268,12 @@ pub unsafe extern "C" fn os_trace_relay_next(
                 } else {
                     std::ptr::null()
                 },
+                procid: r.procid,
+                thread_id: r.thread_id,
+                image_offset: r.image_offset,
+                image_uuid: *r.image_uuid.as_bytes(),
+                process_image_uuid: *r.process_image_uuid.as_bytes(),
+                mach_timestamp: r.mach_timestamp,
             });
 
             unsafe { *log = Box::into_raw(log_entry) };

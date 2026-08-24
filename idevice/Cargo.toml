@@ -141,7 +141,7 @@ display_stream = [
   "dep:web-time",
 ]
 crashreportcopymobile = ["afc"]
-cryptexd = ["xpc", "rsd"]
+cryptexd = ["xpc", "rsd", "tss"]
 debug_proxy = []
 diagnostics_relay = []
 dvt = ["dep:ns-keyed-archive", "tokio/sync", "tokio/rt", "tokio/macros"]
