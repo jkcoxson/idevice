@@ -516,7 +516,7 @@ impl XPCMessage {
             data[16], data[17], data[18], data[19], data[20], data[21], data[22], data[23],
         ]);
         if body_len + 24 > data.len() as u64 {
-            warn!(
+            debug!(
                 "Body length is {body_len}, but received bytes is {}",
                 data.len()
             );

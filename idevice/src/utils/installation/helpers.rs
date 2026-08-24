@@ -164,8 +164,10 @@ pub async fn afc_upload_file<F: AsRef<[u8]>>(
     remote_path: &str,
 ) -> Result<(), IdeviceError> {
     let mut fd = afc.open(remote_path, AfcFopenMode::WrOnly).await?;
-    fd.write_entire(file.as_ref()).await?;
-    fd.close().await
+    let res = fd.write_entire(file.as_ref()).await;
+    // close even if the write failed, otherwise the device-side fd leaks
+    let closed = fd.close().await;
+    res.and(closed)
 }
 
 /// Recursively upload a directory to device via AFC (mirror contents)

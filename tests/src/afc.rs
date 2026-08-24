@@ -696,13 +696,22 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
                 let mut f = client.open(&path, AfcFopenMode::WrOnly).await?;
                 let data = vec![i as u8; i + 1]; // file i contains i+1 copies of byte i
                 f.write_all(&data).await?;
-                handles.push((path, i));
-                // NOTE: f is dropped here — do NOT hold all 50 simultaneously
-                // because AfcClient requires exclusive access (&mut self).
-                // Instead we verify existence before removing.
+                let fd = f.as_raw_fd();
+                // The wrapper borrows the client exclusively, so it can't outlive
+                // the loop body.  Forget it to keep the device-side fd open, then
+                // rebuild a wrapper around the raw fd below to close it.
+                std::mem::forget(f);
+                handles.push((path, fd, i));
             }
-            // Verify and clean up in reverse order
-            for (path, i) in handles.into_iter().rev() {
+            // Close, verify and clean up in reverse order
+            for (path, fd, i) in handles.into_iter().rev() {
+                // SAFETY: fd came from as_raw_fd() on a descriptor that was
+                // forgotten rather than closed, so it's still open on the device.
+                unsafe {
+                    idevice::services::afc::file::FileDescriptor::new(&mut client, fd, path.clone())
+                }
+                .close()
+                .await?;
                 let info = client.get_file_info(&path).await?;
                 if info.size != i + 1 {
                     return Err(idevice::IdeviceError::UnexpectedResponse(format!(
@@ -731,17 +740,23 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
             {
                 let mut f = client.open(&path, AfcFopenMode::RdOnly).await?;
                 // For each offset 0..=250, seek to that offset and read the next byte.
-                for offset in 0u8..=250 {
-                    f.seek(std::io::SeekFrom::Start(offset as u64)).await?;
-                    let mut b = [0u8; 1];
-                    f.read_exact(&mut b).await?;
-                    if b[0] != offset {
-                        return Err(idevice::IdeviceError::UnexpectedResponse(format!(
-                            "at offset {offset} expected byte {offset} got {}",
-                            b[0]
-                        )));
+                let res: Result<(), idevice::IdeviceError> = async {
+                    for offset in 0u8..=250 {
+                        f.seek(std::io::SeekFrom::Start(offset as u64)).await?;
+                        let mut b = [0u8; 1];
+                        f.read_exact(&mut b).await?;
+                        if b[0] != offset {
+                            return Err(idevice::IdeviceError::UnexpectedResponse(format!(
+                                "at offset {offset} expected byte {offset} got {}",
+                                b[0]
+                            )));
+                        }
                     }
+                    Ok(())
                 }
+                .await;
+                f.close().await?;
+                res?;
             }
             client.remove(&path).await
         }
@@ -757,25 +772,30 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
             let path = p("rw_loop.bin");
             let _ = client.remove(&path).await;
             let mut f = client.open(&path, AfcFopenMode::Rw).await?;
-            // Write byte value i at position i*2, verify with tell
-            for i in 0u8..50 {
-                f.seek(std::io::SeekFrom::Start(i as u64 * 2)).await?;
-                f.write_all(&[i]).await?;
-            }
-            // Now read back
-            for i in 0u8..50 {
-                f.seek(std::io::SeekFrom::Start(i as u64 * 2)).await?;
-                let mut b = [0u8; 1];
-                f.read_exact(&mut b).await?;
-                if b[0] != i {
-                    return Err(idevice::IdeviceError::UnexpectedResponse(format!(
-                        "rw loop: at pos {} expected {i} got {}",
-                        i as u64 * 2,
-                        b[0]
-                    )));
+            let res: Result<(), idevice::IdeviceError> = async {
+                // Write byte value i at position i*2, verify with tell
+                for i in 0u8..50 {
+                    f.seek(std::io::SeekFrom::Start(i as u64 * 2)).await?;
+                    f.write_all(&[i]).await?;
                 }
+                // Now read back
+                for i in 0u8..50 {
+                    f.seek(std::io::SeekFrom::Start(i as u64 * 2)).await?;
+                    let mut b = [0u8; 1];
+                    f.read_exact(&mut b).await?;
+                    if b[0] != i {
+                        return Err(idevice::IdeviceError::UnexpectedResponse(format!(
+                            "rw loop: at pos {} expected {i} got {}",
+                            i as u64 * 2,
+                            b[0]
+                        )));
+                    }
+                }
+                Ok(())
             }
+            .await;
             f.close().await?;
+            res?;
             client.remove(&path).await
         }
     );
@@ -809,14 +829,13 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
         }
     );
 
-    // Drop-and-reopen fd-pool exhaustion test: open + drop 200 times relying
-    // entirely on the implicit Drop to send FileClose.  If the unsafe
-    // Pin::new_unchecked Drop path is broken and FileClose is never sent, the
-    // device will exhaust its per-connection fd pool and begin returning errors
-    // before we reach iteration 200.  Each iteration also does a partial read
-    // to ensure pending_fut is populated when Drop fires.
+    // Close-and-reopen fd-pool exhaustion test: open + close 200 times.  If
+    // FileClose is never sent the device will exhaust its per-connection fd
+    // pool and begin returning errors before we reach iteration 200.  Each
+    // iteration also does a partial read to populate pending_fut before the
+    // close, exercising the state machine.
     run_test!(
-        "afc: drop recycles device fds - 200 open/drop cycles",
+        "afc: close recycles device fds - 200 open/close cycles",
         success,
         failure,
         async {
@@ -832,40 +851,36 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
                             "open failed at iteration {i} (fd pool exhausted?): {e}"
                         ))
                     })?;
-                // Read a byte to exercise the pending_fut state machine before drop
+                // Read a byte to exercise the pending_fut state machine before close
                 let mut buf = [0u8; 1];
                 f.read_exact(&mut buf).await?;
-                // FileDescriptor drops here - Drop impl fires
-                // unsafe { Pin::new_unchecked(self) }.close_inner().await
-                // on a multi-thread tokio runtime, recycling the device fd
+                f.close().await?;
             }
 
-            println!("(200 open/drop cycles succeeded)");
+            println!("(200 open/close cycles succeeded)");
             client.remove(&path).await
         }
     );
 
-    // Stale-fd test: verify that the Drop destructor actually sent FileClose.
-    // Strategy: open a file, record the raw device fd, let it drop, then
+    // Stale-fd test: verify that close() actually sent FileClose.
+    // Strategy: open a file, record the raw device fd, close it, then
     // reconstruct a FileDescriptor pointing at the *same* raw fd via the
-    // unsafe constructor. Because Drop already sent FileClose the device has
-    // freed that fd; any I/O on the stale descriptor must return an error.
-    // If Drop had NOT fired, the fd would still be open and the read would
-    // succeed - making the test fail.
+    // unsafe constructor. Because close() freed that fd on the device, any
+    // I/O on the stale descriptor must return an error.  If FileClose had NOT
+    // been sent the fd would still be open and the read would succeed -
+    // making the test fail.
     run_test!(
-        "afc: stale fd after drop returns error (proves Drop sent FileClose)",
+        "afc: stale fd after close returns error (proves close sent FileClose)",
         success,
         failure,
         async {
             let path = p("stale_fd.bin");
             roundtrip(&mut client, &path, b"stale fd sentinel").await?;
 
-            // Open and immediately drop - Drop fires, sending FileClose.
             let raw_fd = {
                 let f = client.open(&path, AfcFopenMode::RdOnly).await?;
-                #[allow(clippy::let_and_return)]
                 let fd = f.as_raw_fd();
-                // f drops here, destructor runs, device frees the fd
+                f.close().await?;
                 fd
             };
 
@@ -877,17 +892,15 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
             };
 
             let result = stale.read_entire().await;
+            // The descriptor is stale either way, so never send a second
+            // FileClose for it - just skip the destructor.
+            std::mem::forget(stale);
             if result.is_ok() {
                 return Err(idevice::IdeviceError::UnexpectedResponse(
-                    "stale fd read succeeded - Drop may not have sent FileClose".into(),
+                    "stale fd read succeeded - close may not have sent FileClose".into(),
                 ));
             }
             println!("(stale fd correctly returned: {})", result.unwrap_err());
-
-            // Drop stale - it will attempt a second FileClose on an already-closed
-            // fd.  The device will error; Drop discards that error with .ok().
-            // The client must remain usable afterwards.
-            drop(stale);
 
             client.remove(&path).await
         }
@@ -970,6 +983,7 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
                         let mut f = g.open(&path, AfcFopenMode::Append).await.unwrap();
                         f.write_all(format!("line{i}\n").as_bytes()).await.unwrap();
                         f.flush().await.unwrap();
+                        f.close().await.unwrap();
                     })
                 })
                 .collect();
@@ -984,6 +998,7 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
                 let mut f = g.open(&path, AfcFopenMode::RdOnly).await?;
                 let mut buf = Vec::new();
                 f.read_to_end(&mut buf).await?;
+                f.close().await?;
                 let s = String::from_utf8_lossy(&buf);
                 for i in 0..n {
                     if !s.contains(&format!("line{i}")) {
@@ -1015,11 +1030,13 @@ pub async fn run_tests(provider: &dyn IdeviceProvider, success: &mut u32, failur
                         {
                             let mut f = g.open(&path, AfcFopenMode::WrOnly).await.unwrap();
                             f.write_all(&data).await.unwrap();
+                            f.close().await.unwrap();
                         }
                         {
                             let mut f = g.open(&path, AfcFopenMode::RdOnly).await.unwrap();
                             let mut buf = Vec::new();
                             f.read_to_end(&mut buf).await.unwrap();
+                            f.close().await.unwrap();
                             assert_eq!(buf, data, "task {i} data mismatch");
                         }
                         g.remove(&path).await.unwrap();

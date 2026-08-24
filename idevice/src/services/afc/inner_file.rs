@@ -424,7 +424,6 @@ crate::impl_trait_to_structs!(AsyncWrite for InnerFileDescriptor<'_>, OwnedInner
         match std::task::ready!(write_func.as_mut().poll(cx)) {
             Ok(PendingResult::Empty) => self.as_mut().remove_pending_fut(),
             Err(e) => {
-                println!("error: {e}");
                 return std::task::Poll::Ready(Err(std::io::Error::other(e.to_string())));
             }
 

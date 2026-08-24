@@ -37,6 +37,18 @@ mod springboard;
 mod syslog_relay;
 mod xctest;
 
+/// How long a single test may run before it's counted as a failure. A service
+/// that never answers (a wedged device-side daemon, say) would otherwise hang
+/// the whole suite. Override with `IDEVICE_TEST_TIMEOUT` (seconds).
+pub fn test_timeout() -> std::time::Duration {
+    const DEFAULT_TEST_TIMEOUT: u64 = 180;
+    let secs = std::env::var("IDEVICE_TEST_TIMEOUT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_TEST_TIMEOUT);
+    std::time::Duration::from_secs(secs)
+}
+
 /// Runs an async test case, printing PASS/FAIL and updating the counters.
 ///
 /// Usage:
@@ -47,13 +59,23 @@ mod xctest;
 macro_rules! run_test {
     ($name:expr, $success:expr, $failure:expr, $fut:expr) => {{
         print!("  {:<60}", $name);
-        match $fut.await {
-            Ok(_) => {
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
+        let timeout = $crate::test_timeout();
+        match tokio::time::timeout(timeout, $fut).await {
+            Ok(Ok(_)) => {
                 println!("\x1b[32m[ PASS ]\x1b[0m");
                 *$success += 1;
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 println!("\x1b[31m[ FAIL ]\x1b[0m {e}");
+                *$failure += 1;
+            }
+            Err(_) => {
+                println!(
+                    "\x1b[31m[ FAIL ]\x1b[0m timed out after {}s",
+                    timeout.as_secs()
+                );
                 *$failure += 1;
             }
         }

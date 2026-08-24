@@ -41,7 +41,7 @@ pub use orientation_service::*;
 pub use pasteboard_service::*;
 pub use screencaptureservices::*;
 
-const CORE_SERVICE_VERSION: &str = "443.18";
+const CORE_SERVICE_VERSION: &str = "629.3";
 
 #[derive(Debug)]
 pub struct CoreDeviceServiceClient<R: ReadWrite> {

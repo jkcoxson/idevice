@@ -85,9 +85,10 @@ impl CrashReportCopyMobileClient {
             .open(format!("/{log}"), crate::afc::opcode::AfcFopenMode::RdOnly)
             .await?;
 
-        let data = f.read_entire().await?;
+        let data = f.read_entire().await;
+        // close even if the read failed, otherwise the device-side fd leaks
         f.close().await?;
-        Ok(data)
+        data
     }
 
     /// Removes a specified crash log file from the device.
