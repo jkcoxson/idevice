@@ -8,11 +8,11 @@
 //! - **Network via RemoteXPC** (NCM/USB Ethernet): `tunnel_create_remotexpc`
 //! - **Network via raw RPPairing** (Wi-Fi/LAN): `tunnel_create_rppairing`
 
-use std::ffi::{CStr, c_char, c_void};
+use std::ffi::{CStr, CString, c_char, c_void};
 use std::ptr::null_mut;
 
 use idevice::RemoteXpcClient;
-use idevice::remote_pairing::{RemotePairingClient, RpPairingSocket};
+use idevice::remote_pairing::{PeerDevice, RemotePairingClient, RpPairingSocket};
 use idevice::{
     IdeviceError, IdeviceService, core_device_proxy::CoreDeviceProxy, provider::IdeviceProvider,
     rsd::RsdHandshake,
@@ -282,8 +282,12 @@ pub unsafe extern "C" fn tunnel_create_remotexpc(
 /// Use this when connecting to a device discovered via `_remotepairing._tcp`.
 /// The connection goes: direct TCP → RPPairing (JSON) → tunnel.
 ///
-/// This path only supports pair-verify (existing pairing file required).
-/// For initial pairing, use `tunnel_pair_usb`.
+/// `pairing_file` is used for pair-verify. If verification fails (typically
+/// because the device has never been paired with this host) a full pair-setup
+/// runs on the same connection and `pairing_file` is updated in place, so the
+/// caller should persist it afterwards regardless of whether it was freshly
+/// generated.
+///
 ///
 /// # Safety
 /// All pointer arguments must be valid and non-null (except `pin_callback`/`pin_context`).
@@ -336,6 +340,131 @@ pub unsafe extern "C" fn tunnel_create_rppairing(
     match res {
         Ok((adapter, handshake)) => {
             write_result(adapter, handshake, out_adapter, out_handshake);
+            null_mut()
+        }
+        Err(e) => ffi_err!(e),
+    }
+}
+
+/// The peer device identity learned during a successful pair-setup.
+///
+/// Free with `rppairing_peer_device_free`.
+#[repr(C)]
+pub struct RpPairingPeerDeviceC {
+    /// Peer identifier, the same identifier a later `verifyManualPairing` returns.
+    pub account_id: *mut c_char,
+    /// The device's 16-byte `altIRK`, used to match its mDNS `authTag` records.
+    pub alt_irk: [u8; 16],
+    /// Hardware model identifier, e.g. "AppleTV14,1".
+    pub model: *mut c_char,
+    /// User-visible device name, e.g. "Living Room".
+    pub name: *mut c_char,
+    /// The device's UDID.
+    pub udid: *mut c_char,
+}
+
+fn peer_device_to_c(p: &PeerDevice) -> RpPairingPeerDeviceC {
+    let s = |v: &str| CString::new(v).unwrap_or_default().into_raw();
+    let mut alt_irk = [0u8; 16];
+    let n = p.alt_irk.len().min(16);
+    alt_irk[..n].copy_from_slice(&p.alt_irk[..n]);
+    RpPairingPeerDeviceC {
+        account_id: s(&p.account_id),
+        alt_irk,
+        model: s(&p.model),
+        name: s(&p.name),
+        udid: s(&p.remotepairing_udid),
+    }
+}
+
+/// Frees a peer device struct and its heap-allocated string fields.
+///
+/// # Safety
+/// `peer_device` must be a pointer returned by `rppairing_pair_network` or NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rppairing_peer_device_free(peer_device: *mut RpPairingPeerDeviceC) {
+    if peer_device.is_null() {
+        return;
+    }
+    let p = unsafe { Box::from_raw(peer_device) };
+    for field in [p.account_id, p.model, p.name, p.udid] {
+        if !field.is_null() {
+            let _ = unsafe { CString::from_raw(field) };
+        }
+    }
+}
+
+/// Pairs with a device over the network via raw RPPairing, without creating a tunnel.
+///
+/// This is for tvOS.
+///
+/// On iOS `tunnel_create_rppairing` handles both halves on its own; this function
+/// is only needed there if you want to pair and connect as separate steps.
+///
+/// # Arguments
+/// * `addr` / `addr_len` - address of the pairing service to connect to.
+/// * `hostname` - name this host presents to the device.
+/// * `pairing_file` - borrowed, not consumed. Updated in place on success. Pass a
+///   freshly generated file (`rp_pairing_file_generate`) for a first-time pairing.
+/// * `pin_callback` / `pin_context` - invoked to obtain the PIN shown on the
+///   device. May be `NULL`.
+/// * `out_peer_device` - optional. If non-NULL, receives the paired device's
+///   identity, which the caller must free with `rppairing_peer_device_free`. Only
+///   written when a pair-setup actually ran; a successful pair-verify leaves it
+///   NULL.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null except `pin_callback`,
+/// `pin_context`, and `out_peer_device`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rppairing_pair_network(
+    addr: *const idevice_sockaddr,
+    addr_len: idevice_socklen_t,
+    hostname: *const c_char,
+    pairing_file: *mut RpPairingFileHandle,
+    pin_callback: Option<extern "C" fn(context: *mut c_void) -> *const c_char>,
+    pin_context: *mut c_void,
+    out_peer_device: *mut *mut RpPairingPeerDeviceC,
+) -> *mut IdeviceFfiError {
+    if addr.is_null() || hostname.is_null() || pairing_file.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+
+    let socket_addr = match crate::util::c_socket_to_rust(addr as *const SockAddr, addr_len) {
+        Ok(a) => a,
+        Err(e) => return ffi_err!(e),
+    };
+    let host = match unsafe { CStr::from_ptr(hostname) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
+    };
+    let rpf = unsafe { &mut (*pairing_file).0 };
+    let ctx = PinCtx(pin_context);
+
+    let res = run_sync_local(async {
+        let stream = run_global_timeout(|| tokio::net::TcpStream::connect(socket_addr))
+            .await
+            .map_err(|e| IdeviceError::InternalError(format!("connect: {e}")))?;
+        let conn = RpPairingSocket::new(stream);
+
+        let mut rpc = RemotePairingClient::new(conn, &host);
+        rpc.connect(rpf, async || get_pin(pin_callback, &ctx))
+            .await?;
+
+        // Only present when a pair-setup ran; a successful pair-verify has none.
+        Ok::<_, IdeviceError>(rpc.paired_peer_device().ok().map(peer_device_to_c))
+    });
+
+    match res {
+        Ok(peer_device) => {
+            if !out_peer_device.is_null() {
+                unsafe {
+                    *out_peer_device = match peer_device {
+                        Some(p) => Box::into_raw(Box::new(p)),
+                        None => null_mut(),
+                    }
+                };
+            }
             null_mut()
         }
         Err(e) => ffi_err!(e),

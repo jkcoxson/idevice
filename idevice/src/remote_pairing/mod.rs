@@ -99,6 +99,13 @@ impl<R: RpPairingSocketProvider> RemotePairingClient<R> {
         &self.encryption_key
     }
 
+    /// Performs the RPPairing handshake, then pair-verify, falling back to a full
+    /// pair-setup if verification fails.
+    ///
+    /// Both halves work against either of the services tvOS advertises. A
+    /// successful return does not mean the connection can carry a tunnel, though:
+    /// only `_remotepairing._tcp` serves [`Self::create_tcp_listener`], so on tvOS
+    /// pairing and tunnel creation are worth keeping as separate connections.
     pub async fn connect<Fut>(
         &mut self,
         pairing_file: &mut RpPairingFile,
@@ -822,6 +829,12 @@ impl<R: RpPairingSocketProvider> RemotePairingClient<R> {
 
     /// Send a request to create a TCP tunnel listener on the device.
     /// Returns the port the device is listening on.
+    ///
+    /// Not every endpoint that accepts pairing serves this. tvOS advertises a
+    /// second `_remotepairing-manual-pairing._tcp` service which handles both
+    /// pair-setup and pair-verify but reportedly rejects this request, so a device
+    /// paired over that service must be reconnected over `_remotepairing._tcp`
+    /// before a tunnel can be requested.
     pub async fn create_tcp_listener(&mut self) -> Result<u16, IdeviceError> {
         let request = plist!({
             "request": {
@@ -841,9 +854,11 @@ impl<R: RpPairingSocketProvider> RemotePairingClient<R> {
             .get_by("createListener")
             .and_then(|c| c.get_by("port"))
             .and_then(|p| p.as_unsigned_integer())
-            .ok_or(IdeviceError::UnexpectedResponse(
-                "missing port in createListener response".into(),
-            ))?;
+            .ok_or_else(|| {
+                IdeviceError::UnexpectedResponse(format!(
+                    "missing createListener.port in response: {response:?}"
+                ))
+            })?;
 
         Ok(port as u16)
     }

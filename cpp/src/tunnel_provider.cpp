@@ -2,6 +2,9 @@
 
 #include <idevice++/tunnel_provider.hpp>
 
+#include <algorithm>
+#include <iterator>
+
 namespace IdeviceFFI {
 
 Result<UsbTunnelResult, FfiError> create_usb_tunnel(Provider& provider) {
@@ -61,6 +64,36 @@ Result<UsbTunnelResult, FfiError> create_rppairing_tunnel(const idevice_sockaddr
         return Err(e);
     }
     return Ok(UsbTunnelResult{Adapter::adopt(adapter), RsdHandshake::adopt(handshake)});
+}
+
+Result<Option<PeerDeviceInfo>, FfiError> pair_rppairing_network(const idevice_sockaddr* addr,
+                                                                idevice_socklen_t       addr_len,
+                                                                const std::string&      hostname,
+                                                                RpPairingFile&          pairing_file,
+                                                                PinCallback             pin_callback,
+                                                                void*                   pin_context) {
+    RpPairingPeerDeviceC* peer = nullptr;
+    FfiError              e(::rppairing_pair_network(addr, addr_len, hostname.c_str(),
+                                                     pairing_file.raw(), pin_callback,
+                                                     pin_context, &peer));
+    if (e) {
+        return Err(e);
+    }
+    if (peer == nullptr) {
+        // A pair-verify succeeded, so no peer identity was exchanged.
+        return Ok(Option<PeerDeviceInfo>(None));
+    }
+
+    auto           str = [](const char* c) { return c != nullptr ? std::string(c) : std::string(); };
+    PeerDeviceInfo info;
+    info.account_id = str(peer->account_id);
+    info.model      = str(peer->model);
+    info.name       = str(peer->name);
+    info.udid       = str(peer->udid);
+    std::copy(std::begin(peer->alt_irk), std::end(peer->alt_irk), info.alt_irk.begin());
+    ::rppairing_peer_device_free(peer);
+
+    return Ok(Option<PeerDeviceInfo>(std::move(info)));
 }
 
 } // namespace IdeviceFFI
