@@ -180,8 +180,10 @@ impl RecoveryDevice {
         }
         let end = (data[0] as usize).min(data.len());
         let units: Vec<u16> = data[2..end]
-            .chunks_exact(2)
-            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_le_bytes(*c))
             .collect();
         Ok(String::from_utf16_lossy(&units))
     }

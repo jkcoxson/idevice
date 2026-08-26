@@ -362,16 +362,3 @@ fn is_base64(data: &[u8]) -> bool {
         false
     }
 }
-
-#[test]
-fn test_pairing_file_roundtrip() {
-    let f = std::fs::read("/var/lib/lockdown/test.plist").unwrap();
-
-    println!("{}", String::from_utf8_lossy(&f));
-
-    let input = PairingFile::from_bytes(&f).unwrap();
-    let output = input.serialize().unwrap();
-    println!("{}", String::from_utf8_lossy(&output));
-
-    assert_eq!(f[..output.len()], output);
-}

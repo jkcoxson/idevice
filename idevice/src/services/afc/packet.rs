@@ -40,15 +40,13 @@ impl AfcPacketHeader {
 
     pub async fn read(reader: &mut Idevice) -> Result<Self, IdeviceError> {
         let header_bytes = reader.read_raw(Self::LEN as usize).await?;
-        let mut chunks = header_bytes.chunks_exact(8);
+        let (chunks, _) = header_bytes.as_chunks::<8>();
         let res = Self {
-            magic: u64::from_le_bytes(chunks.next().unwrap().try_into().unwrap()),
-            entire_len: u64::from_le_bytes(chunks.next().unwrap().try_into().unwrap()),
-            header_payload_len: u64::from_le_bytes(chunks.next().unwrap().try_into().unwrap()),
-            packet_num: u64::from_le_bytes(chunks.next().unwrap().try_into().unwrap()),
-            operation: match AfcOpcode::try_from(u64::from_le_bytes(
-                chunks.next().unwrap().try_into().unwrap(),
-            )) {
+            magic: u64::from_le_bytes(chunks[0]),
+            entire_len: u64::from_le_bytes(chunks[1]),
+            header_payload_len: u64::from_le_bytes(chunks[2]),
+            packet_num: u64::from_le_bytes(chunks[3]),
+            operation: match AfcOpcode::try_from(u64::from_le_bytes(chunks[4])) {
                 Ok(o) => o,
                 Err(_) => {
                     return Err(AfcError::UnknownOpcode.into());

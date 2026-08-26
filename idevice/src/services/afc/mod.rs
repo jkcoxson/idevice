@@ -605,8 +605,10 @@ impl AfcClient {
             .map(|s| String::from_utf8_lossy(s).into_owned())
             .collect();
         strings
-            .chunks_exact(2)
-            .map(|chunk| (chunk[0].clone(), chunk[1].clone()))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|[key, value]| (key.clone(), value.clone()))
             .collect()
     }
 
