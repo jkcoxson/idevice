@@ -115,6 +115,10 @@ async fn main() {
         .await
         .expect("pairing failed");
 
+    if let Ok(rx) = mdns.shutdown() {
+        let _ = rx.recv_timeout(std::time::Duration::from_secs(2));
+    }
+
     println!("Paired with device:");
     println!("  name:  {}", peer_device.name);
     println!("  model: {}", peer_device.model);

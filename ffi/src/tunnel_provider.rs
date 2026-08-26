@@ -8,18 +8,18 @@
 //! - **Network via RemoteXPC** (NCM/USB Ethernet): `tunnel_create_remotexpc`
 //! - **Network via raw RPPairing** (Wi-Fi/LAN): `tunnel_create_rppairing`
 
-use std::ffi::{CStr, CString, c_char, c_void};
+use std::ffi::{CStr, c_char, c_void};
 use std::ptr::null_mut;
 
 use idevice::RemoteXpcClient;
-use idevice::remote_pairing::{PeerDevice, RemotePairingClient, RpPairingSocket};
+use idevice::remote_pairing::{RemotePairingClient, RpPairingSocket};
 use idevice::{
     IdeviceError, IdeviceService, core_device_proxy::CoreDeviceProxy, provider::IdeviceProvider,
     rsd::RsdHandshake,
 };
 
 use crate::core_device_proxy::AdapterHandle;
-use crate::rp_pairing_file::RpPairingFileHandle;
+use crate::rp_pairing_file::{RpPairingFileHandle, RpPairingPeerDeviceC, peer_device_to_c};
 use crate::rsd::RsdHandshakeHandle;
 use crate::run_global_timeout;
 use crate::util::{SockAddr, idevice_sockaddr, idevice_socklen_t};
@@ -343,54 +343,6 @@ pub unsafe extern "C" fn tunnel_create_rppairing(
             null_mut()
         }
         Err(e) => ffi_err!(e),
-    }
-}
-
-/// The peer device identity learned during a successful pair-setup.
-///
-/// Free with `rppairing_peer_device_free`.
-#[repr(C)]
-pub struct RpPairingPeerDeviceC {
-    /// Peer identifier, the same identifier a later `verifyManualPairing` returns.
-    pub account_id: *mut c_char,
-    /// The device's 16-byte `altIRK`, used to match its mDNS `authTag` records.
-    pub alt_irk: [u8; 16],
-    /// Hardware model identifier, e.g. "AppleTV14,1".
-    pub model: *mut c_char,
-    /// User-visible device name, e.g. "Living Room".
-    pub name: *mut c_char,
-    /// The device's UDID.
-    pub udid: *mut c_char,
-}
-
-fn peer_device_to_c(p: &PeerDevice) -> RpPairingPeerDeviceC {
-    let s = |v: &str| CString::new(v).unwrap_or_default().into_raw();
-    let mut alt_irk = [0u8; 16];
-    let n = p.alt_irk.len().min(16);
-    alt_irk[..n].copy_from_slice(&p.alt_irk[..n]);
-    RpPairingPeerDeviceC {
-        account_id: s(&p.account_id),
-        alt_irk,
-        model: s(&p.model),
-        name: s(&p.name),
-        udid: s(&p.remotepairing_udid),
-    }
-}
-
-/// Frees a peer device struct and its heap-allocated string fields.
-///
-/// # Safety
-/// `peer_device` must be a pointer returned by `rppairing_pair_network` or NULL.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rppairing_peer_device_free(peer_device: *mut RpPairingPeerDeviceC) {
-    if peer_device.is_null() {
-        return;
-    }
-    let p = unsafe { Box::from_raw(peer_device) };
-    for field in [p.account_id, p.model, p.name, p.udid] {
-        if !field.is_null() {
-            let _ = unsafe { CString::from_raw(field) };
-        }
     }
 }
 
