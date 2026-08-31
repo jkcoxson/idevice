@@ -1310,11 +1310,8 @@ mod recovery_ffi {
         pub set_configuration:
             extern "C" fn(configuration: u8, context: *mut c_void) -> *mut IdeviceFfiError,
         /// Claims an interface / alternate setting.
-        pub claim_interface: extern "C" fn(
-            interface: u8,
-            alt_setting: u8,
-            context: *mut c_void,
-        ) -> *mut IdeviceFfiError,
+        pub claim_interface:
+            extern "C" fn(iface: u8, alt_setting: u8, context: *mut c_void) -> *mut IdeviceFfiError,
         /// Resets the device (it re-enumerates afterwards).
         pub reset: extern "C" fn(context: *mut c_void) -> *mut IdeviceFfiError,
     }
