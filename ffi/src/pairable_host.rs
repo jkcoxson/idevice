@@ -131,8 +131,10 @@ pub unsafe extern "C" fn pairable_host_cancel_free(cancel: *mut PairableHostCanc
 /// * `model` - hardware model identifier shown on the device. `NULL` defaults to
 ///   `"Mac17,7"`. iOS treats the host as a computer, so keep this a Mac identifier.
 /// * `port` - TCP port to listen on. `0` picks a free port.
+/// * `ready_callback` - optional callback invoked with full TXT records and the dynamic port
+///   when the local TCP listener is bound. Bypasses internal mdns-sd to delegate mDNS.
 /// * `pin_callback` - invoked with the setup PIN to display. May be `NULL`.
-/// * `pin_context` - opaque pointer passed back to `pin_callback`.
+/// * `pin_context` - opaque pointer passed back to `pin_callback` and `ready_callback`.
 /// * `cancel` - optional cancellation token from `pairable_host_cancel_new`. Signal it
 ///   from another thread to abort the wait (e.g. the user dismissed the pairing UI).
 ///   `NULL` means the call can only be ended by a device connecting. Without one there
@@ -157,6 +159,16 @@ pub unsafe extern "C" fn pairable_host_accept(
     name: *const c_char,
     model: *const c_char,
     port: u16,
+    ready_callback: Option<
+        extern "C" fn(
+            service_id: *const c_char,
+            port: u16,
+            txt_keys: *const *const c_char,
+            txt_vals: *const *const c_char,
+            txt_count: usize,
+            context: *mut c_void,
+        ),
+    >,
     pin_callback: Option<extern "C" fn(pin: *const c_char, context: *mut c_void)>,
     pin_context: *mut c_void,
     cancel: *const PairableHostCancel,
@@ -207,28 +219,56 @@ pub unsafe extern "C" fn pairable_host_accept(
         let host_info = PairableHostInfo::generate(&name, &model);
         let host_alt_irk = host_info.alt_irk;
         let service_identifier = pairing_file.identifier.clone();
-
-        // Advertise the pairable-host mDNS service so the device can find us.
-        let mdns = ServiceDaemon::new()
-            .map_err(|e| IdeviceError::InternalError(format!("mDNS daemon: {e}")))?;
-        // Apple's instance names exceed the default cap.
-        let _ = mdns.set_service_name_len_max(30);
-        let hostname = format!("idevice-{}.local.", &service_identifier[..8]);
         let txt = host_info.mdns_txt_records(&service_identifier);
-        let properties: Vec<(&str, &str)> =
-            txt.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        let service_info = ServiceInfo::new(
-            PAIRABLE_HOST_SERVICE_TYPE,
-            &service_identifier,
-            &hostname,
-            "",
-            port,
-            &properties[..],
-        )
-        .map_err(|e| IdeviceError::InternalError(format!("mDNS service info: {e}")))?
-        .enable_addr_auto();
-        mdns.register(service_info)
-            .map_err(|e| IdeviceError::InternalError(format!("mDNS register: {e}")))?;
+
+        let mut mdns_opt: Option<ServiceDaemon> = None;
+
+        // If ready_callback is provided, delegate mDNS advertisement to native caller
+        if let Some(cb) = ready_callback {
+            let mut keys: Vec<CString> = Vec::with_capacity(txt.len());
+            let mut vals: Vec<CString> = Vec::with_capacity(txt.len());
+
+            for (k, v) in &txt {
+                keys.push(CString::new(k.as_str()).unwrap_or_default());
+                vals.push(CString::new(v.as_str()).unwrap_or_default());
+            }
+
+            let key_ptrs: Vec<*const c_char> = keys.iter().map(|s| s.as_ptr()).collect();
+            let val_ptrs: Vec<*const c_char> = vals.iter().map(|s| s.as_ptr()).collect();
+
+            if let Ok(id_c) = CString::new(service_identifier.clone()) {
+                cb(
+                    id_c.as_ptr(),
+                    port,
+                    key_ptrs.as_ptr(),
+                    val_ptrs.as_ptr(),
+                    txt.len(),
+                    ctx.0,
+                );
+            }
+        } else {
+            // Advertise the pairable-host mDNS service so the device can find us.
+            let mdns = ServiceDaemon::new()
+                .map_err(|e| IdeviceError::InternalError(format!("mDNS daemon: {e}")))?;
+            // Apple's instance names exceed the default cap.
+            let _ = mdns.set_service_name_len_max(30);
+            let hostname = format!("idevice-{}.local.", &service_identifier[..8]);
+            let properties: Vec<(&str, &str)> =
+                txt.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+            let service_info = ServiceInfo::new(
+                PAIRABLE_HOST_SERVICE_TYPE,
+                &service_identifier,
+                &hostname,
+                "",
+                port,
+                &properties[..],
+            )
+            .map_err(|e| IdeviceError::InternalError(format!("mDNS service info: {e}")))?
+            .enable_addr_auto();
+            mdns.register(service_info)
+                .map_err(|e| IdeviceError::InternalError(format!("mDNS register: {e}")))?;
+            mdns_opt = Some(mdns);
+        }
 
         let pair = async {
             // Wait for a device to connect and start pairing.
@@ -264,7 +304,9 @@ pub unsafe extern "C" fn pairable_host_accept(
             None => pair.await,
         };
 
-        if let Ok(rx) = mdns.shutdown() {
+        if let Some(mdns) = mdns_opt
+            && let Ok(rx) = mdns.shutdown()
+        {
             let _ =
                 tokio::task::spawn_blocking(move || rx.recv_timeout(Duration::from_secs(2))).await;
         }

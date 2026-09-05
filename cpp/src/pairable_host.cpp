@@ -29,6 +29,7 @@ Result<PairableHostResult, FfiError> accept_pairing(const std::string&          
     FfiError                e(::pairable_host_accept(name.c_str(),
                                                      model.empty() ? nullptr : model.c_str(),
                                                      port,
+                                                     nullptr,
                                                      pin_callback,
                                                      pin_context,
                                                      cancel != nullptr ? cancel->raw() : nullptr,
