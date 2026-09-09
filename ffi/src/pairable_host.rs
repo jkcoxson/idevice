@@ -159,16 +159,7 @@ pub unsafe extern "C" fn pairable_host_accept(
     name: *const c_char,
     model: *const c_char,
     port: u16,
-    ready_callback: Option<
-        extern "C" fn(
-            service_id: *const c_char,
-            port: u16,
-            txt_keys: *const *const c_char,
-            txt_vals: *const *const c_char,
-            txt_count: usize,
-            context: *mut c_void,
-        ),
-    >,
+    ready_callback: *const c_void,
     pin_callback: Option<extern "C" fn(pin: *const c_char, context: *mut c_void)>,
     pin_context: *mut c_void,
     cancel: *const PairableHostCancel,
@@ -191,6 +182,24 @@ pub unsafe extern "C" fn pairable_host_accept(
             Ok(s) => s.to_string(),
             Err(_) => return ffi_err!(IdeviceError::FfiInvalidString),
         }
+    };
+
+    let ready_callback = if ready_callback.is_null() {
+        None
+    } else {
+        Some(unsafe {
+            std::mem::transmute::<
+                *const c_void,
+                extern "C" fn(
+                    service_id: *const c_char,
+                    port: u16,
+                    txt_keys: *const *const c_char,
+                    txt_vals: *const *const c_char,
+                    txt_count: usize,
+                    context: *mut c_void,
+                ),
+            >(ready_callback)
+        })
     };
 
     let cancel = if cancel.is_null() {
