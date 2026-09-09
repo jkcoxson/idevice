@@ -256,29 +256,24 @@ impl fmt::Debug for MainKeyboardService {
     }
 }
 
-fn universal_hid_request(payload: Dictionary) -> Dictionary {
-    let mut request = Dictionary::new();
+fn universal_hid_request(payload: XPCObject) -> XPCObject {
     let universal_hid_feature: Cow<'static, str> =
         obf!("com.apple.coredevice.feature.remote.universalhidservice");
-    request.insert(
-        "featureIdentifier".into(),
-        XPCObject::String(universal_hid_feature.into()),
-    );
-    request.insert("messageType".into(), XPCObject::String("Request".into()));
-    request.insert("payload".into(), XPCObject::Dictionary(payload));
-    request
+    crate::xpc!({
+        "featureIdentifier": universal_hid_feature.to_string(),
+        "messageType": "Request",
+        "payload": payload,
+    })
 }
 
-fn build_connected_services_request() -> Dictionary {
-    let mut payload = Dictionary::new();
-    payload.insert(
-        "connectedServices".into(),
-        XPCObject::Dictionary(Dictionary::new()),
-    );
+fn build_connected_services_request() -> XPCObject {
+    let payload = crate::xpc!({
+        "connectedServices": XPCObject::Dictionary(Dictionary::new()),
+    });
     universal_hid_request(payload)
 }
 
-fn build_main_keyboard_create_request() -> Dictionary {
+fn build_main_keyboard_create_request() -> XPCObject {
     let payload = crate::xpc!({
         "createService": {
             "_0": {
@@ -322,17 +317,16 @@ fn build_main_keyboard_create_request() -> Dictionary {
                 "_ServiceID": MAIN_KEYBOARD_REQUESTED_SERVICE_ID,
             },
         },
-    })
-    .to_dictionary()
-    .expect("mainKeyboard payload is a dictionary");
+    });
     universal_hid_request(payload)
 }
 
-fn build_main_keyboard_service_request(operation: &'static str, service_id: u64) -> Dictionary {
-    let mut tuple = Dictionary::new();
-    tuple.insert("_0".into(), XPCObject::UInt64(service_id));
-    let mut payload = Dictionary::new();
-    payload.insert(operation.into(), XPCObject::Dictionary(tuple));
+fn build_main_keyboard_service_request(operation: &'static str, service_id: u64) -> XPCObject {
+    let payload = crate::xpc!({
+        operation: {
+            "_0": service_id,
+        }
+    });
     universal_hid_request(payload)
 }
 
@@ -359,12 +353,13 @@ fn build_main_keyboard_report(bitmap: &[u8; MAIN_KEYBOARD_USAGE_BITMAP_BYTES]) -
     report
 }
 
-fn build_send_report_request(service_id: u64, report: Vec<u8>) -> Dictionary {
-    let mut tuple = Dictionary::new();
-    tuple.insert("_0".into(), XPCObject::Data(report));
-    tuple.insert("_1".into(), XPCObject::UInt64(service_id));
-    let mut payload = Dictionary::new();
-    payload.insert("send".into(), XPCObject::Dictionary(tuple));
+fn build_send_report_request(service_id: u64, report: Vec<u8>) -> XPCObject {
+    let payload = crate::xpc!({
+        "send": {
+            "_0": report,
+            "_1": service_id,
+        }
+    });
     universal_hid_request(payload)
 }
 
@@ -852,9 +847,9 @@ fn confirm_main_keyboard_identity(
 }
 
 trait MainKeyboardWire {
-    async fn request(&mut self, request: Dictionary) -> Result<plist::Value, MainKeyboardError>;
+    async fn request(&mut self, request: XPCObject) -> Result<plist::Value, MainKeyboardError>;
 
-    async fn send(&mut self, request: Dictionary) -> Result<(), MainKeyboardError>;
+    async fn send(&mut self, request: XPCObject) -> Result<(), MainKeyboardError>;
 }
 
 /// Inspect and drive the device's registered HID surfaces.
@@ -877,7 +872,7 @@ impl crate::RsdService for UniversalHidServiceClient<Box<dyn ReadWrite>> {
 }
 
 impl<R: ReadWrite> MainKeyboardWire for UniversalHidServiceClient<R> {
-    async fn request(&mut self, request: Dictionary) -> Result<plist::Value, MainKeyboardError> {
+    async fn request(&mut self, request: XPCObject) -> Result<plist::Value, MainKeyboardError> {
         self.inner
             .send_object(request, true)
             .await
@@ -888,7 +883,7 @@ impl<R: ReadWrite> MainKeyboardWire for UniversalHidServiceClient<R> {
             .map_err(|_| MainKeyboardError::Transport)
     }
 
-    async fn send(&mut self, request: Dictionary) -> Result<(), MainKeyboardError> {
+    async fn send(&mut self, request: XPCObject) -> Result<(), MainKeyboardError> {
         self.inner
             .send_object(request, false)
             .await
