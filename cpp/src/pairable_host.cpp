@@ -22,19 +22,22 @@ Result<PairableHostResult, FfiError> accept_pairing(const std::string&          
                                                     uint16_t                       port,
                                                     PinDisplayCallback             pin_callback,
                                                     void*                          pin_context,
-                                                    const PairableHostCancelToken* cancel) {
+                                                    const PairableHostCancelToken* cancel,
+                                                    bool                           allows_pinless_pairing) {
     RpPairingFileHandle*    out  = nullptr;
     RpPairingPeerDeviceC*   peer = nullptr;
     std::array<uint8_t, 16> host_alt_irk{};
-    FfiError                e(::pairable_host_accept(name.c_str(),
-                                                     model.empty() ? nullptr : model.c_str(),
-                                                     port,
-                                                     pin_callback,
-                                                     pin_context,
-                                                     cancel != nullptr ? cancel->raw() : nullptr,
-                                                     host_alt_irk.data(),
-                                                     &peer,
-                                                     &out));
+    FfiError                e(::pairable_host_accept_with_options(
+        name.c_str(),
+        model.empty() ? nullptr : model.c_str(),
+        port,
+        allows_pinless_pairing,
+        pin_callback,
+        pin_context,
+        cancel != nullptr ? cancel->raw() : nullptr,
+        host_alt_irk.data(),
+        &peer,
+        &out));
     if (e) {
         return Err(e);
     }

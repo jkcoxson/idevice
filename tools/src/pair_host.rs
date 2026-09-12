@@ -51,6 +51,12 @@ async fn main() {
                 .help("Where to write the resulting pairing file")
                 .default_value("host_pairing_file.plist"),
         )
+        .arg(
+            Arg::new("pinless")
+                .long("pinless")
+                .help("Advertise pinless pairing and use Apple's all-zero setup code")
+                .action(clap::ArgAction::SetTrue),
+        )
         .get_matches();
 
     let name = matches.get_one::<String>("name").unwrap().clone();
@@ -61,6 +67,7 @@ async fn main() {
         .parse()
         .expect("invalid port");
     let out = matches.get_one::<String>("out").unwrap().clone();
+    let pinless = matches.get_flag("pinless");
 
     // Bind first so we can advertise the real port.
     let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, port))
@@ -72,7 +79,8 @@ async fn main() {
     // pairing file and `host_info.alt_irk` across runs so already-paired devices
     // keep recognizing this host; this PoC regenerates them each run.
     let mut pairing_file = RpPairingFile::generate(&name);
-    let host_info = PairableHostInfo::generate(&name, &model);
+    let mut host_info = PairableHostInfo::generate(&name, &model);
+    host_info.allows_pinless_pairing = pinless;
     let service_identifier = pairing_file.identifier.clone();
 
     let mdns = ServiceDaemon::new().expect("failed to create mDNS daemon");

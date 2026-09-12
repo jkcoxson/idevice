@@ -52,6 +52,8 @@ pub mod os_trace_relay;
 #[cfg(feature = "remote_pairing")]
 pub mod pairable_host;
 mod pairing_file;
+#[cfg(feature = "remote_pairing")]
+pub mod pairing_host;
 #[cfg(feature = "pcapd")]
 pub mod pcapd;
 #[cfg(feature = "preboard_service")]

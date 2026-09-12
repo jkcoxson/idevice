@@ -82,9 +82,10 @@ struct PairableHostResult {
 Result<PairableHostResult, FfiError>
 accept_pairing(const std::string&             name,
                const std::string&             model,
-               uint16_t                       port         = 0,
-               PinDisplayCallback             pin_callback = nullptr,
-               void*                          pin_context  = nullptr,
-               const PairableHostCancelToken* cancel       = nullptr);
+               uint16_t                       port                   = 0,
+               PinDisplayCallback             pin_callback           = nullptr,
+               void*                          pin_context            = nullptr,
+               const PairableHostCancelToken* cancel                 = nullptr,
+               bool                           allows_pinless_pairing = false);
 
 } // namespace IdeviceFFI

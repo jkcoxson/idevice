@@ -64,6 +64,9 @@ pub struct PairableHostInfo {
     ///
     /// See [`Self::mdns_txt_records`] and [`crate::remote_pairing::compute_auth_tag`].
     pub alt_irk: [u8; 16],
+    /// Advertise pinless pairing support. When enabled, pair-setup uses Apple's
+    /// conventional all-zero setup code instead of a user-entered random PIN.
+    pub allows_pinless_pairing: bool,
 }
 
 impl PairableHostInfo {
@@ -114,6 +117,7 @@ impl Default for PairableHostInfo {
             identifier: String::new(),
             wire_protocol_version: 26,
             alt_irk: [0u8; 16],
+            allows_pinless_pairing: false,
         }
     }
 }
@@ -225,7 +229,7 @@ impl<R: super::RpPairingSocketProvider> PairableHost<R> {
                             "minimumSupportedWireProtocolVersion": 8,
                             "deviceOptions": {
                                 "allowsPairSetup": true,
-                                "allowsPinlessPairing": false,
+                                "allowsPinlessPairing": self.host_info.allows_pinless_pairing,
                                 "allowsIncomingTunnelConnections": false,
                                 "allowsUpgradeOfLockdownPairings": false,
                                 "allowsSharingSensitiveInfo": false
@@ -261,7 +265,11 @@ impl<R: super::RpPairingSocketProvider> PairableHost<R> {
         let mut salt = [0u8; 16];
         rand::rng().fill_bytes(&mut salt);
 
-        let pin = format!("{:06}", rand::rng().random_range(0..1_000_000));
+        let pin = if self.host_info.allows_pinless_pairing {
+            "000000".to_string()
+        } else {
+            format!("{:06}", rand::rng().random_range(0..1_000_000))
+        };
         let verifier = srp_client.compute_verifier(SRP_USERNAME, pin.as_bytes(), &salt);
 
         let (b_priv, b_pub) = loop {

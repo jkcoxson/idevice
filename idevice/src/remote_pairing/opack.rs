@@ -1,10 +1,13 @@
 // Jackson Coxson
 
+// Back-reference support copied from SideInstaller's copy of idevice (https://github.com/FrizzleM/SideInstaller/blob/main/rust-core/vendor/idevice/src/remote_pairing/opack.rs)
+
 use plist::Value;
 
 pub fn opack_to_plist(bytes: &[u8]) -> Result<Value, String> {
     let mut offset = 0;
-    let value = opack_to_plist_inner(bytes, &mut offset)?;
+    let mut objects = Vec::new();
+    let value = opack_to_plist_inner(bytes, &mut offset, &mut objects)?;
     if offset != bytes.len() {
         return Err(format!(
             "unexpected trailing bytes after OPACK payload: {}",
@@ -141,36 +144,96 @@ fn plist_to_opack_inner(node: &Value, buf: &mut Vec<u8>) {
     }
 }
 
-fn opack_to_plist_inner(bytes: &[u8], offset: &mut usize) -> Result<Value, String> {
+/// `objects` is the back-reference table: every scalar the encoder is allowed to
+/// point at later, in the order it first appeared. See [`remember`].
+fn opack_to_plist_inner(
+    bytes: &[u8],
+    offset: &mut usize,
+    objects: &mut Vec<Value>,
+) -> Result<Value, String> {
     let tag = read_u8(bytes, offset)?;
     match tag {
         0x01 => Ok(Value::Boolean(true)),
         0x02 => Ok(Value::Boolean(false)),
         0x08..=0x2F => Ok(Value::Integer((tag as u64 - 8).into())),
-        0x30 => Ok(Value::Integer((read_u8(bytes, offset)? as u64).into())),
-        0x32 => Ok(Value::Integer(
-            (u32::from_le_bytes(read_exact::<4>(bytes, offset)?) as u64).into(),
-        )),
-        0x33 => Ok(Value::Integer(
-            u64::from_le_bytes(read_exact::<8>(bytes, offset)?).into(),
-        )),
+        0x30 => remember(
+            objects,
+            Value::Integer((read_u8(bytes, offset)? as u64).into()),
+        ),
+        0x31 => remember(
+            objects,
+            Value::Integer((u16::from_le_bytes(read_exact::<2>(bytes, offset)?) as u64).into()),
+        ),
+        0x32 => remember(
+            objects,
+            Value::Integer((u32::from_le_bytes(read_exact::<4>(bytes, offset)?) as u64).into()),
+        ),
+        0x33 => remember(
+            objects,
+            Value::Integer(u64::from_le_bytes(read_exact::<8>(bytes, offset)?).into()),
+        ),
         0x35 => {
             let n = u32::from_ne_bytes(read_exact::<4>(bytes, offset)?).swap_bytes();
-            Ok(Value::Real(f32::from_bits(n) as f64))
+            remember(objects, Value::Real(f32::from_bits(n) as f64))
         }
         0x36 => {
             let n = u64::from_ne_bytes(read_exact::<8>(bytes, offset)?).swap_bytes();
-            Ok(Value::Real(f64::from_bits(n)))
+            remember(objects, Value::Real(f64::from_bits(n)))
         }
-        0x40..=0x64 => parse_string_value(tag, bytes, offset),
-        0x70..=0x94 => parse_data_value(tag, bytes, offset),
-        0xD0..=0xDE => parse_array(bytes, offset, Some((tag - 0xD0) as usize)),
-        0xDF => parse_array(bytes, offset, None),
-        0xE0..=0xEE => parse_dictionary(bytes, offset, Some((tag - 0xE0) as usize)),
-        0xEF => parse_dictionary(bytes, offset, None),
+        0x40..=0x64 => {
+            let value = parse_string_value(tag, bytes, offset)?;
+            remember(objects, value)
+        }
+        0x70..=0x94 => {
+            let value = parse_data_value(tag, bytes, offset)?;
+            remember(objects, value)
+        }
+        // Back-reference to an already-seen scalar, index encoded in the tag.
+        0xA0..=0xC0 => lookup(objects, (tag - 0xA0) as usize),
+        // Back-reference with an out-of-line index: 1, 2, 4 or 8 little-endian
+        // bytes, same size ladder the integer tags use.
+        0xC1..=0xC4 => {
+            let index = match tag {
+                0xC1 => read_u8(bytes, offset)? as u64,
+                0xC2 => u16::from_le_bytes(read_exact::<2>(bytes, offset)?) as u64,
+                0xC3 => u32::from_le_bytes(read_exact::<4>(bytes, offset)?) as u64,
+                _ => u64::from_le_bytes(read_exact::<8>(bytes, offset)?),
+            };
+            let index = usize::try_from(index).map_err(|_| {
+                format!("OPACK back-reference too large for this platform: {index}")
+            })?;
+            lookup(objects, index)
+        }
+        0xD0..=0xDE => parse_array(bytes, offset, objects, Some((tag - 0xD0) as usize)),
+        0xDF => parse_array(bytes, offset, objects, None),
+        0xE0..=0xEE => parse_dictionary(bytes, offset, objects, Some((tag - 0xE0) as usize)),
+        0xEF => parse_dictionary(bytes, offset, objects, None),
         0x03 => Err("unexpected OPACK terminator".into()),
         _ => Err(format!("unsupported OPACK tag: 0x{tag:02x}")),
     }
+}
+
+/// Interns `value` in the back-reference table and hands it back unchanged.
+///
+/// The encoder emits a pointer instead of a literal whenever a scalar repeats,
+/// so the decoder has to track the same table to resolve those pointers. Only
+/// scalars are interned — collections never are — and a repeat is not appended
+/// twice, otherwise every later index would be off by one. A real device sends
+/// this for a pair record whose `name` matches its `model`, for instance.
+fn remember(objects: &mut Vec<Value>, value: Value) -> Result<Value, String> {
+    if !objects.contains(&value) {
+        objects.push(value.clone());
+    }
+    Ok(value)
+}
+
+fn lookup(objects: &[Value], index: usize) -> Result<Value, String> {
+    objects.get(index).cloned().ok_or_else(|| {
+        format!(
+            "OPACK back-reference {index} out of range, only {} objects seen",
+            objects.len()
+        )
+    })
 }
 
 fn parse_string_value(bytes_tag: u8, bytes: &[u8], offset: &mut usize) -> Result<Value, String> {
@@ -237,18 +300,23 @@ fn read_sized_len(
     }
 }
 
-fn parse_array(bytes: &[u8], offset: &mut usize, count: Option<usize>) -> Result<Value, String> {
+fn parse_array(
+    bytes: &[u8],
+    offset: &mut usize,
+    objects: &mut Vec<Value>,
+    count: Option<usize>,
+) -> Result<Value, String> {
     let mut items = Vec::with_capacity(count.unwrap_or(0));
 
     match count {
         Some(count) => {
             for _ in 0..count {
-                items.push(opack_to_plist_inner(bytes, offset)?);
+                items.push(opack_to_plist_inner(bytes, offset, objects)?);
             }
         }
         None => {
             while !peek_is_terminator(bytes, *offset) {
-                items.push(opack_to_plist_inner(bytes, offset)?);
+                items.push(opack_to_plist_inner(bytes, offset, objects)?);
             }
             *offset += 1;
         }
@@ -260,6 +328,7 @@ fn parse_array(bytes: &[u8], offset: &mut usize, count: Option<usize>) -> Result
 fn parse_dictionary(
     bytes: &[u8],
     offset: &mut usize,
+    objects: &mut Vec<Value>,
     count: Option<usize>,
 ) -> Result<Value, String> {
     let mut dict = plist::Dictionary::new();
@@ -267,15 +336,15 @@ fn parse_dictionary(
     match count {
         Some(count) => {
             for _ in 0..count {
-                let key = read_dictionary_key(bytes, offset)?;
-                let value = opack_to_plist_inner(bytes, offset)?;
+                let key = read_dictionary_key(bytes, offset, objects)?;
+                let value = opack_to_plist_inner(bytes, offset, objects)?;
                 dict.insert(key, value);
             }
         }
         None => {
             while !peek_is_terminator(bytes, *offset) {
-                let key = read_dictionary_key(bytes, offset)?;
-                let value = opack_to_plist_inner(bytes, offset)?;
+                let key = read_dictionary_key(bytes, offset, objects)?;
+                let value = opack_to_plist_inner(bytes, offset, objects)?;
                 dict.insert(key, value);
             }
             *offset += 1;
@@ -285,8 +354,12 @@ fn parse_dictionary(
     Ok(Value::Dictionary(dict))
 }
 
-fn read_dictionary_key(bytes: &[u8], offset: &mut usize) -> Result<String, String> {
-    opack_to_plist_inner(bytes, offset)?
+fn read_dictionary_key(
+    bytes: &[u8],
+    offset: &mut usize,
+    objects: &mut Vec<Value>,
+) -> Result<String, String> {
+    opack_to_plist_inner(bytes, offset, objects)?
         .into_string()
         .ok_or_else(|| "dictionary key is not a string".to_string())
 }
@@ -393,5 +466,94 @@ mod tests {
 
         println!("{res:02X?}");
         assert_eq!(res, expected);
+    }
+
+    /// Back-references resolve against the scalars seen so far, keys included,
+    /// and collections never take up a slot.
+    #[test]
+    fn back_references_resolve_against_earlier_scalars() {
+        // {"a": "b", "c": {"d": "a"}, "d": true} — 0xA0 points at "a", 0xA3 at "d".
+        let v = [
+            0xe3, 0x41, 0x61, 0x41, 0x62, 0x41, 0x63, 0xe1, 0x41, 0x64, 0xa0, 0xa3, 0x01,
+        ];
+
+        let expected = crate::plist!({
+            "a": "b",
+            "c": {
+                "d": "a"
+            },
+            "d": true,
+        });
+
+        assert_eq!(super::opack_to_plist(&v).unwrap(), expected);
+    }
+
+    /// A repeated scalar is interned once, so the indices after it don't shift.
+    #[test]
+    fn repeated_scalars_do_not_take_a_second_slot() {
+        // ["x", "x", "y", <ref 1>] — "x" is only interned once, so slot 1 is "y".
+        let v = [0xd4, 0x41, 0x78, 0x41, 0x78, 0x41, 0x79, 0xa1];
+
+        let expected = crate::plist!(["x", "x", "y", "y"]);
+
+        assert_eq!(super::opack_to_plist(&v).unwrap(), expected);
+    }
+
+    #[test]
+    fn out_of_range_back_reference_is_an_error() {
+        // ["a", <ref 4>] — nothing has been interned at index 4.
+        let err = super::opack_to_plist(&[0xd2, 0x41, 0x61, 0xa4]).unwrap_err();
+
+        assert!(err.contains("out of range"), "unexpected error: {err}");
+    }
+
+    /// Regression: a real iPad's pair record reports `name` as a back-reference
+    /// to `model`, which used to fail with "unsupported OPACK tag: 0xab".
+    #[test]
+    fn parses_pair_record_info_with_back_referenced_name() {
+        let v = [
+            0xe9, 0x46, 0x61, 0x6c, 0x74, 0x49, 0x52, 0x4b, 0x80, 0xeb, 0x52, 0x31, 0xc5, 0x45,
+            0x75, 0xca, 0x46, 0x9f, 0xd2, 0x3c, 0xa5, 0x9e, 0x2f, 0x08, 0x0e, 0x52, 0x72, 0x65,
+            0x6d, 0x6f, 0x74, 0x65, 0x70, 0x61, 0x69, 0x72, 0x69, 0x6e, 0x67, 0x5f, 0x65, 0x63,
+            0x69, 0x64, 0x33, 0x1c, 0x00, 0x85, 0x3e, 0x36, 0x11, 0x12, 0x00, 0x46, 0x62, 0x74,
+            0x41, 0x64, 0x64, 0x72, 0x51, 0x33, 0x34, 0x3a, 0x32, 0x62, 0x3a, 0x36, 0x65, 0x3a,
+            0x32, 0x32, 0x3a, 0x36, 0x36, 0x3a, 0x38, 0x61, 0x5b, 0x72, 0x65, 0x6d, 0x6f, 0x74,
+            0x65, 0x70, 0x61, 0x69, 0x72, 0x69, 0x6e, 0x67, 0x5f, 0x73, 0x65, 0x72, 0x69, 0x61,
+            0x6c, 0x5f, 0x6e, 0x75, 0x6d, 0x62, 0x65, 0x72, 0x4a, 0x52, 0x32, 0x43, 0x51, 0x48,
+            0x51, 0x33, 0x36, 0x59, 0x36, 0x49, 0x61, 0x63, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x49,
+            0x44, 0x61, 0x24, 0x39, 0x39, 0x30, 0x31, 0x46, 0x35, 0x34, 0x42, 0x2d, 0x44, 0x33,
+            0x36, 0x30, 0x2d, 0x34, 0x45, 0x44, 0x38, 0x2d, 0x42, 0x34, 0x44, 0x39, 0x2d, 0x38,
+            0x30, 0x43, 0x35, 0x35, 0x35, 0x35, 0x31, 0x35, 0x35, 0x33, 0x37, 0x45, 0x6d, 0x6f,
+            0x64, 0x65, 0x6c, 0x48, 0x69, 0x50, 0x61, 0x64, 0x31, 0x36, 0x2c, 0x33, 0x52, 0x72,
+            0x65, 0x6d, 0x6f, 0x74, 0x65, 0x70, 0x61, 0x69, 0x72, 0x69, 0x6e, 0x67, 0x5f, 0x75,
+            0x64, 0x69, 0x64, 0x59, 0x30, 0x30, 0x30, 0x30, 0x38, 0x31, 0x33, 0x32, 0x2d, 0x30,
+            0x30, 0x31, 0x32, 0x31, 0x31, 0x33, 0x36, 0x33, 0x45, 0x38, 0x35, 0x30, 0x30, 0x31,
+            0x43, 0x44, 0x6e, 0x61, 0x6d, 0x65, 0xab, 0x5b, 0x6c, 0x61, 0x73, 0x74, 0x53, 0x65,
+            0x65, 0x6e, 0x57, 0x69, 0x72, 0x65, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x63, 0x6f, 0x6c,
+            0x56, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x22,
+        ];
+
+        let res = super::opack_to_plist(&v).unwrap();
+        let dict = res.as_dictionary().unwrap();
+
+        assert_eq!(dict.get("model").unwrap().as_string(), Some("iPad16,3"));
+        assert_eq!(dict.get("name").unwrap().as_string(), Some("iPad16,3"));
+        assert_eq!(
+            dict.get("remotepairing_udid").unwrap().as_string(),
+            Some("00008132-001211363E85001C")
+        );
+        assert_eq!(
+            dict.get("remotepairing_ecid")
+                .unwrap()
+                .as_unsigned_integer(),
+            Some(5085474255601692)
+        );
+        assert_eq!(dict.get("altIRK").unwrap().as_data().unwrap().len(), 16);
+        assert_eq!(
+            dict.get("lastSeenWireProtocolVersion")
+                .unwrap()
+                .as_unsigned_integer(),
+            Some(26)
+        );
     }
 }

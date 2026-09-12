@@ -164,6 +164,40 @@ pub unsafe extern "C" fn pairable_host_accept(
     out_peer_device: *mut *mut RpPairingPeerDeviceC,
     out_pairing_file: *mut *mut RpPairingFileHandle,
 ) -> *mut IdeviceFfiError {
+    unsafe {
+        pairable_host_accept_with_options(
+            name,
+            model,
+            port,
+            false,
+            pin_callback,
+            pin_context,
+            cancel,
+            out_host_alt_irk,
+            out_peer_device,
+            out_pairing_file,
+        )
+    }
+}
+
+/// Same as `pairable_host_accept`, with explicit pairable-host policy options.
+///
+/// # Safety
+/// Same pointer validity requirements as `pairable_host_accept`.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn pairable_host_accept_with_options(
+    name: *const c_char,
+    model: *const c_char,
+    port: u16,
+    allows_pinless_pairing: bool,
+    pin_callback: Option<extern "C" fn(pin: *const c_char, context: *mut c_void)>,
+    pin_context: *mut c_void,
+    cancel: *const PairableHostCancel,
+    out_host_alt_irk: *mut u8,
+    out_peer_device: *mut *mut RpPairingPeerDeviceC,
+    out_pairing_file: *mut *mut RpPairingFileHandle,
+) -> *mut IdeviceFfiError {
     if name.is_null() || out_pairing_file.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
@@ -204,7 +238,8 @@ pub unsafe extern "C" fn pairable_host_accept(
             .port();
 
         let mut pairing_file = RpPairingFile::generate(&name);
-        let host_info = PairableHostInfo::generate(&name, &model);
+        let mut host_info = PairableHostInfo::generate(&name, &model);
+        host_info.allows_pinless_pairing = allows_pinless_pairing;
         let host_alt_irk = host_info.alt_irk;
         let service_identifier = pairing_file.identifier.clone();
 
