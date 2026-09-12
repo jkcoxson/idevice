@@ -12,6 +12,8 @@
 #include <idevice++/tunnel_provider.hpp>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace IdeviceFFI {
 
@@ -63,6 +65,55 @@ struct PairableHostResult {
     /// The paired device's identity (name, model, UDID, altIRK), when the device
     /// supplied one.
     Option<PeerDeviceInfo>  peer_device;
+};
+
+using PairableHostPtr =
+    std::unique_ptr<::PairableHostHandle,
+                    FnDeleter<::PairableHostHandle, pairable_host_free>>;
+
+/// Prepared pairable-host identity for callers that own Bonjour and sockets.
+class PairableHost {
+  public:
+    /// Generates the host identity and metadata needed to publish Bonjour records.
+    static Result<PairableHost, FfiError>
+    prepare(const std::string& name,
+            const std::string& model = "Mac17,7",
+            bool               allows_pinless_pairing = false);
+
+#if defined(__unix__) || defined(__APPLE__)
+    /// Completes pairing over an already-connected socket. The fd remains owned by
+    /// the caller; the underlying C API duplicates it before use.
+    Result<PairableHostResult, FfiError>
+    accept_fd(int fd,
+              PinDisplayCallback pin_callback = nullptr,
+              void*              pin_context  = nullptr);
+#endif
+
+    const std::string&              service_id() const noexcept { return service_id_; }
+    const std::vector<uint8_t>&     txt_records_plist() const noexcept { return txt_records_plist_; }
+    const std::array<uint8_t, 16>&  host_alt_irk() const noexcept { return host_alt_irk_; }
+    ::PairableHostHandle*            raw() const noexcept { return handle_.get(); }
+
+    ~PairableHost() noexcept = default;
+    PairableHost(PairableHost&&) noexcept = default;
+    PairableHost& operator=(PairableHost&&) noexcept = default;
+    PairableHost(const PairableHost&) = delete;
+    PairableHost& operator=(const PairableHost&) = delete;
+
+  private:
+    PairableHost(::PairableHostHandle* handle,
+                 std::string           service_id,
+                 std::vector<uint8_t>  txt_records_plist,
+                 std::array<uint8_t, 16> host_alt_irk) noexcept
+        : handle_(handle),
+          service_id_(std::move(service_id)),
+          txt_records_plist_(std::move(txt_records_plist)),
+          host_alt_irk_(host_alt_irk) {}
+
+    PairableHostPtr          handle_{};
+    std::string              service_id_;
+    std::vector<uint8_t>     txt_records_plist_;
+    std::array<uint8_t, 16>  host_alt_irk_{};
 };
 
 /// Advertises this computer as a pairable host (`_remotepairing-pairable-host._tcp`)
