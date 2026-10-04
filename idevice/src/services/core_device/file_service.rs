@@ -115,14 +115,17 @@ impl<R: ReadWrite> FileServiceClient<R> {
     /// every page is answered here with `{MessageUUID}` on the reply channel,
     /// or the device stops reading the connection. The reply to the request
     /// itself follows the last page and ends the listing; it fails on
-    /// `EncodedError`. Messages for another `MessageUUID` and bodyless
-    /// wrappers are skipped. O(n) time, the whole list in memory.
+    /// `EncodedError`. Messages for another `MessageUUID` (compared without
+    /// case: the device upper-cases it) and bodyless wrappers are skipped.
+    /// O(n) time, the whole list in memory.
     pub async fn retrieve_directory_list(
         &mut self,
         path: &str,
     ) -> Result<Vec<String>, IdeviceError> {
         let session = self.session()?;
-        let uuid = uuid::Uuid::new_v4().to_string();
+        // The device echoes the UUID upper-cased, so it is sent that way and
+        // compared without case.
+        let uuid = uuid::Uuid::new_v4().to_string().to_uppercase();
         let request_id = self
             .send(crate::xpc!({
                 "Cmd": "RetrieveDirectoryList",
@@ -157,7 +160,11 @@ impl<R: ReadWrite> FileServiceClient<R> {
                 }
                 return Ok(names);
             }
-            if dict.get("MessageUUID").and_then(|v| v.as_string()) != Some(uuid.as_str()) {
+            let ours = dict
+                .get("MessageUUID")
+                .and_then(|v| v.as_string())
+                .is_some_and(|u| u.eq_ignore_ascii_case(&uuid));
+            if !ours {
                 debug!("file service: message for another request: {dict:?}");
                 continue;
             }
@@ -409,7 +416,8 @@ mod tests {
         let uuid = request_uuid(&got);
         let (a, b, d) = (names("a", 128), names("b", 128), names("d", 5));
         for (i, p) in [&a, &b, &d].iter().enumerate() {
-            peer.write_all(&page(2 + 2 * i as u64, &uuid, p)).await.unwrap();
+            // The match is case-insensitive; the ack must carry our spelling.
+            peer.write_all(&page(2 + 2 * i as u64, &uuid.to_lowercase(), p)).await.unwrap();
             // Each page is answered before the next one is sent.
             read_until(&mut peer, &mut got, &uuid, 2 + i).await;
         }
