@@ -156,19 +156,36 @@ pub enum AuxValue {
     PrimitiveDictionary(Vec<(AuxValue, Vec<AuxValue>)>),
 }
 
+/// Default cap on a reassembled DTX message (payload header + aux + data), 16 MiB.
+pub const DEFAULT_MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
+
+const DTX_MAGIC: u32 = 0x1F3D5B79;
+
 /// Complete protocol message
+///
+/// For a received message, aux and payload decode independently: a decode
+/// failure in one sets its `*_error` field and leaves the decoded field `None`,
+/// while the raw bytes stay available in `raw_aux` / `raw_data`.
 #[derive(Clone, PartialEq)]
 pub struct Message {
     /// Message metadata header
     pub message_header: MessageHeader,
     /// Payload description header
     pub payload_header: PayloadHeader,
-    /// Optional auxiliary data
+    /// Decoded auxiliary data; `None` when absent or when decoding failed (see `aux_error`)
     pub aux: Option<Aux>,
-    /// Optional payload data (typically NSKeyedArchive)
+    /// Decoded payload (NSKeyedArchive); `None` when absent or when decoding failed (see `data_error`)
     pub data: Option<Value>,
-    /// Raw bytes of the data section before NSKeyedArchive decoding
+    /// Raw bytes of the data section before NSKeyedArchive decoding; `Some` whenever
+    /// a received message carried a non-empty data section
     pub raw_data: Option<Vec<u8>>,
+    /// Raw bytes of the aux section; `Some` whenever a received message carried a
+    /// non-empty aux section
+    pub raw_aux: Option<Vec<u8>>,
+    /// Why `raw_aux` failed to decode, when it did
+    pub aux_error: Option<String>,
+    /// Why `raw_data` failed to decode as an NSKeyedArchive, when it did
+    pub data_error: Option<String>,
 }
 
 impl Aux {
@@ -179,12 +196,15 @@ impl Aux {
     /// Type 0xF0 entries are `PrimitiveDictionary` blocks embedded inside
     /// the legacy envelope; their bodies are skipped since the useful values
     /// are the surrounding flat entries.
-    fn parse_legacy_bytes(bytes: Vec<u8>) -> Result<Self, IdeviceError> {
+    ///
+    /// O(n) time in `bytes.len()`; the values allocate at most `n` bytes in
+    /// total because every length is checked against the remaining bytes first.
+    fn parse_legacy_bytes(bytes: &[u8]) -> Result<Self, IdeviceError> {
         if bytes.len() < 16 {
             return Err(IdeviceError::NotEnoughBytes(bytes.len(), 16));
         }
 
-        let mut cursor = Cursor::new(bytes.as_slice());
+        let mut cursor = Cursor::new(bytes);
         let header = AuxHeader {
             buffer_size: Self::read_u32(&mut cursor)?,
             unknown: Self::read_u32(&mut cursor)?,
@@ -205,21 +225,18 @@ impl Aux {
                     // Skip the entire block; positional args appear as flat entries.
                     let _flags = Self::read_u32(&mut cursor)?;
                     let body_len = Self::read_u64(&mut cursor)?;
-                    let pos = cursor.position() as usize;
-                    let end = pos + body_len as usize;
-                    if end > bytes.len() {
-                        return Err(IdeviceError::NotEnoughBytes(bytes.len(), end));
-                    }
-                    cursor.set_position(end as u64);
+                    Self::ensure_remaining(&cursor, body_len)?;
+                    cursor.set_position(cursor.position() + body_len);
                 }
                 _ => {
                     // All other types share the same encoding as parse_primitive,
                     // but the type word is already consumed above so we reconstruct
                     // a cursor over [type || remaining] to reuse parse_primitive.
-                    let pos = cursor.position() as usize - 4;
-                    let mut sub = Cursor::new(&bytes[pos..]);
+                    let pos = cursor.position() - 4;
+                    let rest = bytes.get(pos as usize..).unwrap_or_default();
+                    let mut sub = Cursor::new(rest);
                     values.push(Self::parse_primitive(&mut sub)?);
-                    cursor.set_position(pos as u64 + sub.position());
+                    cursor.set_position(pos + sub.position());
                 }
             }
         }
@@ -227,25 +244,37 @@ impl Aux {
         Ok(Self { header, values })
     }
 
-    fn read_u32(cursor: &mut Cursor<&[u8]>) -> Result<u32, IdeviceError> {
-        let mut buf = [0u8; 4];
+    /// Errors with [`DvtError::AuxTruncated`] unless `needed` bytes remain after the cursor.
+    fn ensure_remaining(cursor: &Cursor<&[u8]>, needed: u64) -> Result<(), IdeviceError> {
+        let available = (cursor.get_ref().len() as u64).saturating_sub(cursor.position());
+        if needed > available {
+            return Err(DvtError::AuxTruncated { needed, available }.into());
+        }
+        Ok(())
+    }
+
+    fn read_array<const N: usize>(cursor: &mut Cursor<&[u8]>) -> Result<[u8; N], IdeviceError> {
+        Self::ensure_remaining(cursor, N as u64)?;
+        let mut buf = [0u8; N];
         Read::read_exact(cursor, &mut buf)?;
-        Ok(u32::from_le_bytes(buf))
+        Ok(buf)
+    }
+
+    fn read_u32(cursor: &mut Cursor<&[u8]>) -> Result<u32, IdeviceError> {
+        Ok(u32::from_le_bytes(Self::read_array(cursor)?))
     }
 
     fn read_u64(cursor: &mut Cursor<&[u8]>) -> Result<u64, IdeviceError> {
-        let mut buf = [0u8; 8];
-        Read::read_exact(cursor, &mut buf)?;
-        Ok(u64::from_le_bytes(buf))
+        Ok(u64::from_le_bytes(Self::read_array(cursor)?))
     }
 
     fn read_f64(cursor: &mut Cursor<&[u8]>) -> Result<f64, IdeviceError> {
-        let mut buf = [0u8; 8];
-        Read::read_exact(cursor, &mut buf)?;
-        Ok(f64::from_le_bytes(buf))
+        Ok(f64::from_le_bytes(Self::read_array(cursor)?))
     }
 
+    /// Reads `len` bytes, allocating only after `len` is checked against the remaining bytes.
     fn read_exact_vec(cursor: &mut Cursor<&[u8]>, len: usize) -> Result<Vec<u8>, IdeviceError> {
+        Self::ensure_remaining(cursor, len as u64)?;
         let mut buf = vec![0u8; len];
         Read::read_exact(cursor, &mut buf)?;
         Ok(buf)
@@ -286,12 +315,24 @@ impl Aux {
     /// indicating the entire buffer is a single `PrimitiveDictionary` block
     /// (`[flags(4B)][unknown(4B)][body_len(8B)][key-value pairs...]`).
     /// Keys are positional-null sentinels; only the values are collected.
+    ///
+    /// # Errors
+    /// Never panics or reads past `bytes`. Yields `NotEnoughBytes` for a buffer
+    /// shorter than its 16-byte header, [`DvtError::AuxTruncated`] when a declared
+    /// length runs past the buffer, [`DvtError::UnknownAuxValueType`] for an
+    /// unknown type tag, and `Utf8` for a non-UTF-8 string value.
+    /// O(n) time and at most n bytes of value storage for an n-byte buffer.
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Self, IdeviceError> {
-        if bytes.is_empty() {
-            return Ok(Self::from_values(Vec::new()));
-        }
+        Self::parse(&bytes)
+    }
 
-        if (bytes[0] as u32) != 0xF0 {
+    /// Slice form of [`Aux::from_bytes`] with the same validation.
+    pub fn parse(bytes: &[u8]) -> Result<Self, IdeviceError> {
+        let Some(&first) = bytes.first() else {
+            return Ok(Self::from_values(Vec::new()));
+        };
+
+        if first != 0xF0 {
             return Self::parse_legacy_bytes(bytes);
         }
 
@@ -299,14 +340,12 @@ impl Aux {
             return Err(IdeviceError::NotEnoughBytes(bytes.len(), 16));
         }
 
-        let mut cursor = Cursor::new(bytes.as_slice());
+        let mut cursor = Cursor::new(bytes);
         let _type_and_flags = Self::read_u32(&mut cursor)?;
         let _unknown_flags = Self::read_u32(&mut cursor)?;
         let body_len = Self::read_u64(&mut cursor)?;
-        let body_end = 16u64 + body_len;
-        if body_end > bytes.len() as u64 {
-            return Err(IdeviceError::NotEnoughBytes(bytes.len(), body_end as usize));
-        }
+        Self::ensure_remaining(&cursor, body_len)?;
+        let body_end = 16 + body_len;
 
         let mut values = Vec::new();
         while cursor.position() < body_end {
@@ -513,18 +552,27 @@ impl MessageHeader {
         }
     }
 
-    /// Returns the unique message identifier.
-    pub(crate) fn identifier(&self) -> u32 {
+    /// Returns the message identifier. A reply carries the identifier of the
+    /// message it answers.
+    pub fn identifier(&self) -> u32 {
         self.identifier
     }
 
-    /// Returns the conversation index for this message.
-    pub(crate) fn conversation_index(&self) -> u32 {
+    /// Returns the conversation index: 0 for a message that starts an
+    /// exchange, incremented by each reply in it.
+    pub fn conversation_index(&self) -> u32 {
         self.conversation_index
     }
 
-    /// Returns whether this message expects a reply.
-    pub(crate) fn expects_reply(&self) -> bool {
+    /// Returns the channel code. For a received message this is normalized by
+    /// conversation-index parity: the wire value is negated when the index is
+    /// even, so a reply and its request share one code.
+    pub fn channel(&self) -> i32 {
+        self.channel
+    }
+
+    /// Returns whether the sender asked for a reply.
+    pub fn expects_reply(&self) -> bool {
         self.expects_reply
     }
 
@@ -561,6 +609,17 @@ impl PayloadHeader {
         res
     }
 
+    /// Returns the DTX message type byte (2 = method invocation, 3 = object
+    /// reply, 4 = error reply; other values pass through unvalidated).
+    pub fn message_type(&self) -> u8 {
+        self.msg_type
+    }
+
+    /// Returns the payload header's trailing 32-bit flags word.
+    pub fn flags(&self) -> u32 {
+        self.flags
+    }
+
     /// Creates header for method invocation messages
     pub fn method_invocation() -> Self {
         Self {
@@ -571,56 +630,91 @@ impl PayloadHeader {
 }
 
 impl Message {
-    /// Reads and parses a message from an async reader
-    ///
-    /// # Arguments
-    /// * `reader` - Async reader to read from
-    ///
-    /// # Returns  
-    /// * `Ok(Message)` - Parsed message
-    /// * `Err(IdeviceError)` - If reading/parsing fails
-    ///
-    /// # Errors
-    /// * Various IdeviceError variants for IO and parsing failures
+    /// Reads and parses a message from an async reader, with the
+    /// [`DEFAULT_MAX_MESSAGE_SIZE`] cap. See [`Message::from_reader_limited`].
     pub async fn from_reader<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Self, IdeviceError> {
+        Self::from_reader_limited(reader, DEFAULT_MAX_MESSAGE_SIZE).await
+    }
+
+    /// Reads one DTX message, reassembling fragments, with the reassembled
+    /// body capped at `max_size` bytes.
+    ///
+    /// Framing is validated and any violation is a fatal error (the stream
+    /// position is undefined afterwards): magic ([`DvtError::BadMagic`]),
+    /// header length ([`DvtError::BadHeaderLength`]), fragments numbered
+    /// 0..count in order with one identifier and count
+    /// ([`DvtError::FragmentSequence`]; a multi-fragment message starts with a
+    /// header-only fragment 0), the running reassembled size checked before each
+    /// fragment is read ([`DvtError::MessageTooLarge`]), the 16-byte payload
+    /// header ([`DvtError::ShortPayloadHeader`]) and `aux_length <= total_length
+    /// <= remaining bytes` ([`DvtError::PayloadLength`]). I/O errors pass through.
+    ///
+    /// Aux and payload then decode independently and never fail a well-framed
+    /// message: on failure the decoded field is `None`, `aux_error` /
+    /// `data_error` holds the reason, and `raw_aux` / `raw_data` keep the bytes.
+    ///
+    /// The returned `channel` is normalized by conversation-index parity (wire
+    /// value negated when the index is even).
+    ///
+    /// Bounds: O(L + 32·F) time for L reassembled bytes in F fragments, with
+    /// L <= `max_size`; peak extra space about 2·L (the reassembly buffer, then
+    /// the aux/data split) plus the decoded values.
+    pub async fn from_reader_limited<R: AsyncRead + Unpin>(
+        reader: &mut R,
+        max_size: usize,
+    ) -> Result<Self, IdeviceError> {
         let mut packet_data: Vec<u8> = Vec::new();
-        // loop for deal with multiple fragments
+        let mut expected: Option<(u32, u16)> = None; // (identifier, fragment_count)
+        let mut next_fragment: u16 = 0;
         let mheader = loop {
             let mut buf = [0u8; 32];
             reader.read_exact(&mut buf).await?;
-            let header = MessageHeader {
-                magic: u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]),
-                header_len: u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]),
-                fragment_id: u16::from_le_bytes([buf[8], buf[9]]),
-                fragment_count: u16::from_le_bytes([buf[10], buf[11]]),
-                length: u32::from_le_bytes([buf[12], buf[13], buf[14], buf[15]]),
-                identifier: u32::from_le_bytes([buf[16], buf[17], buf[18], buf[19]]),
-                conversation_index: u32::from_le_bytes([buf[20], buf[21], buf[22], buf[23]]),
-                channel: {
-                    let wire_channel = i32::from_le_bytes([buf[24], buf[25], buf[26], buf[27]]);
-                    let conversation_index =
-                        u32::from_le_bytes([buf[20], buf[21], buf[22], buf[23]]);
-                    if conversation_index.is_multiple_of(2) {
-                        -wire_channel
-                    } else {
-                        wire_channel
-                    }
-                },
-                expects_reply: u32::from_le_bytes([buf[28], buf[29], buf[30], buf[31]]) == 1,
-            };
+            let header = Self::parse_header(&buf)?;
+
+            let (identifier, count) =
+                *expected.get_or_insert((header.identifier, header.fragment_count));
+            if header.fragment_count == 0
+                || header.identifier != identifier
+                || header.fragment_count != count
+                || header.fragment_id != next_fragment
+            {
+                return Err(DvtError::FragmentSequence {
+                    identifier,
+                    expected_id: next_fragment,
+                    expected_count: count,
+                    got_identifier: header.identifier,
+                    got_id: header.fragment_id,
+                    got_count: header.fragment_count,
+                }
+                .into());
+            }
+            next_fragment += 1;
+
             if header.fragment_count > 1 && header.fragment_id == 0 {
                 // when reading multiple message fragments, the first fragment contains only a message header.
                 continue;
             }
-            let mut buf = vec![0u8; header.length as usize];
-            reader.read_exact(&mut buf).await?;
-            packet_data.extend(buf);
+
+            let len = header.length as usize;
+            let start = packet_data.len();
+            let end = start
+                .checked_add(len)
+                .filter(|end| *end <= max_size)
+                .ok_or(DvtError::MessageTooLarge {
+                    size: start.saturating_add(len),
+                    max: max_size,
+                })?;
+            packet_data.resize(end, 0);
+            reader.read_exact(&mut packet_data[start..end]).await?;
             if header.fragment_id == header.fragment_count - 1 {
                 break header;
             }
         };
+
         // read the payload header
-        let buf = &packet_data[0..16];
+        let Some(buf) = packet_data.get(0..16) else {
+            return Err(DvtError::ShortPayloadHeader(packet_data.len()).into());
+        };
         let pheader = PayloadHeader {
             msg_type: buf[0],
             flags_a: buf[1],
@@ -630,29 +724,41 @@ impl Message {
             total_length: u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]),
             flags: u32::from_le_bytes([buf[12], buf[13], buf[14], buf[15]]),
         };
-        let aux = if pheader.aux_length > 0 {
-            let buf = packet_data[16..(16 + pheader.aux_length as usize)].to_vec();
-            Some(Aux::from_bytes(buf)?)
+        let available = packet_data.len() - 16;
+        if pheader.aux_length > pheader.total_length || pheader.total_length as usize > available {
+            return Err(DvtError::PayloadLength {
+                aux_length: pheader.aux_length,
+                total_length: pheader.total_length,
+                available,
+            }
+            .into());
+        }
+
+        // Split [16..16+aux) and [16+aux..16+total) without further copies of the prefix.
+        let mut body = packet_data.split_off(16);
+        body.truncate(pheader.total_length as usize);
+        let data_bytes = body.split_off(pheader.aux_length as usize);
+        let aux_bytes = body;
+
+        let (aux, raw_aux, aux_error) = if aux_bytes.is_empty() {
+            (None, None, None)
         } else {
-            None
+            match Aux::parse(&aux_bytes) {
+                Ok(aux) => (Some(aux), Some(aux_bytes), None),
+                Err(e) => (None, Some(aux_bytes), Some(e.to_string())),
+            }
         };
-        // read the data
-        let need_len = (pheader.total_length - pheader.aux_length) as usize;
-        let buf = packet_data
-            [(pheader.aux_length + 16) as usize..pheader.aux_length as usize + 16 + need_len]
-            .to_vec();
-        let raw_data = if buf.is_empty() {
-            None
+        let (data, raw_data, data_error) = if data_bytes.is_empty() {
+            (None, None, None)
         } else {
-            Some(buf.clone())
-        };
-        let data = if buf.is_empty() {
-            None
-        } else {
-            Some(
-                ns_keyed_archive::decode::from_bytes(&buf)
-                    .map_err(super::errors::DvtError::from)?,
-            )
+            match ns_keyed_archive::decode::from_bytes(&data_bytes) {
+                Ok(v) => (Some(v), Some(data_bytes), None),
+                Err(e) => (
+                    None,
+                    Some(data_bytes),
+                    Some(format!("NSKeyedArchive decode failed: {e}")),
+                ),
+            }
         };
 
         Ok(Message {
@@ -661,7 +767,69 @@ impl Message {
             aux,
             data,
             raw_data,
+            raw_aux,
+            aux_error,
+            data_error,
         })
+    }
+
+    fn parse_header(buf: &[u8; 32]) -> Result<MessageHeader, IdeviceError> {
+        let u32_at = |i: usize| u32::from_le_bytes([buf[i], buf[i + 1], buf[i + 2], buf[i + 3]]);
+        let magic = u32_at(0);
+        if magic != DTX_MAGIC {
+            return Err(DvtError::BadMagic(magic).into());
+        }
+        let header_len = u32_at(4);
+        if header_len != 32 {
+            return Err(DvtError::BadHeaderLength(header_len).into());
+        }
+        let conversation_index = u32_at(20);
+        let wire_channel = u32_at(24) as i32;
+        Ok(MessageHeader {
+            magic,
+            header_len,
+            fragment_id: u16::from_le_bytes([buf[8], buf[9]]),
+            fragment_count: u16::from_le_bytes([buf[10], buf[11]]),
+            length: u32_at(12),
+            identifier: u32_at(16),
+            conversation_index,
+            channel: if conversation_index.is_multiple_of(2) {
+                wire_channel.wrapping_neg()
+            } else {
+                wire_channel
+            },
+            expects_reply: u32_at(28) == 1,
+        })
+    }
+
+    /// Returns the message identifier (see [`MessageHeader::identifier`]).
+    pub fn identifier(&self) -> u32 {
+        self.message_header.identifier
+    }
+
+    /// Returns the conversation index (see [`MessageHeader::conversation_index`]).
+    pub fn conversation_index(&self) -> u32 {
+        self.message_header.conversation_index
+    }
+
+    /// Returns the parity-normalized channel code (see [`MessageHeader::channel`]).
+    pub fn channel(&self) -> i32 {
+        self.message_header.channel
+    }
+
+    /// Returns whether the sender asked for a reply.
+    pub fn expects_reply(&self) -> bool {
+        self.message_header.expects_reply
+    }
+
+    /// Returns the DTX message type byte (see [`PayloadHeader::message_type`]).
+    pub fn message_type(&self) -> u8 {
+        self.payload_header.msg_type
+    }
+
+    /// Returns the payload header flags word.
+    pub fn flags(&self) -> u32 {
+        self.payload_header.flags
     }
 
     /// Creates a new message
@@ -683,6 +851,9 @@ impl Message {
             aux,
             data,
             raw_data: None,
+            raw_aux: None,
+            aux_error: None,
+            data_error: None,
         }
     }
 
@@ -805,6 +976,382 @@ impl std::fmt::Debug for Message {
             .field("payload_header", &self.payload_header)
             .field("aux", &self.aux)
             .field("data", &self.data.as_ref().map(pretty_print_plist))
+            .field("raw_aux_len", &self.raw_aux.as_ref().map(Vec::len))
+            .field("raw_data_len", &self.raw_data.as_ref().map(Vec::len))
+            .field("aux_error", &self.aux_error)
+            .field("data_error", &self.data_error)
             .finish()
+    }
+}
+
+/// Synthetic DTX frame builders shared by the parser and client tests.
+#[cfg(test)]
+pub(crate) mod test_frames {
+    /// 16-byte payload header + aux + data, with lengths taken from the slices.
+    pub(crate) fn body(msg_type: u8, aux: &[u8], data: &[u8]) -> Vec<u8> {
+        body_with_lengths(
+            msg_type,
+            aux.len() as u32,
+            (aux.len() + data.len()) as u32,
+            aux,
+            data,
+        )
+    }
+
+    /// Payload with explicit (possibly lying) `aux_length` / `total_length`.
+    pub(crate) fn body_with_lengths(
+        msg_type: u8,
+        aux_length: u32,
+        total_length: u32,
+        aux: &[u8],
+        data: &[u8],
+    ) -> Vec<u8> {
+        let mut b = vec![msg_type, 0, 0, 0];
+        b.extend_from_slice(&aux_length.to_le_bytes());
+        b.extend_from_slice(&total_length.to_le_bytes());
+        b.extend_from_slice(&0u32.to_le_bytes());
+        b.extend_from_slice(aux);
+        b.extend_from_slice(data);
+        b
+    }
+
+    /// 32-byte message header declaring `length`, followed by `payload`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn frame(
+        identifier: u32,
+        conversation_index: u32,
+        wire_channel: i32,
+        expects_reply: bool,
+        fragment_id: u16,
+        fragment_count: u16,
+        length: u32,
+        payload: &[u8],
+    ) -> Vec<u8> {
+        let mut f = Vec::new();
+        f.extend_from_slice(&0x1F3D5B79u32.to_le_bytes());
+        f.extend_from_slice(&32u32.to_le_bytes());
+        f.extend_from_slice(&fragment_id.to_le_bytes());
+        f.extend_from_slice(&fragment_count.to_le_bytes());
+        f.extend_from_slice(&length.to_le_bytes());
+        f.extend_from_slice(&identifier.to_le_bytes());
+        f.extend_from_slice(&conversation_index.to_le_bytes());
+        f.extend_from_slice(&wire_channel.to_le_bytes());
+        f.extend_from_slice(&(expects_reply as u32).to_le_bytes());
+        f.extend_from_slice(payload);
+        f
+    }
+
+    /// One unfragmented frame carrying `payload`.
+    pub(crate) fn single(
+        identifier: u32,
+        conversation_index: u32,
+        wire_channel: i32,
+        payload: &[u8],
+    ) -> Vec<u8> {
+        frame(
+            identifier,
+            conversation_index,
+            wire_channel,
+            false,
+            0,
+            1,
+            payload.len() as u32,
+            payload,
+        )
+    }
+
+    pub(crate) fn archive(v: impl Into<plist::Value>) -> Vec<u8> {
+        ns_keyed_archive::encode::encode_to_bytes(v.into()).unwrap()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test_frames::*;
+    use super::*;
+
+    async fn read(bytes: &[u8], max: usize) -> Result<Message, IdeviceError> {
+        let mut r = bytes;
+        Message::from_reader_limited(&mut r, max).await
+    }
+
+    fn dvt_err(r: Result<Message, IdeviceError>) -> DvtError {
+        match r {
+            Err(IdeviceError::Dvt(e)) => e,
+            other => panic!("expected DvtError, got {other:?}"),
+        }
+    }
+
+    /// Legacy aux holding one String value.
+    fn legacy_aux_string(s: &str) -> Vec<u8> {
+        Aux::from_values(vec![AuxValue::String(s.into())]).serialize()
+    }
+
+    /// Splits `payload` into a header-only fragment 0 plus two body fragments.
+    fn three_fragments(
+        identifier: u32,
+        payload: &[u8],
+        split: usize,
+    ) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+        let (a, b) = payload.split_at(split);
+        (
+            frame(identifier, 0, 1, false, 0, 3, payload.len() as u32, &[]),
+            frame(identifier, 0, 1, false, 1, 3, a.len() as u32, a),
+            frame(identifier, 0, 1, false, 2, 3, b.len() as u32, b),
+        )
+    }
+
+    #[tokio::test]
+    async fn three_fragment_message_is_reassembled() {
+        let aux = legacy_aux_string("arg");
+        let payload = body(2, &aux, &archive("selector:"));
+        let (f0, f1, f2) = three_fragments(7, &payload, 20);
+        let msg = read(&[f0, f1, f2].concat(), DEFAULT_MAX_MESSAGE_SIZE)
+            .await
+            .unwrap();
+        assert_eq!(msg.identifier(), 7);
+        assert_eq!(msg.message_type(), 2);
+        assert_eq!(
+            msg.channel(),
+            -1,
+            "even conversation index negates the wire channel"
+        );
+        assert_eq!(msg.data, Some(plist::Value::String("selector:".into())));
+        assert_eq!(
+            msg.aux.unwrap().values,
+            vec![AuxValue::String("arg".into())]
+        );
+        assert_eq!(msg.raw_aux, Some(aux));
+        assert!(msg.aux_error.is_none() && msg.data_error.is_none());
+    }
+
+    #[tokio::test]
+    async fn out_of_order_fragment_is_rejected() {
+        let payload = body(2, &[], &archive("x"));
+        let (f0, _f1, f2) = three_fragments(7, &payload, 20);
+        let e = dvt_err(read(&[f0, f2].concat(), DEFAULT_MAX_MESSAGE_SIZE).await);
+        assert!(
+            matches!(
+                e,
+                DvtError::FragmentSequence {
+                    expected_id: 1,
+                    got_id: 2,
+                    ..
+                }
+            ),
+            "{e:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn fragment_with_other_identifier_is_rejected() {
+        let payload = body(2, &[], &archive("x"));
+        let (f0, _, _) = three_fragments(7, &payload, 20);
+        let (_, g1, _) = three_fragments(8, &payload, 20);
+        let e = dvt_err(read(&[f0, g1].concat(), DEFAULT_MAX_MESSAGE_SIZE).await);
+        assert!(
+            matches!(
+                e,
+                DvtError::FragmentSequence {
+                    identifier: 7,
+                    got_identifier: 8,
+                    ..
+                }
+            ),
+            "{e:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn reassembled_size_over_cap_is_rejected_before_last_fragment_is_read() {
+        let payload = body(2, &[], &archive("a longer selector string:"));
+        let (f0, f1, f2) = three_fragments(7, &payload, 20);
+        // Only the last fragment's header is present; reading its body would be EOF,
+        // so a MessageTooLarge result proves the cap was checked first.
+        let stream = [f0, f1, f2[..32].to_vec()].concat();
+        let e = dvt_err(read(&stream, payload.len() - 1).await);
+        assert!(
+            matches!(e, DvtError::MessageTooLarge { size, max } if size == payload.len() && max == payload.len() - 1),
+            "{e:?}"
+        );
+        // Each fragment alone is under the cap: the cap is on the reassembled total.
+        assert!(20 < payload.len() - 1 && payload.len() - 20 < payload.len() - 1);
+    }
+
+    #[tokio::test]
+    async fn aux_length_over_total_length_is_rejected() {
+        let payload = body_with_lengths(2, 40, 8, &[0; 40], &[]);
+        let e = dvt_err(read(&single(1, 0, 0, &payload), DEFAULT_MAX_MESSAGE_SIZE).await);
+        assert!(
+            matches!(
+                e,
+                DvtError::PayloadLength {
+                    aux_length: 40,
+                    total_length: 8,
+                    ..
+                }
+            ),
+            "{e:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn total_length_past_body_is_rejected() {
+        let payload = body_with_lengths(2, 0, 1000, &[], &[1, 2, 3]);
+        let e = dvt_err(read(&single(1, 0, 0, &payload), DEFAULT_MAX_MESSAGE_SIZE).await);
+        assert!(
+            matches!(
+                e,
+                DvtError::PayloadLength {
+                    total_length: 1000,
+                    available: 3,
+                    ..
+                }
+            ),
+            "{e:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn body_shorter_than_payload_header_is_rejected() {
+        let e = dvt_err(read(&single(1, 0, 0, &[2, 0, 0]), DEFAULT_MAX_MESSAGE_SIZE).await);
+        assert!(matches!(e, DvtError::ShortPayloadHeader(3)), "{e:?}");
+    }
+
+    #[tokio::test]
+    async fn bad_magic_is_rejected() {
+        let mut f = single(1, 0, 0, &body(2, &[], &[]));
+        f[0] ^= 0xFF;
+        assert!(matches!(
+            dvt_err(read(&f, DEFAULT_MAX_MESSAGE_SIZE).await),
+            DvtError::BadMagic(_)
+        ));
+    }
+
+    #[test]
+    fn truncated_aux_string_is_an_error_not_a_panic() {
+        let mut aux = legacy_aux_string("abc");
+        aux.truncate(aux.len() - 2);
+        // `Aux::serialize` writes buffer size 496 (first byte 0xF0), so this parses
+        // as the modern PrimitiveDictionary form and the body length is what overruns.
+        let e = Aux::parse(&aux).unwrap_err();
+        assert!(
+            matches!(
+                e,
+                IdeviceError::Dvt(DvtError::AuxTruncated {
+                    needed: 15,
+                    available: 13
+                })
+            ),
+            "{e:?}"
+        );
+        // Legacy form (first byte not 0xF0): the string length overruns instead.
+        let mut legacy = vec![0u8; 16];
+        legacy.extend_from_slice(&1u32.to_le_bytes());
+        legacy.extend_from_slice(&3u32.to_le_bytes());
+        legacy.push(b'a');
+        let e = Aux::parse(&legacy).unwrap_err();
+        assert!(
+            matches!(
+                e,
+                IdeviceError::Dvt(DvtError::AuxTruncated {
+                    needed: 3,
+                    available: 1
+                })
+            ),
+            "{e:?}"
+        );
+    }
+
+    #[test]
+    fn huge_declared_aux_lengths_do_not_allocate_or_panic() {
+        // Modern PrimitiveDictionary whose body_len would overflow 16 + body_len.
+        let mut modern = vec![0xF0, 0, 0, 0, 0, 0, 0, 0];
+        modern.extend_from_slice(&u64::MAX.to_le_bytes());
+        assert!(matches!(
+            Aux::parse(&modern),
+            Err(IdeviceError::Dvt(DvtError::AuxTruncated { .. }))
+        ));
+        // Legacy Array value declaring 4 GiB.
+        let mut legacy = vec![0u8; 16];
+        legacy.extend_from_slice(&2u32.to_le_bytes());
+        legacy.extend_from_slice(&u32::MAX.to_le_bytes());
+        assert!(matches!(
+            Aux::parse(&legacy),
+            Err(IdeviceError::Dvt(DvtError::AuxTruncated { .. }))
+        ));
+        // Legacy embedded 0xF0 block skipping past the end.
+        let mut skip = vec![0u8; 16];
+        skip.extend_from_slice(&0xF0u32.to_le_bytes());
+        skip.extend_from_slice(&0u32.to_le_bytes());
+        skip.extend_from_slice(&u64::MAX.to_le_bytes());
+        assert!(matches!(
+            Aux::parse(&skip),
+            Err(IdeviceError::Dvt(DvtError::AuxTruncated { .. }))
+        ));
+    }
+
+    #[tokio::test]
+    async fn truncated_aux_inside_a_message_is_captured() {
+        let mut aux = legacy_aux_string("abc");
+        aux.truncate(aux.len() - 2);
+        let data = archive("ok");
+        let msg = read(
+            &single(1, 1, 0, &body(3, &aux, &data)),
+            DEFAULT_MAX_MESSAGE_SIZE,
+        )
+        .await
+        .unwrap();
+        assert!(msg.aux.is_none());
+        assert_eq!(msg.raw_aux, Some(aux));
+        assert!(msg.aux_error.unwrap().contains("truncated aux"));
+        assert_eq!(
+            msg.data,
+            Some(plist::Value::String("ok".into())),
+            "data decodes independently"
+        );
+    }
+
+    #[tokio::test]
+    async fn unknown_aux_type_yields_aux_error_and_raw_aux() {
+        let mut aux = vec![0u8; 16];
+        aux.extend_from_slice(&0x77u32.to_le_bytes());
+        let msg = read(
+            &single(1, 1, 0, &body(3, &aux, &[])),
+            DEFAULT_MAX_MESSAGE_SIZE,
+        )
+        .await
+        .unwrap();
+        assert!(msg.aux.is_none());
+        assert_eq!(msg.raw_aux, Some(aux));
+        assert!(
+            msg.aux_error
+                .unwrap()
+                .contains("Unknown aux value type: 119")
+        );
+        assert!(msg.data.is_none() && msg.raw_data.is_none() && msg.data_error.is_none());
+    }
+
+    #[tokio::test]
+    async fn invalid_archive_yields_data_error_and_raw_data() {
+        let aux = legacy_aux_string("still decoded");
+        let junk = b"not an archive".to_vec();
+        let msg = read(
+            &single(1, 1, 0, &body(3, &aux, &junk)),
+            DEFAULT_MAX_MESSAGE_SIZE,
+        )
+        .await
+        .unwrap();
+        assert!(msg.data.is_none());
+        assert_eq!(msg.raw_data, Some(junk));
+        assert!(
+            msg.data_error
+                .unwrap()
+                .starts_with("NSKeyedArchive decode failed")
+        );
+        assert_eq!(
+            msg.aux.unwrap().values,
+            vec![AuxValue::String("still decoded".into())]
+        );
     }
 }
