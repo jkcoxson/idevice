@@ -70,6 +70,21 @@ use tokio::{
 };
 use tracing::{debug, warn};
 
+/// Pins `$event` and the close notifier as `$ev` and `$closed`, both armed
+/// (`Notified::enable`) before the caller inspects the state it waits on, so a
+/// `notify_waiters` that fires between the inspection and the wait is not
+/// lost. The caller loops back to the inspection after either wakes, so a
+/// message queued just before the connection closed is still delivered.
+macro_rules! arm_wait {
+    ($ev:ident, $closed:ident, $event:expr, $close:expr) => {
+        let $ev = $event;
+        let $closed = $close;
+        tokio::pin!($ev, $closed);
+        $ev.as_mut().enable();
+        $closed.as_mut().enable();
+    };
+}
+
 use super::errors::DvtError;
 
 /// Wraps the spawn handle returned from `spawn_reader`. On native we hold a
@@ -162,6 +177,18 @@ fn closed_error() -> IdeviceError {
         std::io::ErrorKind::BrokenPipe,
         "remote server connection closed",
     ))
+}
+
+/// Why a connection stopped delivering messages. Every waiter sees the same
+/// generic closed error; this tells a peer hangup from a protocol failure.
+#[derive(Debug, Clone)]
+pub enum CloseReason {
+    /// The transport reached EOF: the peer hung up.
+    Eof,
+    /// The reader stopped on this frame or I/O error.
+    Error(Arc<IdeviceError>),
+    /// The client was closed or dropped on this side.
+    Local,
 }
 
 /// Message type identifier for instruments protocol
@@ -279,6 +306,7 @@ struct RemoteServerShared<W> {
     handshake_notify: Notify,
     closed: AtomicBool,
     closed_notify: Notify,
+    close_reason: std::sync::Mutex<Option<CloseReason>>,
 }
 
 impl<W> std::fmt::Debug for RemoteServerShared<W> {
@@ -295,6 +323,13 @@ impl<W> std::fmt::Debug for RemoteServerShared<W> {
 }
 
 impl<W> RemoteServerShared<W> {
+    /// Keeps the first reason only: a local close after a reader failure
+    /// does not overwrite why the reader stopped.
+    fn record_close_reason(&self, reason: CloseReason) {
+        let mut slot = self.close_reason.lock().unwrap_or_else(|p| p.into_inner());
+        slot.get_or_insert(reason);
+    }
+
     fn new(label: Arc<str>, writer: W) -> Self {
         let mut channels = HashMap::new();
         channels.insert(0, Arc::new(ChannelQueue::default()));
@@ -323,6 +358,7 @@ impl<W> RemoteServerShared<W> {
             handshake_notify: Notify::new(),
             closed: AtomicBool::new(false),
             closed_notify: Notify::new(),
+            close_reason: std::sync::Mutex::new(None),
         }
     }
 }
@@ -404,6 +440,12 @@ impl<R: ReadWrite> RemoteServerClient<R> {
     ) -> Result<Dictionary, IdeviceError> {
         crate::time::timeout(timeout, async {
             loop {
+                arm_wait!(
+                    event,
+                    closed,
+                    self.shared.handshake_notify.notified(),
+                    self.shared.closed_notify.notified()
+                );
                 match &*self.shared.supported_identifiers.lock().await {
                     CapabilityHandshakeState::Received(dict) => return Ok(dict.clone()),
                     CapabilityHandshakeState::Skipped => {
@@ -419,8 +461,8 @@ impl<R: ReadWrite> RemoteServerClient<R> {
                 }
 
                 tokio::select! {
-                    _ = self.shared.handshake_notify.notified() => {}
-                    _ = self.shared.closed_notify.notified() => return Err(Self::closed_error()),
+                    _ = &mut event => {}
+                    _ = &mut closed => {}
                 }
             }
         })
@@ -466,6 +508,12 @@ impl<R: ReadWrite> RemoteServerClient<R> {
 
         crate::time::timeout(timeout, async {
             loop {
+                arm_wait!(
+                    event,
+                    closed,
+                    self.shared.handshake_notify.notified(),
+                    self.shared.closed_notify.notified()
+                );
                 match &*self.shared.supported_identifiers.lock().await {
                     CapabilityHandshakeState::Received(dict) => return Ok(Some(dict.clone())),
                     CapabilityHandshakeState::Skipped => return Ok(None),
@@ -477,8 +525,8 @@ impl<R: ReadWrite> RemoteServerClient<R> {
                 }
 
                 tokio::select! {
-                    _ = self.shared.handshake_notify.notified() => {}
-                    _ = self.shared.closed_notify.notified() => return Err(Self::closed_error()),
+                    _ = &mut event => {}
+                    _ = &mut closed => {}
                 }
             }
         })
@@ -648,6 +696,12 @@ impl<R: ReadWrite> RemoteServerClient<R> {
     ) -> Result<i32, IdeviceError> {
         let wait_future = async {
             loop {
+                arm_wait!(
+                    event,
+                    closed,
+                    self.shared.registry_notify.notified(),
+                    self.shared.closed_notify.notified()
+                );
                 if let Some(code) = self.find_registered_channel_code(identifiers, remote).await {
                     return Ok(code);
                 }
@@ -657,8 +711,8 @@ impl<R: ReadWrite> RemoteServerClient<R> {
                 }
 
                 tokio::select! {
-                    _ = self.shared.registry_notify.notified() => {}
-                    _ = self.shared.closed_notify.notified() => return Err(Self::closed_error()),
+                    _ = &mut event => {}
+                    _ = &mut closed => {}
                 }
             }
         };
@@ -691,6 +745,12 @@ impl<R: ReadWrite> RemoteServerClient<R> {
     ) -> Result<i32, IdeviceError> {
         let wait_future = async {
             loop {
+                arm_wait!(
+                    event,
+                    closed,
+                    self.shared.registry_notify.notified(),
+                    self.shared.closed_notify.notified()
+                );
                 if let Some(code) = self
                     .find_registered_proxied_channel_code(
                         identifiers,
@@ -707,8 +767,8 @@ impl<R: ReadWrite> RemoteServerClient<R> {
                 }
 
                 tokio::select! {
-                    _ = self.shared.registry_notify.notified() => {}
-                    _ = self.shared.closed_notify.notified() => return Err(Self::closed_error()),
+                    _ = &mut event => {}
+                    _ = &mut closed => {}
                 }
             }
         };
@@ -950,6 +1010,13 @@ impl<R: ReadWrite> RemoteServerClient<R> {
                 .await
                 .ok_or_else(|| DvtError::UnknownChannel(channel.unsigned_abs()))?;
 
+            arm_wait!(
+                event,
+                closed,
+                queue.notify.notified(),
+                self.shared.closed_notify.notified()
+            );
+
             {
                 let mut messages = queue.messages.lock().await;
                 if let Some(msg) = messages.pop_front() {
@@ -962,8 +1029,8 @@ impl<R: ReadWrite> RemoteServerClient<R> {
             }
 
             tokio::select! {
-                _ = queue.notify.notified() => {}
-                _ = self.shared.closed_notify.notified() => return Err(Self::closed_error()),
+                _ = &mut event => {}
+                _ = &mut closed => {}
             }
         }
     }
@@ -995,6 +1062,14 @@ impl<R: ReadWrite> RemoteServerClient<R> {
                     }
                     Err(e) => {
                         warn!("[{}] RemoteServer reader exiting: {} ({:?})", label, e, e);
+                        let eof = matches!(&e, IdeviceError::Socket(io)
+                            if io.kind() == std::io::ErrorKind::UnexpectedEof);
+                        let reason = if eof {
+                            CloseReason::Eof
+                        } else {
+                            CloseReason::Error(Arc::new(e))
+                        };
+                        shared.record_close_reason(reason);
                         // Mark closed before failing waiters so a failed waiter
                         // always observes the closed state.
                         shared.closed.store(true, Ordering::Relaxed);
@@ -1151,6 +1226,7 @@ impl<R: ReadWrite> RemoteServerClient<R> {
             .await
         {
             warn!("Failed to acknowledge incoming channel request: {}", e);
+            shared.record_close_reason(CloseReason::Error(Arc::new(e)));
             shared.closed.store(true, Ordering::Relaxed);
             shared.closed_notify.notify_waiters();
         }
@@ -1373,6 +1449,15 @@ impl<R: ReadWrite> RemoteServerClient<R> {
         closed_error()
     }
 
+    /// Why the connection closed, once it has; `None` while the reader runs.
+    pub fn close_reason(&self) -> Option<CloseReason> {
+        self.shared
+            .close_reason
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+    }
+
     /// A control reply is admitted only when it carries no payload bytes
     /// (decoded or not) and no undecodable aux.
     fn is_empty_control_reply(reply: &Message) -> bool {
@@ -1403,6 +1488,7 @@ impl<R: ReadWrite> Drop for RemoteServerClient<R> {
         // The reader no longer runs, so nothing would ever complete a pending
         // reply or wake a queue reader; fail them now. Owned channels and
         // `PendingReply` handles may outlive the client.
+        self.shared.record_close_reason(CloseReason::Local);
         self.shared.closed.store(true, Ordering::Relaxed);
         if let Ok(mut slots) = self.shared.pending_replies.try_lock() {
             slots.clear();
@@ -1525,6 +1611,13 @@ impl<R: ReadWrite + 'static> OwnedChannel<R> {
                     .await
                     .ok_or_else(|| DvtError::UnknownChannel(self.channel.unsigned_abs()))?;
 
+            arm_wait!(
+                event,
+                closed,
+                queue.notify.notified(),
+                self.shared.closed_notify.notified()
+            );
+
             {
                 let mut messages = queue.messages.lock().await;
                 if let Some(msg) = messages.pop_front() {
@@ -1537,10 +1630,8 @@ impl<R: ReadWrite + 'static> OwnedChannel<R> {
             }
 
             tokio::select! {
-                _ = queue.notify.notified() => {}
-                _ = self.shared.closed_notify.notified() => {
-                    return Err(RemoteServerClient::<R>::closed_error())
-                }
+                _ = &mut event => {}
+                _ = &mut closed => {}
             }
         }
     }
@@ -1764,6 +1855,36 @@ mod tests {
         assert_eq!(reply.data, Some(plist::Value::String("result".into())));
         assert_eq!(push.identifier(), 900);
         assert_eq!(push.data, Some(plist::Value::String("push".into())));
+    }
+
+    /// A message queued just before the peer hangs up is delivered before the
+    /// closed error, whichever notifier wakes the waiter first.
+    #[tokio::test]
+    async fn message_queued_before_close_is_delivered() {
+        for _ in 0..64 {
+            let (mut client, mut peer) = client();
+            let write = async {
+                // Let read_message park first, so both wakeups race.
+                tokio::task::yield_now().await;
+                peer.write_all(&single(7, 0, 0, &body(2, &[], &archive("last"))))
+                    .await
+                    .unwrap();
+                drop(peer);
+            };
+            let (msg, ()) = tokio::join!(client.read_message(0), write);
+            assert_eq!(msg.unwrap().data, Some(plist::Value::String("last".into())));
+            assert!(client.read_message(0).await.is_err());
+            assert!(matches!(client.close_reason(), Some(CloseReason::Eof)));
+        }
+    }
+
+    #[tokio::test]
+    async fn framing_error_is_the_close_reason() {
+        let (mut client, mut peer) = client();
+        peer.write_all(&[0u8; 32]).await.unwrap();
+        assert!(client.read_message(0).await.is_err());
+        assert!(matches!(client.close_reason(), Some(CloseReason::Error(_))));
+        drop(client);
     }
 
     #[tokio::test]
