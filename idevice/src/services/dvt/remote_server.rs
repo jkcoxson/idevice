@@ -54,9 +54,10 @@ use std::{
     future::Future,
     pin::Pin,
     sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicU32, Ordering},
+        Arc, Weak,
+        atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
     },
+    task::{Context, Poll},
 };
 
 #[cfg(not(feature = "xctest"))]
@@ -98,8 +99,70 @@ fn remote_timeout_error(timeout: std::time::Duration) -> IdeviceError {
 
 use crate::{
     IdeviceError, ReadWrite,
-    dvt::message::{Aux, AuxValue, Message, MessageHeader, PayloadHeader},
+    dvt::message::{
+        Aux, AuxValue, DEFAULT_MAX_MESSAGE_SIZE, Message, MessageHeader, PayloadHeader,
+    },
 };
+
+/// Reply slots keyed by the identifier of the message awaiting a reply.
+type PendingSlots = Mutex<HashMap<u32, oneshot::Sender<Message>>>;
+
+/// Awaitable reply to one message sent by [`Channel::send_call`] or
+/// [`RemoteServerClient::send_call`].
+///
+/// Resolves to the first incoming message whose identifier matches the sent
+/// one and whose conversation index is non-zero (a reply). It holds no borrow
+/// of the client, so it can be awaited inside `tokio::select!` next to
+/// `read_message` on the same channel.
+///
+/// Resolves to `Err(IdeviceError::Socket(BrokenPipe))` when the connection
+/// closes (reader error, peer EOF, or the client being dropped) before the
+/// reply arrives. It never times out on its own; wrap it in a timeout.
+///
+/// Dropping it unresolved removes its reply slot; a reply that arrives later
+/// is then treated as an ordinary incoming message and queued on its channel.
+#[derive(Debug)]
+pub struct PendingReply {
+    identifier: u32,
+    receiver: oneshot::Receiver<Message>,
+    slots: Weak<PendingSlots>,
+}
+
+impl PendingReply {
+    /// Returns the identifier of the sent message this reply answers.
+    pub fn identifier(&self) -> u32 {
+        self.identifier
+    }
+}
+
+impl Future for PendingReply {
+    type Output = Result<Message, IdeviceError>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(&mut self.receiver)
+            .poll(cx)
+            .map(|r| r.map_err(|_| closed_error()))
+    }
+}
+
+impl Drop for PendingReply {
+    fn drop(&mut self) {
+        // Best effort: if the map is momentarily locked, the slot is pruned by
+        // the next send (closed senders are dropped there) or on disconnect.
+        if let Some(slots) = self.slots.upgrade()
+            && let Ok(mut slots) = slots.try_lock()
+        {
+            slots.remove(&self.identifier);
+        }
+    }
+}
+
+fn closed_error() -> IdeviceError {
+    IdeviceError::Socket(std::io::Error::new(
+        std::io::ErrorKind::BrokenPipe,
+        "remote server connection closed",
+    ))
+}
 
 /// Message type identifier for instruments protocol
 pub const INSTRUMENTS_MESSAGE_TYPE: u32 = 2;
@@ -207,7 +270,8 @@ struct RemoteServerShared<W> {
     new_channel: AtomicU32,
     channels: Mutex<HashMap<i32, Arc<ChannelQueue>>>,
     channel_metadata: Mutex<HashMap<i32, ChannelMetadata>>,
-    pending_replies: Mutex<HashMap<u32, oneshot::Sender<Message>>>,
+    pending_replies: Arc<PendingSlots>,
+    max_message_size: AtomicUsize,
     handlers: Mutex<HashMap<i32, IncomingMessageHandler>>,
     incoming_channel_registrations: Mutex<Vec<IncomingChannelRegistration<W>>>,
     registry_notify: Notify,
@@ -250,7 +314,8 @@ impl<W> RemoteServerShared<W> {
             new_channel: AtomicU32::new(1),
             channels: Mutex::new(channels),
             channel_metadata: Mutex::new(channel_metadata),
-            pending_replies: Mutex::new(HashMap::new()),
+            pending_replies: Arc::new(Mutex::new(HashMap::new())),
+            max_message_size: AtomicUsize::new(DEFAULT_MAX_MESSAGE_SIZE),
             handlers: Mutex::new(HashMap::new()),
             incoming_channel_registrations: Mutex::new(Vec::new()),
             registry_notify: Notify::new(),
@@ -285,6 +350,18 @@ impl<R: ReadWrite> RemoteServerClient<R> {
             shared,
             reader_task,
         }
+    }
+
+    /// Sets the cap on one reassembled incoming DTX message (payload header,
+    /// aux and data; default [`DEFAULT_MAX_MESSAGE_SIZE`], 16 MiB).
+    ///
+    /// Applies to the next message the reader starts reading. A message over the
+    /// cap is a fatal framing error ([`DvtError::MessageTooLarge`]): the reader
+    /// stops, the connection is marked closed, and every waiter gets a closed
+    /// error. This bounds wire/reassembly storage per message only; queued
+    /// messages are not bounded.
+    pub fn set_max_message_size(&self, bytes: usize) {
+        self.shared.max_message_size.store(bytes, Ordering::Relaxed);
     }
 
     /// Returns a handle to the root channel (channel 0)
@@ -419,7 +496,10 @@ impl<R: ReadWrite> RemoteServerClient<R> {
     /// * `Err(IdeviceError)` - If channel creation fails
     ///
     /// # Errors
-    /// * `IdeviceError::UnexpectedResponse("unexpected response".into()) if server responds with unexpected data
+    /// * `IdeviceError::UnexpectedResponse("unexpected response".into())` unless the
+    ///   reply is structurally empty: no payload bytes (decoded or not) and no
+    ///   undecodable aux
+    /// * a closed-connection `Socket` error if the connection drops first
     /// * Other IO or serialization errors
     #[allow(unreachable_code)]
     pub async fn make_channel<'c>(
@@ -447,8 +527,8 @@ impl<R: ReadWrite> RemoteServerClient<R> {
             .call_method_with_reply(0, Some("_requestChannelWithCode:identifier:"), Some(args))
             .await?;
 
-        if reply.data.is_some() {
-            warn!("make_channel: unexpected reply payload: {:?}", reply.data);
+        if !Self::is_empty_control_reply(&reply) {
+            warn!("make_channel: unexpected reply: {:?}", reply);
             return Err(IdeviceError::UnexpectedResponse(
                 "unexpected response".into(),
             ));
@@ -728,11 +808,9 @@ impl<R: ReadWrite> RemoteServerClient<R> {
 
         let receiver = if correlate_reply {
             let (sender, receiver) = oneshot::channel();
-            self.shared
-                .pending_replies
-                .lock()
-                .await
-                .insert(identifier, sender);
+            let mut slots = self.shared.pending_replies.lock().await;
+            slots.retain(|_, s| !s.is_closed());
+            slots.insert(identifier, sender);
             Some(receiver)
         } else {
             None
@@ -745,26 +823,6 @@ impl<R: ReadWrite> RemoteServerClient<R> {
         write_result?;
 
         Ok(receiver)
-    }
-
-    async fn wait_for_reply(
-        &self,
-        identifier: u32,
-        receiver: oneshot::Receiver<Message>,
-    ) -> Result<Message, IdeviceError> {
-        match receiver.await {
-            Ok(message) => Ok(message),
-            Err(_) => {
-                self.shared.pending_replies.lock().await.remove(&identifier);
-                if self.shared.closed.load(Ordering::Relaxed) {
-                    Err(Self::closed_error())
-                } else {
-                    Err(IdeviceError::UnexpectedResponse(
-                        "unexpected response".into(),
-                    ))
-                }
-            }
-        }
     }
 
     /// Calls a method on the specified channel
@@ -794,13 +852,40 @@ impl<R: ReadWrite> RemoteServerClient<R> {
         Ok(())
     }
 
-    /// Calls a method and waits for the reply correlated by message identifier.
-    pub(crate) async fn call_method_with_reply(
-        &mut self,
+    /// Sends one method invocation on `channel` with `expects_reply` set and
+    /// returns its identifier and a [`PendingReply`] for the correlated reply.
+    ///
+    /// The reply slot is registered before the frame is written, and the frame
+    /// is written exactly once; a failed write removes the slot and returns the
+    /// I/O error. `selector` is NSKeyedArchive-encoded as the payload; `args`
+    /// become the aux section.
+    ///
+    /// Delivery rules for everything else on the connection: only channels
+    /// registered by [`make_channel`](Self::make_channel) (and channel 0) have
+    /// queues; messages for an unknown channel are logged and dropped. The
+    /// reader normalizes the wire channel by conversation-index parity (negated
+    /// when the index is even), so replies land on the request's channel. Calls
+    /// the peer makes on the reverse (negative) channel of a locally opened
+    /// channel have no queue and are dropped without an acknowledgement.
+    ///
+    /// # Errors
+    /// I/O errors from the write. Panics only if `selector` cannot be
+    /// NSKeyedArchive-encoded (the same `expect` as [`call_method`](Self::call_method)).
+    pub async fn send_call(
+        &self,
+        channel: i32,
+        selector: impl Into<plist::Value>,
+        args: Option<Vec<AuxValue>>,
+    ) -> Result<(u32, PendingReply), IdeviceError> {
+        self.send_call_inner(channel, Some(selector), args).await
+    }
+
+    async fn send_call_inner(
+        &self,
         channel: i32,
         data: Option<impl Into<plist::Value>>,
         args: Option<Vec<AuxValue>>,
-    ) -> Result<Message, IdeviceError> {
+    ) -> Result<(u32, PendingReply), IdeviceError> {
         let identifier = self.shared.current_message.fetch_add(1, Ordering::Relaxed) + 1;
         let receiver = self
             .send_method(channel, identifier, data, args, true, true)
@@ -808,12 +893,45 @@ impl<R: ReadWrite> RemoteServerClient<R> {
             .ok_or(IdeviceError::UnexpectedResponse(
                 "unexpected response".into(),
             ))?;
-        self.wait_for_reply(identifier, receiver).await
+        Ok((
+            identifier,
+            PendingReply {
+                identifier,
+                receiver,
+                slots: Arc::downgrade(&self.shared.pending_replies),
+            },
+        ))
+    }
+
+    /// Calls a method and waits for the reply correlated by message identifier.
+    ///
+    /// Equivalent to [`send_call`](Self::send_call) followed by awaiting the
+    /// [`PendingReply`], except that `data` may be `None` (no payload). Holds
+    /// `&mut self` until the reply, so pushes cannot be read meanwhile; use
+    /// `send_call` for that. Returns the reply message as received, including
+    /// any `aux_error` / `data_error`; errors are I/O or a closed connection.
+    pub async fn call_method_with_reply(
+        &mut self,
+        channel: i32,
+        data: Option<impl Into<plist::Value>>,
+        args: Option<Vec<AuxValue>>,
+    ) -> Result<Message, IdeviceError> {
+        let (_, pending) = self.send_call_inner(channel, data, args).await?;
+        pending.await
     }
 
     /// Reads the next message from the specified channel
     ///
     /// Checks cached messages first, then reads from transport if needed.
+    ///
+    /// Only messages that no reply slot, control handler or incoming handler
+    /// consumed reach the queue, and only channel 0 and channels registered via
+    /// [`make_channel`](Self::make_channel) have queues; traffic for any other
+    /// channel is logged and dropped. The channel is normalized by
+    /// conversation-index parity (see [`Message::channel`]). Peer calls on the
+    /// reverse (negative) channel of a locally opened channel are dropped
+    /// unacknowledged. A message whose aux or payload failed to decode is still
+    /// delivered, with `aux_error` / `data_error` set.
     ///
     /// # Arguments
     /// * `channel` - Channel number to read from
@@ -860,7 +978,8 @@ impl<R: ReadWrite> RemoteServerClient<R> {
     {
         let fut = async move {
             loop {
-                match Message::from_reader(&mut reader).await {
+                let max = shared.max_message_size.load(Ordering::Relaxed);
+                match Message::from_reader_limited(&mut reader, max).await {
                     Ok(msg) => {
                         debug!("[{}] Read message: {msg:#?}", label);
                         if Self::dispatch_pending_reply(&shared, msg.clone()).await {
@@ -876,8 +995,10 @@ impl<R: ReadWrite> RemoteServerClient<R> {
                     }
                     Err(e) => {
                         warn!("[{}] RemoteServer reader exiting: {} ({:?})", label, e, e);
-                        Self::fail_pending_replies(&shared).await;
+                        // Mark closed before failing waiters so a failed waiter
+                        // always observes the closed state.
                         shared.closed.store(true, Ordering::Relaxed);
+                        Self::fail_pending_replies(&shared).await;
                         shared.closed_notify.notify_waiters();
                         break;
                     }
@@ -910,7 +1031,10 @@ impl<R: ReadWrite> RemoteServerClient<R> {
                 let aux = match msg.aux.as_ref() {
                     Some(aux) => aux.values.as_slice(),
                     None => {
-                        warn!("Capabilities notification without aux payload");
+                        warn!(
+                            "Capabilities notification without decodable aux payload: {:?}",
+                            msg.aux_error
+                        );
                         return true;
                     }
                 };
@@ -1153,8 +1277,11 @@ impl<R: ReadWrite> RemoteServerClient<R> {
             return false;
         };
 
+        // A waiter dropped while its slot was locked leaves a closed sender;
+        // the reply then falls through to the channel queue like any message.
         if sender.send(msg).is_err() {
             warn!("Reply waiter dropped before correlated reply was delivered");
+            return false;
         }
 
         true
@@ -1243,10 +1370,16 @@ impl<R: ReadWrite> RemoteServerClient<R> {
     }
 
     fn closed_error() -> IdeviceError {
-        IdeviceError::Socket(std::io::Error::new(
-            std::io::ErrorKind::BrokenPipe,
-            "remote server connection closed",
-        ))
+        closed_error()
+    }
+
+    /// A control reply is admitted only when it carries no payload bytes
+    /// (decoded or not) and no undecodable aux.
+    fn is_empty_control_reply(reply: &Message) -> bool {
+        reply.data.is_none()
+            && reply.raw_data.is_none()
+            && reply.data_error.is_none()
+            && reply.aux_error.is_none()
     }
 }
 
@@ -1267,6 +1400,14 @@ impl<R: ReadWrite> Drop for RemoteServerClient<R> {
         // No JoinHandle::abort on wasm32
         #[cfg(not(target_arch = "wasm32"))]
         self.reader_task.abort();
+        // The reader no longer runs, so nothing would ever complete a pending
+        // reply or wake a queue reader; fail them now. Owned channels and
+        // `PendingReply` handles may outlive the client.
+        self.shared.closed.store(true, Ordering::Relaxed);
+        if let Ok(mut slots) = self.shared.pending_replies.try_lock() {
+            slots.clear();
+        }
+        self.shared.closed_notify.notify_waiters();
     }
 }
 
@@ -1343,7 +1484,9 @@ impl<R: ReadWrite> Channel<'_, R> {
     }
 
     /// Calls a method on this channel and waits for the correlated reply.
-    pub(crate) async fn call_method_with_reply(
+    ///
+    /// See [`RemoteServerClient::call_method_with_reply`].
+    pub async fn call_method_with_reply(
         &mut self,
         method: Option<impl Into<plist::Value>>,
         args: Option<Vec<AuxValue>>,
@@ -1351,6 +1494,25 @@ impl<R: ReadWrite> Channel<'_, R> {
         self.client
             .call_method_with_reply(self.channel, method, args)
             .await
+    }
+
+    /// Sends `selector` with `args` once on this channel, expecting a reply,
+    /// and returns the message identifier and an awaitable [`PendingReply`]
+    /// that does not borrow the channel, so [`read_message`](Self::read_message)
+    /// can run concurrently for pushes.
+    ///
+    /// See [`RemoteServerClient::send_call`] for delivery rules and errors.
+    pub async fn send_call(
+        &mut self,
+        selector: impl Into<plist::Value>,
+        args: Option<Vec<AuxValue>>,
+    ) -> Result<(u32, PendingReply), IdeviceError> {
+        self.client.send_call(self.channel, selector, args).await
+    }
+
+    /// Returns this channel's code.
+    pub fn code(&self) -> i32 {
+        self.channel
     }
 }
 
@@ -1489,5 +1651,171 @@ impl<R: ReadWrite + 'static> OwnedChannel<R> {
                 data_bytes,
             )
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dvt::message::test_frames::*;
+    use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
+
+    fn client() -> (RemoteServerClient<Box<dyn ReadWrite>>, DuplexStream) {
+        let (ours, peer) = tokio::io::duplex(1 << 20);
+        (RemoteServerClient::new(ours), peer)
+    }
+
+    /// Reads one frame from the peer side and answers it with `reply_body`
+    /// (conversation index 1, same identifier and channel).
+    async fn answer(peer: &mut DuplexStream, reply_body: Vec<u8>) -> Message {
+        let req = Message::from_reader(peer).await.unwrap();
+        let reply = single(req.identifier(), 1, req.channel(), &reply_body);
+        peer.write_all(&reply).await.unwrap();
+        req
+    }
+
+    #[tokio::test]
+    async fn make_channel_accepts_an_empty_reply() {
+        let (mut client, mut peer) = client();
+        let peer_task = tokio::spawn(async move {
+            let req = answer(&mut peer, body(0, &[], &[])).await;
+            (req, peer)
+        });
+        let ch = client.make_channel("com.example.svc").await.unwrap();
+        assert_eq!(ch.code(), 1);
+        let (req, _peer) = peer_task.await.unwrap();
+        assert_eq!(
+            req.data,
+            Some(plist::Value::String(
+                "_requestChannelWithCode:identifier:".into()
+            ))
+        );
+    }
+
+    #[tokio::test]
+    async fn make_channel_rejects_a_reply_with_undecodable_payload() {
+        let (mut client, mut peer) = client();
+        let peer_task = tokio::spawn(async move {
+            answer(&mut peer, body(3, &[], b"not an archive")).await;
+            peer
+        });
+        let err = client.make_channel("com.example.svc").await.unwrap_err();
+        assert!(
+            matches!(err, IdeviceError::UnexpectedResponse(_)),
+            "{err:?}"
+        );
+        let _peer = peer_task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn make_channel_rejects_a_reply_with_undecodable_aux() {
+        let (mut client, mut peer) = client();
+        let mut aux = vec![0u8; 16];
+        aux.extend_from_slice(&0x77u32.to_le_bytes());
+        let peer_task = tokio::spawn(async move {
+            answer(&mut peer, body(0, &aux, &[])).await;
+            peer
+        });
+        let err = client.make_channel("com.example.svc").await.unwrap_err();
+        assert!(
+            matches!(err, IdeviceError::UnexpectedResponse(_)),
+            "{err:?}"
+        );
+        let _peer = peer_task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn send_call_writes_one_frame_and_reply_resolves_beside_a_push() {
+        let (mut client, mut peer) = client();
+        let mut ch = client.root_channel();
+        let (id, mut pending) = ch.send_call("doThing:", None).await.unwrap();
+        assert_eq!(pending.identifier(), id);
+
+        let req = Message::from_reader(&mut peer).await.unwrap();
+        assert_eq!(req.identifier(), id);
+        assert!(req.expects_reply());
+        assert_eq!(req.data, Some(plist::Value::String("doThing:".into())));
+        // Exactly one frame: nothing else is readable.
+        let mut more = [0u8; 1];
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), peer.read_exact(&mut more))
+                .await
+                .is_err()
+        );
+
+        // An unsolicited push on the same channel, then the reply.
+        peer.write_all(&single(900, 0, 0, &body(2, &[], &archive("push"))))
+            .await
+            .unwrap();
+        peer.write_all(&single(id, 1, 0, &body(3, &[], &archive("result"))))
+            .await
+            .unwrap();
+
+        let (mut reply, mut push) = (None, None);
+        while reply.is_none() || push.is_none() {
+            tokio::select! {
+                r = &mut pending, if reply.is_none() => reply = Some(r.unwrap()),
+                m = ch.read_message(), if push.is_none() => push = Some(m.unwrap()),
+            }
+        }
+        let (reply, push) = (reply.unwrap(), push.unwrap());
+        assert_eq!(reply.identifier(), id);
+        assert_eq!(reply.data, Some(plist::Value::String("result".into())));
+        assert_eq!(push.identifier(), 900);
+        assert_eq!(push.data, Some(plist::Value::String("push".into())));
+    }
+
+    #[tokio::test]
+    async fn dropped_pending_reply_frees_its_slot_and_late_reply_is_queued() {
+        let (mut client, mut peer) = client();
+        let (id, pending) = client.send_call(0, "doThing:", None).await.unwrap();
+        assert_eq!(client.shared.pending_replies.lock().await.len(), 1);
+        drop(pending);
+        assert!(client.shared.pending_replies.lock().await.is_empty());
+
+        Message::from_reader(&mut peer).await.unwrap();
+        peer.write_all(&single(id, 1, 0, &body(3, &[], &archive("late"))))
+            .await
+            .unwrap();
+        let late = client.read_message(0).await.unwrap();
+        assert_eq!(late.identifier(), id);
+    }
+
+    #[tokio::test]
+    async fn oversized_message_closes_the_connection_and_fails_waiters() {
+        let (client, mut peer) = client();
+        client.set_max_message_size(64);
+        let (_, pending) = client.send_call(0, "doThing:", None).await.unwrap();
+        Message::from_reader(&mut peer).await.unwrap();
+        peer.write_all(&single(1, 1, 0, &body(3, &[], &[0u8; 100])))
+            .await
+            .unwrap();
+        let err = tokio::time::timeout(Duration::from_secs(5), pending)
+            .await
+            .expect("waiter woken")
+            .unwrap_err();
+        assert!(
+            matches!(err, IdeviceError::Socket(ref e) if e.kind() == std::io::ErrorKind::BrokenPipe),
+            "{err:?}"
+        );
+        assert!(client.shared.closed.load(Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn undecodable_user_reply_is_delivered_not_fatal() {
+        let (mut client, mut peer) = client();
+        let peer_task = tokio::spawn(async move {
+            answer(&mut peer, body(3, &[], b"junk")).await;
+            peer
+        });
+        let reply = client
+            .call_method_with_reply(0, Some("doThing:"), None)
+            .await
+            .unwrap();
+        assert!(reply.data.is_none() && reply.data_error.is_some());
+        assert_eq!(reply.raw_data.as_deref(), Some(&b"junk"[..]));
+        assert!(!client.shared.closed.load(Ordering::Relaxed));
+        let _peer = peer_task.await.unwrap();
     }
 }
