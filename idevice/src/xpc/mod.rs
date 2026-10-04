@@ -332,13 +332,17 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
                 // flags at [4..8] – not needed to compute size
                 let body_len = u64::from_le_bytes([
                     buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15],
-                ]) as usize;
+                ]);
 
-                let wrapper_len = 24 + body_len;
-                if buf.len() < wrapper_len {
-                    // Incomplete wrapper (shouldn’t happen with your read API), keep as-is.
+                // A peer-supplied length past the chunk (or past usize) means
+                // this is not a whole wrapper; pass the bytes through.
+                let Some(wrapper_len) = usize::try_from(body_len)
+                    .ok()
+                    .and_then(|l| l.checked_add(24))
+                    .filter(|&l| l <= buf.len())
+                else {
                     return (buf, false);
-                }
+                };
 
                 (&buf[wrapper_len..], true)
             }
