@@ -9,12 +9,11 @@ use crate::{IdeviceError, ReadWrite, xpc};
 
 pub mod errors;
 mod format;
-mod http2;
+pub(crate) mod http2;
 pub mod xpc_macro;
 
 use errors::XpcError;
-use format::XPCFlag;
-pub use format::{DEFAULT_MAX_MESSAGE_SIZE, Dictionary, MAX_NESTING_DEPTH, XPCMessage, XPCObject};
+pub use format::{DEFAULT_MAX_MESSAGE_SIZE, Dictionary, MAX_NESTING_DEPTH, XPCFlag, XPCMessage, XPCObject};
 
 const ROOT_CHANNEL: u32 = 1;
 const REPLY_CHANNEL: u32 = 3;
@@ -292,6 +291,38 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
         self.send_root(msg).await?;
         self.root_id += 1;
         Ok(id)
+    }
+
+    /// Answers a wants-reply message the peer sent: writes `body` on the reply
+    /// channel with the data and reply flags and `message_id`, the id of the
+    /// peer's message. Does not touch the id counter of
+    /// [`Self::send_object_with_id`].
+    pub async fn send_reply_to(
+        &mut self,
+        message_id: u64,
+        body: impl Into<XPCObject>,
+    ) -> Result<(), IdeviceError> {
+        let msg = XPCMessage::new(
+            Some(XPCFlag::DataFlag | XPCFlag::Reply | XPCFlag::AlwaysSet),
+            Some(body.into()),
+            Some(message_id),
+        );
+        self.h2_client
+            .send(msg.encode(message_id)?, REPLY_CHANNEL)
+            .await?;
+        Ok(())
+    }
+
+    /// The id the next [`Self::send_object_with_id`] will carry.
+    pub fn next_message_id(&self) -> u64 {
+        self.root_id
+    }
+
+    /// Sets the id the next [`Self::send_object_with_id`] will carry, for
+    /// services that constrain request ids (the file service numbers its own
+    /// messages 2, 4, 6, … and wants client requests odd).
+    pub fn set_next_message_id(&mut self, id: u64) {
+        self.root_id = id;
     }
 
     async fn send_root(&mut self, msg: XPCMessage) -> Result<(), IdeviceError> {
