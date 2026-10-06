@@ -1223,6 +1223,28 @@ impl MobileBackup2Client {
         self.process_dl_loop(backup_root, delegate).await
     }
 
+    /// Fails when the final `DLMessageProcessMessage` of `op` carries a non-zero `ErrorCode`,
+    /// as pymobiledevice3's `DeviceLink.dl_loop` raises. A loop that ended on
+    /// `DLMessageDisconnect` (no final dictionary) passes.
+    fn check_final_status(op: &str, fin: Option<Dictionary>) -> Result<(), IdeviceError> {
+        let Some(fin) = fin else { return Ok(()) };
+        let code = fin
+            .get("ErrorCode")
+            .and_then(|v| v.as_signed_integer())
+            .unwrap_or(0);
+        if code == 0 {
+            return Ok(());
+        }
+        let desc = fin
+            .get("ErrorDescription")
+            .and_then(|v| v.as_string())
+            .unwrap_or("no ErrorDescription");
+        warn!("{op} failed with ErrorCode {code}: {desc}");
+        Err(IdeviceError::UnexpectedResponse(format!(
+            "{op} returned ErrorCode {code}: {desc}"
+        )))
+    }
+
     /// Processes the DeviceLink message loop used by backup, restore, and other operations.
     ///
     /// Handles all DL* messages from the device until a `DLMessageProcessMessage` (final
@@ -1871,8 +1893,8 @@ impl MobileBackup2Client {
         let opts = password.map(|pw| crate::plist!(dict { "Password": pw }));
         self.send_request("Unback", target_udid, Some(source), opts)
             .await?;
-        let _ = self.process_dl_loop(backup_root, delegate).await?;
-        Ok(())
+        let fin = self.process_dl_loop(backup_root, delegate).await?;
+        Self::check_final_status("Unback", fin)
     }
 
     /// Extract a single file from a previous backup
@@ -1899,8 +1921,8 @@ impl MobileBackup2Client {
             "Password":? password,
         });
         self.send_device_link_message("Extract", Some(dict)).await?;
-        let _ = self.process_dl_loop(backup_root, delegate).await?;
-        Ok(())
+        let fin = self.process_dl_loop(backup_root, delegate).await?;
+        Self::check_final_status("Extract", fin)
     }
 
     /// Change backup password (enable/disable if new/old missing)
@@ -1920,8 +1942,8 @@ impl MobileBackup2Client {
         });
         self.send_device_link_message("ChangePassword", Some(dict))
             .await?;
-        let _ = self.process_dl_loop(backup_root, delegate).await?;
-        Ok(())
+        let fin = self.process_dl_loop(backup_root, delegate).await?;
+        Self::check_final_status("ChangePassword", fin)
     }
 
     /// Erase device via mobilebackup2
@@ -1937,8 +1959,8 @@ impl MobileBackup2Client {
         });
         self.send_device_link_message("EraseDevice", Some(dict))
             .await?;
-        let _ = self.process_dl_loop(backup_root, delegate).await?;
-        Ok(())
+        let fin = self.process_dl_loop(backup_root, delegate).await?;
+        Self::check_final_status("EraseDevice", fin)
     }
 
     /// Gets free space information from the device
@@ -2064,5 +2086,19 @@ mod tests {
         let free =
             FsBackupDelegate.get_free_disk_space(Path::new("./does/not/exist/anywhere/right/now"));
         assert!(free > 0, "should resolve an existing ancestor, got {free}");
+    }
+
+    #[test]
+    fn final_status_fails_only_on_nonzero_error_code() {
+        let check = MobileBackup2Client::check_final_status;
+        assert!(check("ChangePassword", None).is_ok());
+        assert!(check("ChangePassword", Some(crate::plist!(dict { "ErrorCode": 0 }))).is_ok());
+        assert!(check("ChangePassword", Some(Dictionary::new())).is_ok());
+        let err = check(
+            "ChangePassword",
+            Some(crate::plist!(dict { "ErrorCode": 207, "ErrorDescription": "Wrong password" })),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("ChangePassword returned ErrorCode 207: Wrong password"));
     }
 }
