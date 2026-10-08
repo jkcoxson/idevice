@@ -22,6 +22,9 @@ pub struct SpringBoardServicesClientHandle(pub SpringBoardServicesClient);
 
 /// Connects to the Springboard service using a provider
 ///
+/// The caller retains ownership of `provider` on both success and failure and
+/// must free it with `idevice_provider_free` when it is no longer needed.
+///
 /// # Arguments
 /// * [`provider`] - An IdeviceProvider
 /// * [`client`] - On success, will be set to point to a newly allocated SpringBoardServicesClient handle
@@ -53,12 +56,7 @@ pub unsafe extern "C" fn springboard_services_connect(
             unsafe { *client = Box::into_raw(boxed) };
             null_mut()
         }
-        Err(e) => {
-            // If connection failed, the provider_box was already forgotten,
-            // so we need to reconstruct it to avoid leak
-            let _ = unsafe { Box::from_raw(provider) };
-            ffi_err!(e)
-        }
+        Err(e) => ffi_err!(e),
     }
 }
 

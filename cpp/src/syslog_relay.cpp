@@ -11,7 +11,6 @@ Result<SyslogRelay, FfiError> SyslogRelay::connect_tcp(Provider& provider) {
     SyslogRelayClientHandle* out = nullptr;
     FfiError                 e(::syslog_relay_connect_tcp(provider.raw(), &out));
     if (e) {
-        provider.release();
         return Err(e);
     }
     return Ok(SyslogRelay::adopt(out));

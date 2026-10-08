@@ -20,6 +20,9 @@ pub struct ImageMounterHandle(pub ImageMounter);
 
 /// Connects to the Image Mounter service using a provider
 ///
+/// The caller retains ownership of `provider` on both success and failure and
+/// must free it with `idevice_provider_free` when it is no longer needed.
+///
 /// # Arguments
 /// * [`provider`] - An IdeviceProvider
 /// * [`client`] - On success, will be set to point to a newly allocated ImageMounter handle
@@ -51,10 +54,7 @@ pub unsafe extern "C" fn image_mounter_connect(
             unsafe { *client = Box::into_raw(boxed) };
             null_mut()
         }
-        Err(e) => {
-            let _ = unsafe { Box::from_raw(provider) };
-            ffi_err!(e)
-        }
+        Err(e) => ffi_err!(e),
     }
 }
 

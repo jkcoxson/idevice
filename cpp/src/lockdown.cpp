@@ -11,7 +11,6 @@ Result<Lockdown, FfiError> Lockdown::connect(Provider& provider) {
     LockdowndClientHandle* out = nullptr;
     FfiError               e(::lockdownd_connect(provider.raw(), &out));
     if (e) {
-        provider.release();
         return Err(e);
     }
     return Ok(Lockdown::adopt(out));

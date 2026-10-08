@@ -50,6 +50,9 @@ pub struct SyslogLabel {
 
 /// Connects to the relay with the given provider
 ///
+/// The caller retains ownership of `provider` on both success and failure and
+/// must free it with `idevice_provider_free` when it is no longer needed.
+///
 /// # Arguments
 /// * [`provider`] - A provider created by this library
 /// * [`client`] - A pointer where the handle will be allocated
@@ -80,10 +83,7 @@ pub unsafe extern "C" fn os_trace_relay_connect(
             unsafe { *client = Box::into_raw(boxed) };
             null_mut()
         }
-        Err(e) => {
-            let _ = unsafe { Box::from_raw(provider) };
-            ffi_err!(e)
-        }
+        Err(e) => ffi_err!(e),
     }
 }
 
