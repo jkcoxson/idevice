@@ -333,8 +333,8 @@ pub unsafe extern "C" fn image_mounter_mount_image(
 
     let info_plist = if !info_plist.is_null() {
         Some(
-            unsafe { Box::from_raw(info_plist as *mut Value) }
-                .as_ref()
+            unsafe { &mut *(info_plist as *mut PlistWrapper) }
+                .borrow_self()
                 .clone(),
         )
     } else {
@@ -730,8 +730,8 @@ pub unsafe extern "C" fn image_mounter_mount_personalized(
 
     let info_plist = if !info_plist.is_null() {
         Some(
-            unsafe { Box::from_raw(info_plist as *mut Value) }
-                .as_ref()
+            unsafe { &mut *(info_plist as *mut PlistWrapper) }
+                .borrow_self()
                 .clone(),
         )
     } else {
@@ -810,8 +810,8 @@ pub unsafe extern "C" fn image_mounter_mount_personalized_rsd(
 
     let info_plist = if !info_plist.is_null() {
         Some(
-            unsafe { Box::from_raw(info_plist as *mut Value) }
-                .as_ref()
+            unsafe { &mut *(info_plist as *mut PlistWrapper) }
+                .borrow_self()
                 .clone(),
         )
     } else {
@@ -896,8 +896,8 @@ pub unsafe extern "C" fn image_mounter_mount_personalized_with_callback_rsd(
 
     let info_plist = if !info_plist.is_null() {
         Some(
-            unsafe { Box::from_raw(info_plist as *mut Value) }
-                .as_ref()
+            unsafe { &mut *(info_plist as *mut PlistWrapper) }
+                .borrow_self()
                 .clone(),
         )
     } else {
@@ -982,8 +982,8 @@ pub unsafe extern "C" fn image_mounter_mount_personalized_with_callback(
 
     let info_plist = if !info_plist.is_null() {
         Some(
-            unsafe { Box::from_raw(info_plist as *mut Value) }
-                .as_ref()
+            unsafe { &mut *(info_plist as *mut PlistWrapper) }
+                .borrow_self()
                 .clone(),
         )
     } else {
