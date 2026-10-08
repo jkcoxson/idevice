@@ -26,7 +26,7 @@ class HouseArrest {
     // Factory: wrap an existing Idevice socket (consumes it on success)
     static Result<HouseArrest, FfiError> from_socket(Idevice&& socket);
 
-    // Ops - these consume the HouseArrest client and return an AfcClient
+    // Ops - consume the HouseArrest client even on error; return an owned AFC handle on success
     Result<AfcClientHandle*, FfiError>   vend_container(const std::string& bundle_id);
     Result<AfcClientHandle*, FfiError>   vend_documents(const std::string& bundle_id);
 

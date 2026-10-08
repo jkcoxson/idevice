@@ -12,7 +12,6 @@ Result<SpringBoardServices, FfiError> SpringBoardServices::connect(Provider& pro
     SpringBoardServicesClientHandle* out = nullptr;
     FfiError                         e(::springboard_services_connect(provider.raw(), &out));
     if (e) {
-        provider.release();
         return Err(e);
     }
     return Ok(SpringBoardServices::adopt(out));

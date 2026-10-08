@@ -38,7 +38,7 @@ Result<HouseArrest, FfiError> HouseArrest::from_socket(Idevice&& socket) {
 
 Result<AfcClientHandle*, FfiError> HouseArrest::vend_container(const std::string& bundle_id) {
     AfcClientHandle* afc_out = nullptr;
-    FfiError         e(::house_arrest_vend_container(handle_.get(), bundle_id.c_str(), &afc_out));
+    FfiError         e(::house_arrest_vend_container(handle_.release(), bundle_id.c_str(), &afc_out));
     if (e) {
         return Err(e);
     }
@@ -47,7 +47,7 @@ Result<AfcClientHandle*, FfiError> HouseArrest::vend_container(const std::string
 
 Result<AfcClientHandle*, FfiError> HouseArrest::vend_documents(const std::string& bundle_id) {
     AfcClientHandle* afc_out = nullptr;
-    FfiError         e(::house_arrest_vend_documents(handle_.get(), bundle_id.c_str(), &afc_out));
+    FfiError         e(::house_arrest_vend_documents(handle_.release(), bundle_id.c_str(), &afc_out));
     if (e) {
         return Err(e);
     }

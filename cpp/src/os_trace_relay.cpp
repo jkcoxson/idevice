@@ -13,7 +13,6 @@ Result<OsTraceRelay, FfiError> OsTraceRelay::connect(Provider& provider) {
     OsTraceRelayClientHandle* out = nullptr;
     FfiError                  e(::os_trace_relay_connect(provider.raw(), &out));
     if (e) {
-        provider.release();
         return Err(e);
     }
     return Ok(OsTraceRelay::adopt(out));
