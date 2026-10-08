@@ -70,7 +70,7 @@ use dtx_services::{
     XCT_LOG_MESSAGE, XCT_METHOD_DID_MEASURE_METRIC, XCT_RUNNER_READY_WITH_CAPABILITIES,
     XCT_SUITE_DID_FINISH, XCT_SUITE_DID_FINISH_ID, XCT_SUITE_DID_START, XCT_SUITE_DID_START_ID,
     XCT_UI_INIT_DID_FAIL, XCTEST_DRIVER_INTERFACE, XCTEST_MANAGER_DAEMON_CONNECTION_INTERFACE,
-    XCTEST_MANAGER_IDE_INTERFACE, XCTEST_PROXY_IDE_TO_DRIVER,
+    XCTEST_MANAGER_IDE_INTERFACE, XCTEST_PROXY_DRIVER_TO_IDE, XCTEST_PROXY_IDE_TO_DRIVER,
 };
 use listener::{XCTestCaseResult, XCUITestListener};
 use types::{
@@ -337,7 +337,11 @@ pub(crate) fn build_launch_env(
         "SQLITE_ENABLE_THREAD_ASSERTIONS": "1",
         "WDA_PRODUCT_BUNDLE_IDENTIFIER": "",
         "XCTestBundlePath": format!("{}/PlugIns/{}.xctest", runner_app_path, target_name),
-        "XCTestConfigurationFilePath": format!("{}{}", runner_app_container, xctest_config_path),
+        "XCTestConfigurationFilePath": if uses_legacy_transport(ios_major_version) {
+            String::new()
+        } else {
+            format!("{}{}", runner_app_container, xctest_config_path)
+        },
         "XCODE_DBG_XPC_EXCLUSIONS": "com.apple.dt.xctestSymbolicator",
         "XCTestSessionIdentifier": session_upper.clone(),
     });
@@ -905,15 +909,29 @@ struct DriverProxy {
 impl DriverProxy {
     async fn wait(
         client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
+        ios_major_version: u8,
         timeout_secs: f64,
     ) -> Result<Self, IdeviceError> {
         Ok(Self {
-            channel: wait_for_driver_channel(client, timeout_secs).await?,
+            channel: wait_for_driver_channel(client, ios_major_version, timeout_secs).await?,
         })
     }
 
     async fn start_executing_test_plan(&mut self) -> Result<(), IdeviceError> {
         start_executing_test_plan(&mut self.channel).await
+    }
+
+    /// Starts an iOS 14-16 serialized-transport test plan on the reverse
+    /// bridge channel requested by testmanagerd.
+    async fn start_executing_test_plan_legacy(&mut self) -> Result<(), IdeviceError> {
+        let version_bytes = AuxValue::archived_value(Value::Integer((XCODE_VERSION as i64).into()));
+        self.channel
+            .call_method(
+                Some(IDE_START_EXECUTING_TEST_PLAN),
+                Some(vec![version_bytes]),
+                false,
+            )
+            .await
     }
 }
 
@@ -953,30 +971,41 @@ impl<'a, R: ReadWrite + 'static> XCTestProcessControlChannel<'a, R> {
 /// replies with an empty acknowledgement, registers the channel, and returns a
 /// `Channel` handle to it.
 fn testmanager_uses_proxy(ios_major_version: u8) -> bool {
-    ios_major_version >= 17
+    ios_major_version >= 14
+}
+
+fn uses_legacy_transport(ios_major_version: u8) -> bool {
+    (14..17).contains(&ios_major_version)
 }
 
 async fn wait_for_xctest_service_channel(
     main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
     plain_identifiers: &[&str],
     proxy_remote_identifiers: &[&str],
+    ios_major_version: u8,
     timeout_secs: f64,
 ) -> Result<OwnedChannel<Box<dyn ReadWrite>>, IdeviceError> {
     let timeout = Some(std::time::Duration::from_secs_f64(timeout_secs));
 
-    let code = match main_client
-        .wait_for_proxied_service_channel_code(proxy_remote_identifiers, true, Some(true), timeout)
-        .await
-    {
-        Ok(code) => code,
-        Err(IdeviceError::XcTestTimeout(_)) => match main_client
+    // Select the expected channel form once so the caller's timeout remains
+    // the total deadline rather than applying once per fallback.
+    let code = if testmanager_uses_proxy(ios_major_version) {
+        main_client
+            .wait_for_proxied_service_channel_code(
+                proxy_remote_identifiers,
+                true,
+                Some(true),
+                timeout,
+            )
+            .await
+    } else {
+        main_client
             .wait_for_service_channel_code(plain_identifiers, Some(true), timeout)
             .await
-        {
-            Ok(code) => code,
-            Err(IdeviceError::XcTestTimeout(_)) => return Err(IdeviceError::TestRunnerTimeout),
-            Err(error) => return Err(error),
-        },
+    };
+    let code = match code {
+        Ok(code) => code,
+        Err(IdeviceError::XcTestTimeout(_)) => return Err(IdeviceError::TestRunnerTimeout),
         Err(error) => return Err(error),
     };
 
@@ -990,7 +1019,11 @@ async fn register_early_driver_channel_handler(
     let xctest_config = xctest_config.clone();
     main_client
         .register_incoming_channel_initializer(
-            &[XCTEST_DRIVER_INTERFACE, XCTEST_PROXY_IDE_TO_DRIVER],
+            &[
+                XCTEST_DRIVER_INTERFACE,
+                XCTEST_PROXY_IDE_TO_DRIVER,
+                XCTEST_PROXY_DRIVER_TO_IDE,
+            ],
             move |mut channel, _identifier| {
                 let xctest_config = xctest_config.clone();
                 Box::pin(async move {
@@ -1056,15 +1089,26 @@ async fn launch_and_authorize_test_runner(
 async fn start_test_plan_session(
     main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
     _main_proxy: &mut TestManagerProxy<Box<dyn ReadWrite>>,
+    ios_major_version: u8,
 ) -> Result<OwnedChannel<Box<dyn ReadWrite>>, IdeviceError> {
-    let mut driver_proxy = DriverProxy::wait(main_client, 30.0).await?;
-    driver_proxy.start_executing_test_plan().await?;
+    let mut driver_proxy = DriverProxy::wait(main_client, ios_major_version, 30.0).await?;
+    if uses_legacy_transport(ios_major_version) {
+        // iOS 14-16: serialized transport — testmanagerd requested the bridge
+        // channel (ForChannelRequest), so actively start the plan on it with
+        // protocol version 36 (go-ios xcode12 path).
+        driver_proxy.start_executing_test_plan_legacy().await?;
+    } else {
+        driver_proxy.start_executing_test_plan().await?;
+    }
+    // The early handler has served the capabilities exchange; clear it so the
+    // dispatch loop owns channel messages from here on.
     driver_proxy.channel.clear_incoming_handler().await;
     Ok(driver_proxy.channel)
 }
 
 pub(super) async fn wait_for_driver_channel(
     main_client: &mut RemoteServerClient<Box<dyn ReadWrite>>,
+    ios_major_version: u8,
     timeout_secs: f64,
 ) -> Result<OwnedChannel<Box<dyn ReadWrite>>, IdeviceError> {
     const DRIVER_SERVICE_IDENTIFIERS: &[&str] = &[XCTEST_DRIVER_INTERFACE];
@@ -1072,6 +1116,7 @@ pub(super) async fn wait_for_driver_channel(
         main_client,
         DRIVER_SERVICE_IDENTIFIERS,
         DRIVER_SERVICE_IDENTIFIERS,
+        ios_major_version,
         timeout_secs,
     )
     .await
@@ -2007,13 +2052,21 @@ impl XCUITestService {
 
         // 4. Connect to testmanagerd (ctrl + main) and DVT
         let mut conns = connect_testmanagerd(&*self.provider, ios_major_version).await?;
+        let legacy_transport = uses_legacy_transport(ios_major_version);
+        if legacy_transport {
+            // iOS 14-16 may request the reverse bridge as soon as main opens.
+            register_early_driver_channel_handler(&mut conns.main, &xctest_config).await;
+        }
         let mut ctrl_proxy = TestManagerProxy::open(&mut conns.ctrl, ios_major_version).await?;
         let mut main_proxy = TestManagerProxy::open(&mut conns.main, ios_major_version).await?;
         let mut process_control = XCTestProcessControlChannel::open(&mut conns.dvt).await?;
 
         let config_name = cfg.config_name().to_owned();
         initialize_testmanager_sessions(&mut ctrl_proxy, &mut main_proxy, &xctest_config).await?;
-        register_early_driver_channel_handler(&mut conns.main, &xctest_config).await;
+        if !legacy_transport {
+            // Preserve the established registration timing on other versions.
+            register_early_driver_channel_handler(&mut conns.main, &xctest_config).await;
+        }
         initialize_testmanager_daemon_sessions(
             &mut ctrl_proxy,
             &mut main_proxy,
@@ -2047,7 +2100,8 @@ impl XCUITestService {
         .await?;
 
         // 6-7. Wait for driver channel and start the test plan.
-        let driver_channel = start_test_plan_session(&mut conns.main, &mut main_proxy).await?;
+        let driver_channel =
+            start_test_plan_session(&mut conns.main, &mut main_proxy, ios_major_version).await?;
 
         // 8. Dispatch loop, raced against the runner connection dropping.
         run_dispatch_loop_until_done_or_disconnect(
@@ -2148,6 +2202,34 @@ impl XCUITestService {
 mod tests {
     use super::wda_port_overrides_from_runner_environment;
     use crate::services::wda::WdaPorts;
+
+    #[test]
+    fn ios14_16_uses_legacy_transport_and_capabilities_config() {
+        assert!(!super::uses_legacy_transport(13));
+        assert!(super::uses_legacy_transport(14));
+        assert!(super::uses_legacy_transport(16));
+        assert!(!super::uses_legacy_transport(17));
+        assert!(!super::testmanager_uses_proxy(13));
+        assert!(super::testmanager_uses_proxy(14));
+
+        let session = uuid::Uuid::new_v4();
+        let (_, env, _) = super::build_launch_env(
+            15,
+            &session,
+            "/app/Runner.app",
+            "/var/mobile/Containers/Data/Application/ABC",
+            "WebDriverAgentRunner",
+            "/tmp/x.xctestconfiguration",
+            None,
+            None,
+        );
+        assert_eq!(
+            env.get("XCTestConfigurationFilePath")
+                .and_then(|value| value.as_string()),
+            Some("")
+        );
+        assert!(env.get("XCTestManagerVariant").is_none());
+    }
 
     #[test]
     fn wda_ports_follow_runner_environment() {
