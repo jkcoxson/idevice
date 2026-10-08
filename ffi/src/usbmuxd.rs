@@ -231,12 +231,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_connect_to_device(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    // Take ownership of the connection handle
-    let conn = unsafe {
-        let conn = std::ptr::read(&(*usbmuxd_connection).0); // move the inner connection
-        drop(Box::from_raw(usbmuxd_connection)); // free the wrapper
-        conn
-    };
+    let conn = unsafe { Box::from_raw(usbmuxd_connection) }.0;
 
     let label = unsafe {
         match CStr::from_ptr(label).to_str() {
