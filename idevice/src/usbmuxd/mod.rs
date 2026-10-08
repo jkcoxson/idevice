@@ -57,7 +57,7 @@ pub struct UsbmuxdDevice {
 pub enum UsbmuxdListenEvent {
     Connected(UsbmuxdDevice),
     /// The mux ID
-    Disconnected(u32),
+    Disconnected(u64),
 }
 
 /// Active connection to the usbmuxd service
@@ -359,7 +359,7 @@ impl UsbmuxdConnection {
     pub async fn listen<'a>(
         &'a mut self,
     ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<UsbmuxdListenEvent, IdeviceError>> + 'a>>,
+        Pin<Box<dyn Stream<Item = Result<UsbmuxdListenEvent, IdeviceError>> + 'a + Send>>,
         IdeviceError,
     > {
         let req = crate::plist!(dict {
@@ -409,7 +409,7 @@ impl UsbmuxdConnection {
                                     if let Some(id) =
                                         msg.get("DeviceID").and_then(|v| v.as_unsigned_integer())
                                     {
-                                        let res = UsbmuxdListenEvent::Disconnected(id as u32);
+                                        let res = UsbmuxdListenEvent::Disconnected(id);
                                         return Ok(Some((res, conn)));
                                     } else {
                                         debug!("Device detached (unknown ID)");
@@ -463,7 +463,12 @@ impl UsbmuxdConnection {
         self.socket.read_exact(&mut header_buffer).await?;
 
         // We are safe to unwrap as it only panics if the buffer isn't 4
-        let packet_size = u32::from_le_bytes(header_buffer[..4].try_into().unwrap()) - 16;
+        let packet_size = u32::from_le_bytes(header_buffer[..4].try_into().unwrap());
+        if packet_size < 17 {
+            debug!("body size hint from usbmuxd is too small");
+            return Err(IdeviceError::Usbmuxd(UsbmuxdError::BadCommand));
+        }
+        let packet_size = packet_size - 16;
         debug!("Reading {packet_size} bytes from muxer");
 
         let mut body_buffer = vec![0; packet_size as usize];

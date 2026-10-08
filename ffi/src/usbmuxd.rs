@@ -411,7 +411,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_listener_next(
     stream_handle: *mut UsbmuxdListenerHandle,
     connect: *mut bool,
     connection_device: *mut *mut UsbmuxdDeviceHandle,
-    disconnection_id: *mut u32,
+    disconnection_id: *mut u64,
 ) -> *mut IdeviceFfiError {
     if stream_handle.is_null()
         || connect.is_null()
