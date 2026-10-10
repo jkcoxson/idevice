@@ -953,13 +953,7 @@ impl<'a, R: ReadWrite + 'static> XCTestProcessControlChannel<'a, R> {
 /// replies with an empty acknowledgement, registers the channel, and returns a
 /// `Channel` handle to it.
 fn testmanager_uses_proxy(ios_major_version: u8) -> bool {
-    // testmanagerd routes the IDE interface only through the
-    // `dtxproxy:XCTestManager_IDEInterface:XCTestManager_DaemonConnectionInterface`
-    // channel on the lockdown path too. A plain `XCTestManager_IDEInterface`
-    // channel request is cancelled ("No channel handler specified; channel
-    // canceled" in the device log), every session call on it returns an NSError,
-    // and the launched runner never receives its test plan. go-ios and
-    // pymobiledevice3 use the proxy name for iOS 11+ as well.
+    // testmanagerd serves the IDE interface only through the dtxproxy channel.
     ios_major_version >= 11
 }
 
