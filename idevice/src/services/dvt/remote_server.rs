@@ -115,7 +115,7 @@ fn remote_timeout_error(timeout: std::time::Duration) -> IdeviceError {
 use crate::{
     IdeviceError, ReadWrite,
     dvt::message::{
-        Aux, AuxValue, DEFAULT_MAX_MESSAGE_SIZE, Message, MessageHeader, PayloadHeader,
+        Aux, AuxValue, DEFAULT_MAX_MESSAGE_SIZE, KeyedValue, Message, MessageHeader, PayloadHeader,
     },
 };
 
@@ -912,6 +912,26 @@ impl<R: ReadWrite> RemoteServerClient<R> {
         Ok(())
     }
 
+    /// Sends a keyed message on `channel`: a DATA frame whose aux section is
+    /// the keyed primitive dictionary `entries` (see
+    /// [`Aux::serialize_keyed`](super::message::Aux::serialize_keyed)), with no
+    /// payload and no reply expected. Services that take these answer with a
+    /// DATA frame on the same channel; read it with
+    /// [`read_message`](Self::read_message) and take `raw_data`.
+    ///
+    /// # Errors
+    /// I/O errors from the write.
+    pub async fn send_keyed_message(
+        &mut self,
+        channel: i32,
+        entries: &[(String, KeyedValue)],
+    ) -> Result<(), IdeviceError> {
+        let identifier = self.shared.current_message.fetch_add(1, Ordering::Relaxed) + 1;
+        self.shared
+            .write_all(&Message::build_keyed(channel, identifier, entries))
+            .await
+    }
+
     /// Sends one method invocation on `channel` with `expects_reply` set and
     /// returns its identifier and a [`PendingReply`] for the correlated reply.
     ///
@@ -1594,6 +1614,16 @@ impl<R: ReadWrite> Channel<'_, R> {
         args: Option<Vec<AuxValue>>,
     ) -> Result<(u32, PendingReply), IdeviceError> {
         self.client.send_call(self.channel, selector, args).await
+    }
+
+    /// Sends a keyed message on this channel.
+    ///
+    /// See [`RemoteServerClient::send_keyed_message`].
+    pub async fn send_keyed_message(
+        &mut self,
+        entries: &[(String, KeyedValue)],
+    ) -> Result<(), IdeviceError> {
+        self.client.send_keyed_message(self.channel, entries).await
     }
 
     /// Returns this channel's code.

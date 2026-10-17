@@ -440,6 +440,50 @@ impl Aux {
     }
 }
 
+/// A value of a keyed DTX message (see [`Aux::serialize_keyed`]).
+#[derive(Debug, Clone, PartialEq)]
+pub enum KeyedValue {
+    /// A string, sent NUL-terminated (type 0x01)
+    String(String),
+    /// A 64-bit signed integer (type 0x06)
+    I64(i64),
+}
+
+impl Aux {
+    /// Serializes a keyed primitive dictionary: the aux section of the
+    /// dictionary messages DTServiceHub's message-handler services take
+    /// (`deviceinfo` `infoRequest`, `dyld.metrics` `command`), as
+    /// pymobiledevice3 `build_keyed_aux` writes it.
+    ///
+    /// Unlike [`Aux::serialize`], whose entries all carry the null key, each
+    /// entry here is a type-0x01 string key followed by its value, and strings
+    /// include their terminating NUL.
+    pub fn serialize_keyed(entries: &[(String, KeyedValue)]) -> Vec<u8> {
+        fn string(s: &str, out: &mut Vec<u8>) {
+            out.extend_from_slice(&0x01_u32.to_le_bytes());
+            out.extend_from_slice(&(s.len() as u32 + 1).to_le_bytes());
+            out.extend_from_slice(s.as_bytes());
+            out.push(0);
+        }
+        let mut body = Vec::new();
+        for (key, value) in entries {
+            string(key, &mut body);
+            match value {
+                KeyedValue::String(s) => string(s, &mut body),
+                KeyedValue::I64(i) => {
+                    body.extend_from_slice(&0x06_u32.to_le_bytes());
+                    body.extend_from_slice(&i.to_le_bytes());
+                }
+            }
+        }
+        let mut res = Vec::with_capacity(16 + body.len());
+        res.extend_from_slice(&0x1f0_u64.to_le_bytes());
+        res.extend_from_slice(&(body.len() as u64).to_le_bytes());
+        res.extend_from_slice(&body);
+        res
+    }
+}
+
 /// Helper to write a primitive value to the payload
 fn write_primitive_value(v: &AuxValue, payload: &mut Vec<u8>) {
     match v {
@@ -887,6 +931,32 @@ impl Message {
         res.extend_from_slice(&aux);
         res.extend_from_slice(&data);
 
+        res
+    }
+
+    /// Builds a keyed message frame: a DATA message (type 1) that expects no
+    /// reply and carries only a keyed primitive dictionary as its aux section.
+    /// Any answer arrives as a DATA frame on the same channel.
+    pub(crate) fn build_keyed(
+        channel: i32,
+        identifier: u32,
+        entries: &[(String, KeyedValue)],
+    ) -> Vec<u8> {
+        let aux = Aux::serialize_keyed(entries);
+        let mut payload_header = PayloadHeader {
+            msg_type: 1,
+            ..Default::default()
+        };
+        payload_header.aux_length = aux.len() as _;
+        payload_header.total_length = aux.len() as _;
+        let payload_header = payload_header.serialize();
+
+        let mut message_header = MessageHeader::new(0, 1, identifier, 0, channel, false);
+        message_header.length = (payload_header.len() + aux.len()) as u32;
+
+        let mut res = message_header.serialize();
+        res.extend_from_slice(&payload_header);
+        res.extend_from_slice(&aux);
         res
     }
 
@@ -1353,5 +1423,44 @@ mod tests {
             msg.aux.unwrap().values,
             vec![AuxValue::String("still decoded".into())]
         );
+    }
+
+    #[test]
+    fn keyed_aux_matches_the_pymobiledevice3_encoding() {
+        let aux = Aux::serialize_keyed(&[(
+            "infoRequest".to_string(),
+            KeyedValue::String("configurationInformation".to_string()),
+        )]);
+        let mut want = vec![0xF0, 0x01, 0, 0, 0, 0, 0, 0];
+        want.extend_from_slice(&53_u64.to_le_bytes());
+        want.extend_from_slice(&[0x01, 0, 0, 0, 0x0C, 0, 0, 0]);
+        want.extend_from_slice(b"infoRequest\0");
+        want.extend_from_slice(&[0x01, 0, 0, 0, 0x19, 0, 0, 0]);
+        want.extend_from_slice(b"configurationInformation\0");
+        assert_eq!(aux.len(), 69);
+        assert_eq!(aux, want);
+
+        let int = Aux::serialize_keyed(&[("pid".to_string(), KeyedValue::I64(7))]);
+        assert_eq!(&int[16..24], &[0x01, 0, 0, 0, 0x04, 0, 0, 0]);
+        assert_eq!(&int[24..28], b"pid\0");
+        assert_eq!(&int[28..32], &[0x06, 0, 0, 0]);
+        assert_eq!(&int[32..], &7_i64.to_le_bytes());
+    }
+
+    #[tokio::test]
+    async fn keyed_message_is_a_data_frame_without_payload_or_reply() {
+        let entries = [("command".to_string(), KeyedValue::String("x".to_string()))];
+        let frame = Message::build_keyed(3, 9, &entries);
+        let aux = Aux::serialize_keyed(&entries);
+        let msg = read(&frame, DEFAULT_MAX_MESSAGE_SIZE).await.unwrap();
+        assert!(msg.data.is_none() && msg.raw_data.is_none());
+        assert_eq!(msg.payload_header.message_type(), 1);
+        assert_eq!(msg.message_header.identifier(), 9);
+        // The reader negates the channel of a conversation-index-0 frame (it
+        // reads it as the peer's), so the channel is checked on the wire.
+        assert_eq!(&frame[24..28], &3_i32.to_le_bytes());
+        assert!(!msg.message_header.expects_reply());
+        assert_eq!(&frame[frame.len() - aux.len()..], aux.as_slice());
+        assert_eq!(frame.len(), 32 + 16 + aux.len());
     }
 }
