@@ -45,6 +45,36 @@ pub enum Body {
     None,
 }
 
+/// The UUID every RSD handshake from this host carries: UUIDv3 of the host
+/// name in the DNS namespace, pymobiledevice3's `generate_host_id`. The device's
+/// `remoted` stores a peer's handshake UUID, and from iOS 27.2 a different UUID
+/// on a later handshake makes it re-attach: every service port it advertised
+/// closes, for earlier connections too. A UUID that is stable across processes
+/// keeps concurrent clients of one tunnel from knocking each other's services
+/// out.
+pub fn handshake_uuid() -> uuid::Uuid {
+    uuid::Uuid::new_v3(&uuid::Uuid::NAMESPACE_DNS, host_name().as_bytes())
+}
+
+fn host_name() -> String {
+    #[cfg(unix)]
+    {
+        let mut buf = [0u8; 256];
+        // SAFETY: the buffer outlives the call and its length is passed.
+        if unsafe { libc::gethostname(buf.as_mut_ptr().cast(), buf.len()) } == 0 {
+            let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+            if end > 0 {
+                return String::from_utf8_lossy(&buf[..end]).into_owned();
+            }
+        }
+    }
+    #[cfg(windows)]
+    if let Ok(name) = std::env::var("COMPUTERNAME") {
+        return name;
+    }
+    "localhost".into()
+}
+
 #[derive(Debug)]
 pub struct RemoteXpcClient<R: ReadWrite> {
     h2_client: http2::Http2Client<R>,
@@ -139,7 +169,7 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
         let msg = xpc!({
             "MessageType": "Handshake",
             "MessagingProtocolVersion": 7u64,
-            "UUID": uuid::Uuid::new_v4(),
+            "UUID": handshake_uuid(),
             "Properties": {
                 "RemoteXPCVersionFlags": REMOTE_XPC_VERSION_FLAGS,
                 "SensitivePropertiesVisible": true,
@@ -272,11 +302,14 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
     }
 
     /// Sends `msg` on the root channel with the data flag (plus wants-reply
-    /// when `expect_reply`) and returns the message id it carried. Ids start at
-    /// 1 and advance by one per message sent through this method, matching
-    /// pymobiledevice3. Fails with [`XpcError::DateOutOfRange`] for an
-    /// unencodable `Date`, before anything is written, and with transport
-    /// errors from the write; the id advances only after a successful write.
+    /// when `expect_reply`) and returns the message id it carried. Ids are odd
+    /// (1, 3, 5, …), as pymobiledevice3 numbers them: the device numbers the
+    /// messages it originates 2, 4, 6, …, and a daemon that answers a client's
+    /// even id aborts ("Attempted to send non-reply msg %llu on the reply
+    /// channel", dtremotedisplayd on iOS 27.0.1). Fails with
+    /// [`XpcError::DateOutOfRange`] for an unencodable `Date`, before anything
+    /// is written, and with transport errors from the write; the id advances
+    /// only after a successful write.
     pub async fn send_object_with_id(
         &mut self,
         msg: impl Into<XPCObject>,
@@ -286,10 +319,10 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
         if expect_reply {
             flag |= XPCFlag::WantingReply;
         }
-        let id = self.root_id;
+        let id = self.root_id | 1;
         let msg = XPCMessage::new(Some(flag), Some(msg.into()), Some(id));
-        self.send_root(msg).await?;
-        self.root_id += 1;
+        self.h2_client.send(msg.encode(id)?, ROOT_CHANNEL).await?;
+        self.root_id = id + 2;
         Ok(id)
     }
 
@@ -315,12 +348,11 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
 
     /// The id the next [`Self::send_object_with_id`] will carry.
     pub fn next_message_id(&self) -> u64 {
-        self.root_id
+        self.root_id | 1
     }
 
-    /// Sets the id the next [`Self::send_object_with_id`] will carry, for
-    /// services that constrain request ids (the file service numbers its own
-    /// messages 2, 4, 6, … and wants client requests odd).
+    /// Sets the id the next [`Self::send_object_with_id`] will carry; an even
+    /// `id` is rounded up to the next odd one.
     pub fn set_next_message_id(&mut self, id: u64) {
         self.root_id = id;
     }
@@ -726,12 +758,22 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn handshake_uuid_is_pymobiledevice3s_host_id() {
+        // uuid.uuid3(uuid.NAMESPACE_DNS, "mint") in Python.
+        assert_eq!(
+            uuid::Uuid::new_v3(&uuid::Uuid::NAMESPACE_DNS, b"mint").to_string(),
+            "b734230e-5462-358a-9948-70c120f9248e"
+        );
+        assert_eq!(handshake_uuid(), handshake_uuid());
+    }
+
     #[tokio::test]
-    async fn send_object_ids_are_sequential() {
+    async fn send_object_ids_are_odd() {
         let (mut c, mut peer) = client().await;
         assert_eq!(c.send_object_with_id(obj("a"), true).await.unwrap(), 1);
         c.send_object(obj("b"), false).await.unwrap();
-        assert_eq!(c.send_object_with_id(obj("c"), false).await.unwrap(), 3);
+        assert_eq!(c.send_object_with_id(obj("c"), false).await.unwrap(), 5);
 
         // An unencodable message fails before writing and consumes no id.
         let bad = XPCObject::Date(std::time::UNIX_EPOCH - Duration::from_secs(1));
@@ -739,7 +781,12 @@ mod tests {
             xpc_err(c.send_object_with_id(bad, false).await),
             XpcError::DateOutOfRange
         ));
-        assert_eq!(c.send_object_with_id(obj("d"), false).await.unwrap(), 4);
+        assert_eq!(c.send_object_with_id(obj("d"), false).await.unwrap(), 7);
+
+        // An even id set by hand is rounded up.
+        c.set_next_message_id(10);
+        assert_eq!(c.next_message_id(), 11);
+        assert_eq!(c.send_object_with_id(obj("e"), false).await.unwrap(), 11);
 
         drop(c);
         let mut wire = Vec::new();
@@ -752,7 +799,7 @@ mod tests {
             }
             rest = &rest[used..];
         }
-        assert_eq!(ids, [1, 2, 3, 4]);
+        assert_eq!(ids, [1, 3, 5, 7, 11]);
     }
 
     #[tokio::test]

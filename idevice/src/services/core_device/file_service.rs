@@ -271,14 +271,8 @@ impl<R: ReadWrite> FileServiceClient<R> {
         })
     }
 
-    /// Sends a wants-reply request with an odd message id and returns the id.
-    /// The service numbers the messages it originates 2, 4, 6, … and closes
-    /// the connection on an even client id.
+    /// Sends a wants-reply request and returns its (odd) message id.
     async fn send(&mut self, request: impl Into<XPCObject>) -> Result<u64, IdeviceError> {
-        let next = self.inner.next_message_id();
-        if next % 2 == 0 {
-            self.inner.set_next_message_id(next + 1);
-        }
         self.inner.send_object_with_id(request, true).await
     }
 
