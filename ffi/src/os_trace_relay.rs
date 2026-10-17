@@ -20,6 +20,7 @@ pub struct OsTraceRelayReceiverHandle(pub idevice::os_trace_relay::OsTraceRelayR
 pub struct OsTraceLog {
     pub pid: u32,
     pub timestamp: i64,
+    /// The raw level byte: 0 notice, 1 info, 2 debug, 3 user action, 0x10 error, 0x11 fault.
     pub level: u8,
     pub image_name: *const c_char,
     pub filename: *const c_char,
@@ -256,7 +257,7 @@ pub unsafe extern "C" fn os_trace_relay_next(
             let log_entry = Box::new(OsTraceLog {
                 pid: r.pid,
                 timestamp: r.timestamp.and_utc().timestamp(),
-                level: r.level as u8,
+                level: r.level.into(),
                 image_name: CString::new(r.image_name).unwrap().into_raw(),
                 filename: CString::new(r.filename).unwrap().into_raw(),
                 message: CString::new(r.message).unwrap().into_raw(),

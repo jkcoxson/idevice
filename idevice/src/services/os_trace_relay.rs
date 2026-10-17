@@ -384,6 +384,21 @@ impl From<u8> for LogLevel {
     }
 }
 
+impl From<LogLevel> for u8 {
+    /// The level byte as the stream carries it.
+    fn from(l: LogLevel) -> Self {
+        match l {
+            LogLevel::Notice => 0,
+            LogLevel::Info => 1,
+            LogLevel::Debug => 2,
+            LogLevel::UserAction => 3,
+            LogLevel::Error => 0x10,
+            LogLevel::Fault => 0x11,
+            LogLevel::Unknown(b) => b,
+        }
+    }
+}
+
 #[cfg(feature = "rsd")]
 impl crate::RsdService for OsTraceRelayClient {
     fn rsd_service_name() -> std::borrow::Cow<'static, str> {
@@ -432,6 +447,9 @@ mod tests {
         ];
         for (b, l) in named {
             assert_eq!(LogLevel::from(b), l);
+        }
+        for (b, l) in named {
+            assert_eq!(u8::from(l), b);
         }
         assert_eq!(LogLevel::from(0x04), LogLevel::Unknown(0x04));
         assert_eq!(LogLevel::from(0xff), LogLevel::Unknown(0xff));
