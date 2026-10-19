@@ -11,6 +11,30 @@ use crate::{IdeviceFfiError, ReadWriteOpaque, ffi_err, run_sync};
 
 pub struct AdapterStreamHandle(pub StreamHandle);
 
+/// Clones an adapter handle
+///
+/// Every clone talks to the same adapter, which stays alive until all clones
+/// and the streams connected through them are freed. Freeing a clone does not
+/// affect the others, but `adapter_close` on any clone shuts the adapter down
+/// for all of them.
+///
+/// # Arguments
+/// * [`handle`] - The adapter handle to clone
+///
+/// # Returns
+/// A new handle to free with `adapter_free`, or null if `handle` is null
+///
+/// # Safety
+/// `handle` must be a valid pointer to a handle allocated by this library
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn adapter_clone(handle: *const AdapterHandle) -> *mut AdapterHandle {
+    if handle.is_null() {
+        return null_mut();
+    }
+    let handle = unsafe { &*handle };
+    Box::into_raw(Box::new(AdapterHandle(handle.0.clone())))
+}
+
 /// Connects the adapter to a specific port
 ///
 /// # Arguments

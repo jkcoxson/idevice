@@ -27,8 +27,19 @@ class Adapter {
     ~Adapter() noexcept                              = default;
     Adapter(Adapter&&) noexcept                      = default;
     Adapter& operator=(Adapter&&) noexcept           = default;
-    Adapter(const Adapter&)                          = delete;
-    Adapter&               operator=(const Adapter&) = delete;
+
+    // Copies share the same adapter, which stays alive until every copy and
+    // every stream connected through them is gone. close() on any copy shuts it
+    // down for all of them.
+    Adapter(const Adapter& other)
+        : handle_(other.handle_ ? ::adapter_clone(other.handle_.get()) : nullptr) {}
+    Adapter& operator=(const Adapter& other) {
+        if (this != &other) {
+            Adapter tmp(other);
+            std::swap(handle_, tmp.handle_);
+        }
+        return *this;
+    }
 
     static Adapter         adopt(AdapterHandle* h) noexcept { return Adapter(h); }
     AdapterHandle*         raw() const noexcept { return handle_.get(); }
