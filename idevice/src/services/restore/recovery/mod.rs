@@ -102,7 +102,7 @@ pub trait RecoveryTransport: Send + Sync + std::fmt::Debug {
     fn set_configuration(&mut self, configuration: u8) -> RecoveryFuture<'_, ()>;
 
     /// Claims an interface / alternate setting.
-    fn claim_interface(&mut self, interface: u8, alt_setting: u8) -> RecoveryFuture<'_, ()>;
+    fn claim_interface(&mut self, iface: u8, alt_setting: u8) -> RecoveryFuture<'_, ()>;
 
     /// Resets the USB device (the device re-enumerates afterwards).
     fn reset(&mut self) -> RecoveryFuture<'_, ()>;
