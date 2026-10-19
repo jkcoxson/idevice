@@ -271,7 +271,7 @@ impl<R: ReadWrite> CryptexdClient<R> {
             "cryptex1-properties": XPCObject::Dictionary(request.cryptex1_properties.clone()),
             "image-type-index": XPCObject::Int64(request.image_type_index),
             "nonce-persistence": XPCObject::UInt64(request.nonce_persistence),
-            "persistence": XPCObject::UInt64(request.nonce_persistence)
+            "persistence": XPCObject::UInt64(request.persistence)
         })
         .to_dictionary()
         .unwrap();
