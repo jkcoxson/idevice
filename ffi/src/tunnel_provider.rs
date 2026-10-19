@@ -62,7 +62,7 @@ async fn finish_tunnel(
 
     let raw = tunnel.into_inner();
     let mut adapter = idevice::tcp::adapter::Adapter::new(Box::new(raw), client_ip, server_ip);
-    adapter.set_mss(mtu.saturating_sub(60));
+    adapter.set_mss(mtu.min(8192) - 60);
     let mut adapter = adapter.to_async_handle();
 
     let rsd_stream = adapter
