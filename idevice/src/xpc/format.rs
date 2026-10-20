@@ -1,7 +1,6 @@
 use plist_macro::plist;
 use std::{
     ffi::CString,
-    io::{BufRead, Cursor, Read},
     ops::{BitOr, BitOrAssign},
 };
 
@@ -105,6 +104,98 @@ impl TryFrom<u32> for XPCType {
 
 pub type Dictionary = IndexMap<String, XPCObject>;
 
+/// Default cap on a whole XPC wrapper (24-byte header plus body), in bytes.
+pub const DEFAULT_MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024;
+
+/// Maximum nesting of dictionaries, arrays and file transfers in a decoded
+/// object; the root container is depth 1.
+pub const MAX_NESTING_DEPTH: usize = 64;
+
+/// Fixed XPC message-wrapper header: magic + flags + body length + message id.
+pub(crate) const XPC_WRAPPER_LEN: usize = 24;
+
+const WRAPPER_MAGIC: u32 = 0x29b00b92;
+
+/// Bounds-checked cursor over a peer-supplied byte slice. Every read checks
+/// the requested length against the bytes remaining before touching or
+/// allocating anything, so a hostile length can never over-allocate or panic.
+struct Reader<'a> {
+    buf: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> Reader<'a> {
+    fn remaining(&self) -> usize {
+        self.buf.len() - self.pos
+    }
+
+    /// The next `n` bytes, or `LengthOutOfBounds` if fewer remain.
+    fn take(&mut self, n: usize) -> Result<&'a [u8], IdeviceError> {
+        let remaining = self.remaining();
+        if n > remaining {
+            return Err(XpcError::LengthOutOfBounds {
+                declared: n as u64,
+                remaining,
+            }
+            .into());
+        }
+        let out = &self.buf[self.pos..self.pos + n];
+        self.pos += n;
+        Ok(out)
+    }
+
+    fn array<const N: usize>(&mut self) -> Result<[u8; N], IdeviceError> {
+        let mut out = [0u8; N];
+        out.copy_from_slice(self.take(N)?);
+        Ok(out)
+    }
+
+    fn u32(&mut self) -> Result<u32, IdeviceError> {
+        Ok(u32::from_le_bytes(self.array()?))
+    }
+
+    fn u64(&mut self) -> Result<u64, IdeviceError> {
+        Ok(u64::from_le_bytes(self.array()?))
+    }
+
+    /// A length field checked against the remaining bytes and `max`.
+    fn len(&mut self, max: usize) -> Result<usize, IdeviceError> {
+        let declared = self.u32()?;
+        let remaining = self.remaining();
+        match usize::try_from(declared) {
+            Ok(l) if l <= remaining && l <= max => Ok(l),
+            _ => Err(XpcError::LengthOutOfBounds {
+                declared: declared as u64,
+                remaining: remaining.min(max),
+            }
+            .into()),
+        }
+    }
+
+    /// Skips alignment padding. Lenient as before: a message whose final
+    /// padding is missing still decodes.
+    fn skip_padding(&mut self, n: usize) {
+        self.pos += n.min(self.remaining());
+    }
+
+    /// A NUL-terminated UTF-8 key, terminator consumed.
+    fn cstr_until_nul(&mut self) -> Result<String, IdeviceError> {
+        let rest = &self.buf[self.pos..];
+        let Some(nul) = rest.iter().position(|&b| b == 0) else {
+            return Err(XpcError::InvalidCString.into());
+        };
+        let bytes = self.take(nul + 1)?;
+        cstring_to_string(bytes.to_vec())
+    }
+}
+
+fn cstring_to_string(bytes: Vec<u8>) -> Result<String, IdeviceError> {
+    CString::from_vec_with_nul(bytes)
+        .ok()
+        .and_then(|x| x.into_string().ok())
+        .ok_or_else(|| XpcError::InvalidCString.into())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum XPCObject {
     Null,
@@ -179,6 +270,11 @@ impl XPCObject {
         }
     }
 
+    /// Serializes the object with the XPC object header (magic, version 5).
+    ///
+    /// Fails with [`XpcError::DateOutOfRange`] for a `Date` before the Unix
+    /// epoch or more than `u64::MAX` nanoseconds after it; no other variant
+    /// fails.
     pub fn encode(&self) -> Result<Vec<u8>, IdeviceError> {
         let mut buf = Vec::new();
         buf.extend_from_slice(&0x42133742_u32.to_le_bytes());
@@ -233,14 +329,13 @@ impl XPCObject {
                 buf.extend_from_slice(&num.to_le_bytes());
             }
             XPCObject::Date(date) => {
+                let nanos = date
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .and_then(|d| u64::try_from(d.as_nanos()).ok())
+                    .ok_or(XpcError::DateOutOfRange)?;
                 buf.extend_from_slice(&(XPCType::Date as u32).to_le_bytes());
-                buf.extend_from_slice(
-                    &(date
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_nanos() as u64)
-                        .to_le_bytes(),
-                );
+                buf.extend_from_slice(&nanos.to_le_bytes());
             }
             XPCObject::String(item) => {
                 let l = item.len() + 1;
@@ -272,140 +367,109 @@ impl XPCObject {
         Ok(())
     }
 
+    /// Decodes an XPC object (magic, version, one object) from `buf`, with
+    /// [`DEFAULT_MAX_MESSAGE_SIZE`] as the cap on any nested length.
+    ///
+    /// Errors: `NotEnoughBytes` under 8 bytes, `InvalidXpcMagic`,
+    /// `UnexpectedXpcVersion`, `LengthOutOfBounds` for a field running past the
+    /// buffer, `NestingTooDeep` past [`MAX_NESTING_DEPTH`], `UnknownXpcType`,
+    /// `InvalidCString`. O(len) time; see [`XPCMessage::decode_with_limit`].
     pub fn decode(buf: &[u8]) -> Result<Self, IdeviceError> {
+        Self::decode_with_limit(buf, DEFAULT_MAX_MESSAGE_SIZE)
+    }
+
+    fn decode_with_limit(buf: &[u8], max: usize) -> Result<Self, IdeviceError> {
         if buf.len() < 8 {
             return Err(IdeviceError::NotEnoughBytes(buf.len(), 8));
         }
-        let magic = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-        if magic != 0x42133742 {
+        let mut r = Reader { buf, pos: 0 };
+        if r.u32()? != 0x42133742 {
             warn!("Invalid magic for XPCObject");
             return Err(XpcError::InvalidXpcMagic.into());
         }
-
-        let version = u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]);
-        if version != 0x00000005 {
+        if r.u32()? != 0x00000005 {
             warn!("Unexpected version for XPCObject");
             return Err(XpcError::UnexpectedXpcVersion.into());
         }
-
-        Self::decode_object(&mut Cursor::new(&buf[8..]))
+        Self::decode_object(&mut r, max, 0)
     }
 
-    fn decode_object(mut cursor: &mut Cursor<&[u8]>) -> Result<Self, IdeviceError> {
-        let mut buf_32: [u8; 4] = Default::default();
-        cursor.read_exact(&mut buf_32)?;
-        let xpc_type = u32::from_le_bytes(buf_32);
-        let xpc_type: XPCType = xpc_type.try_into()?;
+    /// Decodes one object at nesting `depth` (number of enclosing containers).
+    /// Recursion is bounded by [`MAX_NESTING_DEPTH`]; every allocation is sized
+    /// from bytes already proven present.
+    fn decode_object(r: &mut Reader<'_>, max: usize, depth: usize) -> Result<Self, IdeviceError> {
+        let xpc_type: XPCType = r.u32()?.try_into()?;
+        let nested = |depth: usize| {
+            if depth >= MAX_NESTING_DEPTH {
+                Err(IdeviceError::from(XpcError::NestingTooDeep {
+                    max: MAX_NESTING_DEPTH,
+                }))
+            } else {
+                Ok(depth + 1)
+            }
+        };
         match xpc_type {
             XPCType::Null => Ok(XPCObject::Null),
             XPCType::Dictionary => {
+                let depth = nested(depth)?;
+                // Byte length of count + entries; checked, not otherwise used.
+                r.len(max)?;
+                let num_entries = r.u32()?;
+                // Each entry needs at least 5 bytes (NUL key terminator and a
+                // type; padding is skipped leniently, so not counted).
+                check_count(num_entries, 5, r.remaining())?;
                 let mut ret = IndexMap::new();
-
-                cursor.read_exact(&mut buf_32)?;
-                let _l = u32::from_le_bytes(buf_32);
-                cursor.read_exact(&mut buf_32)?;
-                let num_entries = u32::from_le_bytes(buf_32);
                 for _ in 0..num_entries {
-                    let mut key_buf = Vec::new();
-                    BufRead::read_until(&mut cursor, 0, &mut key_buf)?;
-                    let key = match CString::from_vec_with_nul(key_buf)
-                        .ok()
-                        .and_then(|x| x.to_str().ok().map(|x| x.to_string()))
-                    {
-                        Some(k) => k,
-                        None => {
-                            return Err(XpcError::InvalidCString.into());
-                        }
-                    };
-                    let padding = Self::calculate_padding(key.len() + 1);
-
-                    BufRead::consume(&mut cursor, padding);
-                    ret.insert(key, Self::decode_object(cursor)?);
+                    let key = r.cstr_until_nul()?;
+                    r.skip_padding(Self::calculate_padding(key.len() + 1));
+                    let value = Self::decode_object(r, max, depth)?;
+                    ret.insert(key, value);
                 }
                 Ok(XPCObject::Dictionary(ret))
             }
             XPCType::Array => {
-                cursor.read_exact(&mut buf_32)?;
-                let _l = u32::from_le_bytes(buf_32);
-                cursor.read_exact(&mut buf_32)?;
-                let num_entries = u32::from_le_bytes(buf_32);
-
+                let depth = nested(depth)?;
+                r.len(max)?;
+                let num_entries = r.u32()?;
+                // Each element needs at least its 4-byte type.
+                check_count(num_entries, 4, r.remaining())?;
                 let mut ret = Vec::new();
-                for _i in 0..num_entries {
-                    ret.push(Self::decode_object(cursor)?);
+                for _ in 0..num_entries {
+                    ret.push(Self::decode_object(r, max, depth)?);
                 }
                 Ok(XPCObject::Array(ret))
             }
-            XPCType::Double => {
-                let mut buf: [u8; 8] = Default::default();
-                cursor.read_exact(&mut buf)?;
-                Ok(XPCObject::Double(f64::from_le_bytes(buf)))
-            }
-            XPCType::Int64 => {
-                let mut buf: [u8; 8] = Default::default();
-                cursor.read_exact(&mut buf)?;
-                Ok(XPCObject::Int64(i64::from_le_bytes(buf)))
-            }
-            XPCType::UInt64 => {
-                let mut buf: [u8; 8] = Default::default();
-                cursor.read_exact(&mut buf)?;
-                Ok(XPCObject::UInt64(u64::from_le_bytes(buf)))
-            }
-
-            XPCType::Date => {
-                let mut buf: [u8; 8] = Default::default();
-                cursor.read_exact(&mut buf)?;
-                Ok(XPCObject::Date(
-                    std::time::UNIX_EPOCH
-                        + std::time::Duration::from_nanos(u64::from_le_bytes(buf)),
-                ))
-            }
-
+            XPCType::Double => Ok(XPCObject::Double(f64::from_le_bytes(r.array()?))),
+            XPCType::Int64 => Ok(XPCObject::Int64(i64::from_le_bytes(r.array()?))),
+            XPCType::UInt64 => Ok(XPCObject::UInt64(r.u64()?)),
+            XPCType::Date => Ok(XPCObject::Date(
+                std::time::UNIX_EPOCH + std::time::Duration::from_nanos(r.u64()?),
+            )),
             XPCType::String => {
-                // 'l' includes utf8 '\0' character.
-                cursor.read_exact(&mut buf_32)?;
-                let l = u32::from_le_bytes(buf_32) as usize;
-                let padding = Self::calculate_padding(l);
-
-                let mut key_buf = vec![0; l];
-                cursor.read_exact(&mut key_buf)?;
-                let key = match CString::from_vec_with_nul(key_buf)
-                    .ok()
-                    .and_then(|x| x.to_str().ok().map(|x| x.to_string()))
-                {
-                    Some(k) => k,
-                    None => return Err(XpcError::InvalidCString.into()),
-                };
-                BufRead::consume(&mut cursor, padding);
-                Ok(XPCObject::String(key))
+                // 'l' includes the NUL terminator.
+                let l = r.len(max)?;
+                let s = cstring_to_string(r.take(l)?.to_vec())?;
+                r.skip_padding(Self::calculate_padding(l));
+                Ok(XPCObject::String(s))
             }
             XPCType::Bool => {
-                let mut buf: [u8; 4] = Default::default();
-                cursor.read_exact(&mut buf)?;
-                Ok(XPCObject::Bool(buf[0] != 0))
+                let b: [u8; 4] = r.array()?;
+                Ok(XPCObject::Bool(b[0] != 0))
             }
             XPCType::Data => {
-                cursor.read_exact(&mut buf_32)?;
-                let l = u32::from_le_bytes(buf_32) as usize;
-                let padding = Self::calculate_padding(l);
-
-                let mut data = vec![0; l];
-                cursor.read_exact(&mut data)?;
-                BufRead::consume(&mut cursor, padding);
+                let l = r.len(max)?;
+                let data = r.take(l)?.to_vec();
+                r.skip_padding(Self::calculate_padding(l));
                 Ok(XPCObject::Data(data))
             }
-            XPCType::Uuid => {
-                let mut data: [u8; 16] = Default::default();
-                cursor.read_exact(&mut data)?;
-                Ok(XPCObject::Uuid(uuid::Builder::from_bytes(data).into_uuid()))
-            }
+            XPCType::Uuid => Ok(XPCObject::Uuid(
+                uuid::Builder::from_bytes(r.array()?).into_uuid(),
+            )),
             XPCType::FileTransfer => {
-                let mut id_buf = [0u8; 8];
-                cursor.read_exact(&mut id_buf)?;
-                let msg_id = u64::from_le_bytes(id_buf);
-
+                let depth = nested(depth)?;
+                let msg_id = r.u64()?;
                 // The next thing in the stream is a full XPC object
-                let inner = Self::decode_object(cursor)?;
+                let inner = Self::decode_object(r, max, depth)?;
                 Ok(XPCObject::FileTransfer {
                     msg_id,
                     data: Box::new(inner),
@@ -466,9 +530,22 @@ impl XPCObject {
     }
 
     fn calculate_padding(len: usize) -> usize {
-        let c = ((len as f64) / 4.0).ceil();
-        (c * 4.0 - (len as f64)) as usize
+        (4 - len % 4) % 4
     }
+}
+
+/// Rejects an entry count that cannot fit in `remaining` bytes at
+/// `min_entry` bytes each, before any per-entry work.
+fn check_count(count: u32, min_entry: u64, remaining: usize) -> Result<(), IdeviceError> {
+    let need = u64::from(count) * min_entry;
+    if need > remaining as u64 {
+        return Err(XpcError::LengthOutOfBounds {
+            declared: need,
+            remaining,
+        }
+        .into());
+    }
+    Ok(())
 }
 
 impl From<Dictionary> for XPCObject {
@@ -496,45 +573,85 @@ impl XPCMessage {
         }
     }
 
+    /// Decodes one whole wrapper from the front of `data` with the default
+    /// [`DEFAULT_MAX_MESSAGE_SIZE`] cap. Equivalent to
+    /// [`Self::decode_with_limit`]`(data, DEFAULT_MAX_MESSAGE_SIZE)`.
     pub fn decode(data: &[u8]) -> Result<XPCMessage, IdeviceError> {
-        if data.len() < 24 {
-            Err(IdeviceError::NotEnoughBytes(data.len(), 24))?
-        }
+        Self::decode_with_limit(data, DEFAULT_MAX_MESSAGE_SIZE)
+    }
 
-        let magic = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-        if magic != 0x29b00b92_u32 {
+    /// Decodes one whole wrapper from the front of `data`; trailing bytes are
+    /// ignored. `max_message_size` caps header plus declared body length.
+    ///
+    /// Errors, in check order: `NotEnoughBytes` under 24 bytes; `MalformedXpc`
+    /// for a bad magic; `MessageTooLarge` as soon as the header declares more
+    /// than `max_message_size` bytes (before waiting for or allocating the
+    /// body); `CdTunnel(SizeMismatch)` while the body is incomplete; then any
+    /// object error from [`XPCObject::decode`].
+    ///
+    /// Bounds: O(n) time in the body length n (each byte is read once; entry
+    /// counts are checked against the remaining bytes up front); recursion
+    /// depth at most [`MAX_NESTING_DEPTH`]; transient space is the decoded
+    /// object, at most one node per 4 body bytes plus copied string and data
+    /// bytes, so O(n).
+    pub fn decode_with_limit(
+        data: &[u8],
+        max_message_size: usize,
+    ) -> Result<XPCMessage, IdeviceError> {
+        match Self::decode_prefix(data, max_message_size)? {
+            Some((msg, _)) => Ok(msg),
+            None if data.len() < XPC_WRAPPER_LEN => {
+                Err(IdeviceError::NotEnoughBytes(data.len(), XPC_WRAPPER_LEN))
+            }
+            None => Err(CdTunnelError::SizeMismatch.into()),
+        }
+    }
+
+    /// Like [`Self::decode_with_limit`] but `Ok(None)` while `data` does not
+    /// yet hold the whole wrapper, and on success also the bytes it occupied.
+    pub(crate) fn decode_prefix(
+        data: &[u8],
+        max_message_size: usize,
+    ) -> Result<Option<(XPCMessage, usize)>, IdeviceError> {
+        let Some(header) = data.get(..XPC_WRAPPER_LEN) else {
+            return Ok(None);
+        };
+        let mut r = Reader {
+            buf: header,
+            pos: 0,
+        };
+        if r.u32()? != WRAPPER_MAGIC {
             warn!("XPCMessage magic is invalid.");
             Err(XpcError::MalformedXpc)?
         }
-
-        let flags = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
-        let body_len = u64::from_le_bytes([
-            data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15],
-        ]);
-        debug!("Body_len: {body_len}");
-        let message_id = u64::from_le_bytes([
-            data[16], data[17], data[18], data[19], data[20], data[21], data[22], data[23],
-        ]);
-        if body_len + 24 > data.len() as u64 {
+        let flags = r.u32()?;
+        let body_len = r.u64()?;
+        let message_id = r.u64()?;
+        let total = body_len
+            .checked_add(XPC_WRAPPER_LEN as u64)
+            .filter(|&t| t <= max_message_size as u64)
+            .ok_or(XpcError::MessageTooLarge {
+                declared: body_len.saturating_add(XPC_WRAPPER_LEN as u64),
+                max: max_message_size,
+            })? as usize;
+        let Some(body) = data.get(XPC_WRAPPER_LEN..total) else {
             debug!(
                 "Body length is {body_len}, but received bytes is {}",
                 data.len()
             );
-            Err(CdTunnelError::SizeMismatch)?
-        }
-
+            return Ok(None);
+        };
         let res = XPCMessage {
             flags,
-            message: if body_len > 0 {
-                Some(XPCObject::decode(&data[24..24 + body_len as usize])?)
-            } else {
+            message: if body.is_empty() {
                 None
+            } else {
+                Some(XPCObject::decode_with_limit(body, max_message_size)?)
             },
             message_id: Some(message_id),
         };
-
         debug!("Decoded {res:#?}");
-        Ok(res)
+        Ok(Some((res, total)))
     }
 
     pub fn encode(self, message_id: u64) -> Result<Vec<u8>, IdeviceError> {
@@ -590,5 +707,151 @@ impl std::fmt::Debug for XPCMessage {
             self.message_id,
             self.message
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, UNIX_EPOCH};
+
+    fn err(r: Result<impl std::fmt::Debug, IdeviceError>) -> XpcError {
+        match r {
+            Err(IdeviceError::Xpc(e)) => e,
+            other => panic!("expected an XpcError, got {other:?}"),
+        }
+    }
+
+    fn nested_arrays(depth: usize) -> XPCObject {
+        (0..depth).fold(XPCObject::Null, |inner, _| XPCObject::Array(vec![inner]))
+    }
+
+    #[test]
+    fn round_trip_every_variant() {
+        let mut d = Dictionary::new();
+        d.insert("n".into(), XPCObject::Null);
+        d.insert("b".into(), XPCObject::Bool(true));
+        d.insert("f".into(), XPCObject::Double(-0.5));
+        d.insert("i".into(), XPCObject::Int64(-3));
+        d.insert("u".into(), XPCObject::UInt64(u64::MAX));
+        d.insert(
+            "t".into(),
+            XPCObject::Date(UNIX_EPOCH + Duration::from_nanos(123)),
+        );
+        d.insert("s".into(), XPCObject::String("abc".into()));
+        d.insert("d".into(), XPCObject::Data(vec![1, 2, 3, 4, 5]));
+        d.insert("id".into(), XPCObject::Uuid(uuid::Uuid::from_u128(7)));
+        d.insert(
+            "ft".into(),
+            XPCObject::FileTransfer {
+                msg_id: 9,
+                data: Box::new(XPCObject::Array(vec![XPCObject::Int64(1)])),
+            },
+        );
+        let o = XPCObject::Dictionary(d);
+        assert_eq!(XPCObject::decode(&o.encode().unwrap()).unwrap(), o);
+    }
+
+    #[test]
+    fn date_out_of_range_rejected() {
+        let before = XPCObject::Date(UNIX_EPOCH - Duration::from_nanos(1));
+        assert!(matches!(err(before.encode()), XpcError::DateOutOfRange));
+        let after =
+            XPCObject::Date(UNIX_EPOCH + Duration::from_nanos(u64::MAX) + Duration::from_nanos(1));
+        assert!(matches!(err(after.encode()), XpcError::DateOutOfRange));
+        let max = XPCObject::Date(UNIX_EPOCH + Duration::from_nanos(u64::MAX));
+        assert_eq!(XPCObject::decode(&max.encode().unwrap()).unwrap(), max);
+    }
+
+    #[test]
+    fn depth_64_accepted_65_rejected() {
+        let ok = nested_arrays(MAX_NESTING_DEPTH);
+        assert_eq!(XPCObject::decode(&ok.encode().unwrap()).unwrap(), ok);
+        let deep = nested_arrays(MAX_NESTING_DEPTH + 1).encode().unwrap();
+        assert!(matches!(
+            err(XPCObject::decode(&deep)),
+            XpcError::NestingTooDeep { max: 64 }
+        ));
+    }
+
+    #[test]
+    fn nested_length_past_remaining_rejected() {
+        let mut b = XPCObject::String("abc".into()).encode().unwrap();
+        // Declared string length (bytes 12..16) raised far past the buffer.
+        b[12..16].copy_from_slice(&0xffff_fff0u32.to_le_bytes());
+        assert!(matches!(
+            err(XPCObject::decode(&b)),
+            XpcError::LengthOutOfBounds {
+                declared: 0xffff_fff0,
+                ..
+            }
+        ));
+
+        let mut b = XPCObject::Data(vec![0; 8]).encode().unwrap();
+        b.truncate(b.len() - 1);
+        assert!(matches!(
+            err(XPCObject::decode(&b)),
+            XpcError::LengthOutOfBounds { .. }
+        ));
+
+        // An entry count that cannot fit fails before any entry is read.
+        let mut b = XPCObject::Array(vec![]).encode().unwrap();
+        b[16..20].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(matches!(
+            err(XPCObject::decode(&b)),
+            XpcError::LengthOutOfBounds { .. }
+        ));
+    }
+
+    #[test]
+    fn nested_length_over_cap_rejected() {
+        let body = XPCObject::Data(vec![0; 4096]);
+        let w = XPCMessage::new(None, Some(body), Some(1))
+            .encode(1)
+            .unwrap();
+        // Wrapper fits a 5000-byte cap; nested length checked against it too.
+        assert!(XPCMessage::decode_with_limit(&w, 5000).is_ok());
+        assert!(matches!(
+            err(XPCMessage::decode_with_limit(&w, 1000)),
+            XpcError::MessageTooLarge { max: 1000, .. }
+        ));
+        let mut r = Reader {
+            buf: &w[24 + 12..],
+            pos: 0,
+        };
+        assert!(matches!(
+            err(r.len(100)),
+            XpcError::LengthOutOfBounds { .. }
+        ));
+    }
+
+    #[test]
+    fn wrapper_length_overflow_rejected() {
+        let mut h = 0x29b00b92_u32.to_le_bytes().to_vec();
+        h.extend(1u32.to_le_bytes());
+        h.extend(u64::MAX.to_le_bytes());
+        h.extend(0u64.to_le_bytes());
+        assert!(matches!(
+            err(XPCMessage::decode(&h)),
+            XpcError::MessageTooLarge {
+                declared: u64::MAX,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn incomplete_wrapper_keeps_legacy_errors() {
+        let w = XPCMessage::new(None, Some(XPCObject::Bool(true)), Some(1))
+            .encode(1)
+            .unwrap();
+        assert!(matches!(
+            XPCMessage::decode(&w[..10]),
+            Err(IdeviceError::NotEnoughBytes(10, 24))
+        ));
+        assert!(matches!(
+            XPCMessage::decode(&w[..w.len() - 1]),
+            Err(IdeviceError::CdTunnel(CdTunnelError::SizeMismatch))
+        ));
     }
 }

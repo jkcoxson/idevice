@@ -64,13 +64,18 @@ pub struct SyslogLabel {
     pub category: String,
 }
 
+/// An entry's severity, from the raw stream's level byte.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Copy)]
 pub enum LogLevel {
-    Notice = 0,
-    Info = 1,
-    Debug = 2,
-    Error = 10,
-    Fault = 11,
+    Notice,
+    Info,
+    Debug,
+    /// 0x03, as pymobiledevice3's `SyslogLogLevel.USER_ACTION` names it.
+    UserAction,
+    Error,
+    Fault,
+    /// A byte with no known meaning, kept so the entry still parses.
+    Unknown(u8),
 }
 
 impl OsTraceRelayClient {
@@ -264,7 +269,7 @@ impl OsTraceRelayReceiver {
 
         // Parse log level
         let log_level = packet[0];
-        let log_level: LogLevel = log_level.try_into()?;
+        let log_level = LogLevel::from(log_level);
         let packet = &packet[1..];
 
         // The next 38 bytes hold the raw mach timestamp at +4, the emitting
@@ -365,22 +370,32 @@ impl OsTraceRelayReceiver {
     }
 }
 
-impl TryFrom<u8> for LogLevel {
-    type Error = IdeviceError;
-
-    fn try_from(value: u8) -> Result<Self, IdeviceError> {
-        Ok(match value {
+impl From<u8> for LogLevel {
+    fn from(value: u8) -> Self {
+        match value {
             0 => Self::Notice,
             1 => Self::Info,
             2 => Self::Debug,
+            3 => Self::UserAction,
             0x10 => Self::Error,
             0x11 => Self::Fault,
-            _ => {
-                return Err(IdeviceError::UnexpectedResponse(
-                    "unknown log level byte value".into(),
-                ));
-            }
-        })
+            other => Self::Unknown(other),
+        }
+    }
+}
+
+impl From<LogLevel> for u8 {
+    /// The level byte as the stream carries it.
+    fn from(l: LogLevel) -> Self {
+        match l {
+            LogLevel::Notice => 0,
+            LogLevel::Info => 1,
+            LogLevel::Debug => 2,
+            LogLevel::UserAction => 3,
+            LogLevel::Error => 0x10,
+            LogLevel::Fault => 0x11,
+            LogLevel::Unknown(b) => b,
+        }
     }
 }
 
@@ -414,4 +429,29 @@ fn read_uuid(buf: &[u8], offset: usize) -> uuid::Uuid {
     let mut b = [0u8; 16];
     b.copy_from_slice(&buf[offset..offset + 16]);
     uuid::Uuid::from_bytes(b)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LogLevel;
+
+    #[test]
+    fn every_level_byte_parses() {
+        let named = [
+            (0, LogLevel::Notice),
+            (1, LogLevel::Info),
+            (2, LogLevel::Debug),
+            (3, LogLevel::UserAction),
+            (0x10, LogLevel::Error),
+            (0x11, LogLevel::Fault),
+        ];
+        for (b, l) in named {
+            assert_eq!(LogLevel::from(b), l);
+        }
+        for (b, l) in named {
+            assert_eq!(u8::from(l), b);
+        }
+        assert_eq!(LogLevel::from(0x04), LogLevel::Unknown(0x04));
+        assert_eq!(LogLevel::from(0xff), LogLevel::Unknown(0xff));
+    }
 }

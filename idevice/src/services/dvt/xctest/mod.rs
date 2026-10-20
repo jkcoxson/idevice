@@ -804,6 +804,9 @@ pub(super) async fn authorize_test<R: ReadWrite + 'static>(
         let reply = ctrl_channel
             .call_method_with_reply(Some(IDE_AUTHORIZE_TEST_SESSION), Some(vec![pid_bytes]))
             .await?;
+        if let Some(e) = &reply.data_error {
+            return Err(IdeviceError::UnexpectedResponse(format!("authorize_test: {e}")));
+        }
         match reply.data {
             Some(Value::Boolean(true)) | None => {
                 debug!("authorize_test: OK");
