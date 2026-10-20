@@ -953,7 +953,8 @@ impl<'a, R: ReadWrite + 'static> XCTestProcessControlChannel<'a, R> {
 /// replies with an empty acknowledgement, registers the channel, and returns a
 /// `Channel` handle to it.
 fn testmanager_uses_proxy(ios_major_version: u8) -> bool {
-    ios_major_version >= 17
+    // testmanagerd serves the IDE interface only through the dtxproxy channel.
+    ios_major_version >= 11
 }
 
 async fn wait_for_xctest_service_channel(
