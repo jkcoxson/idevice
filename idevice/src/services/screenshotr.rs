@@ -25,6 +25,10 @@ impl IdeviceService for ScreenshotService {
         client.dl_version_exchange().await?;
         Ok(client)
     }
+
+    fn get_socket(&mut self) -> Option<&mut Box<dyn crate::ReadWrite>> {
+        self.idevice.socket.as_mut()
+    }
 }
 
 impl ScreenshotService {

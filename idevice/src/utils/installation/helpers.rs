@@ -228,6 +228,8 @@ async fn upload_file_to_public_staging<P: AsRef<[u8]>>(
         PackageType::Unknown => plist!({}),
     };
 
+    afc.shutdown().await?;
+
     Ok(InstallPackage {
         remote_package_path: remote_path,
         options,
@@ -259,6 +261,8 @@ async fn upload_file_to_public_staging_rsd<P: AsRef<[u8]>>(
         PackageType::Unknown => plist!({}),
     };
 
+    afc.shutdown().await?;
+
     Ok(InstallPackage {
         remote_package_path: remote_path,
         options,
@@ -284,6 +288,8 @@ async fn upload_dir_to_public_staging<P: AsRef<Path>>(
     let remote_path = format!("{PUBLIC_STAGING}/{remote_folder_name}");
 
     afc_upload_dir(&mut afc, file, &remote_path).await?;
+
+    afc.shutdown().await?;
 
     Ok(InstallPackage {
         remote_package_path: remote_path,
@@ -312,6 +318,8 @@ async fn upload_dir_to_public_staging_rsd<P: AsRef<Path>>(
     let remote_path = format!("{PUBLIC_STAGING}/{remote_folder_name}");
 
     afc_upload_dir(&mut afc, file, &remote_path).await?;
+
+    afc.shutdown().await?;
 
     Ok(InstallPackage {
         remote_package_path: remote_path,

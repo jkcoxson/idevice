@@ -73,7 +73,9 @@ where
         let mut inst = InstallationProxyClient::connect(provider).await?;
 
         inst.upgrade_with_callback(remote_package_path, Some(options), callback, state)
-            .await
+            .await?;
+
+        inst.shutdown().await
     } else {
         let data = tokio::fs::read(&local_path).await?;
         install_bytes_with_callback(provider, data, options, callback, state).await
@@ -105,7 +107,9 @@ where
         let mut inst = InstallationProxyClient::connect_rsd(provider, handshake).await?;
 
         inst.upgrade_with_callback(remote_package_path, Some(options), callback, state)
-            .await
+            .await?;
+
+        inst.shutdown().await
     } else {
         let data = tokio::fs::read(&local_path).await?;
         install_bytes_with_callback_rsd(provider, handshake, data, options, callback, state).await
@@ -159,7 +163,9 @@ where
         let mut inst = InstallationProxyClient::connect(provider).await?;
 
         inst.upgrade_with_callback(remote_package_path, Some(options), callback, state)
-            .await
+            .await?;
+
+        inst.shutdown().await
     } else {
         let data = tokio::fs::read(&local_path).await?;
         upgrade_bytes_with_callback(provider, data, options, callback, state).await
@@ -190,7 +196,9 @@ where
         let mut inst = InstallationProxyClient::connect_rsd(provider, handshake).await?;
 
         inst.upgrade_with_callback(remote_package_path, Some(options), callback, state)
-            .await
+            .await?;
+
+        inst.shutdown().await
     } else {
         let data = tokio::fs::read(&local_path).await?;
         upgrade_bytes_with_callback_rsd(provider, handshake, data, options, callback, state).await
@@ -245,7 +253,9 @@ where
     let mut inst = InstallationProxyClient::connect(provider).await?;
 
     inst.install_with_callback(remote_package_path, Some(options), callback, state)
-        .await
+        .await?;
+
+    inst.shutdown().await
 }
 
 /// Same as `install_bytes_with_callback` but using the RSD transport.
@@ -269,7 +279,9 @@ where
     let mut inst = InstallationProxyClient::connect_rsd(provider, handshake).await?;
 
     inst.install_with_callback(remote_package_path, Some(options), callback, state)
-        .await
+        .await?;
+
+    inst.shutdown().await
 }
 
 /// Upgrade an application from raw bytes by first uploading them to `PublicStaging` and then
@@ -320,7 +332,9 @@ where
     let mut inst = InstallationProxyClient::connect(provider).await?;
 
     inst.upgrade_with_callback(remote_package_path, Some(options), callback, state)
-        .await
+        .await?;
+
+    inst.shutdown().await
 }
 
 /// Same as `upgrade_bytes_with_callback` but using the RSD transport.
@@ -344,5 +358,7 @@ where
     let mut inst = InstallationProxyClient::connect_rsd(provider, handshake).await?;
 
     inst.upgrade_with_callback(remote_package_path, Some(options), callback, state)
-        .await
+        .await?;
+
+    inst.shutdown().await
 }

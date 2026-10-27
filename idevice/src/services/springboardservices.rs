@@ -40,6 +40,10 @@ impl IdeviceService for SpringBoardServicesClient {
     async fn from_stream(idevice: Idevice) -> Result<Self, crate::IdeviceError> {
         Ok(Self::new(idevice))
     }
+
+    fn get_socket(&mut self) -> Option<&mut Box<dyn crate::ReadWrite>> {
+        self.idevice.socket.as_mut()
+    }
 }
 
 impl SpringBoardServicesClient {

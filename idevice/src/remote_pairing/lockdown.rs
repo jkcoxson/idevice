@@ -20,6 +20,10 @@ impl IdeviceService for RemotePairingLockdownService {
     async fn from_stream(idevice: Idevice) -> Result<Self, IdeviceError> {
         Ok(Self { idevice })
     }
+
+    fn get_socket(&mut self) -> Option<&mut Box<dyn ReadWrite>> {
+        self.idevice.socket.as_mut()
+    }
 }
 
 impl RemotePairingLockdownService {
