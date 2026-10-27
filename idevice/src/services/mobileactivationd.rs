@@ -26,6 +26,10 @@ impl IdeviceService for MobileActivationdInternal {
     async fn from_stream(idevice: Idevice) -> Result<Self, crate::IdeviceError> {
         Ok(Self::new(idevice))
     }
+
+    fn get_socket(&mut self) -> Option<&mut Box<dyn crate::ReadWrite>> {
+        self.idevice.socket.as_mut()
+    }
 }
 
 impl MobileActivationdInternal {
@@ -50,6 +54,9 @@ impl<'a> MobileActivationdClient<'a> {
                 .await?;
 
             let res = lc.get_value(Some("ActivationState"), None).await?;
+
+            lc.shutdown().await?;
+
             if let Some(v) = res.as_string() {
                 Ok(v.to_string())
             } else {

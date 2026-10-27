@@ -83,10 +83,14 @@ impl crate::IdeviceService for remote_server::RemoteServerClient<Box<dyn ReadWri
                             .start_session(&provider.get_pairing_file().await?, legacy)
                             .await?;
                     }
+
                     // Convert to transport and build client
                     let socket = idevice
                         .get_socket()
                         .ok_or(IdeviceError::NoEstablishedConnection)?;
+
+                    lockdown.shutdown().await?;
+
                     return Ok(remote_server::RemoteServerClient::new(socket));
                 }
                 Err(e) => {
@@ -95,6 +99,7 @@ impl crate::IdeviceService for remote_server::RemoteServerClient<Box<dyn ReadWri
             }
         }
 
+        lockdown.shutdown().await?;
         Err(last_err.unwrap_or(IdeviceError::ServiceNotFound))
     }
 
@@ -105,5 +110,9 @@ impl crate::IdeviceService for remote_server::RemoteServerClient<Box<dyn ReadWri
             .get_socket()
             .ok_or(IdeviceError::NoEstablishedConnection)?;
         Ok(remote_server::RemoteServerClient::new(socket))
+    }
+
+    fn get_socket(&mut self) -> Option<&mut Box<dyn ReadWrite>> {
+        None
     }
 }

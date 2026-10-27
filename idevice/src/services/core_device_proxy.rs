@@ -36,6 +36,10 @@ impl IdeviceService for CoreDeviceProxy {
     async fn from_stream(idevice: Idevice) -> Result<Self, IdeviceError> {
         Self::new(idevice).await
     }
+
+    fn get_socket(&mut self) -> Option<&mut Box<dyn ReadWrite>> {
+        Some(&mut self.tunnel.inner)
+    }
 }
 
 impl CoreDeviceProxy {

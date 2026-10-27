@@ -78,6 +78,10 @@ impl IdeviceService for AfcClient {
             package_number: 0,
         })
     }
+
+    fn get_socket(&mut self) -> Option<&mut Box<dyn crate::ReadWrite>> {
+        self.idevice.socket.as_mut()
+    }
 }
 
 impl AfcClient {
@@ -110,6 +114,8 @@ impl AfcClient {
                 .start_session(&provider.get_pairing_file().await?, legacy)
                 .await?;
         }
+
+        lockdown.shutdown().await?;
 
         Self::from_stream(idevice).await
     }

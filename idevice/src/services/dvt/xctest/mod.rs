@@ -457,6 +457,9 @@ async fn connect_dtx_service(
                         .start_session(&provider.get_pairing_file().await?, false)
                         .await?;
                 }
+
+                lockdown.shutdown().await?;
+
                 let socket = idevice
                     .get_socket()
                     .ok_or(IdeviceError::NoEstablishedConnection)?;
@@ -1996,6 +1999,9 @@ impl XCUITestService {
                 .start_session(&self.provider.get_pairing_file().await?)
                 .await?;
             let ver = lockdown.get_value(Some("ProductVersion"), None).await?;
+
+            lockdown.shutdown().await?;
+
             ver.as_string()
                 .and_then(|s| s.split('.').next())
                 .and_then(|s| s.parse().ok())

@@ -121,11 +121,33 @@ pub trait IdeviceService: Sized {
             idevice.set_udid(udid);
         }
 
+        lockdown.shutdown().await?;
+
         Self::from_stream(idevice).await
     }
 
     #[allow(async_fn_in_trait)]
     async fn from_stream(idevice: Idevice) -> Result<Self, IdeviceError>;
+
+    fn get_socket(&mut self) -> Option<&mut Box<dyn ReadWrite>>;
+
+    #[allow(async_fn_in_trait)]
+    async fn flush(&mut self) -> Result<(), IdeviceError> {
+        if let Some(socket) = self.get_socket() {
+            socket.flush().await?;
+        }
+
+        Ok(())
+    }
+
+    #[allow(async_fn_in_trait)]
+    async fn shutdown(&mut self) -> Result<(), IdeviceError> {
+        if let Some(socket) = self.get_socket() {
+            socket.shutdown().await?;
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(feature = "rsd")]

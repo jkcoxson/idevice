@@ -7,6 +7,7 @@
 //! function to trigger a flush of crash logs from system storage into the
 //! crash reports directory by connecting to the `com.apple.crashreportmover` service.
 
+use tokio::io::AsyncWriteExt;
 use tracing::{debug, warn};
 
 use crate::{Idevice, IdeviceError, IdeviceService, afc::AfcClient, lockdown::LockdownClient, obf};
@@ -29,6 +30,10 @@ impl IdeviceService for CrashReportCopyMobileClient {
 
     async fn from_stream(idevice: Idevice) -> Result<Self, crate::IdeviceError> {
         Ok(Self::new(idevice))
+    }
+
+    fn get_socket(&mut self) -> Option<&mut Box<dyn crate::ReadWrite>> {
+        self.afc_client.idevice.socket.as_mut()
     }
 }
 
@@ -148,6 +153,11 @@ pub async fn flush_reports(
         "Flush reports response: {:?}",
         String::from_utf8_lossy(&res)
     );
+
+    lockdown.shutdown().await?;
+    if let Some(socket) = idevice.socket.as_mut() {
+        socket.shutdown().await?;
+    }
 
     if res[..4] == EXPECTED_FLUSH {
         Ok(())

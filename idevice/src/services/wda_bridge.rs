@@ -7,7 +7,7 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use tokio::{
-    io::copy_bidirectional,
+    io::{AsyncWriteExt, copy_bidirectional},
     net::{TcpListener, TcpStream},
     task::JoinHandle,
 };
@@ -95,6 +95,8 @@ impl TcpPortForward {
                             label, client_addr, device_port, error
                         );
                     }
+
+                    device_socket.shutdown().await.ok();
                 });
             }
         });
