@@ -28,8 +28,9 @@ impl Frame {
     /// caller should read more bytes and retry). On success returns the frame
     /// and how many bytes it consumed, so the caller can drain exactly that much
     /// — this keeps frame reassembly cancellation-safe: a partially-received
-    /// frame stays buffered until it is whole. RST_STREAM and GOAWAY surface as
-    /// errors (they consume no bytes; the connection is finished either way).
+    /// frame stays buffered until it is whole. GOAWAY surfaces as
+    /// an error (it consumes no bytes; the connection is finished). Bounded by
+    /// one frame: O(frame length) time and one copy of a DATA payload.
     pub fn parse(buf: &[u8]) -> Result<Option<(Self, usize)>, IdeviceError> {
         if buf.len() < FRAME_HEADER_LEN {
             return Ok(None);
@@ -51,8 +52,14 @@ impl Frame {
                 payload: body.to_vec(),
                 end_stream: flags & 0x01 != 0,
             }),
-            0x01 => Self::Headers(HeadersFrame { stream_id }),
-            0x03 => Self::RstStream(RstStreamFrame { stream_id }),
+            0x01 => Self::Headers(HeadersFrame {
+                stream_id,
+                end_stream: flags & 0x01 != 0,
+            }),
+            0x03 => Self::RstStream(RstStreamFrame {
+                stream_id,
+                error_code: be_u32(body, 0).unwrap_or(0),
+            }),
             0x04 => {
                 // settings: a sequence of (u16 identifier, u32 value) entries
                 let mut settings = Vec::new();
@@ -75,12 +82,14 @@ impl Frame {
                 })
             }
             0x07 => {
-                let msg = if body.len() < 8 {
-                    "<MISSING>".to_string()
-                } else {
-                    String::from_utf8_lossy(&body[8..]).to_string()
-                };
-                return Err(XpcError::HttpGoAway(msg).into());
+                // GOAWAY consumes no bytes, so every later parse reports it again:
+                // the connection is finished.
+                return Err(XpcError::GoAway {
+                    last_stream_id: be_u32(body, 0).unwrap_or(0) & 0x7fff_ffff,
+                    error_code: be_u32(body, 4).unwrap_or(0),
+                    debug: String::from_utf8_lossy(body.get(8..).unwrap_or_default()).into_owned(),
+                }
+                .into());
             }
             0x08 => {
                 if body.len() != 4 {
@@ -169,9 +178,12 @@ impl HttpFrame for WindowUpdateFrame {
 }
 
 #[derive(Debug, Clone)]
-/// We don't actually care about this frame according to spec. This is just to open new channels.
+/// Opens a stream when we send it; header blocks are not interpreted. On a
+/// received frame only END_STREAM matters.
 pub struct HeadersFrame {
     pub stream_id: u32,
+    /// The peer set END_STREAM: it sends nothing more on this stream.
+    pub end_stream: bool,
 }
 
 impl HttpFrame for HeadersFrame {
@@ -185,6 +197,13 @@ impl HttpFrame for HeadersFrame {
 #[derive(Debug, Clone)]
 pub struct RstStreamFrame {
     pub stream_id: u32,
+    pub error_code: u32,
+}
+
+/// The big-endian u32 at `at`, or `None` when `buf` is too short.
+fn be_u32(buf: &[u8], at: usize) -> Option<u32> {
+    let b = buf.get(at..at.checked_add(4)?)?;
+    Some(u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
 }
 
 #[derive(Debug, Clone)]

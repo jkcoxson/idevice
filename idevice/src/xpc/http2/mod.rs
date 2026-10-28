@@ -1,10 +1,11 @@
 // Jackson Coxson
 
 use frame::HttpFrame;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{debug, warn};
 
+use crate::xpc::errors::XpcError;
 use crate::{IdeviceError, ReadWrite};
 
 pub mod frame;
@@ -16,6 +17,10 @@ const HTTP2_MAGIC: &[u8] = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".as_bytes();
 /// stream (RFC 7540 §6.9.2). The peer can raise the per-stream default via a
 /// SETTINGS `InitialWindowSize`.
 const DEFAULT_WINDOW: i64 = 65535;
+
+/// Root and reply channels. The peer may send DATA on these before we open
+/// them, so strict-streams mode always admits them.
+const PRE_OPEN_STREAMS: [u32; 2] = [1, 3];
 
 #[derive(Debug)]
 pub struct Http2Client<R: ReadWrite> {
@@ -36,7 +41,17 @@ pub struct Http2Client<R: ReadWrite> {
     /// Streams we finished pushing an outbound file transfer on. The device
     /// resets them once it has the payload, so a RST_STREAM for one of these is
     /// normal completion rather than an error.
-    finished_file_transfer_streams: std::collections::HashSet<u32>,
+    finished_file_transfer_streams: HashSet<u32>,
+    /// Streams the peer ended with END_STREAM. Reads return their cached
+    /// payloads first, then [`XpcError::StreamEnded`].
+    ended: HashSet<u32>,
+    /// Streams the peer reset, with the RST_STREAM error code.
+    reset: HashMap<u32, u32>,
+    /// Streams this client opened with HEADERS.
+    opened: HashSet<u32>,
+    /// When set, DATA on a stream outside `opened` and [`PRE_OPEN_STREAMS`] is
+    /// [`XpcError::UnexpectedStream`] instead of being cached.
+    strict_streams: bool,
 }
 
 impl<R: ReadWrite> Http2Client<R> {
@@ -51,14 +66,26 @@ impl<R: ReadWrite> Http2Client<R> {
             stream_send_windows: HashMap::new(),
             peer_initial_window: DEFAULT_WINDOW,
             recv_buf: Vec::new(),
-            finished_file_transfer_streams: std::collections::HashSet::new(),
+            finished_file_transfer_streams: HashSet::new(),
+            ended: HashSet::new(),
+            reset: HashMap::new(),
+            opened: HashSet::new(),
+            strict_streams: false,
         })
+    }
+
+    /// See `RemoteXpcClient::set_strict_streams`.
+    pub fn set_strict_streams(&mut self, strict: bool) {
+        self.strict_streams = strict;
     }
 
     /// Read the next whole frame, buffering raw bytes in `recv_buf` until one is
     /// complete. Cancellation-safe: the single `read` is cancel-safe (no bytes
     /// lost if the future is dropped on `Pending`), and any bytes already
     /// buffered persist in `self` for the next call.
+    ///
+    /// TCP EOF is [`XpcError::Truncated`] when part of a frame is buffered and
+    /// [`XpcError::ConnectionClosed`] otherwise.
     async fn next_frame(&mut self) -> Result<frame::Frame, IdeviceError> {
         loop {
             if let Some((frame, consumed)) = frame::Frame::parse(&self.recv_buf)? {
@@ -68,9 +95,15 @@ impl<R: ReadWrite> Http2Client<R> {
             let mut tmp = [0u8; 16384];
             let n = self.inner.read(&mut tmp).await?;
             if n == 0 {
-                return Err(IdeviceError::UnexpectedResponse(
-                    "HTTP/2 connection closed by peer".into(),
-                ));
+                return Err(if self.recv_buf.is_empty() {
+                    XpcError::ConnectionClosed
+                } else {
+                    XpcError::Truncated {
+                        stream_id: None,
+                        buffered: self.recv_buf.len(),
+                    }
+                }
+                .into());
             }
             self.recv_buf.extend_from_slice(&tmp[..n]);
         }
@@ -110,7 +143,12 @@ impl<R: ReadWrite> Http2Client<R> {
     pub async fn open_stream(&mut self, stream_id: u32) -> Result<(), IdeviceError> {
         // Sometimes Apple is silly and sends data to a stream that isn't open
         self.cache.entry(stream_id).or_default();
-        let frame = frame::HeadersFrame { stream_id }.serialize();
+        self.opened.insert(stream_id);
+        let frame = frame::HeadersFrame {
+            stream_id,
+            end_stream: false,
+        }
+        .serialize();
         self.inner.write_all(&frame).await?;
         self.inner.flush().await?;
         Ok(())
@@ -195,6 +233,12 @@ impl<R: ReadWrite> Http2Client<R> {
 
     /// Reads the next buffered payload from whichever of `stream_ids` produces
     /// one first, returning it with the stream it came from.
+    ///
+    /// Cached payloads on every listed stream are returned before any end or
+    /// reset is reported. Then a listed stream the peer reset yields
+    /// [`XpcError::Reset`] and one it ended yields [`XpcError::StreamEnded`],
+    /// on every call, so the caller drops that id and keeps reading the others.
+    /// O(len(stream_ids)) per pass plus one frame per pump.
     pub async fn read_any(&mut self, stream_ids: &[u32]) -> Result<(u32, Vec<u8>), IdeviceError> {
         for id in stream_ids {
             self.cache.entry(*id).or_default();
@@ -205,25 +249,42 @@ impl<R: ReadWrite> Http2Client<R> {
                     return Ok((*id, d));
                 }
             }
-            self.pump().await?;
-        }
-    }
-
-    pub async fn read(&mut self, stream_id: u32) -> Result<Vec<u8>, IdeviceError> {
-        self.cache.entry(stream_id).or_default();
-        loop {
-            // Return any frame already buffered for this stream.
-            if let Some(d) = self.cache.get_mut(&stream_id).and_then(|c| c.pop_front()) {
-                return Ok(d);
+            for id in stream_ids {
+                self.check_stream_open(*id)?;
             }
             self.pump().await?;
         }
     }
 
+    /// Reads the next payload on `stream_id`; see [`Self::read_any`] for end
+    /// and reset reporting.
+    pub async fn read(&mut self, stream_id: u32) -> Result<Vec<u8>, IdeviceError> {
+        self.read_any(&[stream_id]).await.map(|(_, d)| d)
+    }
+
+    /// `Err` when the peer reset or ended `stream_id`; called only once its
+    /// cache is empty.
+    fn check_stream_open(&self, stream_id: u32) -> Result<(), IdeviceError> {
+        if let Some(&error_code) = self.reset.get(&stream_id) {
+            return Err(XpcError::Reset {
+                stream_id,
+                error_code,
+            }
+            .into());
+        }
+        if self.ended.contains(&stream_id) {
+            return Err(XpcError::StreamEnded { stream_id }.into());
+        }
+        Ok(())
+    }
+
     /// Read and handle a single inbound frame: ack SETTINGS (applying any
     /// `InitialWindowSize` change), apply WINDOW_UPDATEs to our send windows,
     /// replenish the peer's receive window for inbound DATA and buffer that DATA
-    /// by stream. GOAWAY / RST_STREAM surface as errors via [`frame::Frame::next`].
+    /// by stream, recording END_STREAM from DATA and HEADERS. GOAWAY surfaces as
+    /// an error from [`frame::Frame::parse`]; RST_STREAM (other than for a
+    /// finished outbound transfer) is recorded, and reads of that stream
+    /// report [`XpcError::Reset`] after its cache drains. O(frame length).
     async fn pump(&mut self) -> Result<(), IdeviceError> {
         let frame = self.next_frame().await?;
         match frame {
@@ -266,7 +327,15 @@ impl<R: ReadWrite> Http2Client<R> {
                         rst.stream_id
                     );
                 } else {
-                    return Err(crate::xpc::errors::XpcError::HttpStreamReset.into());
+                    // Recorded, not returned: a reset of one stream must not
+                    // fail a read of another. Readers of this stream get
+                    // `Reset` once its cache is drained.
+                    self.reset.insert(rst.stream_id, rst.error_code);
+                }
+            }
+            frame::Frame::Headers(h) => {
+                if h.end_stream {
+                    self.ended.insert(h.stream_id);
                 }
             }
             frame::Frame::Data(data_frame) => {
@@ -278,6 +347,15 @@ impl<R: ReadWrite> Http2Client<R> {
 
                 let len = data_frame.payload.len() as u32;
                 let stream_id = data_frame.stream_id;
+                if self.strict_streams
+                    && !self.opened.contains(&stream_id)
+                    && !PRE_OPEN_STREAMS.contains(&stream_id)
+                {
+                    return Err(XpcError::UnexpectedStream { stream_id }.into());
+                }
+                if data_frame.end_stream {
+                    self.ended.insert(stream_id);
+                }
                 // Cache the payload BEFORE any await so a cancelled pump (the poll
                 // tick interrupting `recv_push`) can never drop it.
                 self.cache
@@ -311,7 +389,7 @@ impl<R: ReadWrite> Http2Client<R> {
                 }
             }
             _ => {
-                // SETTINGS ack / HEADERS — nothing to do.
+                // SETTINGS ack — nothing to do.
             }
         }
         Ok(())
