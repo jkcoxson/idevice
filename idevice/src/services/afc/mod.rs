@@ -225,7 +225,10 @@ impl AfcClient {
 
         let st_nlink = kvs.remove("st_nlink").ok_or(AfcError::MissingAttribute)?;
         let st_ifmt = kvs.remove("st_ifmt").ok_or(AfcError::MissingAttribute)?;
-        let st_link_target = kvs.remove("st_link_target");
+        // iOS reports the symlink target as `LinkTarget`; accept `st_link_target` too.
+        let st_link_target = kvs
+            .remove("st_link_target")
+            .or_else(|| kvs.remove("LinkTarget"));
 
         if !kvs.is_empty() {
             warn!("File info kvs not empty: {kvs:?}");
