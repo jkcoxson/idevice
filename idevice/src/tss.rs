@@ -311,6 +311,7 @@ impl TSSRequest {
     pub fn add_ap_tags(&mut self, build_identity: &plist::Dictionary) {
         const KEYS: &[&str] = &[
             "UniqueBuildID",
+            "Ap,OSEnvironment",
             "Ap,OSLongVersion",
             "Ap,OSReleaseType",
             "Ap,ProductType",
@@ -353,6 +354,20 @@ impl TSSRequest {
             "Timer,SecurityDomain,1",
             "Timer,SecurityDomain,2",
             "NeRDEpoch",
+            "Ap,CurrentOSSecurityVersion",
+            "Ap,EnableGroundhog",
+            "Ap,EngineeringUseOnlyUnit",
+            "Ap,EphemeralDataMode",
+            "Ap,InternalUseOnlySW",
+            "Ap,InternalUseOnlyUnit",
+            "Ap,MinimumOSSecurityVersion",
+            "Ap,RestoreSecurityOverrides0",
+            "Ap,RestoreSecurityOverrides1",
+            "Ap,RestoreSecurityOverrides2",
+            "Ap,RestoreSecurityOverrides3",
+            "Ap,SoftwareUpdateDeviceID",
+            "Ap,UniqueTagList",
+            "x86,OSLongVersion",
         ];
         for &key in KEYS {
             if let Some(v) = build_identity.get(key) {
@@ -375,6 +390,28 @@ impl TSSRequest {
             .and_then(|i| i.get("RequiresUIDMode"))
         {
             self.insert("RequiresUIDMode", r.clone());
+        }
+
+        self.add_request_manifest_properties(build_identity);
+    }
+
+    pub fn add_request_manifest_properties(&mut self, build_identity: &plist::Dictionary) {
+        let Some(info) = build_identity.get("Info").and_then(Value::as_dictionary) else {
+            return;
+        };
+        let Some(names) = info
+            .get("RequestManifestProperties")
+            .and_then(Value::as_array)
+        else {
+            return;
+        };
+        for name in names.iter().filter_map(Value::as_string) {
+            if self.inner.contains_key(name) {
+                continue;
+            }
+            if let Some(v) = build_identity.get(name).or_else(|| info.get(name)) {
+                self.inner.insert(name.to_string(), v.clone());
+            }
         }
     }
 
