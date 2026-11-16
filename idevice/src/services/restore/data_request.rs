@@ -102,6 +102,9 @@ pub(super) async fn dispatch(
         "ReceiptManifest" => send_manifest(ctx).await,
         "URLAsset" => send_url_asset(ctx, message).await,
         "StreamedImageDecryptionKey" => send_streamed_image_decryption_key(ctx, message).await,
+        "FirmwareUpdaterPreflight" | "DeviceRestoreInfoPreflight" => {
+            send_to_data_service(ctx, message, Value::Dictionary(Default::default())).await
+        }
         other => {
             warn!("DataType `{other}` not yet implemented; skipping");
             Ok(())

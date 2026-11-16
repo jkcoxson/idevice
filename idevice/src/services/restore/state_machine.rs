@@ -420,6 +420,17 @@ async fn drive_restore(ctx: &mut RestoreContext<'_>) -> Result<(), IdeviceError>
                 return Err(IdeviceError::Restore(RestoreError::RestoredCrashed));
             }
             "AsyncWait" => debug!("async wait: {message:?}"),
+            "RestoreProtocol" => {
+                let protocol = message
+                    .get("Arguments")
+                    .and_then(Value::as_dictionary)
+                    .and_then(|a| a.get("RestoreProtocol"))
+                    .and_then(Value::as_string);
+                match protocol {
+                    Some("MuxSocket") => info!("restored selected the MuxSocket restore protocol"),
+                    other => warn!("restored asked for an unsupported restore protocol: {other:?}"),
+                }
+            }
             "RestoreAttestation" => {
                 debug!("restore attestation request; declining");
                 ctx.restored

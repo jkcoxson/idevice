@@ -94,6 +94,15 @@ impl RestoreOptions {
             "SupportedMessageTypes".into(),
             Value::Dictionary(supported_message_types()),
         );
+        d.insert(
+            "SupportedHostProtocols".into(),
+            Value::Array(
+                SUPPORTED_HOST_PROTOCOLS
+                    .iter()
+                    .map(|p| Value::String((*p).into()))
+                    .collect(),
+            ),
+        );
 
         if let Some(args) = &self.restore_boot_args {
             d.insert("RestoreBootArgs".into(), args.clone().into());
@@ -170,6 +179,11 @@ const SUPPORTED_DATA_TYPES: &[(&str, bool)] = &[
     ("BasebandStackData", false),
     ("BasebandUpdaterOutputData", false),
     ("BootabilityBundle", false),
+    // Added for iOS 27 / macOS 27, values from MobileDevice.framework's
+    // `restored_get_supported_data_types` (macOS 27.0).
+    ("BootabilityBundleV2", false),
+    ("DeviceRestoreInfoPreflight", true),
+    ("SourceBootObjectV5", true),
     ("BuildIdentityDict", false),
     ("BuildIdentityDictV2", false),
     ("DataType", false),
@@ -251,4 +265,11 @@ const SUPPORTED_MESSAGE_TYPES: &[(&str, bool)] = &[
     ("AsyncDataRequestMsg", true),
     ("AsyncWait", true),
     ("RestoreAttestation", true),
+    // Added for iOS 27 / macOS 27 (`restored_get_supported_message_types`).
+    ("RestoreProtocol", true),
 ];
+
+/// The transports the host can serve data requests over
+/// (`restored_get_supported_protocols`). Only the usbmuxd socket is
+/// implemented.
+const SUPPORTED_HOST_PROTOCOLS: &[&str] = &["MuxSocket"];

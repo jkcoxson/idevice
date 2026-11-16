@@ -551,7 +551,7 @@ async fn boot_to_restore(
         recovery = RecoveryDevice::new(transport).await?;
     }
 
-    let restore_boot_args = "rd=md0 nand-enable-reformat=1 -progress";
+    let restore_boot_args = idevice::services::restore::recovery::DEFAULT_RESTORE_BOOT_ARGS;
 
     // Wait until iBEC is up (build-version becomes readable).
     for _ in 0..30 {
@@ -620,9 +620,7 @@ async fn boot_to_restore(
     )
     .await?;
     let _ = recovery.finish_transfer().await;
-    recovery
-        .send_command(&format!("setenv boot-args {restore_boot_args}"))
-        .await?;
+    recovery.set_restore_boot_args(restore_boot_args).await?;
     let _ = recovery.send_command_with_request("bootx", 1).await;
     Ok(())
 }

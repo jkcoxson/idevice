@@ -27,6 +27,7 @@ pub const USB_TIMEOUT_MS: u32 = 10_000;
 pub const TRANSFER_SIZE_RECOVERY: usize = 0x8000;
 /// Control transfer chunk size in DFU/WTF mode.
 pub const TRANSFER_SIZE_DFU: usize = 0x800;
+pub const DEFAULT_RESTORE_BOOT_ARGS: &str = "rd=md0 nand-enable-reformat=1 -progress -restore";
 /// Max packet size of the high-speed bulk OUT endpoint iBoot exposes in recovery
 /// mode. A payload that is a whole multiple of this needs a terminating
 /// zero-length packet (see [`RecoveryDevice::send_buffer`]).
@@ -253,6 +254,25 @@ impl RecoveryDevice {
     /// Sets an environment variable via `setenv`.
     pub async fn setenv(&mut self, name: &str, value: &str) -> Result<(), IdeviceError> {
         self.send_command(&format!("setenv {name} {value}")).await
+    }
+
+    /// Sets an environment variable for this boot only via `setenvnp`, so it is
+    /// never written to NVRAM. Falls back to `setenv` when the command fails, as
+    /// an iBoot too old to know `setenvnp` does.
+    pub async fn setenvnp(&mut self, name: &str, value: &str) -> Result<(), IdeviceError> {
+        match self.send_command(&format!("setenvnp {name} {value}")).await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                debug!("setenvnp {name} failed ({e}); falling back to setenv");
+                self.setenv(name, value).await
+            }
+        }
+    }
+
+    /// Sets the restore ramdisk's boot-args the way MobileDevice's `_setArgs`
+    /// does: non-persistently via [`Self::setenvnp`].
+    pub async fn set_restore_boot_args(&mut self, args: &str) -> Result<(), IdeviceError> {
+        self.setenvnp("boot-args", args).await
     }
 
     /// Enables or disables auto-boot and persists it (`saveenv`).
