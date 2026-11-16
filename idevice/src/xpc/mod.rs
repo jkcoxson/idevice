@@ -24,6 +24,58 @@ const FIRST_OUTBOUND_FILE_STREAM: u32 = 5;
 /// Fixed XPC message-wrapper header: magic + flags + body length + message id.
 const XPC_WRAPPER_LEN: usize = 24;
 
+static HANDSHAKE_UUID: std::sync::OnceLock<uuid::Uuid> = std::sync::OnceLock::new();
+
+/// The UUID this host presents in every RSD handshake, unless one is passed to
+/// [`RemoteXpcClient::send_device_handshake_with_uuid`].
+///
+/// Since iOS 27.2 the device remembers the handshake UUID of the last RSD peer
+/// on a tunnel (even after it disconnects). When a later connection presents a
+/// different UUID it re-attaches the peer and closes every service listener it
+/// advertised, to the newcomer and to earlier connections alike. So every
+/// connection to a tunnel, across processes, has to present the same UUID.
+///
+/// The default is `uuid3(NAMESPACE_DNS, hostname)`, the same host id
+/// pymobiledevice3 uses, so the two can share a tunnel. If the hostname can't
+/// be read, a random UUID is generated once per process.
+pub fn default_handshake_uuid() -> uuid::Uuid {
+    *HANDSHAKE_UUID.get_or_init(|| match host_name() {
+        Some(name) => uuid::Uuid::new_v3(&uuid::Uuid::NAMESPACE_DNS, name.as_bytes()),
+        None => uuid::Uuid::new_v4(),
+    })
+}
+
+/// Overrides [`default_handshake_uuid`] for this process, e.g. to present the
+/// UUID of macOS's `remoted` on a link it also uses. Must be called before the
+/// first handshake; returns the UUID back if the default was already fixed.
+pub fn set_default_handshake_uuid(uuid: uuid::Uuid) -> Result<(), uuid::Uuid> {
+    HANDSHAKE_UUID.set(uuid)
+}
+
+#[cfg(unix)]
+fn host_name() -> Option<String> {
+    let mut buf = [0u8; 256];
+    // SAFETY: buf is valid for buf.len() bytes; gethostname NUL-terminates on
+    // success when the name fits, and we cap the length at buf.len() anyway.
+    let ret = unsafe { libc::gethostname(buf.as_mut_ptr().cast(), buf.len()) };
+    if ret != 0 {
+        return None;
+    }
+    let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+    let name = std::str::from_utf8(&buf[..len]).ok()?;
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+#[cfg(windows)]
+fn host_name() -> Option<String> {
+    std::env::var("COMPUTERNAME").ok().filter(|n| !n.is_empty())
+}
+
+#[cfg(not(any(unix, windows)))]
+fn host_name() -> Option<String> {
+    None
+}
+
 #[derive(Debug)]
 pub struct RemoteXpcClient<R: ReadWrite> {
     h2_client: http2::Http2Client<R>,
@@ -87,14 +139,27 @@ impl<R: ReadWrite> RemoteXpcClient<R> {
     /// Announce ourselves to the device's `remoted` as a modern (non-legacy)
     /// RemoteXPC peer.
     ///
-    /// Send this only on the RSD/remoted control connection
+    /// Send this only on the RSD/remoted control connection. Identifies this
+    /// host with [`default_handshake_uuid`].
     pub async fn send_device_handshake(&mut self) -> Result<(), IdeviceError> {
+        self.send_device_handshake_with_uuid(default_handshake_uuid())
+            .await
+    }
+
+    /// Like [`Self::send_device_handshake`], identifying this host with `uuid`.
+    ///
+    /// On iOS 27.2+ every connection sharing a tunnel must present the same
+    /// UUID; see [`default_handshake_uuid`].
+    pub async fn send_device_handshake_with_uuid(
+        &mut self,
+        uuid: uuid::Uuid,
+    ) -> Result<(), IdeviceError> {
         const REMOTE_XPC_VERSION_FLAGS: u64 = 0x0100_0000_0000_0006;
 
         let msg = xpc!({
             "MessageType": "Handshake",
             "MessagingProtocolVersion": 7u64,
-            "UUID": uuid::Uuid::new_v4(),
+            "UUID": uuid,
             "Properties": {
                 "RemoteXPCVersionFlags": REMOTE_XPC_VERSION_FLAGS,
                 "SensitivePropertiesVisible": true,
