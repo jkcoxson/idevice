@@ -42,7 +42,7 @@ pub fn make_cert(
     // wasm32-unknown-unknown. `web-time` is a zero-cost alias on native
     // and uses `Date.now()` on wasm.
     let lifetime = std::time::Duration::from_secs(
-        365 * 9 * 12 * 31 * 24 * 60 * 60, // idk like 9 years
+        365 * 9 * 24 * 60 * 60, // idk like 9 years
     );
     let now_unix = web_time::SystemTime::now()
         .duration_since(web_time::UNIX_EPOCH)
