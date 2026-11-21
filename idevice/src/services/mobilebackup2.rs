@@ -1552,19 +1552,16 @@ impl MobileBackup2Client {
                 let _ = delegate.create_dir_all(parent).await;
             }
 
-            // Read first code+data block
+            // Read first code+data block (nlen == 0 means an immediate empty file)
             let mut nlen = self.read_be_u32().await?;
-            if nlen == 0 {
-                continue;
-            }
-            let mut code = self.read_one().await?;
+            let mut code = if nlen > 0 { self.read_one().await? } else { 0 };
 
             // Remove existing file and create new one
             let _ = delegate.remove(&dst).await;
             let mut file = delegate.create_file_write(&dst).await?;
 
             // Receive file data blocks
-            while code == DL_CODE_FILE_DATA {
+            while nlen > 0 && code == DL_CODE_FILE_DATA {
                 let block_size = (nlen - 1) as usize;
                 let data = self.read_exact(block_size).await?;
                 file.write_all(&data)
@@ -1591,13 +1588,22 @@ impl MobileBackup2Client {
                 }
             }
 
+            drop(file);
+
             file_count += 1;
             delegate.on_file_received(&fname, file_count);
 
             // Handle trailing error/status message
-            if nlen > 0 && code != DL_CODE_FILE_DATA && code != DL_CODE_SUCCESS {
-                // Consume trailing data (error messages, end-of-file markers)
-                let _ = self.read_exact((nlen - 1) as usize).await?;
+            if nlen > 1 {
+                let trailing = self.read_exact((nlen - 1) as usize).await?;
+                if code != DL_CODE_SUCCESS {
+                    warn!(
+                        "Device reported status 0x{code:02x} for uploaded file {fname}: {}",
+                        String::from_utf8_lossy(&trailing)
+                    );
+                }
+            } else if nlen == 1 && code != DL_CODE_SUCCESS {
+                warn!("Device reported status 0x{code:02x} for uploaded file {fname}");
             }
         }
 
@@ -1665,6 +1671,7 @@ impl MobileBackup2Client {
             && arr.len() >= 2
             && let Some(plist::Value::Dictionary(map)) = arr.get(1)
         {
+            let mut had_error = false;
             for (from, to_v) in map.iter() {
                 if let Some(to) = to_v.as_string() {
                     let old = host_path(host_dir, from);
@@ -1672,12 +1679,13 @@ impl MobileBackup2Client {
                     if let Some(parent) = newp.parent() {
                         let _ = delegate.create_dir_all(parent).await;
                     }
-                    if delegate.rename(&old, &newp).await.is_err() {
-                        return -1;
+                    if let Err(e) = delegate.rename(&old, &newp).await {
+                        warn!("Failed to move {from} to {to}: {e}");
+                        had_error = true;
                     }
                 }
             }
-            return 0;
+            return if had_error { -1 } else { 0 };
         }
         -1
     }
@@ -1691,15 +1699,19 @@ impl MobileBackup2Client {
             && arr.len() >= 2
             && let Some(plist::Value::Array(items)) = arr.get(1)
         {
+            let mut had_error = false;
             for it in items {
                 if let Some(p) = it.as_string() {
                     let path = host_path(host_dir, p);
-                    if delegate.exists(&path).await && delegate.remove(&path).await.is_err() {
-                        return -1;
+                    if delegate.exists(&path).await
+                        && let Err(e) = delegate.remove(&path).await
+                    {
+                        warn!("Failed to remove {p}: {e}");
+                        had_error = true;
                     }
                 }
             }
-            return 0;
+            return if had_error { -1 } else { 0 };
         }
         -1
     }
