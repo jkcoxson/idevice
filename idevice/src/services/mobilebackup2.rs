@@ -412,9 +412,29 @@ impl BackupDelegate for FsBackupDelegate {
         to: &'a Path,
     ) -> Pin<Box<dyn Future<Output = Result<(), IdeviceError>> + Send + 'a>> {
         Box::pin(async move {
-            tokio::fs::rename(from, to)
-                .await
-                .map_err(|e| IdeviceError::InternalError(e.to_string()))
+            async {
+                if let Some(parent) = to.parent()
+                    && !parent.as_os_str().is_empty()
+                {
+                    tokio::fs::create_dir_all(parent).await?;
+                }
+                match tokio::fs::rename(from, to).await {
+                    Ok(()) => Ok(()),
+                    Err(first_err) => {
+                        let Ok(meta) = tokio::fs::symlink_metadata(to).await else {
+                            return Err(first_err);
+                        };
+                        if meta.is_dir() {
+                            tokio::fs::remove_dir_all(to).await?;
+                        } else {
+                            tokio::fs::remove_file(to).await?;
+                        }
+                        tokio::fs::rename(from, to).await
+                    }
+                }
+            }
+            .await
+            .map_err(|e| IdeviceError::InternalError(e.to_string()))
         })
     }
 
@@ -424,12 +444,32 @@ impl BackupDelegate for FsBackupDelegate {
         dst: &'a Path,
     ) -> Pin<Box<dyn Future<Output = Result<(), IdeviceError>> + Send + 'a>> {
         Box::pin(async move {
-            let meta = tokio::fs::metadata(src).await;
-            if meta.is_ok_and(|m| m.is_dir()) {
-                tokio::fs::create_dir_all(dst).await
-            } else {
-                tokio::fs::copy(src, dst).await.map(|_| ())
+            async {
+                if tokio::fs::metadata(src).await?.is_dir() {
+                    let mut stack = vec![(src.to_path_buf(), dst.to_path_buf())];
+                    while let Some((src_dir, dst_dir)) = stack.pop() {
+                        tokio::fs::create_dir_all(&dst_dir).await?;
+                        let mut entries = tokio::fs::read_dir(&src_dir).await?;
+                        while let Some(entry) = entries.next_entry().await? {
+                            let dst_path = dst_dir.join(entry.file_name());
+                            if entry.file_type().await?.is_dir() {
+                                stack.push((entry.path(), dst_path));
+                            } else {
+                                tokio::fs::copy(entry.path(), dst_path).await?;
+                            }
+                        }
+                    }
+                    Ok(())
+                } else {
+                    if let Some(parent) = dst.parent()
+                        && !parent.as_os_str().is_empty()
+                    {
+                        tokio::fs::create_dir_all(parent).await?;
+                    }
+                    tokio::fs::copy(src, dst).await.map(|_| ())
+                }
             }
+            .await
             .map_err(|e| IdeviceError::InternalError(e.to_string()))
         })
     }
@@ -2068,5 +2108,90 @@ mod tests {
         let free =
             FsBackupDelegate.get_free_disk_space(Path::new("./does/not/exist/anywhere/right/now"));
         assert!(free > 0, "should resolve an existing ancestor, got {free}");
+    }
+
+    #[tokio::test]
+    async fn fs_delegate_copy_recursively_copies_directory_tree() {
+        let dir = std::env::temp_dir().join(format!("idevice_mb2_copy_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let src = dir.join("src_tree");
+        let dst = dir.join("dst_tree");
+
+        std::fs::create_dir_all(src.join("nested/deeper")).unwrap();
+        std::fs::create_dir_all(src.join("empty_dir")).unwrap();
+        std::fs::write(src.join("root.txt"), b"root content").unwrap();
+        std::fs::write(src.join("nested/deeper/leaf.txt"), b"leaf content").unwrap();
+
+        FsBackupDelegate
+            .copy(&src, &dst)
+            .await
+            .expect("recursive directory copy should succeed");
+
+        assert_eq!(
+            std::fs::read(dst.join("root.txt")).unwrap(),
+            b"root content"
+        );
+        assert_eq!(
+            std::fs::read(dst.join("nested/deeper/leaf.txt")).unwrap(),
+            b"leaf content"
+        );
+        assert!(dst.join("empty_dir").is_dir());
+
+        // Single-file copy also creates missing parent directories.
+        let single_dst = dir.join("new_parent/sub/copied.txt");
+        FsBackupDelegate
+            .copy(&src.join("root.txt"), &single_dst)
+            .await
+            .expect("single file copy should create parents");
+        assert_eq!(std::fs::read(&single_dst).unwrap(), b"root content");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn fs_delegate_rename_replaces_existing_file_and_directory() {
+        let dir = std::env::temp_dir().join(format!("idevice_mb2_rename_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // 1. Replace an existing file.
+        let src_file = dir.join("new_file.txt");
+        let dst_file = dir.join("existing_file.txt");
+        std::fs::write(&src_file, b"replacement").unwrap();
+        std::fs::write(&dst_file, b"original").unwrap();
+
+        FsBackupDelegate
+            .rename(&src_file, &dst_file)
+            .await
+            .expect("rename over existing file should succeed");
+        assert!(!src_file.exists());
+        assert_eq!(std::fs::read(&dst_file).unwrap(), b"replacement");
+
+        // 2. Replace an existing non-empty directory.
+        let src_dir = dir.join("new_dir");
+        let dst_dir = dir.join("existing_dir");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::create_dir_all(&dst_dir).unwrap();
+        std::fs::write(src_dir.join("fresh.txt"), b"fresh").unwrap();
+        std::fs::write(dst_dir.join("stale.txt"), b"stale").unwrap();
+
+        FsBackupDelegate
+            .rename(&src_dir, &dst_dir)
+            .await
+            .expect("rename over existing non-empty directory should succeed");
+        assert!(!src_dir.exists());
+        assert!(!dst_dir.join("stale.txt").exists());
+        assert_eq!(std::fs::read(dst_dir.join("fresh.txt")).unwrap(), b"fresh");
+
+        // 3. Create missing parent directories on rename.
+        let nested_dst = dir.join("created/parent/moved.txt");
+        FsBackupDelegate
+            .rename(&dst_file, &nested_dst)
+            .await
+            .expect("rename into missing parent should succeed");
+        assert!(!dst_file.exists());
+        assert_eq!(std::fs::read(&nested_dst).unwrap(), b"replacement");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
