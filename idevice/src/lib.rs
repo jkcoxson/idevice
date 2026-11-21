@@ -97,32 +97,25 @@ pub trait IdeviceService: Sized {
     // │ │ │    `#[warn(async_fn_in_trait)]` on by default rustc (async_fn_in_trait) [66, 5]
     #[allow(async_fn_in_trait)]
     async fn connect(provider: &dyn IdeviceProvider) -> Result<Self, IdeviceError> {
-        let mut lockdown = LockdownClient::connect(provider).await?;
+        let pairing_file = provider.get_pairing_file().await?;
+        let idevice = connect_service(provider, Self::service_name(), &pairing_file, None).await?;
+        Self::from_stream(idevice).await
+    }
 
-        let legacy = lockdown
-            .start_session(&provider.get_pairing_file().await?)
-            .await?;
-        // Best-effort fetch UDID for downstream defaults (e.g., MobileBackup2 Target/Source identifiers)
-        let udid_value = match lockdown.get_value(Some("UniqueDeviceID"), None).await {
-            Ok(v) => v.as_string().map(|s| s.to_string()),
-            Err(_) => None,
-        };
-
-        let (port, ssl) = lockdown.start_service(Self::service_name()).await?;
-
-        let mut idevice = provider.connect(port).await?;
-        if ssl {
-            idevice
-                .start_session(&provider.get_pairing_file().await?, legacy)
-                .await?;
-        }
-
-        if let Some(udid) = udid_value {
-            idevice.set_udid(udid);
-        }
-
-        lockdown.shutdown().await?;
-
+    /// Establishes a connection to this service with the pairing file's escrow bag
+    ///
+    /// # Arguments
+    /// * `provider` - The device provider that can supply connections
+    #[allow(async_fn_in_trait)]
+    async fn connect_with_escrow(provider: &dyn IdeviceProvider) -> Result<Self, IdeviceError> {
+        let pairing_file = provider.get_pairing_file().await?;
+        let idevice = connect_service(
+            provider,
+            Self::service_name(),
+            &pairing_file,
+            pairing_file.escrow_bag.clone(),
+        )
+        .await?;
         Self::from_stream(idevice).await
     }
 
@@ -148,6 +141,39 @@ pub trait IdeviceService: Sized {
 
         Ok(())
     }
+}
+
+async fn connect_service(
+    provider: &dyn IdeviceProvider,
+    service_name: std::borrow::Cow<'static, str>,
+    pairing_file: &pairing_file::PairingFile,
+    escrow_bag: Option<Vec<u8>>,
+) -> Result<Idevice, IdeviceError> {
+    let mut lockdown = LockdownClient::connect(provider).await?;
+
+    let legacy = lockdown.start_session(pairing_file).await?;
+    // Best-effort fetch UDID for downstream defaults (e.g., MobileBackup2 Target/Source identifiers)
+    let udid_value = match lockdown.get_value(Some("UniqueDeviceID"), None).await {
+        Ok(v) => v.as_string().map(|s| s.to_string()),
+        Err(_) => None,
+    };
+
+    let (port, ssl) = lockdown
+        .start_service_with_escrow(service_name, escrow_bag)
+        .await?;
+
+    let mut idevice = provider.connect(port).await?;
+    if ssl {
+        idevice.start_session(pairing_file, legacy).await?;
+    }
+
+    if let Some(udid) = udid_value {
+        idevice.set_udid(udid);
+    }
+
+    lockdown.shutdown().await?;
+
+    Ok(idevice)
 }
 
 #[cfg(feature = "rsd")]
