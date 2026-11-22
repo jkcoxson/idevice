@@ -139,11 +139,11 @@ int main(int argc, char **argv) {
   // Process command
   int success = 1;
   if (strcmp(command, "list-devices") == 0) {
-    void *devices = NULL;
+    plist_t *devices = NULL;
     size_t devices_len = 0;
     err = image_mounter_copy_devices(client, &devices, &devices_len);
     if (err == NULL) {
-      plist_t *device_list = (plist_t *)devices;
+      plist_t *device_list = devices;
       printf("Mounted devices:\n");
       for (size_t i = 0; i < devices_len; i++) {
         plist_t device = device_list[i];

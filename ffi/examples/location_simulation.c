@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
   }
 
   // Connect to RSD port
-  AdapterStreamHandle *stream = NULL;
+  ReadWriteOpaque *stream = NULL;
   err = adapter_connect(adapter, rsd_port, &stream);
   if (err != NULL) {
     fprintf(stderr, "Failed to connect to RSD port: [%d] %s", err->code,
@@ -102,7 +102,6 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Failed to perform RSD handshake: [%d] %s", err->code,
             err->message);
     idevice_error_free(err);
-    adapter_close(stream);
     adapter_free(adapter);
     return 1;
   }
